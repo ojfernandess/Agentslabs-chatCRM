@@ -367,7 +367,6 @@ export function ConversationDetailPage() {
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
   const [cannedResponses, setCannedResponses] = useState<CannedResponseRow[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [suggestReplyBusy, setSuggestReplyBusy] = useState(false);
   const [voicePreview, setVoicePreview] = useState<{ blob: Blob; ext: string } | null>(null);
@@ -921,10 +920,6 @@ export function ConversationDetailPage() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [emojiOpen, templateMenuOpen, cannedMenuOpen]);
-
-  useEffect(() => {
-    setHeaderMenuOpen(false);
-  }, [id]);
 
   useEffect(() => {
     if (!transferOpen || !transferTeamId) {
@@ -1845,15 +1840,15 @@ export function ConversationDetailPage() {
   })();
   /** Só quando há atendente humano na conversa (ex.: após «Iniciar atendimento»). */
   const canShowTransfer = isActiveConversation && hasHumanAssignee && transferTeamChoices.length > 0;
-  const canTransfer = canShowTransfer;
 
   const openTransferModal = () => {
     setFlowError("");
     setTransferTeamId(conversation.team?.id ?? transferTeamChoices[0]?.id ?? "");
     setTransferAssigneeId(conversation.assignedTo?.id ?? "");
     setTransferOpen(true);
-    setHeaderMenuOpen(false);
   };
+
+  const actionBtnSize = isSplitLayout ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs";
 
   const inBotQueueOnly =
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
@@ -2803,16 +2798,18 @@ export function ConversationDetailPage() {
         ) : null}
         {!emailWorkspaceMode ? (
         <motion.div
-          className={clsx(
-            "shrink-0 border-b border-ink-200/70 bg-white/85 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[#0F1B2B]/55",
-            isSplitLayout
-              ? "max-h-[min(48vh,26rem)] overflow-y-auto overscroll-contain px-2.5 py-2.5 lg:px-3"
-              : "px-3 py-3 lg:px-5",
-          )}
+          className="shrink-0 border-b border-ink-200/70 bg-white/85 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[#0F1B2B]/55"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
         >
+          <div
+            className={clsx(
+              isSplitLayout
+                ? "max-h-[min(40vh,22rem)] overflow-y-auto overscroll-contain px-2.5 pt-2.5 lg:px-3"
+                : "px-3 pt-3 lg:px-5",
+            )}
+          >
           <div className="flex items-start gap-3">
             <Link
               to={
@@ -3020,26 +3017,30 @@ export function ConversationDetailPage() {
               </div>
             </div>
           </div>
+          </div>
 
           <div
             className={clsx(
-              "flex flex-wrap items-center gap-1.5",
+              "flex flex-wrap items-center gap-1.5 border-t border-ink-100/80 dark:border-white/10",
               isSplitLayout
-                ? "mt-1.5 border-t border-ink-100/80 pt-2 dark:border-white/10"
-                : "mt-3 gap-2 border-t border-ink-100 pt-3 dark:border-white/10 lg:mt-4 lg:border-t-0 lg:pt-0",
+                ? "px-2.5 pb-2.5 pt-2 lg:px-3"
+                : "mt-3 gap-2 px-3 pb-3 pt-3 lg:mt-4 lg:border-t-0 lg:pt-0 lg:px-5",
             )}
           >
-            {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff && !isSplitLayout ? (
+            {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
               <span
-                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200"
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200",
+                  actionBtnSize,
+                )}
                 title={t("conversationDetail.botTriageBanner")}
               >
                 <Bot className="h-3.5 w-3.5" />
                 {t("conversationDetail.botInAttendance")}
               </span>
             ) : null}
-            {isEmailInbox && !emailWorkspaceMode && !isSplitLayout ? (
-              <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
+            {isEmailInbox && !emailWorkspaceMode ? (
+              <div className="flex w-full items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
                 <Mail className="h-3.5 w-3.5 shrink-0" />
                 {t("conversationDetail.emailComposerBanner")}
               </div>
@@ -3059,6 +3060,23 @@ export function ConversationDetailPage() {
                 {t("conversationDetail.contactBlocked")}
               </div>
             ) : null}
+            {canStartAttendance ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => {
+                  if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
+                }}
+                title={t("conversationDetail.startAttendanceHint")}
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 font-medium text-emerald-950 hover:bg-emerald-100/80 disabled:opacity-50 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40",
+                  actionBtnSize,
+                )}
+              >
+                <Headset className="h-3.5 w-3.5" />
+                {t("conversationDetail.startAttendance")}
+              </button>
+            ) : null}
             {canShowTransfer ? (
               <button
                 type="button"
@@ -3066,11 +3084,51 @@ export function ConversationDetailPage() {
                 onClick={openTransferModal}
                 className={clsx(
                   "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
-                  isSplitLayout ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+                  actionBtnSize,
                 )}
               >
                 <ArrowRightLeft className="h-3.5 w-3.5" />
                 {t("conversationDetail.transferOpen")}
+              </button>
+            ) : null}
+            {funnelEnabled ? (
+              <Link
+                to="/crm"
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
+                  actionBtnSize,
+                )}
+              >
+                <Kanban className="h-3.5 w-3.5" />
+                {t("conversationDetail.actionMoveFunnel")}
+              </Link>
+            ) : null}
+            {showTransferToBot ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("PENDING", { assignedToId: null })}
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-950 hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100 dark:hover:bg-violet-900/40",
+                  actionBtnSize,
+                )}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {t("conversationDetail.transferToBot")}
+              </button>
+            ) : null}
+            {conversation.status === "OPEN" && !agentBotTriageActive ? (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => void applyStatus("PENDING")}
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 font-medium text-amber-950 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40",
+                  actionBtnSize,
+                )}
+              >
+                <PauseCircle className="h-3.5 w-3.5" />
+                {t("conversationDetail.setPending")}
               </button>
             ) : null}
             {canResolve ? (
@@ -3080,187 +3138,37 @@ export function ConversationDetailPage() {
                 onClick={() => openResolveModal(null)}
                 className={clsx(
                   "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600",
-                  isSplitLayout ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+                  actionBtnSize,
                 )}
               >
                 <CheckCircle className="h-3.5 w-3.5" />
                 {t("conversationDetail.finalize")}
               </button>
             ) : null}
-            {!isSplitLayout && canStartAttendance ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => {
-                  if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
-                }}
-                title={t("conversationDetail.startAttendanceHint")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-950 hover:bg-emerald-100/80 disabled:opacity-50 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40"
-              >
-                <Headset className="h-3.5 w-3.5" />
-                {t("conversationDetail.startAttendance")}
-              </button>
-            ) : null}
-            {!isSplitLayout && funnelEnabled ? (
-              <Link
-                to="/crm"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700"
-              >
-                <Kanban className="h-3.5 w-3.5" />
-                {t("conversationDetail.actionMoveFunnel")}
-              </Link>
-            ) : null}
-            {!isSplitLayout && showTransferToBot ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => void applyStatus("PENDING", { assignedToId: null })}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-950 hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100 dark:hover:bg-violet-900/40"
-              >
-                <Bot className="h-3.5 w-3.5" />
-                {t("conversationDetail.transferToBot")}
-              </button>
-            ) : null}
-            {!isSplitLayout && conversation.status === "OPEN" && !agentBotTriageActive ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => void applyStatus("PENDING")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40"
-              >
-                <PauseCircle className="h-3.5 w-3.5" />
-                {t("conversationDetail.setPending")}
-              </button>
-            ) : null}
-            {!isSplitLayout && conversation.status === "RESOLVED" ? (
+            {conversation.status === "RESOLVED" ? (
               <button
                 type="button"
                 disabled={actionLoading}
                 onClick={() => void applyStatus("OPEN")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+                  actionBtnSize,
+                )}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 {t("conversationDetail.reopen")}
               </button>
             ) : null}
-            {!isSplitLayout ? (
-              <Link
-                to={`/contacts/${conversation.contact.id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-              >
-                <User className="h-3.5 w-3.5" />
-                {t("conversationDetail.viewContact")}
-              </Link>
-            ) : null}
-            {isSplitLayout ? (
-              <div className="relative ml-auto shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setHeaderMenuOpen((open) => !open)}
-                  className="inline-flex items-center justify-center rounded-md border border-ink-200/70 bg-white p-1.5 text-ink-600 hover:bg-ink-50 dark:border-ink-700/60 dark:bg-ink-900/40 dark:text-ink-300"
-                  aria-label={t("conversationDetail.moreActions")}
-                  aria-expanded={headerMenuOpen}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </button>
-                {headerMenuOpen ? (
-                  <>
-                    <button
-                      type="button"
-                      className="fixed inset-0 z-40 cursor-default"
-                      aria-label={t("common.close")}
-                      onClick={() => setHeaderMenuOpen(false)}
-                    />
-                    <div className="absolute right-0 top-full z-50 mt-1 min-w-[11rem] max-w-[min(100vw-2rem,14rem)] rounded-lg border border-ink-200/80 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900">
-                      {canStartAttendance ? (
-                        <button
-                          type="button"
-                          disabled={actionLoading}
-                          onClick={() => {
-                            setHeaderMenuOpen(false);
-                            if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                        >
-                          <Headset className="h-3.5 w-3.5 shrink-0" />
-                          {t("conversationDetail.startAttendance")}
-                        </button>
-                      ) : null}
-                      {showTransferToBot ? (
-                        <button
-                          type="button"
-                          disabled={actionLoading}
-                          onClick={() => {
-                            setHeaderMenuOpen(false);
-                            void applyStatus("PENDING", { assignedToId: null });
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                        >
-                          <Bot className="h-3.5 w-3.5 shrink-0" />
-                          {t("conversationDetail.transferToBot")}
-                        </button>
-                      ) : null}
-                      {conversation.status === "OPEN" && !agentBotTriageActive ? (
-                        <button
-                          type="button"
-                          disabled={actionLoading}
-                          onClick={() => {
-                            setHeaderMenuOpen(false);
-                            void applyStatus("PENDING");
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                        >
-                          <PauseCircle className="h-3.5 w-3.5 shrink-0" />
-                          {t("conversationDetail.setPending")}
-                        </button>
-                      ) : null}
-                      {conversation.status === "RESOLVED" ? (
-                        <button
-                          type="button"
-                          disabled={actionLoading}
-                          onClick={() => {
-                            setHeaderMenuOpen(false);
-                            void applyStatus("OPEN");
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                          {t("conversationDetail.reopen")}
-                        </button>
-                      ) : null}
-                      {funnelEnabled ? (
-                        <Link
-                          to="/crm"
-                          onClick={() => setHeaderMenuOpen(false)}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                        >
-                          <Kanban className="h-3.5 w-3.5 shrink-0" />
-                          {t("conversationDetail.actionMoveFunnel")}
-                        </Link>
-                      ) : null}
-                      <Link
-                        to={`/contacts/${conversation.contact.id}`}
-                        onClick={() => setHeaderMenuOpen(false)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800/60"
-                      >
-                        <User className="h-3.5 w-3.5 shrink-0" />
-                        {t("conversationDetail.viewContact")}
-                      </Link>
-                      {copilotEnabled ? (
-                        <Link
-                          to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
-                          onClick={() => setHeaderMenuOpen(false)}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-[11px] text-violet-800 hover:bg-violet-50 dark:text-violet-200 dark:hover:bg-violet-950/40"
-                        >
-                          <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                          {t("conversationDetail.linkAiInsights")}
-                        </Link>
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
+            <Link
+              to={`/contacts/${conversation.contact.id}`}
+              className={clsx(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+                actionBtnSize,
+              )}
+            >
+              <User className="h-3.5 w-3.5" />
+              {t("conversationDetail.viewContact")}
+            </Link>
           </div>
         </motion.div>
         ) : null}
