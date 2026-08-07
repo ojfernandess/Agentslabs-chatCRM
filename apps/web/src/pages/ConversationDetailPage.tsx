@@ -130,6 +130,7 @@ import {
 import {
   getCachedConversation,
   getInflightConversation,
+  invalidateCachedConversation,
   setCachedConversation,
   setInflightConversation,
 } from "@/lib/conversationDetailCache";
@@ -820,10 +821,6 @@ export function ConversationDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (teamOptions.length > 0) {
-      setOrgAgentOptions([]);
-      return;
-    }
     let cancelled = false;
     void api
       .get<{ id: string; name: string }[]>("/users/assignable")
@@ -839,7 +836,7 @@ export function ConversationDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [teamOptions.length]);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -946,7 +943,9 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (!transferOpen) return;
-    if (teamOptions.length === 0) {
+    const hasTeamChoices =
+      teamOptions.length > 0 || Boolean(conversation?.team?.id);
+    if (!hasTeamChoices) {
       setTransferMembers(
         orgAgentOptions.filter((a) => a.id !== (conversation?.assignedTo?.id ?? "")),
       );
@@ -974,7 +973,7 @@ export function ConversationDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [transferOpen, transferTeamId, teamOptions.length, orgAgentOptions, conversation?.assignedTo?.id]);
+  }, [transferOpen, transferTeamId, teamOptions.length, orgAgentOptions, conversation?.assignedTo?.id, conversation?.team?.id]);
 
   useEffect(() => {
     if (!transferAssigneeId || transferMembers.length === 0) return;
@@ -1033,6 +1032,18 @@ export function ConversationDetailPage() {
   useDebouncedConversationUpdated(() => {
     void loadConversation({ silent: true });
   }, { conversationId: id });
+
+  useEffect(() => {
+    if (!id) return;
+    const onTransferred = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationId?: string }>).detail;
+      if (detail?.conversationId !== id) return;
+      invalidateCachedConversation(id);
+      void loadConversation({ silent: true });
+    };
+    window.addEventListener("openconduit:conversation-transferred", onTransferred);
+    return () => window.removeEventListener("openconduit:conversation-transferred", onTransferred);
+  }, [id, loadConversation]);
 
   useEffect(() => {
     const onCallLogged = (e: Event) => {
@@ -1692,9 +1703,14 @@ export function ConversationDetailPage() {
         body.teamId = transferTeamId;
       }
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, body);
+      invalidateCachedConversation(id);
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
       setTransferOpen(false);
+      window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: id } }),
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       setFlowError(msg || "Request failed");

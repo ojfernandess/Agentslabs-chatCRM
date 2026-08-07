@@ -1723,6 +1723,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           previousAssignedToId: prevAssignedToId,
           contact: updated.contact,
         });
+        broadcastToOrganization(organizationId, {
+          type: "conversation.updated",
+          conversationId: updated.id,
+        });
       }
     }
 
@@ -2350,6 +2354,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           assignedToId: conversation.assignedToId,
           previousAssignedToId: prevAssignedToId,
           contact: conversation.contact,
+        });
+        broadcastToOrganization(organizationId, {
+          type: "conversation.updated",
+          conversationId: conversation.id,
         });
       }
 

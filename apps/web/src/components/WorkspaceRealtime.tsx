@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { translate } from "@/i18n/messages";
 import { playIncomingCallRing } from "@/lib/audioAlerts";
+import { invalidateCachedConversation } from "@/lib/conversationDetailCache";
 
 const TOKEN_KEY = "openconduit_token";
 
@@ -79,6 +80,14 @@ export function WorkspaceRealtime() {
           .replace("{team}", team);
         pushToast(msg);
         playTransferChime();
+        if (typeof data.conversationId === "string" && data.conversationId) {
+          invalidateCachedConversation(data.conversationId);
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-updated", {
+              detail: { conversationId: data.conversationId },
+            }),
+          );
+        }
         window.dispatchEvent(
           new CustomEvent("openconduit:conversation-transferred", { detail: data }),
         );
