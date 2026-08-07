@@ -54,6 +54,8 @@ interface ConversationContextMenuProps {
   conversationPath?: (conversationId: string) => string;
   /** Pastas de e-mail para mover conversas (workspace de e-mail). */
   emailFolders?: { id: string; name: string }[];
+  /** Split-view: abre submenus à esquerda para não cortar no painel estreito. */
+  preferSubmenuLeft?: boolean;
 }
 
 type SubmenuKey = "priority" | "tags" | "agents" | "teams" | "emailFolders";
@@ -75,6 +77,7 @@ export function ConversationContextMenu({
   onDeleted,
   conversationPath,
   emailFolders,
+  preferSubmenuLeft = false,
 }: ConversationContextMenuProps) {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -302,8 +305,11 @@ export function ConversationContextMenu({
 
   if (!target || !position) return null;
 
-  const menuLeft = Math.min(position.x, window.innerWidth - 280);
+  const menuWidth = 280;
+  const menuLeft = Math.min(position.x, window.innerWidth - menuWidth - 8);
   const menuTop = Math.min(position.y, window.innerHeight - 420);
+  const submenuOpensLeft =
+    preferSubmenuLeft || position.x + menuWidth + 180 > window.innerWidth;
 
   return createPortal(
     <div
@@ -363,6 +369,7 @@ export function ConversationContextMenu({
             label={t("inboxesPage.emailWorkspace.moveToFolder")}
             open={openSub === "emailFolders"}
             disabled={busy}
+            opensLeft={submenuOpensLeft}
             onEnter={() => setOpenSub("emailFolders")}
             onLeave={() => setOpenSub((s) => (s === "emailFolders" ? null : s))}
           >
@@ -392,10 +399,11 @@ export function ConversationContextMenu({
         label={t("conversations.contextMenu.priority")}
         open={openSub === "priority"}
         disabled={busy}
+        opensLeft={submenuOpensLeft}
         onEnter={() => setOpenSub("priority")}
         onLeave={() => setOpenSub((s) => (s === "priority" ? null : s))}
       >
-        <div className={clsx(flyoutClass, "min-w-[160px]")}>
+        <div className={clsx(flyoutClass, "min-w-[168px] max-w-[min(100vw-2rem,220px)]")}>
           {PRIORITIES.map((p) => {
             const Icon = priorityIcon(p);
             const selected = target?.priority === p;
@@ -430,13 +438,14 @@ export function ConversationContextMenu({
         label={t("conversations.contextMenu.assignTag")}
         open={openSub === "tags"}
         disabled={busy}
+        opensLeft={submenuOpensLeft}
         onEnter={() => {
           setOpenSub("tags");
           void loadSubmenuData("tags");
         }}
         onLeave={() => setOpenSub((s) => (s === "tags" ? null : s))}
       >
-        <div className={clsx(flyoutClass, "max-h-56 min-w-[180px] overflow-y-auto")}>
+        <div className={clsx(flyoutClass, "max-h-56 min-w-[180px] max-w-[min(100vw-2rem,240px)] overflow-y-auto")}>
           {tags.length === 0 ? (
             <p className="px-3 py-2 text-xs text-ink-500">{t("conversations.contextMenu.loading")}</p>
           ) : (
@@ -461,13 +470,14 @@ export function ConversationContextMenu({
         label={t("conversations.contextMenu.assignAgent")}
         open={openSub === "agents"}
         disabled={busy}
+        opensLeft={submenuOpensLeft}
         onEnter={() => {
           setOpenSub("agents");
           void loadSubmenuData("agents");
         }}
         onLeave={() => setOpenSub((s) => (s === "agents" ? null : s))}
       >
-        <div className={clsx(flyoutClass, "max-h-56 min-w-[180px] overflow-y-auto")}>
+        <div className={clsx(flyoutClass, "max-h-56 min-w-[180px] max-w-[min(100vw-2rem,240px)] overflow-y-auto")}>
           <button
             type="button"
             className={itemClass}
@@ -495,13 +505,14 @@ export function ConversationContextMenu({
         label={t("conversations.contextMenu.assignTeam")}
         open={openSub === "teams"}
         disabled={busy}
+        opensLeft={submenuOpensLeft}
         onEnter={() => {
           setOpenSub("teams");
           void loadSubmenuData("teams");
         }}
         onLeave={() => setOpenSub((s) => (s === "teams" ? null : s))}
       >
-        <div className={clsx(flyoutClass, "max-h-56 min-w-[180px] overflow-y-auto")}>
+        <div className={clsx(flyoutClass, "max-h-56 min-w-[180px] max-w-[min(100vw-2rem,240px)] overflow-y-auto")}>
           <button
             type="button"
             className={itemClass}
@@ -606,6 +617,7 @@ function SubmenuRow({
   label,
   open,
   disabled,
+  opensLeft = false,
   onEnter,
   onLeave,
   children,
@@ -614,6 +626,7 @@ function SubmenuRow({
   label: string;
   open: boolean;
   disabled?: boolean;
+  opensLeft?: boolean;
   onEnter: () => void;
   onLeave: () => void;
   children: ReactNode;
@@ -623,11 +636,16 @@ function SubmenuRow({
       <button type="button" role="menuitem" className={itemClass} disabled={disabled} aria-haspopup="true">
         <Icon className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
         <span className="flex-1">{label}</span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-ink-400" />
+        <ChevronRight
+          className={clsx("h-4 w-4 shrink-0 text-ink-400", opensLeft && "rotate-180")}
+        />
       </button>
       {open ? (
         <div
-          className="absolute left-full top-0 z-10 -ml-1 pl-1"
+          className={clsx(
+            "absolute top-0 z-10",
+            opensLeft ? "right-full -mr-1 pr-1" : "left-full -ml-1 pl-1",
+          )}
           onMouseEnter={onEnter}
           onMouseLeave={onLeave}
         >

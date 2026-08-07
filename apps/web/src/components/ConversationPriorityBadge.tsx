@@ -61,9 +61,11 @@ type PickerProps = {
   value: ConversationPriorityValue;
   disabled?: boolean;
   onChange: (priority: ConversationPriority | null) => void;
+  /** stack = coluna única (painéis estreitos / split-view) */
+  layout?: "wrap" | "stack";
 };
 
-export function ConversationPriorityPicker({ value, disabled, onChange }: PickerProps) {
+export function ConversationPriorityPicker({ value, disabled, onChange, layout = "wrap" }: PickerProps) {
   const { t } = useI18n();
   const options: { id: ConversationPriority | "NONE"; p: ConversationPriority | null }[] = [
     { id: "NONE", p: null },
@@ -74,7 +76,11 @@ export function ConversationPriorityPicker({ value, disabled, onChange }: Picker
   ];
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div
+      className={clsx(
+        layout === "stack" ? "grid grid-cols-1 gap-1.5" : "flex flex-wrap gap-1.5",
+      )}
+    >
       {options.map((opt) => {
         const active = (value ?? null) === opt.p;
         const label = t(priorityLabelKey(opt.id));
@@ -86,7 +92,8 @@ export function ConversationPriorityPicker({ value, disabled, onChange }: Picker
             disabled={disabled}
             onClick={() => onChange(opt.p)}
             className={clsx(
-              "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition",
+              "inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition",
+              layout === "stack" && "w-full justify-start",
               active
                 ? opt.p
                   ? clsx(priorityBadgeClass(opt.p), "border-transparent")
@@ -95,8 +102,8 @@ export function ConversationPriorityPicker({ value, disabled, onChange }: Picker
               disabled && "pointer-events-none opacity-50",
             )}
           >
-            {Icon ? <Icon className="h-3.5 w-3.5" strokeWidth={2.5} /> : null}
-            {label}
+            {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} /> : null}
+            <span className="min-w-0 truncate">{label}</span>
           </button>
         );
       })}

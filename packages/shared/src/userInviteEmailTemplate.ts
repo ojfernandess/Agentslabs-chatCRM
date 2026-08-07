@@ -24,7 +24,7 @@ export const DEFAULT_USER_INVITE_HTML = `<!DOCTYPE html>
 </html>`;
 
 export const USER_INVITE_PREVIEW_SAMPLE = {
-  inviteUrl: "https://app.exemplo.com/login/invite?token=exemplo-token-seguro",
+  inviteUrl: "https://app.exemplo.com/invite?token=exemplo-token-seguro",
   userName: "Maria Silva",
   organizationName: "Hotel Exemplo",
 } as const;

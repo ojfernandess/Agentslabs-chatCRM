@@ -1052,6 +1052,7 @@ export function ConversationsPage({
       <ConversationContextMenu
         target={contextMenu?.target ?? null}
         position={contextMenu?.position ?? null}
+        preferSubmenuLeft={splitView}
         onClose={() => setContextMenu(null)}
         onUpdated={(update) => {
           if (update?.id) {

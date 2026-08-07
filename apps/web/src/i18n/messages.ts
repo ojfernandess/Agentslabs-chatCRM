@@ -4314,6 +4314,7 @@ export const messages = {
       handoffAssigneeLine: "Atendente",
       handoffArrow: "→",
       transferOpen: "Transferir atendimento",
+      moreActions: "Mais ações",
       transferTitle: "Transferir atendimento",
       transferSubtitle: "Escolha o time de destino e, se quiser, o atendente. Só membros do time podem ver a conversa depois da transferência.",
       transferTeamLabel: "Time",
@@ -9871,6 +9872,7 @@ export const messages = {
       handoffAssigneeLine: "Assignee",
       handoffArrow: "→",
       transferOpen: "Transfer conversation",
+      moreActions: "More actions",
       transferTitle: "Transfer conversation",
       transferSubtitle:
         "Pick the destination team and optionally an assignee. After transfer, only that team’s members can see this conversation.",

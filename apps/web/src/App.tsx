@@ -114,6 +114,7 @@ export function App() {
       <Route path="/chatbot/:publicId" element={<ChatbotEmbedPage />} />
       <Route path="/docs" element={<PublicApiDocsPage />} />
       <Route path="/login/reset" element={<ResetPasswordPage />} />
+      <Route path="/invite" element={<AcceptInvitePage />} />
       <Route path="/login/invite" element={<AcceptInvitePage />} />
       <Route path="/calendar-connected" element={<GoogleCalendarConnectedPage />} />
       <Route path="/login" element={<LoginPage />} />

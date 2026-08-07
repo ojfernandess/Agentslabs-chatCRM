@@ -9,12 +9,22 @@ import { api, ApiError } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 
+function readInviteToken(searchParams: URLSearchParams): string {
+  const fromParams = searchParams.get("token")?.trim();
+  if (fromParams) return fromParams;
+  try {
+    return new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function AcceptInvitePage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const token = useMemo(() => searchParams.get("token")?.trim() ?? "", [searchParams]);
+  const token = useMemo(() => readInviteToken(searchParams), [searchParams]);
 
   const [inviteLoading, setInviteLoading] = useState(true);
   const [inviteError, setInviteError] = useState("");
@@ -33,7 +43,10 @@ export function AcceptInvitePage() {
   const { isBlocked: turnstileBlocksSubmit } = useAuthTurnstileGate();
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setInviteLoading(false);
+      return;
+    }
     let cancelled = false;
     void api
       .get<{ email: string; organizationName: string }>(`/auth/invite?token=${encodeURIComponent(token)}`)
@@ -52,6 +65,14 @@ export function AcceptInvitePage() {
       cancelled = true;
     };
   }, [token, t]);
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-ink-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
 
   if (user) {
     if (user.superAdminActorId) {

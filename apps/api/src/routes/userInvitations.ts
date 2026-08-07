@@ -17,7 +17,7 @@ const createInviteSchema = z.object({
 });
 
 function buildInviteUrl(token: string): string {
-  return `${getWebAppPublicOrigin()}/login/invite?token=${encodeURIComponent(token)}`;
+  return `${getWebAppPublicOrigin()}/invite?token=${encodeURIComponent(token)}`;
 }
 
 function invitationStatus(row: {

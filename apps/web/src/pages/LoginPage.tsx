@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { useNavigate, Navigate, Link } from "react-router-dom";
+import { useNavigate, Navigate, Link, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -15,6 +15,8 @@ export function LoginPage() {
   const { user, login } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get("token")?.trim() ?? "";
   const [mode, setMode] = useState<"login" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,6 +51,10 @@ export function LoginPage() {
         replace
       />
     );
+  }
+
+  if (inviteToken) {
+    return <Navigate to={`/invite?token=${encodeURIComponent(inviteToken)}`} replace />;
   }
 
   const handleLogin = async (e: FormEvent) => {
