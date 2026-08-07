@@ -17,11 +17,16 @@ export function nativeAgentHistoryCreatedAtFilter(
 export function buildNativeAgentMessageWhere(input: {
   conversationId: string;
   excludeMessageId: string;
+  excludeMessageIds?: string[];
   lastClearedAt: Date | null;
 }): Prisma.MessageWhereInput {
+  const excludeIds = [
+    input.excludeMessageId,
+    ...(input.excludeMessageIds ?? []),
+  ].filter((id, i, arr) => arr.indexOf(id) === i);
   const where: Prisma.MessageWhereInput = {
     conversationId: input.conversationId,
-    id: { not: input.excludeMessageId },
+    id: excludeIds.length > 1 ? { notIn: excludeIds } : { not: excludeIds[0]! },
     isPrivate: false,
   };
   const createdAt = nativeAgentHistoryCreatedAtFilter(input.lastClearedAt);

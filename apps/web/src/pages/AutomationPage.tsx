@@ -525,6 +525,10 @@ function emptyAgentForm(): AgentFormFields {
       unifiedSpineMode: "off",
       maxMandatoryRecoveries: 1,
       blockedFallbackMessage: "",
+      inboundMessageBatchEnabled: false,
+      inboundMessageBatchDebounceMs: 2500,
+      inboundMessageBatchMaxWaitMs: 8000,
+      inboundMessageBatchMaxMessages: 8,
     },
     knowledgeEngine: defaultKnowledgeEngineFormValues(),
     eilEnabled: false,
@@ -723,6 +727,22 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
       typeof engineRaw.blockedFallbackMessage === "string"
         ? engineRaw.blockedFallbackMessage.slice(0, 500)
         : "",
+    inboundMessageBatchEnabled: engineRaw.inboundMessageBatchEnabled === true,
+    inboundMessageBatchDebounceMs:
+      typeof engineRaw.inboundMessageBatchDebounceMs === "number" &&
+      Number.isFinite(engineRaw.inboundMessageBatchDebounceMs)
+        ? Math.min(10_000, Math.max(500, Math.round(engineRaw.inboundMessageBatchDebounceMs)))
+        : 2500,
+    inboundMessageBatchMaxWaitMs:
+      typeof engineRaw.inboundMessageBatchMaxWaitMs === "number" &&
+      Number.isFinite(engineRaw.inboundMessageBatchMaxWaitMs)
+        ? Math.min(30_000, Math.max(1000, Math.round(engineRaw.inboundMessageBatchMaxWaitMs)))
+        : 8000,
+    inboundMessageBatchMaxMessages:
+      typeof engineRaw.inboundMessageBatchMaxMessages === "number" &&
+      Number.isFinite(engineRaw.inboundMessageBatchMaxMessages)
+        ? Math.min(20, Math.max(2, Math.round(engineRaw.inboundMessageBatchMaxMessages)))
+        : 8,
   };
 
   const kbRaw =
@@ -1037,6 +1057,14 @@ function formToPayload(
       maxMandatoryRecoveries: form.agentEngine.maxMandatoryRecoveries,
       ...(form.agentEngine.blockedFallbackMessage.trim()
         ? { blockedFallbackMessage: form.agentEngine.blockedFallbackMessage.trim().slice(0, 500) }
+        : {}),
+      inboundMessageBatchEnabled: form.agentEngine.inboundMessageBatchEnabled,
+      ...(form.agentEngine.inboundMessageBatchEnabled
+        ? {
+            inboundMessageBatchDebounceMs: form.agentEngine.inboundMessageBatchDebounceMs,
+            inboundMessageBatchMaxWaitMs: form.agentEngine.inboundMessageBatchMaxWaitMs,
+            inboundMessageBatchMaxMessages: form.agentEngine.inboundMessageBatchMaxMessages,
+          }
         : {}),
     },
     memoryEngine: {

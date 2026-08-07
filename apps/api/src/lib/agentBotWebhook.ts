@@ -17,6 +17,10 @@ import { startAutomationExecution } from "./automationExecutionLog.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import { parseAgentEngineConfig } from "./agent-engine/config/parseAgentEngineConfig.js";
 import {
+  handleInboundMessageBatch,
+  type ExecuteNativeAgentTurnInput,
+} from "./agent-engine/inbound/inboundMessageBatch.js";
+import {
   enqueueAgentEngineReplyJob,
   isAgentEngineQueueAvailable,
   resolveAgentEngineQueuePriority,
@@ -191,16 +195,18 @@ function botManagedByOpenConduit(config: unknown): boolean {
 }
 
 
-async function dispatchAgentBotNativeFallback(input: {
-  organizationId: string;
-  bot: Bot;
-  conversation: Conversation;
-  contact: Contact;
-  message: Message;
-  log: FastifyBaseLogger;
-}): Promise<void> {
-  const { organizationId, bot, conversation, contact, message, log } = input;
-  const userMessage = (message.body ?? "").trim();
+async function executeNativeAgentTurn(input: ExecuteNativeAgentTurnInput): Promise<void> {
+  const {
+    organizationId,
+    bot,
+    conversation,
+    contact,
+    message,
+    log,
+    userMessageOverride,
+    batchedMessageIds,
+  } = input;
+  const userMessage = (userMessageOverride ?? message.body ?? "").trim();
 
   const exLog = await startAutomationExecution({
     organizationId,
@@ -213,8 +219,16 @@ async function dispatchAgentBotNativeFallback(input: {
   });
   exLog.info(
     { id: "inbound", name: "Webhook inbound" },
-    "Mensagem recebida — fluxo nativo OpenConduit",
-    { input: { messageId: message.id, userMessage: userMessage.slice(0, 4000) } },
+    batchedMessageIds?.length
+      ? `Mensagem recebida — batch de ${batchedMessageIds.length} inbound(s)`
+      : "Mensagem recebida — fluxo nativo OpenConduit",
+    {
+      input: {
+        messageId: message.id,
+        userMessage: userMessage.slice(0, 4000),
+        batchedMessageIds,
+      },
+    },
   );
 
   const profile = await prisma.automationAgentProfile.findUnique({
@@ -232,6 +246,8 @@ async function dispatchAgentBotNativeFallback(input: {
         messageId: message.id,
         contactId: contact.id,
         executionId: exLog.getExecutionId(),
+        userMessageOverride,
+        batchedMessageIds,
       },
       resolveAgentEngineQueuePriority(conversation.priority),
     );
@@ -256,6 +272,51 @@ async function dispatchAgentBotNativeFallback(input: {
     message,
     log,
     exLog,
+    userMessageOverride,
+    batchedMessageIds,
+  });
+}
+
+async function dispatchAgentBotNativeFallback(input: {
+  organizationId: string;
+  bot: Bot;
+  conversation: Conversation;
+  contact: Contact;
+  message: Message;
+  log: FastifyBaseLogger;
+}): Promise<void> {
+  const { organizationId, bot, conversation, contact, message, log } = input;
+
+  const profile = await prisma.automationAgentProfile.findUnique({
+    where: { botId: bot.id },
+    select: { behaviorConfig: true },
+  });
+  const engineConfig = parseAgentEngineConfig(profile?.behaviorConfig);
+
+  if (engineConfig.inboundMessageBatchEnabled) {
+    const batchResult = await handleInboundMessageBatch({
+      organizationId,
+      bot,
+      conversation,
+      contact,
+      message,
+      log,
+      engineConfig,
+      onFlush: executeNativeAgentTurn,
+    });
+    if (batchResult.action === "deferred") return;
+    const { action: _action, ...turnInput } = batchResult;
+    await executeNativeAgentTurn(turnInput);
+    return;
+  }
+
+  await executeNativeAgentTurn({
+    organizationId,
+    bot,
+    conversation,
+    contact,
+    message,
+    log,
   });
 }
 

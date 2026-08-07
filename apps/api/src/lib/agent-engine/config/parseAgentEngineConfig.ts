@@ -1,5 +1,8 @@
 import {
   DEFAULT_AGENT_ENGINE_CONFIG,
+  DEFAULT_INBOUND_MESSAGE_BATCH_DEBOUNCE_MS,
+  DEFAULT_INBOUND_MESSAGE_BATCH_MAX_MESSAGES,
+  DEFAULT_INBOUND_MESSAGE_BATCH_MAX_WAIT_MS,
   type AgentEngineConfig,
   type AgentCheckpointStoreKind,
   type AgentMemoryKind,
@@ -141,6 +144,22 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
       o.postCompletionFollowUpSyntheticText.trim()
         ? o.postCompletionFollowUpSyntheticText.trim().slice(0, 200)
         : DEFAULT_AGENT_ENGINE_CONFIG.postCompletionFollowUpSyntheticText,
+    inboundMessageBatchEnabled: o.inboundMessageBatchEnabled === true,
+    inboundMessageBatchDebounceMs:
+      typeof o.inboundMessageBatchDebounceMs === "number" &&
+      Number.isFinite(o.inboundMessageBatchDebounceMs)
+        ? Math.min(10_000, Math.max(500, Math.round(o.inboundMessageBatchDebounceMs)))
+        : DEFAULT_INBOUND_MESSAGE_BATCH_DEBOUNCE_MS,
+    inboundMessageBatchMaxWaitMs:
+      typeof o.inboundMessageBatchMaxWaitMs === "number" &&
+      Number.isFinite(o.inboundMessageBatchMaxWaitMs)
+        ? Math.min(30_000, Math.max(1000, Math.round(o.inboundMessageBatchMaxWaitMs)))
+        : DEFAULT_INBOUND_MESSAGE_BATCH_MAX_WAIT_MS,
+    inboundMessageBatchMaxMessages:
+      typeof o.inboundMessageBatchMaxMessages === "number" &&
+      Number.isFinite(o.inboundMessageBatchMaxMessages)
+        ? Math.min(20, Math.max(2, Math.round(o.inboundMessageBatchMaxMessages)))
+        : DEFAULT_INBOUND_MESSAGE_BATCH_MAX_MESSAGES,
   };
 }
 
@@ -182,6 +201,13 @@ export function mergeAgentEngineIntoBehavior(
         engine.postCompletionFollowUpSyntheticText ??
         DEFAULT_AGENT_ENGINE_CONFIG.postCompletionFollowUpSyntheticText ??
         "envie os detalhes da estadia",
+      inboundMessageBatchEnabled: engine.inboundMessageBatchEnabled ?? false,
+      inboundMessageBatchDebounceMs:
+        engine.inboundMessageBatchDebounceMs ?? DEFAULT_INBOUND_MESSAGE_BATCH_DEBOUNCE_MS,
+      inboundMessageBatchMaxWaitMs:
+        engine.inboundMessageBatchMaxWaitMs ?? DEFAULT_INBOUND_MESSAGE_BATCH_MAX_WAIT_MS,
+      inboundMessageBatchMaxMessages:
+        engine.inboundMessageBatchMaxMessages ?? DEFAULT_INBOUND_MESSAGE_BATCH_MAX_MESSAGES,
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&

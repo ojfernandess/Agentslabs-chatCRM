@@ -99,7 +99,22 @@ export type AgentEngineConfig = {
   postCompletionFollowUpEnabled?: boolean;
   /** Texto do inbound sintético do follow-up (default não-confirmação). */
   postCompletionFollowUpSyntheticText?: string;
+  /**
+   * Agrupa mensagens inbound rápidas do hóspede antes de executar o agente (debounce).
+   * Default false — cada mensagem dispara um turno.
+   */
+  inboundMessageBatchEnabled?: boolean;
+  /** Silêncio após última mensagem antes de processar o batch (ms). Default 2500. */
+  inboundMessageBatchDebounceMs?: number;
+  /** Tempo máximo desde a 1ª mensagem do batch (ms). Default 8000. */
+  inboundMessageBatchMaxWaitMs?: number;
+  /** Máximo de mensagens por batch. Default 8. */
+  inboundMessageBatchMaxMessages?: number;
 };
+
+export const DEFAULT_INBOUND_MESSAGE_BATCH_DEBOUNCE_MS = 2500;
+export const DEFAULT_INBOUND_MESSAGE_BATCH_MAX_WAIT_MS = 8000;
+export const DEFAULT_INBOUND_MESSAGE_BATCH_MAX_MESSAGES = 8;
 
 export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   runtime: "openconduit",

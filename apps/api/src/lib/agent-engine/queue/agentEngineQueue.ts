@@ -20,6 +20,8 @@ export type AgentEngineQueueJobData = {
   messageId: string;
   contactId: string;
   executionId: string;
+  userMessageOverride?: string;
+  batchedMessageIds?: string[];
 };
 
 function getRedisUrl(): string | null {
@@ -140,6 +142,8 @@ async function processAgentEngineJob(
     message,
     log,
     exLog,
+    userMessageOverride: data.userMessageOverride,
+    batchedMessageIds: data.batchedMessageIds,
   });
 }
 

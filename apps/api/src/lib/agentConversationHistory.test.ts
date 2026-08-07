@@ -33,6 +33,16 @@ test("buildNativeAgentMessageWhere applies createdAt gt when lastClearedAt set",
   assert.equal(w.isPrivate, false);
 });
 
+test("buildNativeAgentMessageWhere excludes multiple batched message ids", () => {
+  const w = buildNativeAgentMessageWhere({
+    conversationId: "c1",
+    excludeMessageId: "m3",
+    excludeMessageIds: ["m1", "m2"],
+    lastClearedAt: null,
+  });
+  assert.deepEqual(w.id, { notIn: ["m3", "m1", "m2"] });
+});
+
 test("buildNativeAgentTranscriptWhere excludes private messages and applies clear cutoff", () => {
   const t = new Date("2026-05-11T12:00:00.000Z");
   const w = buildNativeAgentTranscriptWhere({ conversationId: "c1", lastClearedAt: t });

@@ -48,6 +48,11 @@ export type AgentEngineFormValues = {
   unifiedSpineMode: UnifiedSpineModeOption;
   maxMandatoryRecoveries: number;
   blockedFallbackMessage: string;
+  /** Agrupa mensagens inbound rápidas antes de executar o agente (debounce). */
+  inboundMessageBatchEnabled: boolean;
+  inboundMessageBatchDebounceMs: number;
+  inboundMessageBatchMaxWaitMs: number;
+  inboundMessageBatchMaxMessages: number;
 };
 
 export const defaultMemoryEngineFormValues = (): MemoryEngineFormValues => ({
@@ -276,6 +281,87 @@ export function AgentEnginePanel({
           </span>
         </label>
       </div>
+
+      <fieldset className="mt-4 rounded-lg border border-sky-200/70 bg-sky-50/30 p-3 dark:border-sky-900/40 dark:bg-sky-950/20">
+        <legend className="px-1 text-xs font-semibold text-ink-800 dark:text-ink-200">
+          {t("automationPage.agentEngineInboundBatchTitle")}
+        </legend>
+        <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentEngineInboundBatchHelp")}</p>
+        <label className="mt-2 flex items-start gap-2 text-xs">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={value.inboundMessageBatchEnabled}
+            onChange={(e) => patch({ inboundMessageBatchEnabled: e.target.checked })}
+          />
+          <span>
+            <span className="font-medium">{t("automationPage.agentEngineInboundBatchEnabled")}</span>
+            <span className="mt-0.5 block text-[11px] font-normal text-ink-500">
+              {t("automationPage.agentEngineInboundBatchEnabledHelp")}
+            </span>
+          </span>
+        </label>
+        {value.inboundMessageBatchEnabled ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <label className="text-xs">
+              <span className="font-medium">{t("automationPage.agentEngineInboundBatchDebounce")}</span>
+              <input
+                type="number"
+                min={500}
+                max={10000}
+                step={100}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
+                value={value.inboundMessageBatchDebounceMs}
+                onChange={(e) =>
+                  patch({
+                    inboundMessageBatchDebounceMs: Math.min(
+                      10_000,
+                      Math.max(500, Math.round(Number(e.target.value) || 2500)),
+                    ),
+                  })
+                }
+              />
+            </label>
+            <label className="text-xs">
+              <span className="font-medium">{t("automationPage.agentEngineInboundBatchMaxWait")}</span>
+              <input
+                type="number"
+                min={1000}
+                max={30000}
+                step={100}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
+                value={value.inboundMessageBatchMaxWaitMs}
+                onChange={(e) =>
+                  patch({
+                    inboundMessageBatchMaxWaitMs: Math.min(
+                      30_000,
+                      Math.max(1000, Math.round(Number(e.target.value) || 8000)),
+                    ),
+                  })
+                }
+              />
+            </label>
+            <label className="text-xs">
+              <span className="font-medium">{t("automationPage.agentEngineInboundBatchMaxMessages")}</span>
+              <input
+                type="number"
+                min={2}
+                max={20}
+                className="mt-1 w-full rounded border border-ink-200 px-2 py-1 dark:border-ink-700 dark:bg-ink-950"
+                value={value.inboundMessageBatchMaxMessages}
+                onChange={(e) =>
+                  patch({
+                    inboundMessageBatchMaxMessages: Math.min(
+                      20,
+                      Math.max(2, Math.round(Number(e.target.value) || 8)),
+                    ),
+                  })
+                }
+              />
+            </label>
+          </div>
+        ) : null}
+      </fieldset>
 
       {value.supervisorEnabled ? (
         <fieldset className="mt-3">

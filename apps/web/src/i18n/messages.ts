@@ -588,6 +588,15 @@ export const messages = {
       agentEngineCheckpoint_redis: "Redis (HITL + checkpoint nativo ou mirror + SSE)",
       agentEngineHitlNative: "HITL nativo (interrupt LangGraph)",
       agentEngineHitlNativeHelp: "Pausa o grafo com interrupt() e resume via Command após aprovação.",
+      agentEngineInboundBatchTitle: "Agrupamento de mensagens inbound",
+      agentEngineInboundBatchHelp:
+        "Quando o hóspede envia várias mensagens seguidas (ex.: cotação em partes), aguarda um breve silêncio e processa tudo num único turno.",
+      agentEngineInboundBatchEnabled: "Agrupar mensagens rápidas",
+      agentEngineInboundBatchEnabledHelp:
+        "Respostas curtas (sim/não/menu) continuam imediatas. Desactivado = cada mensagem dispara um turno (comportamento actual).",
+      agentEngineInboundBatchDebounce: "Silêncio (ms)",
+      agentEngineInboundBatchMaxWait: "Espera máx. (ms)",
+      agentEngineInboundBatchMaxMessages: "Máx. mensagens",
       agentEngineExecutionQueue: "Fila BullMQ (execuções longas)",
       agentEngineExecutionQueueHelp: "Enfileira respostas inbound em Redis — prioridade por conversa URGENT/HIGH.",
       agentEngineTokenStreaming: "Streaming de tokens LLM (SSE)",
@@ -6152,6 +6161,15 @@ export const messages = {
       agentEngineCheckpoint_redis: "Redis (HITL + checkpoint nativo ou mirror + SSE)",
       agentEngineHitlNative: "Native HITL (LangGraph interrupt)",
       agentEngineHitlNativeHelp: "Pauses the graph with interrupt() and resumes via Command after approval.",
+      agentEngineInboundBatchTitle: "Inbound message batching",
+      agentEngineInboundBatchHelp:
+        "When the guest sends several messages in quick succession (e.g. a quote in parts), wait briefly and process them in a single turn.",
+      agentEngineInboundBatchEnabled: "Batch rapid messages",
+      agentEngineInboundBatchEnabledHelp:
+        "Short replies (yes/no/menu) still process immediately. Off = one turn per message (current behavior).",
+      agentEngineInboundBatchDebounce: "Silence (ms)",
+      agentEngineInboundBatchMaxWait: "Max wait (ms)",
+      agentEngineInboundBatchMaxMessages: "Max messages",
       agentEngineExecutionQueue: "BullMQ queue (long executions)",
       agentEngineExecutionQueueHelp: "Enqueues inbound replies in Redis — priority from URGENT/HIGH conversations.",
       agentEngineTokenStreaming: "LLM token streaming (SSE)",

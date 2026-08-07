@@ -51,9 +51,12 @@ export async function runNativeAgentReplyAndDeliver(input: {
   exLog: AutomationExecutionLogHandle;
   /** Evita reentrância no follow-up sintético pós-conclusão. */
   skipPostCompletionFollowUp?: boolean;
+  /** Texto merged quando inbound message batch está activo. */
+  userMessageOverride?: string;
+  batchedMessageIds?: string[];
 }): Promise<void> {
   const { organizationId, bot, conversation, contact, message, log, exLog } = input;
-  const userMessage = (message.body ?? "").trim();
+  const userMessage = (input.userMessageOverride ?? message.body ?? "").trim();
   const skipFollowUp =
     input.skipPostCompletionFollowUp === true || isPostCompletionFollowUpMessage(message);
 
@@ -93,6 +96,8 @@ export async function runNativeAgentReplyAndDeliver(input: {
         log,
         executionLog: exLog.child("agent_llm"),
         contactId: contact.id,
+        userMessageOverride: input.userMessageOverride,
+        batchedMessageIds: input.batchedMessageIds,
       }),
     );
     const replyText = replyResult.reply;

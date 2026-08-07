@@ -1617,6 +1617,10 @@ async function generateNativeAgentReplyCore(input: {
   kbPrefetchAppendix?: string;
   /** Hints do Agent Engine (reply-only retry, etc.). */
   executionHints?: AgentRuntimeExecuteInput["executionHints"];
+  /** Texto merged de inbound message batch. */
+  userMessageOverride?: string;
+  /** IDs das mensagens agrupadas — excluídas do histórico (já no userMessage). */
+  batchedMessageIds?: string[];
 }): Promise<NativeAgentCoreResult> {
   const {
     organizationId,
@@ -1627,9 +1631,11 @@ async function generateNativeAgentReplyCore(input: {
     executionLog: ex,
     historyOverride,
     contactId,
+    userMessageOverride,
+    batchedMessageIds,
   } = input;
   if (message.direction !== "INBOUND") return EMPTY_NATIVE_CORE_RESULT;
-  const userMessageRaw = (message.body ?? "").trim();
+  const userMessageRaw = (userMessageOverride ?? message.body ?? "").trim();
   const hasInboundMedia =
     Boolean(message.mediaUrl?.trim()) &&
     (message.type === "IMAGE" || message.type === "DOCUMENT" || message.type === "VIDEO");
@@ -1900,6 +1906,7 @@ async function generateNativeAgentReplyCore(input: {
         where: buildNativeAgentMessageWhere({
           conversationId: conversation.id,
           excludeMessageId: message.id,
+          excludeMessageIds: batchedMessageIds,
           lastClearedAt: automationCtx.lastClearedAt,
         }),
         orderBy: { createdAt: "desc" },
@@ -2485,6 +2492,7 @@ async function generateNativeAgentReplyCore(input: {
         where: buildNativeAgentMessageWhere({
           conversationId: conversation.id,
           excludeMessageId: message.id,
+          excludeMessageIds: batchedMessageIds,
           lastClearedAt,
         }),
         orderBy: { createdAt: "desc" },
@@ -3882,6 +3890,8 @@ export async function generateNativeAgentReplyWithResult(input: {
   executionLog?: import("./automationExecutionLog.js").AutomationExecutionLogPort | null;
   historyOverride?: PreviewChatTurn[];
   contactId?: string;
+  userMessageOverride?: string;
+  batchedMessageIds?: string[];
 }): Promise<NativeAgentCoreResult> {
   return generateNativeAgentReplyCore(input);
 }
