@@ -349,6 +349,7 @@ export function ConversationDetailPage() {
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
   const [leadOwnerDecisionBusy, setLeadOwnerDecisionBusy] = useState(false);
   const [transferMembers, setTransferMembers] = useState<{ id: string; name: string }[]>([]);
+  const [orgAgentOptions, setOrgAgentOptions] = useState<{ id: string; name: string }[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
   const [crmDesktopOpen, setCrmDesktopOpen] = useState(false);
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
@@ -810,13 +811,35 @@ export function ConversationDetailPage() {
     async function loadTeams() {
       try {
         const res = await api.get<{ data: { id: string; name: string }[] }>("/teams");
-        setTeamOptions(res.data.map((x) => ({ id: x.id, name: x.name })));
+        setTeamOptions(Array.isArray(res.data) ? res.data.map((x) => ({ id: x.id, name: x.name })) : []);
       } catch {
         setTeamOptions([]);
       }
     }
     void loadTeams();
   }, []);
+
+  useEffect(() => {
+    if (teamOptions.length > 0) {
+      setOrgAgentOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<{ id: string; name: string }[]>("/users/assignable")
+      .then((rows) => {
+        if (cancelled) return;
+        setOrgAgentOptions(
+          (Array.isArray(rows) ? rows : []).map((u) => ({ id: u.id, name: u.name })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOrgAgentOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [teamOptions.length]);
 
   useEffect(() => {
     void (async () => {
@@ -922,7 +945,14 @@ export function ConversationDetailPage() {
   }, [emojiOpen, templateMenuOpen, cannedMenuOpen]);
 
   useEffect(() => {
-    if (!transferOpen || !transferTeamId) {
+    if (!transferOpen) return;
+    if (teamOptions.length === 0) {
+      setTransferMembers(
+        orgAgentOptions.filter((a) => a.id !== (conversation?.assignedTo?.id ?? "")),
+      );
+      return;
+    }
+    if (!transferTeamId) {
       setTransferMembers([]);
       return;
     }
@@ -944,7 +974,7 @@ export function ConversationDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [transferOpen, transferTeamId]);
+  }, [transferOpen, transferTeamId, teamOptions.length, orgAgentOptions, conversation?.assignedTo?.id]);
 
   useEffect(() => {
     if (!transferAssigneeId || transferMembers.length === 0) return;
@@ -1649,14 +1679,19 @@ export function ConversationDetailPage() {
   };
 
   const submitTransfer = async () => {
-    if (!conversation || !id || !transferTeamId) return;
+    if (!conversation || !id) return;
+    if (transferUsesTeams && !transferTeamId) return;
+    if (!transferUsesTeams && !transferAssigneeId) return;
     setActionLoading(true);
     setFlowError("");
     try {
-      const data = await api.put<ConversationDetail>(`/conversations/${id}`, {
-        teamId: transferTeamId,
+      const body: { teamId?: string; assignedToId: string | null } = {
         assignedToId: transferAssigneeId || null,
-      });
+      };
+      if (transferUsesTeams && transferTeamId) {
+        body.teamId = transferTeamId;
+      }
+      const data = await api.put<ConversationDetail>(`/conversations/${id}`, body);
       setConversation(data);
       setTeamPickerId(data.team?.id ?? "");
       setTransferOpen(false);
@@ -1838,8 +1873,13 @@ export function ConversationDetailPage() {
     }
     return [...map.values()];
   })();
-  /** Só quando há atendente humano na conversa (ex.: após «Iniciar atendimento»). */
-  const canShowTransfer = isActiveConversation && hasHumanAssignee && transferTeamChoices.length > 0;
+  const transferUsesTeams = transferTeamChoices.length > 0;
+  const reassignAgentOptions = orgAgentOptions.filter((a) => a.id !== assigneeId);
+  /** Com equipas: transferir equipa/atendente. Sem equipas: reatribuir a outro utilizador da org. */
+  const canShowTransfer =
+    isActiveConversation &&
+    hasHumanAssignee &&
+    (transferUsesTeams || reassignAgentOptions.length > 0);
 
   const openTransferModal = () => {
     setFlowError("");
@@ -1869,9 +1909,10 @@ export function ConversationDetailPage() {
   ).emailFromAddress;
   const canStartAttendance =
     Boolean(user?.id) && hasNoHumanAssignee && (conversation.status === "OPEN" || conversation.status === "PENDING");
-  const transferUnchanged =
-    transferTeamId === (conversation.team?.id ?? "") &&
-    (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null);
+  const transferUnchanged = transferUsesTeams
+    ? transferTeamId === (conversation.team?.id ?? "") &&
+      (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null)
+    : (transferAssigneeId || null) === (conversation.assignedTo?.id ?? null);
 
   const messages = conversation.messages ?? [];
   const lastMsg = messages.length ? messages[messages.length - 1] : null;
@@ -4443,37 +4484,50 @@ export function ConversationDetailPage() {
               <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
                 {t("conversationDetail.transferTitle")}
               </h3>
-              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("conversationDetail.transferSubtitle")}</p>
+              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">
+                {transferUsesTeams
+                  ? t("conversationDetail.transferSubtitle")
+                  : t("conversationDetail.transferAgentOnlySubtitle")}
+              </p>
               <div className="mt-4 space-y-4">
+                {transferUsesTeams ? (
+                  <div>
+                    <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                      {t("conversationDetail.transferTeamLabel")}
+                    </label>
+                    <select
+                      value={transferTeamId}
+                      onChange={(e) => {
+                        setTransferTeamId(e.target.value);
+                        setTransferAssigneeId("");
+                      }}
+                      className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
+                    >
+                      {transferTeamChoices.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div>
                   <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
-                    {t("conversationDetail.transferTeamLabel")}
-                  </label>
-                  <select
-                    value={transferTeamId}
-                    onChange={(e) => {
-                      setTransferTeamId(e.target.value);
-                      setTransferAssigneeId("");
-                    }}
-                    className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
-                  >
-                    {transferTeamChoices.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
-                    {t("conversationDetail.transferAssigneeLabel")}
+                    {transferUsesTeams
+                      ? t("conversationDetail.transferAssigneeLabel")
+                      : t("conversationDetail.transferAssigneeRequired")}
                   </label>
                   <select
                     value={transferAssigneeId}
                     onChange={(e) => setTransferAssigneeId(e.target.value)}
+                    required={!transferUsesTeams}
                     className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
                   >
-                    <option value="">{t("conversationDetail.transferAssigneeNone")}</option>
+                    {transferUsesTeams ? (
+                      <option value="">{t("conversationDetail.transferAssigneeNone")}</option>
+                    ) : (
+                      <option value="">{t("conversationDetail.transferAssigneePick")}</option>
+                    )}
                     {transferMembers.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
@@ -4492,7 +4546,11 @@ export function ConversationDetailPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={actionLoading || !transferTeamId || transferUnchanged}
+                    disabled={
+                      actionLoading ||
+                      transferUnchanged ||
+                      (transferUsesTeams ? !transferTeamId : !transferAssigneeId)
+                    }
                     onClick={() => void submitTransfer()}
                     className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
                   >

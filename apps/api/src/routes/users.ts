@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 import { prisma } from "../db.js";
-import { requireAdmin } from "../middleware/auth.js";
+import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { isValidEmail } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -24,9 +24,21 @@ const updateUserSchema = z.object({
 });
 
 export async function userRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook("preHandler", requireAdmin);
+  /** Lista mínima de colegas da org para transferência/reatribuição (qualquer utilizador autenticado). */
+  app.get("/assignable", { preHandler: authenticate }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    return prisma.user.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  });
 
-  app.get("/", async (request, reply) => {
+  await app.register(async (adminApp) => {
+    adminApp.addHook("preHandler", requireAdmin);
+
+    adminApp.get("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     return prisma.user.findMany({
@@ -36,7 +48,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.post("/", async (request, reply) => {
+    adminApp.post("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -76,7 +88,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(user);
   });
 
-  app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
+    adminApp.put<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -113,7 +125,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     return user;
   });
 
-  app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
+    adminApp.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -128,5 +140,6 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
     }
     return reply.status(204).send();
+    });
   });
 }
