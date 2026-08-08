@@ -24,6 +24,16 @@ import clsx from "clsx";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
+import { resolveUserAvatarUrl } from "@/lib/userAvatar";
+import {
+  availabilityDotClass,
+  availabilityLabelKey,
+  isOnlineForTransfer,
+  normalizeAvailabilityStatus,
+  USER_AVAILABILITY_CHANGED_EVENT,
+  type UserAvailability,
+} from "@/lib/userAvailability";
+import type { AssigneePickerRow } from "@/components/AssigneePickerList";
 
 export interface ConversationContextTarget {
   id: string;
@@ -69,6 +79,31 @@ const itemClass =
 const flyoutClass =
   "rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-950";
 
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function mapAssignableAgent(row: {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  availabilityStatus?: UserAvailability;
+  openConversationCount?: number;
+  availabilityUpdatedAt?: string | null;
+}): AssigneePickerRow {
+  return {
+    id: row.id,
+    name: row.name,
+    avatarUrl: row.avatarUrl ?? null,
+    availabilityStatus: normalizeAvailabilityStatus(row.availabilityStatus),
+    openConversationCount: row.openConversationCount ?? 0,
+    availabilityUpdatedAt: row.availabilityUpdatedAt ?? null,
+  };
+}
+
 export function ConversationContextMenu({
   target,
   position,
@@ -85,7 +120,7 @@ export function ConversationContextMenu({
   const [busy, setBusy] = useState(false);
   const [openSub, setOpenSub] = useState<SubmenuKey | null>(null);
   const [tags, setTags] = useState<{ id: string; name: string; color: string }[]>([]);
-  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [agents, setAgents] = useState<AssigneePickerRow[]>([]);
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
 
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
@@ -107,6 +142,27 @@ export function ConversationContextMenu({
     };
   }, [target, position, onClose]);
 
+  useEffect(() => {
+    if (!target || !position) return;
+    const onAvailability = (e: Event) => {
+      const detail = (e as CustomEvent<{ userId?: string; status?: UserAvailability }>).detail;
+      if (!detail?.userId) return;
+      const status = normalizeAvailabilityStatus(detail.status);
+      setAgents((rows) => {
+        let changed = false;
+        const next = rows.map((row) => {
+          if (row.id !== detail.userId) return row;
+          if (row.availabilityStatus === status) return row;
+          changed = true;
+          return { ...row, availabilityStatus: status };
+        });
+        return changed ? next : rows;
+      });
+    };
+    window.addEventListener(USER_AVAILABILITY_CHANGED_EVENT, onAvailability);
+    return () => window.removeEventListener(USER_AVAILABILITY_CHANGED_EVENT, onAvailability);
+  }, [target, position]);
+
   const loadSubmenuData = useCallback(
     async (key: SubmenuKey) => {
       try {
@@ -114,9 +170,18 @@ export function ConversationContextMenu({
           const rows = await api.get<{ id: string; name: string; color: string }[]>("/tags");
           setTags(rows);
         }
-        if (key === "agents" && agents.length === 0) {
-          const rows = await api.get<{ id: string; name: string }[]>("/users");
-          setAgents(rows.map((u) => ({ id: u.id, name: u.name })));
+        if (key === "agents") {
+          const rows = await api.get<
+            {
+              id: string;
+              name: string;
+              avatarUrl?: string | null;
+              availabilityStatus?: UserAvailability;
+              openConversationCount?: number;
+              availabilityUpdatedAt?: string | null;
+            }[]
+          >("/users/assignable");
+          setAgents((Array.isArray(rows) ? rows : []).map(mapAssignableAgent));
         }
         if (key === "teams" && teams.length === 0) {
           const res = await api.get<{ data: { id: string; name: string }[] }>("/teams");
@@ -126,7 +191,7 @@ export function ConversationContextMenu({
         /* ignore */
       }
     },
-    [tags.length, agents.length, teams.length],
+    [tags.length, teams.length],
   );
 
   const patchConversation = async (body: Record<string, unknown>) => {
@@ -477,7 +542,7 @@ export function ConversationContextMenu({
         }}
         onLeave={() => setOpenSub((s) => (s === "agents" ? null : s))}
       >
-        <div className={clsx(flyoutClass, "max-h-56 min-w-[180px] max-w-[min(100vw-2rem,240px)] overflow-y-auto")}>
+        <div className={clsx(flyoutClass, "max-h-64 min-w-[240px] max-w-[min(100vw-2rem,280px)] overflow-y-auto")}>
           <button
             type="button"
             className={itemClass}
@@ -486,17 +551,60 @@ export function ConversationContextMenu({
           >
             {t("conversations.contextMenu.unassigned")}
           </button>
-          {agents.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className={itemClass}
-              disabled={busy}
-              onClick={() => void patchConversation({ assignedToId: a.id })}
-            >
-              <span className="truncate">{a.name}</span>
-            </button>
-          ))}
+          {agents.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-ink-500">{t("conversations.contextMenu.loading")}</p>
+          ) : (
+            agents.map((agent) => {
+              const online = isOnlineForTransfer(agent.availabilityStatus);
+              const avatarSrc = resolveUserAvatarUrl(agent.avatarUrl);
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className={clsx(itemClass, "items-start gap-2.5 py-2.5")}
+                  disabled={busy || !online}
+                  title={!online ? t("conversationDetail.transferAssigneeMustBeOnline") : undefined}
+                  onClick={() => void patchConversation({ assignedToId: agent.id })}
+                >
+                  <span className="relative mt-0.5 shrink-0">
+                    {avatarSrc ? (
+                      <img src={avatarSrc} alt="" className="h-8 w-8 rounded-full object-cover" />
+                    ) : (
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-[10px] font-semibold text-brand-800 dark:bg-brand-900/50 dark:text-brand-200">
+                        {initialsFromName(agent.name)}
+                      </span>
+                    )}
+                    <span
+                      className={clsx(
+                        "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-950",
+                        availabilityDotClass(agent.availabilityStatus),
+                      )}
+                      aria-hidden
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{agent.name}</span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-ink-500 dark:text-ink-400">
+                      <span>{t(availabilityLabelKey(agent.availabilityStatus))}</span>
+                      {online && (agent.openConversationCount ?? 0) > 0 ? (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span>
+                            {(agent.openConversationCount ?? 0) === 1
+                              ? t("conversationDetail.transferAttendingOne")
+                              : t("conversationDetail.transferAttendingMany").replace(
+                                  "{count}",
+                                  String(agent.openConversationCount ?? 0),
+                                )}
+                          </span>
+                        </>
+                      ) : null}
+                    </span>
+                  </span>
+                </button>
+              );
+            })
+          )}
         </div>
       </SubmenuRow>
 

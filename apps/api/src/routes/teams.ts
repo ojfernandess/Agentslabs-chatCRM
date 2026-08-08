@@ -6,6 +6,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { TeamMemberRole, Prisma } from "@prisma/client";
 import { getUnseenTeamTransferCounts } from "../lib/teamTransferUnread.js";
 import { availabilityToClient } from "../lib/userAvailability.js";
+import { enrichUsersWithOpenCounts, openConversationCountByUserId } from "../lib/assignableUsers.js";
 import { teamHubRoutes } from "./teamHub.js";
 
 const createTeamSchema = z.object({
@@ -137,7 +138,9 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
                 name: true,
                 email: true,
                 role: true,
+                avatarUrl: true,
                 availabilityStatus: true,
+                availabilityUpdatedAt: true,
               },
             },
           },
@@ -154,15 +157,21 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
     }
+    const memberUserIds = team.members.map((m) => m.userId);
+    const countMap = await openConversationCountByUserId(organizationId, memberUserIds);
     return {
       ...team,
-      members: team.members.map((member) => ({
-        ...member,
-        user: {
-          ...member.user,
-          availabilityStatus: availabilityToClient(member.user.availabilityStatus),
-        },
-      })),
+      members: team.members.map((member) => {
+        const enriched = enrichUsersWithOpenCounts([member.user], countMap)[0];
+        return {
+          ...member,
+          user: {
+            ...enriched,
+            availabilityStatus: availabilityToClient(member.user.availabilityStatus),
+            availabilityUpdatedAt: member.user.availabilityUpdatedAt?.toISOString() ?? null,
+          },
+        };
+      }),
     };
   });
 

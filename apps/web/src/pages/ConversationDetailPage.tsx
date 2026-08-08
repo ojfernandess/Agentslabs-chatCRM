@@ -18,6 +18,7 @@ import {
   Send,
   ArrowLeft,
   User,
+  UserRound,
   AlertTriangle,
   CheckCircle,
   PauseCircle,
@@ -73,14 +74,13 @@ import {
 import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  availabilityDotClass,
-  availabilityLabelKey,
   isOnlineForTransfer,
   normalizeAvailabilityStatus,
   type UserAvailability,
 } from "@/lib/userAvailability";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { useOrgAvailabilityRealtime } from "@/hooks/useOrgAvailabilityRealtime";
+import { AssigneePickerList, type AssigneePickerRow } from "@/components/AssigneePickerList";
 import { localDueToIso, tomorrowLocalYmd, isoToLocalDateParts } from "@/lib/reminderDue";
 import {
   formatClosurePlaybookReminderNote,
@@ -357,12 +357,8 @@ export function ConversationDetailPage() {
   const [transferTeamId, setTransferTeamId] = useState("");
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
   const [leadOwnerDecisionBusy, setLeadOwnerDecisionBusy] = useState(false);
-  const [transferMembers, setTransferMembers] = useState<
-    { id: string; name: string; availabilityStatus: UserAvailability }[]
-  >([]);
-  const [orgAgentOptions, setOrgAgentOptions] = useState<
-    { id: string; name: string; availabilityStatus: UserAvailability }[]
-  >([]);
+  const [transferMembers, setTransferMembers] = useState<AssigneePickerRow[]>([]);
+  const [orgAgentOptions, setOrgAgentOptions] = useState<AssigneePickerRow[]>([]);
   const [crmMobileOpen, setCrmMobileOpen] = useState(false);
   const [crmDesktopOpen, setCrmDesktopOpen] = useState(false);
   const [copilotMobileOpen, setCopilotMobileOpen] = useState(false);
@@ -832,19 +828,41 @@ export function ConversationDetailPage() {
     void loadTeams();
   }, []);
 
+  const mapAssignableAgent = useCallback(
+    (u: {
+      id: string;
+      name: string;
+      avatarUrl?: string | null;
+      availabilityStatus?: UserAvailability;
+      openConversationCount?: number;
+      availabilityUpdatedAt?: string | null;
+    }): AssigneePickerRow => ({
+      id: u.id,
+      name: u.name,
+      avatarUrl: u.avatarUrl ?? null,
+      availabilityStatus: normalizeAvailabilityStatus(u.availabilityStatus),
+      openConversationCount: u.openConversationCount ?? 0,
+      availabilityUpdatedAt: u.availabilityUpdatedAt ?? null,
+    }),
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
     void api
-      .get<{ id: string; name: string; availabilityStatus?: UserAvailability }[]>("/users/assignable")
+      .get<
+        {
+          id: string;
+          name: string;
+          avatarUrl?: string | null;
+          availabilityStatus?: UserAvailability;
+          openConversationCount?: number;
+          availabilityUpdatedAt?: string | null;
+        }[]
+      >("/users/assignable")
       .then((rows) => {
         if (cancelled) return;
-        setOrgAgentOptions(
-          (Array.isArray(rows) ? rows : []).map((u) => ({
-            id: u.id,
-            name: u.name,
-            availabilityStatus: normalizeAvailabilityStatus(u.availabilityStatus),
-          })),
-        );
+        setOrgAgentOptions((Array.isArray(rows) ? rows : []).map(mapAssignableAgent));
       })
       .catch(() => {
         if (!cancelled) setOrgAgentOptions([]);
@@ -852,23 +870,26 @@ export function ConversationDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mapAssignableAgent]);
 
   const loadTransferAssignees = useCallback(async () => {
     const conversationHasTeam = Boolean(conversation?.team?.id);
     const excludeId = conversation?.assignedTo?.id ?? "";
 
     if (!conversationHasTeam) {
-      const rows = await api.get<{ id: string; name: string; availabilityStatus?: UserAvailability }[]>(
-        "/users/assignable",
-      );
+      const rows = await api.get<
+        {
+          id: string;
+          name: string;
+          avatarUrl?: string | null;
+          availabilityStatus?: UserAvailability;
+          openConversationCount?: number;
+          availabilityUpdatedAt?: string | null;
+        }[]
+      >("/users/assignable");
       return (Array.isArray(rows) ? rows : [])
         .filter((u) => u.id !== excludeId)
-        .map((u) => ({
-          id: u.id,
-          name: u.name,
-          availabilityStatus: normalizeAvailabilityStatus(u.availabilityStatus),
-        }));
+        .map(mapAssignableAgent);
     }
 
     const teamId = transferTeamId || conversation?.team?.id;
@@ -877,15 +898,19 @@ export function ConversationDetailPage() {
     const team = await api.get<{
       members: {
         userId: string;
-        user: { id: string; name: string; email: string; availabilityStatus?: UserAvailability };
+        user: {
+          id: string;
+          name: string;
+          email: string;
+          avatarUrl?: string | null;
+          availabilityStatus?: UserAvailability;
+          openConversationCount?: number;
+          availabilityUpdatedAt?: string | null;
+        };
       }[];
     }>(`/teams/${teamId}`);
-    return team.members.map((m) => ({
-      id: m.user.id,
-      name: m.user.name,
-      availabilityStatus: normalizeAvailabilityStatus(m.user.availabilityStatus),
-    }));
-  }, [conversation?.assignedTo?.id, conversation?.team?.id, transferTeamId]);
+    return team.members.map((m) => mapAssignableAgent(m.user));
+  }, [conversation?.assignedTo?.id, conversation?.team?.id, transferTeamId, mapAssignableAgent]);
 
   useEffect(() => {
     void (async () => {
@@ -1976,11 +2001,6 @@ export function ConversationDetailPage() {
     ? isOnlineForTransfer(selectedTransferAssignee?.availabilityStatus)
     : true;
   const transferBlockedByAvailability = Boolean(transferAssigneeId && !selectedTransferAssigneeOnline);
-
-  const formatTransferAssigneeLabel = (member: {
-    name: string;
-    availabilityStatus: UserAvailability;
-  }) => `${member.name} — ${t(availabilityLabelKey(member.availabilityStatus))}`;
 
   const messages = conversation.messages ?? [];
   const lastMsg = messages.length ? messages[messages.length - 1] : null;
@@ -4546,18 +4566,25 @@ export function ConversationDetailPage() {
               initial="hidden"
               animate="show"
               exit="hidden"
-              className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-ink-700 dark:bg-ink-900"
+              className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-ink-700 dark:bg-ink-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
-                {t("conversationDetail.transferTitle")}
-              </h3>
-              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">
-                {transferUsesTeams
-                  ? t("conversationDetail.transferSubtitle")
-                  : t("conversationDetail.transferAgentOnlySubtitle")}
-              </p>
-              <div className="mt-4 space-y-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300">
+                  <UserRound className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
+                    {t("conversationDetail.transferTitle")}
+                  </h3>
+                  <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">
+                    {transferUsesTeams
+                      ? t("conversationDetail.transferSubtitle")
+                      : t("conversationDetail.transferAgentOnlySubtitle")}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 space-y-4">
                 {transferUsesTeams ? (
                   <div>
                     <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
@@ -4580,50 +4607,27 @@ export function ConversationDetailPage() {
                   </div>
                 ) : null}
                 <div>
-                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
-                    {transferUsesTeams
-                      ? t("conversationDetail.transferAssigneeLabel")
-                      : t("conversationDetail.transferAssigneeRequired")}
-                  </label>
-                  <select
-                    value={transferAssigneeId}
-                    onChange={(e) => setTransferAssigneeId(e.target.value)}
-                    required={!transferUsesTeams}
-                    className="mt-1 block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100"
-                  >
-                    {transferUsesTeams ? (
-                      <option value="">{t("conversationDetail.transferAssigneeNone")}</option>
-                    ) : (
-                      <option value="">{t("conversationDetail.transferAssigneePick")}</option>
-                    )}
-                    {transferMembers.map((m) => (
-                      <option
-                        key={m.id}
-                        value={m.id}
-                        disabled={!isOnlineForTransfer(m.availabilityStatus)}
-                      >
-                        {formatTransferAssigneeLabel(m)}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedTransferAssignee ? (
-                    <div className="mt-2 flex items-center gap-2 text-xs text-ink-500 dark:text-ink-400">
-                      <span
-                        className={clsx("h-2 w-2 shrink-0 rounded-full", availabilityDotClass(selectedTransferAssignee.availabilityStatus))}
-                        aria-hidden
-                      />
-                      <span>
-                        {t(availabilityLabelKey(selectedTransferAssignee.availabilityStatus))}
-                      </span>
-                    </div>
-                  ) : null}
+                  {!transferUsesTeams ? null : (
+                    <label className="mb-2 block text-sm font-medium text-ink-700 dark:text-ink-300">
+                      {t("conversationDetail.transferAssigneeLabel")}
+                    </label>
+                  )}
+                  <AssigneePickerList
+                    rows={transferMembers}
+                    selectedId={transferAssigneeId}
+                    onSelect={setTransferAssigneeId}
+                    allowEmpty={transferUsesTeams}
+                    emptyLabel={t("conversationDetail.transferAssigneeNone")}
+                    listTitle={t("conversationDetail.transferAvailableAgents")}
+                    onlineOnly
+                  />
                   {transferBlockedByAvailability ? (
                     <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
                       {t("conversationDetail.transferAssigneeMustBeOnline")}
                     </p>
                   ) : null}
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-end gap-2 border-t border-ink-100 pt-4 dark:border-ink-800">
                   <button
                     type="button"
                     disabled={actionLoading}
@@ -4641,8 +4645,9 @@ export function ConversationDetailPage() {
                       (transferUsesTeams ? !transferTeamId : !transferAssigneeId)
                     }
                     onClick={() => void submitTransfer()}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                    className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
                   >
+                    <ArrowRightLeft className="h-4 w-4" />
                     {t("conversationDetail.transferConfirm")}
                   </button>
                 </div>
