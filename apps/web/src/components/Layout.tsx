@@ -204,7 +204,7 @@ export function Layout() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, orgThemeKey]);
 
   useEffect(() => {
     const on = (e: Event) => {
@@ -326,7 +326,7 @@ export function Layout() {
         ),
       )
       .catch(() => setSidebarTeams([]));
-  }, [user?.id]);
+  }, [user?.id, orgThemeKey]);
 
   useEffect(() => {
     fetchSidebarTeams();
@@ -363,7 +363,7 @@ export function Layout() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, orgThemeKey]);
 
   const fetchEmailInboxUnreadCounts = useCallback(() => {
     if (!user) {
@@ -374,7 +374,7 @@ export function Layout() {
       .get<{ counts: EmailInboxUnreadCounts }>("/inboxes/email-unread-counts")
       .then((res) => setEmailInboxUnread(res.counts ?? {}))
       .catch(() => setEmailInboxUnread({}));
-  }, [user?.id]);
+  }, [user?.id, orgThemeKey]);
 
   useEffect(() => {
     fetchEmailInboxUnreadCounts();

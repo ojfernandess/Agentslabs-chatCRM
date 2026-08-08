@@ -11,6 +11,8 @@ import {
   Sun,
   Moon,
   Monitor,
+  Check,
+  Loader2,
 } from "lucide-react";
 import clsx from "clsx";
 import { useAuth, type AuthUser } from "@/hooks/useAuth";
@@ -29,6 +31,7 @@ import {
   availabilityDotClass,
   type UserAvailability,
 } from "@/lib/userAvailability";
+import { ApiError } from "@/lib/api";
 
 const AUTO_OFFLINE_STORAGE = "openconduit_auto_offline";
 
@@ -55,16 +58,23 @@ interface UserProfileMenuProps {
 
 export function UserProfileMenu({ user, className, onLogout, compact = false }: UserProfileMenuProps) {
   const { t } = useI18n();
-  const { exitOrganization, refreshUser } = useAuth();
+  const { exitOrganization, refreshUser, switchOrganization } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [availability, setAvailability] = useState<Availability>(readLocalAvailability);
   const [autoOffline, setAutoOffline] = useState(readAutoOffline);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [theme, setTheme] = useState<ThemePref>(getThemePreference);
+  const [switchingOrgId, setSwitchingOrgId] = useState<string | null>(null);
+  const [switchOrgError, setSwitchOrgError] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const superAdmin = isSuperAdminRole(user.role);
   const tenantAdmin = isTenantAdmin(user.role, user.actingOrganizationId);
+
+  const membershipOrgs = user.organizations ?? [];
+  const canSwitchOrganization =
+    !superAdmin && !user.superAdminActorId && membershipOrgs.length > 1;
+  const activeOrganizationId = user.organizationId ?? user.organization?.id ?? null;
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -80,6 +90,13 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
       document.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setSwitchOrgError("");
+      setSwitchingOrgId(null);
+    }
+  }, [open]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -136,6 +153,26 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
     setThemePreference(pref);
   }, []);
 
+  const handleSwitchOrganization = useCallback(
+    async (organizationId: string) => {
+      if (organizationId === activeOrganizationId || switchingOrgId) return;
+      setSwitchOrgError("");
+      setSwitchingOrgId(organizationId);
+      try {
+        await switchOrganization(organizationId);
+        setOpen(false);
+        // Recarrega o workspace para limpar estado da org anterior (conversas, equipas, flags).
+        window.location.assign("/");
+      } catch (err) {
+        setSwitchingOrgId(null);
+        setSwitchOrgError(
+          err instanceof ApiError ? err.message : t("profileMenu.switchOrganizationError"),
+        );
+      }
+    },
+    [activeOrganizationId, switchingOrgId, switchOrganization, t],
+  );
+
   const Keycap = ({ children }: { children: ReactNode }) => (
     <kbd className="rounded-md border border-ink-200 bg-ink-50 px-2 py-1 text-[11px] font-semibold text-ink-700 shadow-sm dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100">
       {children}
@@ -188,6 +225,12 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
   const availDot = availabilityDotClass(availability);
 
   const avatarSrc = resolveUserAvatarUrl(user.avatarUrl);
+
+  const roleLabel = (role: string) => {
+    if (role === "ADMIN") return t("settings.invitesRoleAdmin");
+    if (role === "AGENT") return t("settings.invitesRoleAgent");
+    return role;
+  };
 
   return (
     <div ref={rootRef} className={clsx("relative min-w-0", className)}>
@@ -252,6 +295,54 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
               "border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-800",
             )}
           >
+            {canSwitchOrganization ? (
+              <div className="border-b border-ink-100 px-3 py-3 dark:border-ink-600">
+                <p className="mb-2 text-xs font-medium text-ink-600 dark:text-ink-300">
+                  {t("profileMenu.switchOrganization")}
+                </p>
+                <div className="space-y-1">
+                  {membershipOrgs.map((org) => {
+                    const active = org.id === activeOrganizationId;
+                    const busy = switchingOrgId === org.id;
+                    return (
+                      <button
+                        key={org.id}
+                        type="button"
+                        disabled={Boolean(switchingOrgId) || active}
+                        onClick={() => void handleSwitchOrganization(org.id)}
+                        className={clsx(
+                          "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors",
+                          active
+                            ? "bg-brand-50 text-brand-900 dark:bg-brand-950/40 dark:text-brand-100"
+                            : "text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-700/60",
+                          switchingOrgId && !busy && "opacity-60",
+                        )}
+                      >
+                        <Building2 className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{org.name}</span>
+                          <span className="block truncate text-[11px] text-ink-500 dark:text-ink-400">
+                            {roleLabel(org.role)}
+                          </span>
+                        </span>
+                        {busy ? (
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand-600" />
+                        ) : active ? (
+                          <Check
+                            className="h-4 w-4 shrink-0 text-brand-600"
+                            aria-label={t("profileMenu.currentOrganization")}
+                          />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {switchOrgError ? (
+                  <p className="mt-2 text-xs text-red-600 dark:text-red-400">{switchOrgError}</p>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="space-y-3 border-b border-ink-100 px-3 py-3 dark:border-ink-600">
               <div>
                 <label className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
