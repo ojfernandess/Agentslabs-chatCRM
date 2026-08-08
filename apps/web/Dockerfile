@@ -16,12 +16,15 @@ RUN npm run build -w packages/shared
 
 # Build frontend
 FROM build-shared AS build
+COPY automation/logo.svg automation/logo.svg
+COPY logo.svg logo.svg
+COPY scripts/sync-brand-logo.mjs scripts/sync-brand-logo.mjs
 COPY apps/web/ apps/web/
 ARG VITE_PUBLIC_ASSETS_VERSION=
 ARG APP_VERSION=0.1.0
 ENV VITE_PUBLIC_ASSETS_VERSION=$VITE_PUBLIC_ASSETS_VERSION
 ENV VITE_APP_VERSION=$APP_VERSION
-RUN npm run build -w apps/web
+RUN node scripts/sync-brand-logo.mjs && npm run build -w apps/web
 
 # Serve with nginx
 FROM nginx:alpine AS production

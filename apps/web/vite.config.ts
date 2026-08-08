@@ -2,14 +2,21 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { copyFileSync, existsSync } from "fs";
+import { fileURLToPath } from "url";
 
 const assetsVersion = (process.env.VITE_PUBLIC_ASSETS_VERSION ?? "").trim();
 
-function syncRootLogoToPublic() {
-  const rootLogo = path.resolve(__dirname, "../../logo.svg");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+function syncBrandLogoToPublic() {
+  const sources = [
+    path.join(repoRoot, "automation/logo.svg"),
+    path.join(repoRoot, "logo.svg"),
+  ];
+  const src = sources.find((p) => existsSync(p));
   const publicLogo = path.resolve(__dirname, "public/logo.svg");
-  if (existsSync(rootLogo)) {
-    copyFileSync(rootLogo, publicLogo);
+  if (src) {
+    copyFileSync(src, publicLogo);
   }
 }
 
@@ -19,10 +26,10 @@ export default defineConfig({
     {
       name: "sync-root-logo",
       buildStart() {
-        syncRootLogoToPublic();
+        syncBrandLogoToPublic();
       },
       configureServer() {
-        syncRootLogoToPublic();
+        syncBrandLogoToPublic();
       },
     },
     {
