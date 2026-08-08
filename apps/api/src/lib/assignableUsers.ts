@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { availabilityToClient } from "./userAvailability.js";
+import { organizationMembersWhere } from "./organizationMemberships.js";
 
 export type AssignableUserRow = {
   id: string;
@@ -12,7 +13,7 @@ export type AssignableUserRow = {
 
 export async function listAssignableUsers(organizationId: string): Promise<AssignableUserRow[]> {
   const users = await prisma.user.findMany({
-    where: { organizationId },
+    where: organizationMembersWhere(organizationId),
     select: {
       id: true,
       name: true,

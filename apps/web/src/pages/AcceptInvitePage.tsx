@@ -10,8 +10,15 @@ import { brandAssetUrl } from "@/lib/brandingAssets";
 import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 
+type InviteInfo = {
+  email: string;
+  organizationId: string;
+  organizationName: string;
+  existingAccount: boolean;
+};
+
 export function AcceptInvitePage() {
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading, logout, applySessionToken } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -19,8 +26,7 @@ export function AcceptInvitePage() {
 
   const [inviteLoading, setInviteLoading] = useState(true);
   const [inviteError, setInviteError] = useState("");
-  const [email, setEmail] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
+  const [invite, setInvite] = useState<InviteInfo | null>(null);
 
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -40,11 +46,15 @@ export function AcceptInvitePage() {
     }
     let cancelled = false;
     void api
-      .get<{ email: string; organizationName: string }>(`/auth/invite?token=${encodeURIComponent(token)}`)
+      .get<InviteInfo>(`/auth/invite?token=${encodeURIComponent(token)}`)
       .then((res) => {
         if (cancelled) return;
-        setEmail(res.email);
-        setOrganizationName(res.organizationName);
+        setInvite({
+          email: res.email,
+          organizationId: res.organizationId,
+          organizationName: res.organizationName,
+          existingAccount: Boolean(res.existingAccount),
+        });
       })
       .catch(() => {
         if (!cancelled) setInviteError(t("login.inviteTokenInvalid"));
@@ -57,6 +67,10 @@ export function AcceptInvitePage() {
     };
   }, [token, t]);
 
+  const existingAccount = invite?.existingAccount ?? false;
+  const sessionMatchesInvite =
+    Boolean(user && invite && user.email.trim().toLowerCase() === invite.email.trim().toLowerCase());
+
   if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-ink-50">
@@ -65,7 +79,7 @@ export function AcceptInvitePage() {
     );
   }
 
-  if (user) {
+  if (user && !sessionMatchesInvite) {
     if (user.superAdminActorId) {
       return <Navigate to="/" replace />;
     }
@@ -104,18 +118,37 @@ export function AcceptInvitePage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
-    if (password !== confirm) {
-      setError(t("login.resetMismatch"));
-      return;
+    if (!existingAccount && !sessionMatchesInvite) {
+      if (password !== confirm) {
+        setError(t("login.resetMismatch"));
+        return;
+      }
     }
     setLoading(true);
     try {
-      await api.post("/auth/accept-invite", {
+      const body: Record<string, unknown> = {
         token,
-        name: name.trim(),
-        password,
         turnstileToken: turnstileToken ?? undefined,
-      });
+      };
+      if (!existingAccount && !sessionMatchesInvite) {
+        body.name = name.trim();
+        body.password = password;
+      } else if (!sessionMatchesInvite) {
+        body.password = password;
+      }
+
+      const res = await api.post<{ ok: boolean; joinedExistingAccount?: boolean; token?: string }>(
+        "/auth/accept-invite",
+        body,
+      );
+
+      if (res.token) {
+        await applySessionToken(res.token);
+        setDone(true);
+        setTimeout(() => navigate("/", { replace: true }), 1200);
+        return;
+      }
+
       setDone(true);
       setTimeout(() => navigate("/login", { replace: true }), 2000);
     } catch (err) {
@@ -130,6 +163,10 @@ export function AcceptInvitePage() {
       setLoading(false);
     }
   };
+
+  const email = invite?.email ?? "";
+  const organizationName = invite?.organizationName ?? "";
+  const joinMode = existingAccount || sessionMatchesInvite;
 
   return (
     <div className="relative flex min-h-screen flex-col lg:flex-row">
@@ -147,10 +184,13 @@ export function AcceptInvitePage() {
         >
           <div className="mb-8 text-center">
             <img src={brandAssetUrl("/logo.svg")} alt="" className="mx-auto mb-4 h-12" />
-            <h1 className="text-xl font-bold text-ink-900 dark:text-ink-50">{t("login.inviteTitle")}</h1>
+            <h1 className="text-xl font-bold text-ink-900 dark:text-ink-50">
+              {joinMode ? t("login.inviteJoinTitle") : t("login.inviteTitle")}
+            </h1>
             {organizationName ? (
               <p className="mt-2 text-sm text-ink-500">{t("login.inviteOrg").replace("{name}", organizationName)}</p>
             ) : null}
+            {joinMode ? <p className="mt-2 text-sm text-ink-500">{t("login.inviteExistingHint")}</p> : null}
           </div>
 
           {inviteLoading ? (
@@ -158,7 +198,9 @@ export function AcceptInvitePage() {
           ) : inviteError ? (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{inviteError}</p>
           ) : done ? (
-            <p className="text-center text-sm text-green-700">{t("login.inviteDone")}</p>
+            <p className="text-center text-sm text-green-700">
+              {joinMode ? t("login.inviteJoinDone") : t("login.inviteDone")}
+            </p>
           ) : (
             <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
               {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
@@ -166,54 +208,64 @@ export function AcceptInvitePage() {
                 <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Email</label>
                 <input type="email" value={email} readOnly className="mt-1 block w-full input-field bg-ink-50" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("login.inviteName")}</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  className="mt-1 block w-full input-field"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("login.invitePassword")}</label>
-                <div className="relative mt-1">
+              {!joinMode ? (
+                <div>
+                  <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("login.inviteName")}</label>
                   <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     required
-                    minLength={8}
-                    autoComplete="new-password"
-                    className="block w-full input-field pr-10"
+                    autoComplete="name"
+                    className="mt-1 block w-full input-field"
                   />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Hide" : "Show"}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("login.inviteConfirm")}</label>
-                <input
-                  type="password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  className="mt-1 block w-full input-field"
-                />
-              </div>
+              ) : null}
+              {!sessionMatchesInvite ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
+                      {existingAccount ? t("login.inviteExistingPassword") : t("login.invitePassword")}
+                    </label>
+                    <div className="relative mt-1">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={8}
+                        autoComplete={existingAccount ? "current-password" : "new-password"}
+                        className="block w-full input-field pr-10"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? "Hide" : "Show"}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  {!existingAccount ? (
+                    <div>
+                      <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">{t("login.inviteConfirm")}</label>
+                      <input
+                        type="password"
+                        value={confirm}
+                        onChange={(e) => setConfirm(e.target.value)}
+                        required
+                        minLength={8}
+                        autoComplete="new-password"
+                        className="mt-1 block w-full input-field"
+                      />
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
               <AuthTurnstileField onToken={setTurnstileToken} resetSignal={turnstileReset} />
               <button type="submit" className="btn-primary w-full" disabled={loading || turnstileBlocksSubmit(turnstileToken)}>
-                {loading ? t("common.saving") : t("login.inviteSubmit")}
+                {loading ? t("common.saving") : joinMode ? t("login.inviteJoinSubmit") : t("login.inviteSubmit")}
               </button>
             </form>
           )}

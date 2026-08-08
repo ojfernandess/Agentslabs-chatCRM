@@ -234,8 +234,27 @@ model Organization {
   nvoipTrunks                    NvoipTrunk[]
   mcpAccessTokens                McpAccessToken[]
   mcpAuditLogs                   McpAuditLog[]
+  memberships                    OrganizationMembership[]
 
   @@map("organizations")
+}
+
+/// Vínculo utilizador ↔ organização (multi-tenant: uma conta, várias orgs).
+/// `users.organization_id` continua a ser o workspace activo (JWT / sessão).
+model OrganizationMembership {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  role           UserRole     @default(AGENT)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("organization_memberships")
 }
 
 /// Canais de caixa de entrada no estilo [Chatwoot](https://www.chatwoot.com/docs/user-guide/add-inbox-settings).
@@ -502,6 +521,7 @@ model User {
 
   organizationId String?       @map("organization_id") @db.Uuid
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  memberships                  OrganizationMembership[]
 
   assignedContacts             Contact[]                     @relation("AssignedContacts")
   createdContacts              Contact[]                     @relation("ContactCreator")

@@ -13,12 +13,27 @@ const AUTO_CLOSURE_REASON = "Resolução automática por inatividade.";
 const inFlight = new Set<string>();
 
 async function findActorUserId(organizationId: string): Promise<string | null> {
+  const adminMembership = await prisma.organizationMembership.findFirst({
+    where: { organizationId, role: "ADMIN" },
+    orderBy: { createdAt: "asc" },
+    select: { userId: true },
+  });
+  if (adminMembership) return adminMembership.userId;
+
   const admin = await prisma.user.findFirst({
     where: { organizationId, role: "ADMIN" },
     orderBy: { createdAt: "asc" },
     select: { id: true },
   });
   if (admin) return admin.id;
+
+  const anyMembership = await prisma.organizationMembership.findFirst({
+    where: { organizationId },
+    orderBy: { createdAt: "asc" },
+    select: { userId: true },
+  });
+  if (anyMembership) return anyMembership.userId;
+
   const anyUser = await prisma.user.findFirst({
     where: { organizationId },
     orderBy: { createdAt: "asc" },

@@ -24,6 +24,13 @@ import {
   type AvailabilityClient,
 } from "../lib/userAvailability.js";
 import { broadcastUserAvailabilityChanged } from "../lib/workspaceHub.js";
+import {
+  activateOrganizationForUser,
+  ensureMembership,
+  isOrgMemberRole,
+  listMembershipsForUser,
+  resolveEffectiveRole,
+} from "../lib/organizationMemberships.js";
 
 const turnstileTokenField = z.string().min(1).max(2048).optional();
 
@@ -63,9 +70,15 @@ const resetPasswordSchema = z.object({
 
 const acceptInviteSchema = z.object({
   token: z.string().min(16).max(512),
-  name: z.string().min(1).max(255),
-  password: z.string().min(8).max(128),
+  /** Obrigatório só para contas novas; contas existentes usam o nome já registado. */
+  name: z.string().min(1).max(255).optional(),
+  /** Obrigatório excepto quando a sessão JWT já é do email convidado. */
+  password: z.string().min(8).max(128).optional(),
   turnstileToken: turnstileTokenField,
+});
+
+const switchOrganizationSchema = z.object({
+  organizationId: z.string().uuid(),
 });
 
 function canManageProfileApiToken(user: {
@@ -164,10 +177,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         statusCode: 400,
       });
     }
+    const existingAccount = await prisma.user.findUnique({
+      where: { email: row.email },
+      select: { id: true },
+    });
     return {
       email: row.email,
       role: row.role,
+      organizationId: row.organizationId,
       organizationName: row.organization.name,
+      existingAccount: Boolean(existingAccount),
     };
   });
 
@@ -202,12 +221,128 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    if (!isOrgMemberRole(row.role)) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid invitation role",
+        statusCode: 400,
+      });
+    }
+    const inviteRole = row.role;
+
     const existing = await prisma.user.findUnique({ where: { email: row.email } });
+
     if (existing) {
-      return reply.status(409).send({
-        error: "Conflict",
-        message: "An account with this email already exists",
-        statusCode: 409,
+      if (existing.role === "SUPER_ADMIN") {
+        return reply.status(409).send({
+          error: "Conflict",
+          message: "Cannot accept invitation with this account",
+          statusCode: 409,
+        });
+      }
+
+      const alreadyMember = await prisma.organizationMembership.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: row.organizationId,
+            userId: existing.id,
+          },
+        },
+      });
+      if (alreadyMember) {
+        await prisma.userInvitation.update({
+          where: { id: row.id },
+          data: { acceptedAt: new Date() },
+        });
+        await activateOrganizationForUser({
+          userId: existing.id,
+          organizationId: row.organizationId,
+          role: inviteRole,
+        });
+        const jwt = app.jwt.sign({
+          id: existing.id,
+          email: existing.email,
+          role: inviteRole,
+          organizationId: row.organizationId,
+        });
+        return { ok: true, joinedExistingAccount: true, token: jwt };
+      }
+
+      let sessionMatches = false;
+      try {
+        await request.jwtVerify();
+        sessionMatches = request.user?.id === existing.id;
+      } catch {
+        sessionMatches = false;
+      }
+
+      if (!sessionMatches) {
+        if (!parsed.data.password) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Password is required",
+            statusCode: 400,
+          });
+        }
+        const valid = await bcrypt.compare(parsed.data.password, existing.passwordHash);
+        if (!valid) {
+          return reply.status(401).send({
+            error: "Unauthorized",
+            message: "Invalid credentials",
+            statusCode: 401,
+          });
+        }
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await ensureMembership(
+          {
+            organizationId: row.organizationId,
+            userId: existing.id,
+            role: inviteRole,
+          },
+          tx,
+        );
+        await tx.user.update({
+          where: { id: existing.id },
+          data: {
+            organizationId: row.organizationId,
+            role: inviteRole,
+          },
+        });
+        await tx.userInvitation.update({
+          where: { id: row.id },
+          data: { acceptedAt: new Date() },
+        });
+      });
+
+      if (inviteRole === "AGENT") {
+        await addAgentToAllOrganizationTeams(row.organizationId, existing.id);
+      }
+      await addUserToDefaultInboxes(row.organizationId, existing.id);
+
+      const jwt = app.jwt.sign({
+        id: existing.id,
+        email: existing.email,
+        role: inviteRole,
+        organizationId: row.organizationId,
+      });
+      return { ok: true, joinedExistingAccount: true, token: jwt };
+    }
+
+    const name = parsed.data.name?.trim();
+    if (!name) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Name is required for new accounts",
+        statusCode: 400,
+      });
+    }
+    if (!parsed.data.password) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Password is required",
+        statusCode: 400,
       });
     }
 
@@ -216,13 +351,21 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       const created = await tx.user.create({
         data: {
           organizationId: row.organizationId,
-          name: parsed.data.name.trim(),
+          name,
           email: row.email,
           passwordHash,
-          role: row.role,
+          role: inviteRole,
         },
         select: { id: true, email: true, role: true, organizationId: true },
       });
+      await ensureMembership(
+        {
+          organizationId: row.organizationId,
+          userId: created.id,
+          role: inviteRole,
+        },
+        tx,
+      );
       await tx.userInvitation.update({
         where: { id: row.id },
         data: { acceptedAt: new Date() },
@@ -235,7 +378,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
     await addUserToDefaultInboxes(row.organizationId, user.id);
 
-    return { ok: true };
+    return { ok: true, joinedExistingAccount: false };
   });
 
   app.post(
@@ -288,10 +431,32 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    // Garante membership legado (users.organization_id sem linha em memberships).
+    if (user.organizationId && isOrgMemberRole(user.role)) {
+      await ensureMembership({
+        organizationId: user.organizationId,
+        userId: user.id,
+        role: user.role,
+      });
+    }
+
+    const effectiveRole = await resolveEffectiveRole({
+      userId: user.id,
+      organizationId: user.organizationId,
+      fallbackRole: user.role,
+    });
+
+    if (effectiveRole !== user.role && isOrgMemberRole(effectiveRole) && user.organizationId) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: effectiveRole },
+      });
+    }
+
     const token = app.jwt.sign({
       id: user.id,
       email: user.email,
-      role: user.role,
+      role: effectiveRole,
       organizationId: user.organizationId,
     });
 
@@ -301,7 +466,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role as string,
+        role: effectiveRole as string,
         organizationId: user.organizationId,
       },
     };
@@ -377,13 +542,31 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         ? await getOrganizationFeatureMap(orgIdForFeatures)
         : undefined;
 
+    const memberships =
+      user.role === "SUPER_ADMIN"
+        ? []
+        : await listMembershipsForUser(user.id);
+    const organizations = memberships.map((m) => ({
+      id: m.organization.id,
+      name: m.organization.name,
+      slug: m.organization.slug,
+      role: m.role as string,
+    }));
+
+    const effectiveRole = await resolveEffectiveRole({
+      userId: user.id,
+      organizationId: user.organizationId,
+      fallbackRole: user.role,
+    });
+
     return {
       ...user,
       availabilityStatus: availabilityToClient(user.availabilityStatus),
-      role: user.role as string,
+      role: effectiveRole as string,
       actingOrganizationId: actingId,
       actingOrganization,
       organization,
+      organizations,
       superAdminActorId,
       superAdminActor,
       organizationFeatures,
@@ -391,6 +574,60 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       apiAccessTokenLastUsedAt: user.apiAccessTokenLastUsedAt,
       apiAccessTokenPrefix: user.apiAccessTokenPrefix,
     };
+  });
+
+  /** Alterna o workspace activo (JWT) entre organizações onde o utilizador é membro. */
+  app.post("/switch-organization", { preHandler: [authenticate] }, async (request, reply) => {
+    if (request.user.role === "SUPER_ADMIN" || request.user.superAdminActorId) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Use super-admin impersonation to change organization context",
+        statusCode: 400,
+      });
+    }
+    const parsed = switchOrganizationSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: parsed.error.message,
+        statusCode: 400,
+      });
+    }
+    try {
+      const activated = await activateOrganizationForUser({
+        userId: request.user.id,
+        organizationId: parsed.data.organizationId,
+      });
+      const user = await prisma.user.findUnique({
+        where: { id: request.user.id },
+        select: { id: true, email: true, name: true },
+      });
+      if (!user) {
+        return reply.status(404).send({ error: "Not Found", message: "User not found", statusCode: 404 });
+      }
+      const token = app.jwt.sign({
+        id: user.id,
+        email: user.email,
+        role: activated.role,
+        organizationId: activated.organizationId,
+      });
+      return {
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: activated.role,
+          organizationId: activated.organizationId,
+        },
+      };
+    } catch {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Not a member of this organization",
+        statusCode: 403,
+      });
+    }
   });
 
   app.get("/me/access-token", { preHandler: [authenticate] }, async (request, reply) => {

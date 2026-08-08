@@ -22,7 +22,12 @@ async function resolveBalanceAlertRecipients(
   if (fromConfig.length > 0) return [...new Set(fromConfig)];
 
   const admins = await prisma.user.findMany({
-    where: { organizationId, role: "ADMIN" },
+    where: {
+      OR: [
+        { organizationId, role: "ADMIN" },
+        { memberships: { some: { organizationId, role: "ADMIN" } } },
+      ],
+    },
     select: { email: true },
   });
   return [...new Set(admins.map((a) => a.email.trim().toLowerCase()).filter((e) => e.includes("@")))];

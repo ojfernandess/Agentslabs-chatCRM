@@ -18,6 +18,8 @@ export interface AuthUser {
   role: string;
   organizationId?: string | null;
   organization?: { id: string; name: string; slug: string } | null;
+  /** Organizações onde o utilizador é membro (multi-tenant). */
+  organizations?: Array<{ id: string; name: string; slug: string; role: string }>;
   messageSignature?: string | null;
   showAgentNameInChat?: boolean;
   actingOrganizationId?: string | null;
@@ -42,6 +44,7 @@ interface AuthContextValue {
   enterOrganization: (organizationId: string) => Promise<AuthUser>;
   exitOrganization: () => Promise<AuthUser>;
   exitUserImpersonation: () => Promise<AuthUser>;
+  switchOrganization: (organizationId: string) => Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -127,6 +130,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return applySessionToken(token);
   };
 
+  const switchOrganization = async (organizationId: string): Promise<AuthUser> => {
+    const { token } = await api.post<{ token: string }>("/auth/switch-organization", {
+      organizationId,
+    });
+    return applySessionToken(token);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -139,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         enterOrganization,
         exitOrganization,
         exitUserImpersonation,
+        switchOrganization,
       }}
     >
       {children}

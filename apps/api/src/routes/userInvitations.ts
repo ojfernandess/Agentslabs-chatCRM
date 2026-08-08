@@ -8,6 +8,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { getWebAppPublicOrigin } from "../config.js";
 import { getResendEmailConfigFromDb } from "../lib/resendEmailSettings.js";
 import { sendUserInviteEmail } from "../lib/sendUserInviteEmail.js";
+import { getMembership } from "../lib/organizationMemberships.js";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -75,11 +76,22 @@ export async function userInvitationRoutes(app: FastifyInstance): Promise<void> 
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return reply.status(409).send({
-        error: "Conflict",
-        message: "User with this email already exists",
-        statusCode: 409,
-      });
+      if (existingUser.role === "SUPER_ADMIN") {
+        return reply.status(409).send({
+          error: "Conflict",
+          message: "Cannot invite this email",
+          statusCode: 409,
+        });
+      }
+      const membership = await getMembership(organizationId, existingUser.id);
+      if (membership) {
+        return reply.status(409).send({
+          error: "Conflict",
+          message: "User is already a member of this organization",
+          statusCode: 409,
+        });
+      }
+      // Conta noutra org: convite permitido (padrão Chatwoot/Slack — uma identidade, várias orgs).
     }
 
     const org = await prisma.organization.findUnique({
@@ -141,6 +153,7 @@ export async function userInvitationRoutes(app: FastifyInstance): Promise<void> 
       status: invitationStatus(invite),
       expiresAt: invite.expiresAt.toISOString(),
       inviteUrl,
+      existingAccount: Boolean(existingUser),
       createdAt: invite.createdAt.toISOString(),
     });
   });

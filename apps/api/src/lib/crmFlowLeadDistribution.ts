@@ -107,11 +107,18 @@ export async function distributeLeadToUser(params: {
 
   let userIds = candidateUserIds ?? [];
   if (userIds.length === 0) {
-    const users = await prisma.user.findMany({
+    const memberships = await prisma.organizationMembership.findMany({
       where: { organizationId, role: { in: ["ADMIN", "AGENT"] } },
-      select: { id: true },
+      select: { userId: true },
     });
-    userIds = users.map((u) => u.id);
+    userIds = memberships.map((m) => m.userId);
+    if (userIds.length === 0) {
+      const users = await prisma.user.findMany({
+        where: { organizationId, role: { in: ["ADMIN", "AGENT"] } },
+        select: { id: true },
+      });
+      userIds = users.map((u) => u.id);
+    }
   }
 
   if (userIds.length === 0) return null;
