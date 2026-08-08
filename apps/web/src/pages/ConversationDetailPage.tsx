@@ -76,9 +76,11 @@ import {
   availabilityDotClass,
   availabilityLabelKey,
   isOnlineForTransfer,
+  normalizeAvailabilityStatus,
   type UserAvailability,
 } from "@/lib/userAvailability";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
+import { useOrgAvailabilityRealtime } from "@/hooks/useOrgAvailabilityRealtime";
 import { localDueToIso, tomorrowLocalYmd, isoToLocalDateParts } from "@/lib/reminderDue";
 import {
   formatClosurePlaybookReminderNote,
@@ -840,7 +842,7 @@ export function ConversationDetailPage() {
           (Array.isArray(rows) ? rows : []).map((u) => ({
             id: u.id,
             name: u.name,
-            availabilityStatus: u.availabilityStatus ?? "online",
+            availabilityStatus: normalizeAvailabilityStatus(u.availabilityStatus),
           })),
         );
       })
@@ -851,6 +853,39 @@ export function ConversationDetailPage() {
       cancelled = true;
     };
   }, []);
+
+  const loadTransferAssignees = useCallback(async () => {
+    const conversationHasTeam = Boolean(conversation?.team?.id);
+    const excludeId = conversation?.assignedTo?.id ?? "";
+
+    if (!conversationHasTeam) {
+      const rows = await api.get<{ id: string; name: string; availabilityStatus?: UserAvailability }[]>(
+        "/users/assignable",
+      );
+      return (Array.isArray(rows) ? rows : [])
+        .filter((u) => u.id !== excludeId)
+        .map((u) => ({
+          id: u.id,
+          name: u.name,
+          availabilityStatus: normalizeAvailabilityStatus(u.availabilityStatus),
+        }));
+    }
+
+    const teamId = transferTeamId || conversation?.team?.id;
+    if (!teamId) return [];
+
+    const team = await api.get<{
+      members: {
+        userId: string;
+        user: { id: string; name: string; email: string; availabilityStatus?: UserAvailability };
+      }[];
+    }>(`/teams/${teamId}`);
+    return team.members.map((m) => ({
+      id: m.user.id,
+      name: m.user.name,
+      availabilityStatus: normalizeAvailabilityStatus(m.user.availabilityStatus),
+    }));
+  }, [conversation?.assignedTo?.id, conversation?.team?.id, transferTeamId]);
 
   useEffect(() => {
     void (async () => {
@@ -957,62 +992,29 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (!transferOpen) return;
-    const conversationHasTeam = Boolean(conversation?.team?.id);
-    if (!conversationHasTeam) {
-      setTransferMembers(
-        orgAgentOptions.filter((a) => a.id !== (conversation?.assignedTo?.id ?? "")),
-      );
-      return;
-    }
-    if (!transferTeamId) {
-      setTransferMembers([]);
-      return;
-    }
     let cancelled = false;
-    void (async () => {
-      try {
-        const team = await api.get<{
-          members: {
-            userId: string;
-            user: { id: string; name: string; email: string; availabilityStatus?: UserAvailability };
-          }[];
-        }>(`/teams/${transferTeamId}`);
-        const rows = team.members.map((m) => ({
-          id: m.user.id,
-          name: m.user.name,
-          availabilityStatus: m.user.availabilityStatus ?? "online",
-        }));
+    void loadTransferAssignees()
+      .then((rows) => {
         if (!cancelled) setTransferMembers(rows);
-      } catch {
+      })
+      .catch(() => {
         if (!cancelled) setTransferMembers([]);
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
-  }, [transferOpen, transferTeamId, teamOptions.length, orgAgentOptions, conversation?.assignedTo?.id, conversation?.team?.id]);
+  }, [transferOpen, loadTransferAssignees]);
+
+  useOrgAvailabilityRealtime(setTransferMembers);
+  useOrgAvailabilityRealtime(setOrgAgentOptions);
 
   useEffect(() => {
     if (!transferAssigneeId || transferMembers.length === 0) return;
-    if (!transferMembers.some((m) => m.id === transferAssigneeId)) {
+    const selected = transferMembers.find((m) => m.id === transferAssigneeId);
+    if (!selected || !isOnlineForTransfer(selected.availabilityStatus)) {
       setTransferAssigneeId("");
     }
   }, [transferMembers, transferAssigneeId]);
-
-  useEffect(() => {
-    const onAvailability = (e: Event) => {
-      const detail = (e as CustomEvent<{ userId?: string; status?: UserAvailability }>).detail;
-      if (!detail?.userId || !detail.status) return;
-      const patch = (rows: { id: string; name: string; availabilityStatus: UserAvailability }[]) =>
-        rows.map((row) =>
-          row.id === detail.userId ? { ...row, availabilityStatus: detail.status! } : row,
-        );
-      setTransferMembers((rows) => patch(rows));
-      setOrgAgentOptions((rows) => patch(rows));
-    };
-    window.addEventListener("openconduit:user-availability-changed", onAvailability);
-    return () => window.removeEventListener("openconduit:user-availability-changed", onAvailability);
-  }, []);
 
   useLayoutEffect(() => {
     if (!id) return;

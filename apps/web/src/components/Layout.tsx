@@ -256,7 +256,7 @@ export function Layout() {
         try {
           const cur = readLocalAvailability();
           const next: UserAvailability = cur === "away" ? "online" : "away";
-          setUserAvailability(next);
+          setUserAvailability(next, user?.id);
         } catch {
         }
         return;

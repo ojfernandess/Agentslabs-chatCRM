@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { translate } from "@/i18n/messages";
 import { playIncomingCallRing } from "@/lib/audioAlerts";
 import { invalidateCachedConversation } from "@/lib/conversationDetailCache";
+import { publishUserAvailabilityChanged, type UserAvailability } from "@/lib/userAvailability";
 
 const TOKEN_KEY = "openconduit_token";
 
@@ -74,10 +75,9 @@ export function WorkspaceRealtime() {
       userId?: string;
     }) => {
       if (data.type === "user.availability_changed" && data.userId && data.status) {
-        window.dispatchEvent(
-          new CustomEvent("openconduit:user-availability-changed", {
-            detail: { userId: data.userId, status: data.status },
-          }),
+        publishUserAvailabilityChanged(
+          data.userId,
+          data.status as UserAvailability,
         );
         return;
       }

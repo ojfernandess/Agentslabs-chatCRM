@@ -21,7 +21,11 @@ import { AnimatePresence, motion } from "@/components/Motion";
 import { getThemePreference, setThemePreference, type ThemePref } from "@/lib/themeStorage";
 import {
   readLocalAvailability,
-  setUserAvailability,
+  writeLocalAvailability,
+  syncAvailabilityToServer,
+  publishUserAvailabilityChanged,
+  USER_AVAILABILITY_CHANGED_EVENT,
+  normalizeAvailabilityStatus,
   availabilityDotClass,
   type UserAvailability,
 } from "@/lib/userAvailability";
@@ -51,7 +55,7 @@ interface UserProfileMenuProps {
 
 export function UserProfileMenu({ user, className, onLogout, compact = false }: UserProfileMenuProps) {
   const { t } = useI18n();
-  const { exitOrganization } = useAuth();
+  const { exitOrganization, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [availability, setAvailability] = useState<Availability>(readLocalAvailability);
@@ -103,6 +107,18 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
   }, []);
 
   useEffect(() => {
+    const onRemote = (e: Event) => {
+      const detail = (e as CustomEvent<{ userId?: string; status?: UserAvailability }>).detail;
+      if (detail?.userId !== user.id || !detail.status) return;
+      const normalized = normalizeAvailabilityStatus(detail.status);
+      setAvailability(normalized);
+      writeLocalAvailability(normalized);
+    };
+    window.addEventListener(USER_AVAILABILITY_CHANGED_EVENT, onRemote);
+    return () => window.removeEventListener(USER_AVAILABILITY_CHANGED_EVENT, onRemote);
+  }, [user.id]);
+
+  useEffect(() => {
     const onTheme = (e: Event) => {
       const pref = (e as CustomEvent<{ pref?: ThemePref }>).detail?.pref;
       if (pref === "light" || pref === "dark" || pref === "system") {
@@ -139,22 +155,30 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
     { value: "system", label: t("profileMenu.themeSystem"), icon: Monitor },
   ];
 
+  const persistAvailability = useCallback(
+    (v: Availability) => {
+      setAvailability(v);
+      writeLocalAvailability(v);
+      publishUserAvailabilityChanged(user.id, v);
+      void syncAvailabilityToServer(v, user.id).then((ok) => {
+        if (ok) void refreshUser();
+      });
+    },
+    [refreshUser, user.id],
+  );
+
   useEffect(() => {
     if (!autoOffline) return;
     const onVis = () => {
       if (document.visibilityState === "hidden") {
-        setUserAvailability("offline");
-        setAvailability("offline");
+        persistAvailability("offline");
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [autoOffline]);
+  }, [autoOffline, persistAvailability]);
 
-  const setAvail = useCallback((v: Availability) => {
-    setAvailability(v);
-    setUserAvailability(v);
-  }, []);
+  const setAvail = persistAvailability;
 
   const setAutoOff = useCallback((on: boolean) => {
     setAutoOffline(on);
