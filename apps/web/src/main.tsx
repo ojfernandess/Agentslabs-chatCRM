@@ -6,8 +6,10 @@ import { App } from "@/App";
 import { initThemeFromStorage } from "@/lib/themeStorage";
 import { initFontSizeFromStorage } from "@/lib/profilePrefs";
 import { initDesktopViewportScale } from "@/lib/desktopViewportScale";
+import { redirectLegacyInviteUrls } from "@/lib/inviteTokenRedirect";
 import "./index.css";
 
+redirectLegacyInviteUrls();
 initThemeFromStorage();
 initFontSizeFromStorage();
 initDesktopViewportScale();

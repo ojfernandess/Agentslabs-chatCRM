@@ -7,24 +7,15 @@ import { motion } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api, ApiError } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
+import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 
-function readInviteToken(searchParams: URLSearchParams): string {
-  const fromParams = searchParams.get("token")?.trim();
-  if (fromParams) return fromParams;
-  try {
-    return new URLSearchParams(window.location.search).get("token")?.trim() ?? "";
-  } catch {
-    return "";
-  }
-}
-
 export function AcceptInvitePage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const token = useMemo(() => readInviteToken(searchParams), [searchParams]);
+  const token = useMemo(() => readInviteTokenFromLocation(searchParams), [searchParams]);
 
   const [inviteLoading, setInviteLoading] = useState(true);
   const [inviteError, setInviteError] = useState("");
@@ -77,6 +68,26 @@ export function AcceptInvitePage() {
   if (user) {
     if (user.superAdminActorId) {
       return <Navigate to="/" replace />;
+    }
+    if (token) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-ink-50 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-ink-100 bg-white p-8 shadow-xl dark:border-ink-700 dark:bg-ink-900">
+            <h1 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("login.inviteTitle")}</h1>
+            <p className="mt-3 text-sm text-ink-600 dark:text-ink-300">{t("login.inviteLogoutHint")}</p>
+            <button
+              type="button"
+              className="btn-primary mt-6 w-full"
+              onClick={() => {
+                logout();
+                window.location.href = `/invite?token=${encodeURIComponent(token)}`;
+              }}
+            >
+              {t("login.inviteLogoutAction")}
+            </button>
+          </div>
+        </div>
+      );
     }
     return (
       <Navigate

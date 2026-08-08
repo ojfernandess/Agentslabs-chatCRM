@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { LoginPage } from "@/pages/LoginPage";
@@ -32,6 +32,7 @@ import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
 import { GoogleCalendarConnectedPage } from "@/pages/GoogleCalendarConnectedPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { TenantAdminRoute } from "@/components/TenantAdminRoute";
+import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
 
 const ORG_FEATURE_DEFAULT_ENABLED = {
   crm_kanban: true,
@@ -71,6 +72,8 @@ function OrgFeatureRoute({
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const inviteToken = readInviteTokenFromLocation(new URLSearchParams(location.search));
 
   if (loading) {
     return (
@@ -81,10 +84,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
+    if (inviteToken) {
+      return <Navigate to={`/invite?token=${encodeURIComponent(inviteToken)}`} replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
+}
+
+function FallbackRedirect() {
+  const location = useLocation();
+  const inviteToken = readInviteTokenFromLocation(new URLSearchParams(location.search));
+  if (inviteToken) {
+    return <Navigate to={`/invite?token=${encodeURIComponent(inviteToken)}`} replace />;
+  }
+  return <Navigate to="/" replace />;
 }
 
 function TenantOnly({ children }: { children: React.ReactNode }) {
@@ -114,6 +129,7 @@ export function App() {
       <Route path="/chatbot/:publicId" element={<ChatbotEmbedPage />} />
       <Route path="/docs" element={<PublicApiDocsPage />} />
       <Route path="/login/reset" element={<ResetPasswordPage />} />
+      <Route path="/signup" element={<AcceptInvitePage />} />
       <Route path="/invite" element={<AcceptInvitePage />} />
       <Route path="/login/invite" element={<AcceptInvitePage />} />
       <Route path="/calendar-connected" element={<GoogleCalendarConnectedPage />} />
@@ -215,7 +231,7 @@ export function App() {
           }
         />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<FallbackRedirect />} />
     </Routes>
   );
 }

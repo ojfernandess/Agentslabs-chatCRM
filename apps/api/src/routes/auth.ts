@@ -161,6 +161,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  /** Links legados ou proxies que apontam para a API — redireciona para o formulário de cadastro. */
+  app.get("/invite/redirect", async (request, reply) => {
+    const token = String((request.query as { token?: string }).token ?? "").trim();
+    if (!token) {
+      return reply.redirect(`${getWebAppPublicOrigin()}/login`);
+    }
+    return reply.redirect(`${getWebAppPublicOrigin()}/invite?token=${encodeURIComponent(token)}`);
+  });
+
   app.post("/accept-invite", async (request, reply) => {
     const parsed = acceptInviteSchema.safeParse(request.body);
     if (!parsed.success) {

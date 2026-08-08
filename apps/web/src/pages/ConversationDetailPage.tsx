@@ -943,9 +943,8 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (!transferOpen) return;
-    const hasTeamChoices =
-      teamOptions.length > 0 || Boolean(conversation?.team?.id);
-    if (!hasTeamChoices) {
+    const conversationHasTeam = Boolean(conversation?.team?.id);
+    if (!conversationHasTeam) {
       setTransferMembers(
         orgAgentOptions.filter((a) => a.id !== (conversation?.assignedTo?.id ?? "")),
       );
@@ -1889,9 +1888,10 @@ export function ConversationDetailPage() {
     }
     return [...map.values()];
   })();
-  const transferUsesTeams = transferTeamChoices.length > 0;
+  const transferUsesTeams =
+    transferTeamChoices.length > 0 && Boolean(conversation.team?.id);
   const reassignAgentOptions = orgAgentOptions.filter((a) => a.id !== assigneeId);
-  /** Com equipas: transferir equipa/atendente. Sem equipas: reatribuir a outro utilizador da org. */
+  /** Com equipa na conversa: transferir equipa/atendente. Sem equipa: reatribuir a outro agente da org. */
   const canShowTransfer =
     isActiveConversation &&
     hasHumanAssignee &&
@@ -1899,8 +1899,12 @@ export function ConversationDetailPage() {
 
   const openTransferModal = () => {
     setFlowError("");
-    setTransferTeamId(conversation.team?.id ?? transferTeamChoices[0]?.id ?? "");
-    setTransferAssigneeId(conversation.assignedTo?.id ?? "");
+    if (conversation.team?.id) {
+      setTransferTeamId(conversation.team.id);
+    } else {
+      setTransferTeamId("");
+    }
+    setTransferAssigneeId("");
     setTransferOpen(true);
   };
 

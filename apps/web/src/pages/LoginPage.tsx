@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
+import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 
 const REMEMBER_EMAIL_KEY = "opennexo_login_email";
@@ -16,7 +17,7 @@ export function LoginPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const inviteToken = searchParams.get("token")?.trim() ?? "";
+  const inviteToken = readInviteTokenFromLocation(searchParams);
   const [mode, setMode] = useState<"login" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
