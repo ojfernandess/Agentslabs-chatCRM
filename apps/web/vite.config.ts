@@ -24,7 +24,7 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: "sync-root-logo",
+      name: "sync-brand-logo",
       buildStart() {
         syncBrandLogoToPublic();
       },

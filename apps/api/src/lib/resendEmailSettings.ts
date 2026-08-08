@@ -1,9 +1,13 @@
 import { prisma } from "../db.js";
 import {
+  buildDefaultSystemLogoUrl,
   DEFAULT_PASSWORD_RESET_HTML,
   DEFAULT_PASSWORD_RESET_SUBJECT,
   DEFAULT_USER_INVITE_HTML,
   DEFAULT_USER_INVITE_SUBJECT,
+  isPlaceholderSystemLogoUrl,
+  normalizeSystemLogoUrl,
+  SYSTEM_LOGO_PATH,
 } from "@openconduit/shared";
 import { getWebAppPublicOrigin } from "../config.js";
 
@@ -25,24 +29,15 @@ export type ResendEmailConfig = {
 export { DEFAULT_PASSWORD_RESET_HTML, DEFAULT_PASSWORD_RESET_SUBJECT };
 export { DEFAULT_USER_INVITE_HTML, DEFAULT_USER_INVITE_SUBJECT };
 
-export const DEFAULT_SYSTEM_LOGO_PATH = "/logo.svg";
+export const DEFAULT_SYSTEM_LOGO_PATH = SYSTEM_LOGO_PATH;
 
-/** URLs de exemplo do editor — ignorar se guardadas por engano. */
-export function isPlaceholderSystemLogoUrl(url: string): boolean {
-  const trimmed = url.trim();
-  if (!trimmed) return false;
-  try {
-    const host = new URL(trimmed).hostname.toLowerCase();
-    return host === "app.exemplo.com" || host.endsWith(".exemplo.com");
-  } catch {
-    return trimmed.includes("app.exemplo.com");
-  }
-}
+export { isPlaceholderSystemLogoUrl };
 
 export function resolveSystemLogoUrlFromSetting(systemLogoUrl?: string | null): string {
+  const origin = getWebAppPublicOrigin();
   const custom = systemLogoUrl?.trim();
-  if (custom && !isPlaceholderSystemLogoUrl(custom)) return custom;
-  return `${getWebAppPublicOrigin()}${DEFAULT_SYSTEM_LOGO_PATH}`;
+  if (!custom) return buildDefaultSystemLogoUrl(origin);
+  return normalizeSystemLogoUrl(custom, origin);
 }
 
 export function resolveSystemLogoUrl(cfg: Pick<ResendEmailConfig, "systemLogoUrl">): string {
@@ -58,7 +53,10 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
   if (!apiKey || !fromEmail) return null;
   const rawLogo =
     typeof o.systemLogoUrl === "string" && o.systemLogoUrl.trim() ? o.systemLogoUrl.trim().slice(0, 2000) : null;
-  const systemLogoUrl = rawLogo && !isPlaceholderSystemLogoUrl(rawLogo) ? rawLogo : null;
+  const systemLogoUrl =
+    rawLogo && !isPlaceholderSystemLogoUrl(rawLogo)
+      ? normalizeSystemLogoUrl(rawLogo, getWebAppPublicOrigin())
+      : null;
   const passwordResetSubject =
     typeof o.passwordResetSubject === "string" && o.passwordResetSubject.trim()
       ? o.passwordResetSubject.trim().slice(0, 200)

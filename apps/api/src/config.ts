@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { join } from "node:path";
-import { JWT_EXPIRY, BCRYPT_COST_FACTOR } from "@openconduit/shared";
+import { JWT_EXPIRY, BCRYPT_COST_FACTOR, publicOriginOnly } from "@openconduit/shared";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -43,14 +43,14 @@ export function getPublicOrigin(): string {
 /**
  * Origem da aplicação web onde o cliente abre o inquérito CSAT (ex.: https://app.seudominio.com).
  * Ordem: WEB_APP_PUBLIC_URL → PUBLIC_URL → CORS_ORIGIN (dev).
- * Em deploy monolítico (EasyPanel/Caddy), PUBLIC_URL é a origem correcta para /logo.svg e links do painel.
+ * Sempre só protocolo+host (sem path) — evita `{PUBLIC_URL}/automation/logo.svg` se a env tiver subpath.
  */
 export function getWebAppPublicOrigin(): string {
   const webApp = process.env.WEB_APP_PUBLIC_URL?.trim();
-  if (webApp) return webApp.replace(/\/+$/, "");
+  if (webApp) return publicOriginOnly(webApp);
   const publicUrl = process.env.PUBLIC_URL?.trim();
-  if (publicUrl) return publicUrl.replace(/\/+$/, "");
-  return optionalEnv("CORS_ORIGIN", "http://localhost:5173").replace(/\/+$/, "");
+  if (publicUrl) return publicOriginOnly(publicUrl);
+  return publicOriginOnly(optionalEnv("CORS_ORIGIN", "http://localhost:5173"));
 }
 
 export function webhookUrlForOrganization(organizationId: string): string {

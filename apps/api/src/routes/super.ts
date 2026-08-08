@@ -22,7 +22,8 @@ import {
 import {
   WHATSAPP_EMBEDDED_PLATFORM_KEY,
 } from "../lib/metaWhatsAppEmbedded.js";
-import { metaEmbeddedWebhookUrl } from "../config.js";
+import { metaEmbeddedWebhookUrl, getWebAppPublicOrigin } from "../config.js";
+import { normalizeSystemLogoUrl } from "@openconduit/shared";
 import {
   EVOLUTION_PLATFORM_KEY,
   parseEvolutionPlatformValue,
@@ -1531,7 +1532,9 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         ? parsed.data.systemLogoUrl.trim().slice(0, 2000) || null
         : (typeof existingVal.systemLogoUrl === "string" ? existingVal.systemLogoUrl : null) ?? null;
     const systemLogoUrl =
-      rawSystemLogoUrl && !isPlaceholderSystemLogoUrl(rawSystemLogoUrl) ? rawSystemLogoUrl : null;
+      rawSystemLogoUrl && !isPlaceholderSystemLogoUrl(rawSystemLogoUrl)
+        ? normalizeSystemLogoUrl(rawSystemLogoUrl, getWebAppPublicOrigin())
+        : null;
     const userInviteSubject =
       parsed.data.userInviteSubject !== undefined
         ? parsed.data.userInviteSubject.trim().slice(0, 200) || null
