@@ -225,6 +225,19 @@ export const PUBLIC_API_DOCUMENTATION_SCHEMAS: PublicApiDocResourceSchema[] = [
       { name: "isPrivate", type: "boolean", required: false, descriptionPt: "Nota interna" },
       { name: "conversationId", type: "uuid", required: true, descriptionPt: "Conversa" },
       { name: "contactId", type: "uuid", required: true, descriptionPt: "Contacto" },
+      {
+        name: "templateId",
+        type: "uuid",
+        required: false,
+        descriptionPt: "Obrigatório quando type=TEMPLATE (modelo da organização)",
+      },
+      {
+        name: "templateBodyParameters",
+        type: "string[]",
+        required: false,
+        descriptionPt:
+          "Valores de {{1}}, {{2}}, … do corpo; a API monta components Meta (type=body, parameters text)",
+      },
     ],
   },
   {

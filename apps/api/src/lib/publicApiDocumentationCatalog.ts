@@ -361,11 +361,22 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         path: "/api/v1/agent-bot/messages",
         auth: "agent_bot_bearer",
         descriptionEn:
-          "Outbound message from configured agent bot (Bearer token issued per bot; not a user JWT).",
+          "Send Message (agent bot) — outbound text via bot Bearer token (ocb_). Same schema as POST /api/v1/messages without isPrivate.",
         descriptionPt:
-          "Mensagem de saída do bot configurado (Bearer do bot; não é JWT de utilizador).",
+          "Send Message (agent bot) — envia texto de saída com Bearer do bot (ocb_). Mesmo schema que POST /api/v1/messages, sem isPrivate.",
         examplePayloadPt:
-          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST application/json (mesmo schema que /api/v1/messages, sem isPrivate):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Resposta automática do bot"\n}\n\nResposta 201: { "message": {...}, "conversationId": "<uuid>", "agent_bot_id": "<uuid-do-bot>" }',
+          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST /api/v1/agent-bot/messages\nContent-Type: application/json\n\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Olá! Sou o assistente virtual. Em que posso ajudar?"\n}\n\nResposta 201:\n{\n  "message": { "id": "<uuid>", "type": "TEXT", "direction": "OUTBOUND", "body": "…" },\n  "conversationId": "<uuid>",\n  "agent_bot_id": "<uuid-do-bot>"\n}',
+      },
+      {
+        method: "POST",
+        path: "/api/v1/agent-bot/messages",
+        auth: "agent_bot_bearer",
+        descriptionEn:
+          "Send Template (agent bot) — WhatsApp Business template with dynamic parameters via bot token. templateBodyParameters map to Meta components body parameters.",
+        descriptionPt:
+          "Send Template (agent bot) — template WhatsApp Business com parâmetros dinâmicos via token do bot. templateBodyParameters mapeia para components (body) da API Meta.",
+        examplePayloadPt:
+          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST /api/v1/agent-bot/messages\nContent-Type: application/json\n\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo>",\n  "templateBodyParameters": ["Maria Silva", "Pedido #4521"]\n}\n\nEquivalente Meta (montado pela plataforma):\ncomponents: [{ type: "body", parameters: [{ type: "text", text: "Maria Silva" }, { type: "text", text: "Pedido #4521" }] }]',
       },
       {
         method: "PATCH",

@@ -8,6 +8,18 @@ export type PublicApiDocChangelogEntry = {
 
 export const PUBLIC_API_DOCUMENTATION_CHANGELOG: PublicApiDocChangelogEntry[] = [
   {
+    date: "2026-08-08",
+    schemaVersion: 14,
+    titlePt: "Send Message e Send Template na documentação",
+    changesPt: [
+      "POST /api/v1/messages documentado em duas entradas: Send Message (texto WhatsApp) e Send Template (modelo Business)",
+      "Exemplos curl, regras da janela 24h e mapeamento templateBodyParameters → components da Meta Cloud API",
+      "Paridade Agent Bot: Send Message / Send Template em POST /api/v1/agent-bot/messages",
+      "GET /api/v1/templates com nota para obter templateId",
+    ],
+    breaking: false,
+  },
+  {
     date: "2026-07-31",
     schemaVersion: 13,
     titlePt: "Guia n8n — bot externo e call_human",

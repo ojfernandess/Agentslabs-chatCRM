@@ -96,10 +96,23 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     method: "POST",
     path: "/api/v1/messages",
     auth: "session_jwt",
-    descriptionEn: "Send message / create draft.",
-    descriptionPt: "Enviar mensagem / rascunho.",
+    descriptionEn:
+      "Send Message — send a text message to WhatsApp (or other inbox channel) through the platform API. Requires an open 24h WhatsApp session for free-form text; outside the window use Send Template.",
+    descriptionPt:
+      "Send Message — envia uma mensagem de texto para o WhatsApp (ou outro canal da caixa) através da API da plataforma. No WhatsApp Cloud/Meta, texto livre exige janela de 24h aberta; fora da janela use Send Template.",
     examplePayloadPt:
-      'Texto ao cliente:\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Olá, em que posso ajudar?",\n  "isPrivate": false\n}\n\nResposta de e-mail (reply na mesma thread):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid>",\n  "inboxId": "<uuid-caixa-email>",\n  "type": "TEXT",\n  "body": "Segue informação solicitada.",\n  "emailSubject": "Re: Proposta",\n  "emailTo": "cliente@exemplo.com",\n  "emailCc": "gestor@exemplo.com",\n  "emailBcc": ""\n}\n\nMídia (URL pública HTTPS):\n{\n  "contactId": "<uuid>",\n  "type": "IMAGE",\n  "mediaUrl": "https://exemplo.com/foto.png",\n  "mediaType": "image/png"\n}\n\nModelo WhatsApp:\n{\n  "contactId": "<uuid>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo>",\n  "templateBodyParameters": ["valor1", "valor2"]\n}\n\nNota interna:\n{\n  "contactId": "<uuid>",\n  "type": "TEXT",\n  "body": "Ligou reclamando da fatura",\n  "isPrivate": true\n}',
+      'Authorization: Bearer <jwt>\n(ou api_access_token: ocu_… para integrações)\n\nPOST /api/v1/messages\nContent-Type: application/json\n\n— WhatsApp (texto ao cliente):\n{\n  "contactId": "<uuid-contacto>",\n  "conversationId": "<uuid-conversa-opcional>",\n  "inboxId": "<uuid-caixa-whatsapp-opcional>",\n  "type": "TEXT",\n  "body": "Olá! Recebemos o seu pedido e já estamos a tratar.",\n  "isPrivate": false\n}\n\nNotas:\n• contactId é obrigatório.\n• conversationId fixa a conversa/caixa; sem ele, a API abre ou reutiliza conversa (use inboxId para escolher a caixa WhatsApp).\n• body: texto até 4096 caracteres.\n• isPrivate: false envia ao cliente no canal; true grava só nota interna (não chama o WhatsApp).\n\n— curl (exemplo):\ncurl -X POST "https://<seu-dominio>/api/v1/messages" \\\n  -H "Authorization: Bearer <jwt>" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"contactId":"<uuid>","type":"TEXT","body":"Olá! Em que posso ajudar?","isPrivate":false}\'\n\n— Variantes úteis (mesmo endpoint):\nMídia (URL pública HTTPS legível pelo WhatsApp):\n{\n  "contactId": "<uuid>",\n  "type": "IMAGE",\n  "mediaUrl": "https://cdn.exemplo.com/foto.png",\n  "mediaType": "image/png",\n  "body": "Legenda opcional"\n}\n\nNota interna (não envia ao WhatsApp):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid>",\n  "type": "TEXT",\n  "body": "Cliente pediu retorno amanhã às 10h",\n  "isPrivate": true\n}\n\nResposta de e-mail (caixa EMAIL, reply na thread):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid>",\n  "inboxId": "<uuid-caixa-email>",\n  "type": "TEXT",\n  "body": "Segue a informação solicitada.",\n  "emailSubject": "Re: Proposta",\n  "emailTo": "cliente@exemplo.com",\n  "emailCc": "gestor@exemplo.com",\n  "emailBcc": ""\n}',
+  },
+  {
+    method: "POST",
+    path: "/api/v1/messages",
+    auth: "session_jwt",
+    descriptionEn:
+      "Send Template — send an approved WhatsApp Business template with dynamic body variables. Obtain templateId from GET /api/v1/templates. The platform maps templateBodyParameters to Meta Cloud API template.components (body parameters).",
+    descriptionPt:
+      "Send Template — envia um template do WhatsApp Business configurado com parâmetros dinâmicos. Obtenha templateId em GET /api/v1/templates. A plataforma mapeia templateBodyParameters para template.components da API oficial da Meta (Cloud API).",
+    examplePayloadPt:
+      'Authorization: Bearer <jwt>\n\nPOST /api/v1/messages\nContent-Type: application/json\n\n— Envio de template (corpo OpenNexo CRM):\n{\n  "contactId": "<uuid-contacto>",\n  "conversationId": "<uuid-conversa-opcional>",\n  "inboxId": "<uuid-caixa-whatsapp-opcional>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo-sincronizado>",\n  "templateBodyParameters": [\n    "Maria Silva",\n    "Pedido #4521",\n    "12/08/2026"\n  ]\n}\n\nRegras:\n• type deve ser "TEMPLATE"; templateId é obrigatório (UUID do modelo na organização).\n• templateBodyParameters: array de strings na ordem de {{1}}, {{2}}, … do corpo do modelo.\n• O número de itens tem de coincidir com bodyVariableCount do template (0 = omita o campo ou envie []).\n• isPrivate não é permitido com TEMPLATE.\n• Fora da janela de 24h, só TEMPLATE pode contactar o cliente no WhatsApp Cloud/Meta.\n• O modelo precisa de providerTemplateId (nome do template na Meta) — sincronize modelos na UI ou via GET/POST /api/v1/templates.\n\n— curl (exemplo):\ncurl -X POST "https://<seu-dominio>/api/v1/messages" \\\n  -H "Authorization: Bearer <jwt>" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"contactId":"<uuid>","type":"TEMPLATE","templateId":"<uuid-modelo>","templateBodyParameters":["Maria","#4521"]}\'\n\n— Equivalente enviado à Meta Graph API (components):\nA plataforma monta automaticamente o payload oficial. Exemplo do que a Meta recebe a partir do array acima:\n{\n  "messaging_product": "whatsapp",\n  "to": "5511999999999",\n  "type": "template",\n  "template": {\n    "name": "pedido_confirmado",\n    "language": { "code": "pt_BR" },\n    "components": [\n      {\n        "type": "body",\n        "parameters": [\n          { "type": "text", "text": "Maria Silva" },\n          { "type": "text", "text": "Pedido #4521" },\n          { "type": "text", "text": "12/08/2026" }\n        ]\n      }\n    ]\n  }\n}\n\nOu seja: cada string em templateBodyParameters vira um parâmetro { "type": "text", "text": "…" } dentro de components[].type = "body", na mesma ordem da API oficial da Meta para templates do WhatsApp Business.\n\n— Template sem variáveis no corpo:\n{\n  "contactId": "<uuid>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo-sem-variaveis>"\n}',
   },
   {
     method: "POST",
@@ -333,10 +346,12 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
     method: "GET|POST|DELETE",
     path: "/api/v1/templates",
     auth: "session_jwt",
-    descriptionEn: "Message templates.",
-    descriptionPt: "Modelos de mensagem.",
+    descriptionEn:
+      "List/create WhatsApp message templates. Use the returned id as templateId in Send Template (POST /api/v1/messages).",
+    descriptionPt:
+      "Listar/criar modelos de mensagem WhatsApp. Use o id devolvido como templateId em Send Template (POST /api/v1/messages).",
     examplePayloadPt:
-      'POST application/json:\n{\n  "name": "saudacao",\n  "body": "Olá {{1}}, tudo bem?",\n  "templateLanguage": "pt_BR"\n}',
+      'GET /api/v1/templates?inboxId=<uuid-caixa-whatsapp-opcional>\nSem corpo. Resposta: lista com id, name, body, bodyVariableCount, providerTemplateId, templateLanguage, …\n\nPOST application/json (criar modelo local / rascunho):\n{\n  "name": "pedido_confirmado",\n  "body": "Olá {{1}}, o {{2}} está confirmado para {{3}}.",\n  "templateLanguage": "pt_BR"\n}\n\nPara Send Template, prefira modelos sincronizados com a Meta (providerTemplateId preenchido).',
   },
   {
     method: "POST",

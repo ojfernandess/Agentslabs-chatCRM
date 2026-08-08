@@ -190,7 +190,7 @@ POST — HTTP 201: objeto Contact criado`,
   },
   "/api/v1/messages": {
     successStatus: 201,
-    exampleResponsePt: `HTTP 201 application/json:
+    exampleResponsePt: `HTTP 201 application/json — Send Message (TEXT):
 {
   "message": {
     "id": "<uuid>",
@@ -199,13 +199,52 @@ POST — HTTP 201: objeto Contact criado`,
     "type": "TEXT",
     "direction": "OUTBOUND",
     "status": "SENT",
-    "body": "Olá, em que posso ajudar?",
+    "body": "Olá! Recebemos o seu pedido e já estamos a tratar.",
     "isPrivate": false,
-    "createdAt": "2026-07-09T12:05:00.000Z"
+    "createdAt": "2026-08-08T12:05:00.000Z"
   },
   "conversationId": "<uuid>"
-}`,
+}
+
+HTTP 201 application/json — Send Template (TEMPLATE):
+{
+  "message": {
+    "id": "<uuid>",
+    "conversationId": "<uuid>",
+    "contactId": "<uuid>",
+    "type": "TEMPLATE",
+    "direction": "OUTBOUND",
+    "status": "SENT",
+    "body": "Olá Maria Silva, o Pedido #4521 está confirmado para 12/08/2026.",
+    "isPrivate": false,
+    "createdAt": "2026-08-08T12:06:00.000Z"
+  },
+  "conversationId": "<uuid>"
+}
+
+Erros frequentes (422): fora da janela de 24h sem TEMPLATE; templateId em falta; número incorrecto de templateBodyParameters.`,
     extraErrors: [ERR_422],
+  },
+  "/api/v1/agent-bot/messages": {
+    successStatus: 201,
+    exampleResponsePt: `HTTP 201 application/json — Send Message (TEXT):
+{
+  "message": {
+    "id": "<uuid>",
+    "type": "TEXT",
+    "direction": "OUTBOUND",
+    "status": "SENT",
+    "body": "Olá! Sou o assistente virtual. Em que posso ajudar?"
+  },
+  "conversationId": "<uuid>",
+  "agent_bot_id": "<uuid-do-bot>"
+}
+
+HTTP 201 — Send Template (TEMPLATE): message.type = "TEMPLATE", body com placeholders substituídos.`,
+    extraErrors: [
+      ERR_422,
+      { status: 403, descriptionPt: "Notas privadas (isPrivate) não permitidas no token ocb_." },
+    ],
   },
   "/api/v1/tags": {
     successStatus: 200,
@@ -265,16 +304,6 @@ POST — HTTP 201: bot criado (admin JWT)`,
 }
 
 POST — HTTP 201: caixa criada (admin)`,
-  },
-  "/api/v1/agent-bot/messages": {
-    successStatus: 201,
-    exampleResponsePt: `HTTP 201 application/json:
-{
-  "message": { "id": "<uuid>", "type": "TEXT", "body": "Resposta automática" },
-  "conversationId": "<uuid>",
-  "agent_bot_id": "<uuid-bot>"
-}`,
-    extraErrors: [ERR_422, { status: 403, descriptionPt: "Notas privadas (isPrivate) não permitidas." }],
   },
   "/api/v1/agent-bot/profile": {
     successStatus: 200,
@@ -564,8 +593,17 @@ export function enrichEndpoint(ep: PublicApiDocEndpoint): PublicApiDocEndpointEn
 }
 
 export function enrichDocumentationGroups(groups: PublicApiDocGroup[]): PublicApiDocGroupEnriched[] {
+  const slugCount = new Map<string, number>();
   return groups.map((g) => ({
     ...g,
-    endpoints: g.endpoints.map(enrichEndpoint),
+    endpoints: g.endpoints.map((ep) => {
+      const enriched = enrichEndpoint(ep);
+      const n = (slugCount.get(enriched.slug) ?? 0) + 1;
+      slugCount.set(enriched.slug, n);
+      if (n > 1) {
+        return { ...enriched, slug: `${enriched.slug}-${n}` };
+      }
+      return enriched;
+    }),
   }));
 }

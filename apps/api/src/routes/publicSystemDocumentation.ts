@@ -34,7 +34,7 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
     }
 
     return {
-      schemaVersion: 13,
+      schemaVersion: 14,
       generatedAt: new Date().toISOString(),
       noticeEn:
         "This catalog lists routes, auth, request/response examples and error codes. It never includes real tokens, organization IDs, or secrets.",
@@ -62,7 +62,7 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
       return reply.status(404).send({ error: "Not Found", message: "Documentation is not public", statusCode: 404 });
     }
 
-    const schemaVersion = 13;
+    const schemaVersion = 14;
     const groups = enrichDocumentationGroups(PUBLIC_API_DOCUMENTATION_GROUPS);
     const collection = buildPostmanCollectionV21(groups, schemaVersion);
     const filename = `opennexo-crm-api-v${schemaVersion}.postman_collection.json`;
