@@ -5565,6 +5565,7 @@ export const messages = {
       resendSystemLogoUrl: "URL da logo do sistema",
       resendSystemLogoUrlHint:
         "URL absoluta da imagem usada em {{logoUrl}} e {{logoHtml}} nos emails. Se vazio, usa a logo do painel web.",
+      resendSystemLogoEffective: "URL efectiva nos emails (sem URL customizada): {url}",
       resendUserInviteSubject: "Assunto (convite de utilizador)",
       resendUserInviteHtml: "Modelo HTML (convite de utilizador)",
       resendUserInvitePlaceholders:
@@ -11132,6 +11133,7 @@ export const messages = {
       resendSystemLogoUrl: "System logo URL",
       resendSystemLogoUrlHint:
         "Absolute image URL for {{logoUrl}} and {{logoHtml}} in emails. If empty, uses the web app logo.",
+      resendSystemLogoEffective: "Effective URL in emails (when custom URL is empty): {url}",
       resendUserInviteSubject: "Subject (user invitation)",
       resendUserInviteHtml: "HTML template (user invitation)",
       resendUserInvitePlaceholders:

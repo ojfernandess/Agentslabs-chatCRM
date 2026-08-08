@@ -6,6 +6,7 @@ import {
   USER_INVITE_PREVIEW_SAMPLE,
 } from "@openconduit/shared";
 import { useI18n } from "@/i18n/I18nProvider";
+import { resolveLocalSystemLogoUrl } from "@/lib/systemLogoUrl";
 
 const TOKENS = [
   "{{inviteUrl}}",
@@ -16,8 +17,6 @@ const TOKENS = [
   "{{logoUrl}}",
   "{{logoHtml}}",
 ] as const;
-
-const PREVIEW_LOGO = "https://app.exemplo.com/logo.svg";
 
 function insertAtCursor(
   el: HTMLInputElement | HTMLTextAreaElement,
@@ -39,6 +38,7 @@ function insertAtCursor(
 export type ResendUserInviteTemplateEditorProps = {
   fromName: string;
   logoUrl?: string;
+  resolvedLogoUrl?: string;
   subject: string;
   html: string;
   onSubjectChange: (v: string) => void;
@@ -48,6 +48,7 @@ export type ResendUserInviteTemplateEditorProps = {
 export function ResendUserInviteTemplateEditor({
   fromName,
   logoUrl,
+  resolvedLogoUrl,
   subject,
   html,
   onSubjectChange,
@@ -63,9 +64,9 @@ export function ResendUserInviteTemplateEditor({
     return buildUserInviteEmailContent(subject, html, {
       ...USER_INVITE_PREVIEW_SAMPLE,
       appName,
-      logoUrl: logoUrl?.trim() || PREVIEW_LOGO,
+      logoUrl: resolveLocalSystemLogoUrl(logoUrl || resolvedLogoUrl),
     });
-  }, [subject, html, fromName, logoUrl]);
+  }, [subject, html, fromName, logoUrl, resolvedLogoUrl]);
 
   const insertInSubject = useCallback(
     (token: string) => {

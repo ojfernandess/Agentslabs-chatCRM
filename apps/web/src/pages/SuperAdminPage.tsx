@@ -263,6 +263,7 @@ interface SuperResendPayload {
   fromName: string;
   apiKeyMasked: string;
   systemLogoUrl?: string;
+  resolvedSystemLogoUrl?: string;
   passwordResetSubject: string;
   passwordResetHtmlTemplate: string;
   userInviteSubject: string;
@@ -419,6 +420,7 @@ export function SuperAdminPage() {
   const [resendFromName, setResendFromName] = useState("OpenNexo CRM");
   const [resendSaving, setResendSaving] = useState(false);
   const [resendSystemLogoUrl, setResendSystemLogoUrl] = useState("");
+  const [resendResolvedSystemLogoUrl, setResendResolvedSystemLogoUrl] = useState("");
   const [resendPasswordResetSubject, setResendPasswordResetSubject] = useState("");
   const [resendPasswordResetHtml, setResendPasswordResetHtml] = useState("");
   const [resendUserInviteSubject, setResendUserInviteSubject] = useState("");
@@ -687,6 +689,7 @@ export function SuperAdminPage() {
         setResendFromEmail(d.fromEmail);
         setResendFromName(d.fromName || "OpenNexo CRM");
         setResendSystemLogoUrl(d.systemLogoUrl ?? "");
+        setResendResolvedSystemLogoUrl(d.resolvedSystemLogoUrl ?? "");
         setResendPasswordResetSubject(d.passwordResetSubject);
         setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
         setResendUserInviteSubject(d.userInviteSubject);
@@ -1192,6 +1195,7 @@ export function SuperAdminPage() {
       const d = await api.put<SuperResendPayload>("/super/resend-email", body);
       setResendSnapshot(d);
       setResendSystemLogoUrl(d.systemLogoUrl ?? "");
+      setResendResolvedSystemLogoUrl(d.resolvedSystemLogoUrl ?? "");
       setResendPasswordResetSubject(d.passwordResetSubject);
       setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
       setResendUserInviteSubject(d.userInviteSubject);
@@ -2095,14 +2099,20 @@ export function SuperAdminPage() {
                         type="url"
                         value={resendSystemLogoUrl}
                         onChange={(e) => setResendSystemLogoUrl(e.target.value)}
-                        placeholder="https://app.seudominio.com/logo.svg"
+                        placeholder={resendResolvedSystemLogoUrl || "https://app.seudominio.com/logo.svg"}
                         className="input-field mt-2 w-full"
                         autoComplete="off"
                       />
+                      {resendResolvedSystemLogoUrl ? (
+                        <p className="mt-1 text-xs text-ink-500">
+                          {t("superAdmin.resendSystemLogoEffective").replace("{url}", resendResolvedSystemLogoUrl)}
+                        </p>
+                      ) : null}
                     </div>
                     <ResendPasswordResetTemplateEditor
                       fromName={resendFromName}
                       logoUrl={resendSystemLogoUrl}
+                      resolvedLogoUrl={resendResolvedSystemLogoUrl}
                       subject={resendPasswordResetSubject}
                       html={resendPasswordResetHtml}
                       onSubjectChange={setResendPasswordResetSubject}
@@ -2111,6 +2121,7 @@ export function SuperAdminPage() {
                     <ResendUserInviteTemplateEditor
                       fromName={resendFromName}
                       logoUrl={resendSystemLogoUrl}
+                      resolvedLogoUrl={resendResolvedSystemLogoUrl}
                       subject={resendUserInviteSubject}
                       html={resendUserInviteHtml}
                       onSubjectChange={setResendUserInviteSubject}

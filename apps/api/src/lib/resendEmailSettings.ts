@@ -25,10 +25,28 @@ export type ResendEmailConfig = {
 export { DEFAULT_PASSWORD_RESET_HTML, DEFAULT_PASSWORD_RESET_SUBJECT };
 export { DEFAULT_USER_INVITE_HTML, DEFAULT_USER_INVITE_SUBJECT };
 
-export function resolveSystemLogoUrl(cfg: ResendEmailConfig): string {
-  const custom = cfg.systemLogoUrl?.trim();
-  if (custom) return custom;
-  return `${getWebAppPublicOrigin()}/logo.svg`;
+export const DEFAULT_SYSTEM_LOGO_PATH = "/logo.svg";
+
+/** URLs de exemplo do editor — ignorar se guardadas por engano. */
+export function isPlaceholderSystemLogoUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    return host === "app.exemplo.com" || host.endsWith(".exemplo.com");
+  } catch {
+    return trimmed.includes("app.exemplo.com");
+  }
+}
+
+export function resolveSystemLogoUrlFromSetting(systemLogoUrl?: string | null): string {
+  const custom = systemLogoUrl?.trim();
+  if (custom && !isPlaceholderSystemLogoUrl(custom)) return custom;
+  return `${getWebAppPublicOrigin()}${DEFAULT_SYSTEM_LOGO_PATH}`;
+}
+
+export function resolveSystemLogoUrl(cfg: Pick<ResendEmailConfig, "systemLogoUrl">): string {
+  return resolveSystemLogoUrlFromSetting(cfg.systemLogoUrl);
 }
 
 export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
@@ -38,8 +56,9 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
   const fromEmail = String(o.fromEmail ?? "").trim();
   const fromName = String(o.fromName ?? "OpenNexo CRM").trim() || "OpenNexo CRM";
   if (!apiKey || !fromEmail) return null;
-  const systemLogoUrl =
+  const rawLogo =
     typeof o.systemLogoUrl === "string" && o.systemLogoUrl.trim() ? o.systemLogoUrl.trim().slice(0, 2000) : null;
+  const systemLogoUrl = rawLogo && !isPlaceholderSystemLogoUrl(rawLogo) ? rawLogo : null;
   const passwordResetSubject =
     typeof o.passwordResetSubject === "string" && o.passwordResetSubject.trim()
       ? o.passwordResetSubject.trim().slice(0, 200)

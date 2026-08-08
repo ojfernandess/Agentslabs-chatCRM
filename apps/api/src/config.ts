@@ -42,10 +42,15 @@ export function getPublicOrigin(): string {
 
 /**
  * Origem da aplicação web onde o cliente abre o inquérito CSAT (ex.: https://app.seudominio.com).
- * Em desenvolvimento costuma coincidir com CORS_ORIGIN (Vite). Em produção, defina explicitamente se o painel está noutro host que PUBLIC_URL.
+ * Ordem: WEB_APP_PUBLIC_URL → PUBLIC_URL → CORS_ORIGIN (dev).
+ * Em deploy monolítico (EasyPanel/Caddy), PUBLIC_URL é a origem correcta para /logo.svg e links do painel.
  */
 export function getWebAppPublicOrigin(): string {
-  return optionalEnv("WEB_APP_PUBLIC_URL", optionalEnv("CORS_ORIGIN", getPublicOrigin())).replace(/\/+$/, "");
+  const webApp = process.env.WEB_APP_PUBLIC_URL?.trim();
+  if (webApp) return webApp.replace(/\/+$/, "");
+  const publicUrl = process.env.PUBLIC_URL?.trim();
+  if (publicUrl) return publicUrl.replace(/\/+$/, "");
+  return optionalEnv("CORS_ORIGIN", "http://localhost:5173").replace(/\/+$/, "");
 }
 
 export function webhookUrlForOrganization(organizationId: string): string {

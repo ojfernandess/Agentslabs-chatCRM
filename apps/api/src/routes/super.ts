@@ -32,7 +32,10 @@ import {
   RESEND_EMAIL_PLATFORM_KEY,
   getPasswordResetTemplatesForEditor,
   getUserInviteTemplatesForEditor,
+  isPlaceholderSystemLogoUrl,
   parseResendEmailValue,
+  resolveSystemLogoUrl,
+  resolveSystemLogoUrlFromSetting,
 } from "../lib/resendEmailSettings.js";
 import {
   MEDIA_STORAGE_PLATFORM_KEY,
@@ -1397,6 +1400,9 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const systemLogoUrl =
       typeof rawVal.systemLogoUrl === "string" && rawVal.systemLogoUrl.trim() ? rawVal.systemLogoUrl.trim() : "";
     const parsed = parseResendEmailValue(row?.value);
+    const resolvedSystemLogoUrl = parsed
+      ? resolveSystemLogoUrl(parsed)
+      : resolveSystemLogoUrlFromSetting(systemLogoUrl || null);
     if (!parsed) {
       return {
         configured: false,
@@ -1404,6 +1410,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         fromName: "OpenNexo CRM",
         apiKeyMasked: "",
         systemLogoUrl,
+        resolvedSystemLogoUrl,
         passwordResetSubject: tpl.subject,
         passwordResetHtmlTemplate: tpl.html,
         userInviteSubject: inviteTpl.subject,
@@ -1416,6 +1423,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       fromName: parsed.fromName,
       apiKeyMasked: "••••••••",
       systemLogoUrl: parsed.systemLogoUrl ?? systemLogoUrl,
+      resolvedSystemLogoUrl,
       passwordResetSubject: tpl.subject,
       passwordResetHtmlTemplate: tpl.html,
       userInviteSubject: inviteTpl.subject,
@@ -1518,10 +1526,12 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         : (typeof existingVal.passwordResetHtmlTemplate === "string"
             ? existingVal.passwordResetHtmlTemplate
             : null) ?? null;
-    const systemLogoUrl =
+    const rawSystemLogoUrl =
       parsed.data.systemLogoUrl !== undefined
         ? parsed.data.systemLogoUrl.trim().slice(0, 2000) || null
         : (typeof existingVal.systemLogoUrl === "string" ? existingVal.systemLogoUrl : null) ?? null;
+    const systemLogoUrl =
+      rawSystemLogoUrl && !isPlaceholderSystemLogoUrl(rawSystemLogoUrl) ? rawSystemLogoUrl : null;
     const userInviteSubject =
       parsed.data.userInviteSubject !== undefined
         ? parsed.data.userInviteSubject.trim().slice(0, 200) || null
@@ -1563,6 +1573,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       fromName: value.fromName,
       apiKeyMasked: "••••••••",
       systemLogoUrl: value.systemLogoUrl ?? "",
+      resolvedSystemLogoUrl: resolveSystemLogoUrlFromSetting(value.systemLogoUrl),
       passwordResetSubject: tpl.subject,
       passwordResetHtmlTemplate: tpl.html,
       userInviteSubject: inviteTpl.subject,
