@@ -18,6 +18,12 @@ import {
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { addUserToDefaultInboxes } from "../lib/defaultInbox.js";
 import { persistUserAvatarUpload } from "../lib/profileImageUpload.js";
+import {
+  availabilityFromClient,
+  availabilityToClient,
+  type AvailabilityClient,
+} from "../lib/userAvailability.js";
+import { broadcastUserAvailabilityChanged } from "../lib/workspaceHub.js";
 
 const turnstileTokenField = z.string().min(1).max(2048).optional();
 
@@ -38,6 +44,10 @@ const patchMeSchema = z.object({
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8).max(128),
+});
+
+const patchAvailabilitySchema = z.object({
+  status: z.enum(["online", "away", "offline"]),
 });
 
 const forgotPasswordSchema = z.object({
@@ -318,6 +328,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         apiAccessTokenPrefix: true,
         apiAccessTokenHash: true,
         apiAccessTokenLastUsedAt: true,
+        availabilityStatus: true,
         createdAt: true,
       },
     });
@@ -368,6 +379,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       ...user,
+      availabilityStatus: availabilityToClient(user.availabilityStatus),
       role: user.role as string,
       actingOrganizationId: actingId,
       actingOrganization,
@@ -480,6 +492,28 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       data: { avatarUrl: null },
     });
     return { avatarUrl: null };
+  });
+
+  app.patch("/me/availability", { preHandler: [authenticate] }, async (request, reply) => {
+    const parsed = patchAvailabilitySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const status = availabilityFromClient(parsed.data.status);
+    if (!status) {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid availability status", statusCode: 400 });
+    }
+    const updated = await prisma.user.update({
+      where: { id: request.user.id },
+      data: { availabilityStatus: status, availabilityUpdatedAt: new Date() },
+      select: { availabilityStatus: true, organizationId: true },
+    });
+    const clientStatus = availabilityToClient(updated.availabilityStatus);
+    const orgId = request.user.actingOrganizationId ?? updated.organizationId ?? null;
+    if (orgId) {
+      broadcastUserAvailabilityChanged(orgId, request.user.id, clientStatus);
+    }
+    return { availabilityStatus: clientStatus as AvailabilityClient };
   });
 
   app.patch("/me", { preHandler: [authenticate] }, async (request, reply) => {

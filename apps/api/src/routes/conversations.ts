@@ -6,6 +6,7 @@ import type { JwtPayload } from "../middleware/auth.js";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
+import { isOnlineForTransfer } from "../lib/userAvailability.js";
 import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
@@ -1825,7 +1826,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (parsed.data.assignedToId !== undefined && parsed.data.assignedToId !== null) {
       const assigneeInOrg = await prisma.user.findFirst({
         where: { id: parsed.data.assignedToId, organizationId },
-        select: { id: true },
+        select: { id: true, availabilityStatus: true },
       });
       /** Super admin no tenant (`actingOrganizationId`) costuma ter `organizationId` null em `users`. */
       const superAdminSelfInTenant =
@@ -1834,6 +1835,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         parsed.data.assignedToId === request.user.id;
       if (!assigneeInOrg && !superAdminSelfInTenant) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid assignedToId", statusCode: 400 });
+      }
+      if (assigneeInOrg && !isOnlineForTransfer(assigneeInOrg.availabilityStatus)) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Assignee must be online to receive a transfer",
+          statusCode: 400,
+        });
       }
       const effectiveTeamAfter =
         parsed.data.teamId !== undefined ? parsed.data.teamId : existing.teamId;

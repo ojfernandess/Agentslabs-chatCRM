@@ -19,17 +19,16 @@ import { isSuperAdminRole, isTenantAdmin } from "@/lib/authRole";
 import { resolveUserAvatarUrl } from "@/lib/userAvatar";
 import { AnimatePresence, motion } from "@/components/Motion";
 import { getThemePreference, setThemePreference, type ThemePref } from "@/lib/themeStorage";
+import {
+  readLocalAvailability,
+  setUserAvailability,
+  availabilityDotClass,
+  type UserAvailability,
+} from "@/lib/userAvailability";
 
-const AVAIL_STORAGE = "openconduit_availability";
 const AUTO_OFFLINE_STORAGE = "openconduit_auto_offline";
 
-type Availability = "online" | "away" | "offline";
-
-function readAvailability(): Availability {
-  const v = localStorage.getItem(AVAIL_STORAGE);
-  if (v === "away" || v === "offline" || v === "online") return v;
-  return "online";
-}
+type Availability = UserAvailability;
 
 function readAutoOffline(): boolean {
   return localStorage.getItem(AUTO_OFFLINE_STORAGE) === "1";
@@ -55,7 +54,7 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
   const { exitOrganization } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [availability, setAvailability] = useState<Availability>(readAvailability);
+  const [availability, setAvailability] = useState<Availability>(readLocalAvailability);
   const [autoOffline, setAutoOffline] = useState(readAutoOffline);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [theme, setTheme] = useState<ThemePref>(getThemePreference);
@@ -97,7 +96,7 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
 
   useEffect(() => {
     const onAvail = () => {
-      setAvailability(readAvailability());
+      setAvailability(readLocalAvailability());
     };
     window.addEventListener("openconduit:availability-changed", onAvail);
     return () => window.removeEventListener("openconduit:availability-changed", onAvail);
@@ -144,7 +143,7 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
     if (!autoOffline) return;
     const onVis = () => {
       if (document.visibilityState === "hidden") {
-        localStorage.setItem(AVAIL_STORAGE, "offline");
+        setUserAvailability("offline");
         setAvailability("offline");
       }
     };
@@ -154,8 +153,7 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
 
   const setAvail = useCallback((v: Availability) => {
     setAvailability(v);
-    localStorage.setItem(AVAIL_STORAGE, v);
-    window.dispatchEvent(new CustomEvent("openconduit:availability-changed"));
+    setUserAvailability(v);
   }, []);
 
   const setAutoOff = useCallback((on: boolean) => {
@@ -163,12 +161,7 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
     localStorage.setItem(AUTO_OFFLINE_STORAGE, on ? "1" : "0");
   }, []);
 
-  const availDot =
-    availability === "online"
-      ? "bg-emerald-500"
-      : availability === "away"
-        ? "bg-amber-400"
-        : "bg-ink-400";
+  const availDot = availabilityDotClass(availability);
 
   const avatarSrc = resolveUserAvatarUrl(user.avatarUrl);
 

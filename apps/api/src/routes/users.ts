@@ -8,6 +8,7 @@ import { isValidEmail } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { addAgentToAllOrganizationTeams } from "../lib/agentScope.js";
 import { addUserToDefaultInboxes } from "../lib/defaultInbox.js";
+import { availabilityToClient } from "../lib/userAvailability.js";
 
 const createUserSchema = z.object({
   name: z.string().min(1).max(255),
@@ -30,9 +31,15 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
     return prisma.user.findMany({
       where: { organizationId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, availabilityStatus: true },
       orderBy: { name: "asc" },
-    });
+    }).then((rows) =>
+      rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        availabilityStatus: availabilityToClient(row.availabilityStatus),
+      })),
+    );
   });
 
   await app.register(async (adminApp) => {

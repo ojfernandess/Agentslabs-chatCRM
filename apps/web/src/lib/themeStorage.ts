@@ -1,6 +1,7 @@
 export const THEME_STORAGE_KEY = "openconduit_theme";
 
 export type ThemePref = "light" | "dark" | "system";
+export type ResolvedTheme = "light" | "dark";
 
 function readThemePref(): ThemePref {
   const v = localStorage.getItem(THEME_STORAGE_KEY);
@@ -8,12 +9,27 @@ function readThemePref(): ThemePref {
   return "system";
 }
 
+function systemPrefersDark(): boolean {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/** Resolve o tema efectivo (claro/escuro) a partir da preferência guardada. */
+export function resolveTheme(pref: ThemePref): ResolvedTheme {
+  if (pref === "dark") return "dark";
+  if (pref === "light") return "light";
+  return systemPrefersDark() ? "dark" : "light";
+}
+
 function applyDarkClass(pref: ThemePref) {
-  let dark = false;
-  if (pref === "dark") dark = true;
-  else if (pref === "light") dark = false;
-  else dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const resolved = resolveTheme(pref);
+  const dark = resolved === "dark";
   document.documentElement.classList.toggle("dark", dark);
+  document.documentElement.style.colorScheme = resolved;
+  window.dispatchEvent(
+    new CustomEvent("openconduit:theme-changed", {
+      detail: { pref, resolved },
+    }),
+  );
 }
 
 /** Call once at startup (e.g. main.tsx) before paint. */
@@ -24,7 +40,11 @@ export function initThemeFromStorage() {
   const onScheme = () => {
     if (readThemePref() === "system") applyDarkClass("system");
   };
-  mq.addEventListener("change", onScheme);
+  if (typeof mq.addEventListener === "function") {
+    mq.addEventListener("change", onScheme);
+  } else {
+    mq.addListener(onScheme);
+  }
   window.addEventListener("storage", (e) => {
     if (e.key === THEME_STORAGE_KEY) applyDarkClass(readThemePref());
   });
@@ -33,9 +53,12 @@ export function initThemeFromStorage() {
 export function setThemePreference(pref: ThemePref) {
   localStorage.setItem(THEME_STORAGE_KEY, pref);
   applyDarkClass(pref);
-  window.dispatchEvent(new CustomEvent("openconduit:theme-changed", { detail: { pref } }));
 }
 
 export function getThemePreference(): ThemePref {
   return readThemePref();
+}
+
+export function getResolvedTheme(): ResolvedTheme {
+  return resolveTheme(readThemePref());
 }

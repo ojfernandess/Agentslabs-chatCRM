@@ -51,3 +51,15 @@ export function broadcastConversationUpdated(
     ...extra,
   });
 }
+
+export function broadcastUserAvailabilityChanged(
+  organizationId: string,
+  userId: string,
+  status: "online" | "away" | "offline",
+): void {
+  broadcastToOrganization(organizationId, {
+    type: "user.availability_changed",
+    userId,
+    status,
+  });
+}

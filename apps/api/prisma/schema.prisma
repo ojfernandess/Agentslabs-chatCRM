@@ -13,6 +13,12 @@ enum UserRole {
   AGENT
 }
 
+enum UserAvailabilityStatus {
+  ONLINE
+  AWAY
+  OFFLINE
+}
+
 enum ConversationStatus {
   OPEN
   RESOLVED
@@ -489,6 +495,9 @@ model User {
   apiAccessTokenHash       String?   @map("api_access_token_hash") @db.Text
   apiAccessTokenLastUsedAt DateTime? @map("api_access_token_last_used_at")
   role                     UserRole  @default(AGENT)
+  /// Disponibilidade do atendente (online/ausente/offline) — visível na transferência de conversas.
+  availabilityStatus       UserAvailabilityStatus @default(ONLINE) @map("availability_status")
+  availabilityUpdatedAt    DateTime? @map("availability_updated_at")
   createdAt                DateTime  @default(now()) @map("created_at")
 
   organizationId String?       @map("organization_id") @db.Uuid

@@ -29,6 +29,7 @@ export interface AuthUser {
   hasApiAccessToken?: boolean;
   apiAccessTokenLastUsedAt?: string | null;
   apiAccessTokenPrefix?: string | null;
+  availabilityStatus?: "online" | "away" | "offline";
 }
 
 interface AuthContextValue {

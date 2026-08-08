@@ -71,7 +71,16 @@ export function WorkspaceRealtime() {
       status?: string;
       linkedPhone?: string | null;
       targetUserIds?: string[] | null;
+      userId?: string;
     }) => {
+      if (data.type === "user.availability_changed" && data.userId && data.status) {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:user-availability-changed", {
+            detail: { userId: data.userId, status: data.status },
+          }),
+        );
+        return;
+      }
       if (data.type === "conversation.transferred") {
         const contact = data.contact?.name ?? "—";
         const team = (data.teamName ?? "").trim() || translate(localeRef.current, "workspace.transferUnknownTeam");

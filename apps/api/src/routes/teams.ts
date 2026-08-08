@@ -5,6 +5,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { TeamMemberRole, Prisma } from "@prisma/client";
 import { getUnseenTeamTransferCounts } from "../lib/teamTransferUnread.js";
+import { availabilityToClient } from "../lib/userAvailability.js";
 import { teamHubRoutes } from "./teamHub.js";
 
 const createTeamSchema = z.object({
@@ -129,7 +130,17 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
       where: { id: request.params.id, organizationId },
       include: {
         members: {
-          include: { user: { select: { id: true, name: true, email: true, role: true } } },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                availabilityStatus: true,
+              },
+            },
+          },
         },
         _count: { select: { members: true, conversations: true } },
       },
@@ -143,7 +154,16 @@ export async function teamRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
     }
-    return team;
+    return {
+      ...team,
+      members: team.members.map((member) => ({
+        ...member,
+        user: {
+          ...member.user,
+          availabilityStatus: availabilityToClient(member.user.availabilityStatus),
+        },
+      })),
+    };
   });
 
   app.patch<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {

@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#6734ff" />
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem("openconduit_theme");
+          if (pref !== "light" && pref !== "dark" && pref !== "system") pref = "system";
+          var dark =
+            pref === "dark" ||
+            (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>OpenNexo CRM</title>
   </head>

@@ -43,6 +43,8 @@ import { NvoipVoiceShell } from "@/components/nvoip/NvoipVoiceShell";
 import { NvoipSipStatusBadge } from "@/components/nvoip/NvoipSipStatusBadge";
 import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
+import { UserAvailabilitySync } from "@/components/UserAvailabilitySync";
+import { setUserAvailability, readLocalAvailability, type UserAvailability } from "@/lib/userAvailability";
 import { unlockAudioAlerts } from "@/lib/audioAlerts";
 
 type SidebarTeam = { id: string; name: string; unseenTransferCount?: number };
@@ -252,11 +254,9 @@ export function Layout() {
       if (k === "m") {
         e.preventDefault();
         try {
-          const storageKey = "openconduit_availability";
-          const cur = localStorage.getItem(storageKey);
-          const next = cur === "away" ? "online" : "away";
-          localStorage.setItem(storageKey, next);
-          window.dispatchEvent(new CustomEvent("openconduit:availability-changed"));
+          const cur = readLocalAvailability();
+          const next: UserAvailability = cur === "away" ? "online" : "away";
+          setUserAvailability(next);
         } catch {
         }
         return;
@@ -885,6 +885,7 @@ export function Layout() {
         </main>
       </div>
       <WorkspaceRealtime />
+      <UserAvailabilitySync />
     </div>
     </NvoipVoiceShell>
     </ThreeCxVoiceShell>
