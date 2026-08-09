@@ -19,7 +19,13 @@ export interface AuthUser {
   organizationId?: string | null;
   organization?: { id: string; name: string; slug: string } | null;
   /** Organizações onde o utilizador é membro (multi-tenant). */
-  organizations?: Array<{ id: string; name: string; slug: string; role: string }>;
+  organizations?: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+    logoUrl?: string | null;
+  }>;
   messageSignature?: string | null;
   showAgentNameInChat?: boolean;
   actingOrganizationId?: string | null;

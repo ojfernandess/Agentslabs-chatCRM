@@ -551,6 +551,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       name: m.organization.name,
       slug: m.organization.slug,
       role: m.role as string,
+      logoUrl: m.organization.settings?.organizationLogoUrl ?? null,
     }));
 
     const effectiveRole = await resolveEffectiveRole({

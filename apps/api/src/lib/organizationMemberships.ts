@@ -18,7 +18,14 @@ export async function listMembershipsForUser(userId: string) {
   return prisma.organizationMembership.findMany({
     where: { userId },
     include: {
-      organization: { select: { id: true, name: true, slug: true } },
+      organization: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          settings: { select: { organizationLogoUrl: true } },
+        },
+      },
     },
     orderBy: { createdAt: "asc" },
   });

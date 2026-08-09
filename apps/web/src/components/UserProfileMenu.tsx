@@ -48,6 +48,31 @@ function initialsFromName(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+function OrganizationSwitcherLogo({ logoUrl, name }: { logoUrl?: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  const showLogo = Boolean(logoUrl) && !failed;
+
+  if (showLogo) {
+    return (
+      <img
+        src={logoUrl!}
+        alt={name}
+        className="h-8 w-8 shrink-0 rounded-md bg-white object-contain ring-1 ring-ink-200/80 dark:bg-ink-900 dark:ring-ink-600"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-ink-100 text-ink-500 dark:bg-ink-700 dark:text-ink-300"
+      aria-hidden
+    >
+      <Building2 className="h-4 w-4" />
+    </span>
+  );
+}
+
 interface UserProfileMenuProps {
   user: AuthUser;
   className?: string;
@@ -318,7 +343,7 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
                           switchingOrgId && !busy && "opacity-60",
                         )}
                       >
-                        <Building2 className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-400" />
+                        <OrganizationSwitcherLogo logoUrl={org.logoUrl} name={org.name} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{org.name}</span>
                           <span className="block truncate text-[11px] text-ink-500 dark:text-ink-400">
