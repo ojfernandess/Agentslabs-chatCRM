@@ -297,7 +297,7 @@ export function TeamsCollaborationHub() {
 
   return (
     <PageTransition>
-      <div className="flex min-h-0 min-w-0 flex-col bg-gradient-to-br from-slate-50 via-white to-violet-50/30 dark:from-ink-950 dark:via-ink-950 dark:to-violet-950/20 md:h-[calc(100dvh-3.5rem)]">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-br from-slate-50 via-white to-violet-50/30 dark:from-ink-950 dark:via-ink-950 dark:to-violet-950/20">
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-ink-200/80 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-ink-800 dark:bg-ink-950/80 lg:px-6">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-lg shadow-brand-500/25">

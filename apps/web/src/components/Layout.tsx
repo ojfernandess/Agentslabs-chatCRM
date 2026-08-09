@@ -775,7 +775,7 @@ export function Layout() {
     <WavoipVoiceShell>
     <ThreeCxVoiceShell>
     <NvoipVoiceShell>
-    <div className="flex h-[100dvh] w-full min-w-0 max-w-full overflow-x-clip">
+    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full overflow-x-clip">
       <aside
         className={clsx(
           "hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-in-out dark:border-white/10 dark:bg-ink-950 lg:flex",
