@@ -66,7 +66,17 @@ const SIDEBAR_COLLAPSED_STORAGE = "openconduit_sidebar_collapsed";
 
 function readSidebarCollapsed(): boolean {
   try {
-    return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE) === "1";
+    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE);
+    if (stored === "1") return true;
+    if (stored === "0") return false;
+    // Sem preferência guardada: em notebooks desktop, começar recolhido para a conversa ter mais largura.
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px) and (max-width: 1399px) and (pointer: fine)").matches
+    ) {
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -769,7 +779,7 @@ export function Layout() {
       <aside
         className={clsx(
           "hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-in-out dark:border-white/10 dark:bg-ink-950 lg:flex",
-          sidebarCollapsed ? "w-[4.25rem]" : "w-64",
+          sidebarCollapsed ? "w-[4.25rem]" : "w-52 xl:w-56 2xl:w-64",
         )}
       >
         {renderSidebarContent(sidebarCollapsed, true)}

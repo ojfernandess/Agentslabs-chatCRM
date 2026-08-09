@@ -36,7 +36,6 @@ import {
   LayoutGrid,
   Kanban,
   Clock,
-  ChevronLeft,
   ChevronRight,
   Tag,
   Plus,
@@ -2848,7 +2847,7 @@ export function ConversationDetailPage() {
   return (
     <div
       className={clsx(
-        "relative flex h-full min-h-0",
+        "relative flex h-full min-h-0 min-w-0 overflow-x-hidden",
         emailWorkspaceMode
           ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] xl:flex-row"
           : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
@@ -3076,10 +3075,11 @@ export function ConversationDetailPage() {
                     {copilotEnabled ? (
                       <Link
                         to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
+                        title={t("conversationDetail.linkAiInsights")}
                         className="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
                       >
-                        <Brain className="h-4 w-4" />
-                        {t("conversationDetail.linkAiInsights")}
+                        <Brain className="h-4 w-4 shrink-0" />
+                        <span className="hidden 2xl:inline">{t("conversationDetail.linkAiInsights")}</span>
                       </Link>
                     ) : null}
                     <button
@@ -3411,8 +3411,10 @@ export function ConversationDetailPage() {
           ref={messagesViewportRef}
           onScroll={onMessagesViewportScroll}
           className={clsx(
-            "relative min-h-0 flex-1 overflow-auto",
-            emailWorkspaceMode ? "bg-ink-50 px-3 py-4 dark:bg-[#0E1624] sm:px-5" : "px-3 py-4 sm:px-5",
+            "relative min-h-0 flex-1 overflow-auto overflow-x-hidden",
+            emailWorkspaceMode
+              ? "bg-ink-50 px-3 py-4 dark:bg-[#0E1624] sm:px-5"
+              : "px-3 py-4 sm:px-5 xl:pr-14",
           )}
         >
           {!emailWorkspaceMode ? (
@@ -4110,18 +4112,21 @@ export function ConversationDetailPage() {
 
       <aside
         className={clsx(
-          "min-h-0 shrink-0 flex-col border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70",
+          "min-h-0 shrink-0 flex-col overflow-hidden border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70",
+          // Fechado: sem rail (o toolbar flutuante controla). Aberto: largura fluida, sem roubar a conversa em notebooks.
           emailWorkspaceMode
             ? crmDesktopOpen
-              ? "hidden xl:flex w-[min(100%,320px)]"
+              ? "hidden xl:flex w-[min(100%,min(300px,30vw))] 2xl:w-[min(100%,320px)]"
               : "hidden"
-            : clsx("hidden xl:flex", crmDesktopOpen ? "w-[min(100%,380px)]" : "w-11 overflow-hidden"),
+            : crmDesktopOpen
+              ? "hidden xl:flex w-[min(100%,min(300px,28vw))] 2xl:w-[min(100%,340px)]"
+              : "hidden",
         )}
       >
         <div
           className={clsx(
             "flex shrink-0 items-center border-b border-ink-100 dark:border-white/10",
-            crmDesktopOpen ? "justify-end px-1 py-2" : "justify-center border-0 py-2",
+            "justify-end px-1 py-2",
           )}
         >
           <button
@@ -4132,14 +4137,14 @@ export function ConversationDetailPage() {
             aria-expanded={crmDesktopOpen}
             aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
           >
-            {crmDesktopOpen ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+            <ChevronRight className="h-5 w-5" />
           </button>
         </div>
         {crmDesktopOpen ? <div className="min-h-0 flex-1 overflow-y-auto p-4">{renderCrmPanel()}</div> : null}
       </aside>
 
       {copilotDesktopOpen ? (
-        <aside className="hidden min-h-0 w-[min(100%,360px)] shrink-0 flex-col border-l border-ink-200/90 bg-white/95 dark:border-white/10 dark:bg-[#0F1B2B]/70 xl:flex">
+        <aside className="hidden min-h-0 w-[min(100%,min(300px,28vw))] shrink-0 flex-col overflow-hidden border-l border-ink-200/90 bg-white/95 dark:border-white/10 dark:bg-[#0F1B2B]/70 xl:flex 2xl:w-[min(100%,340px)]">
           <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-3 py-2 dark:border-white/10">
             <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotTitle")}</p>
             <button
