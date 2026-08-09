@@ -39,12 +39,13 @@ export type ConversationListRow = {
 };
 
 const statusColors: Record<string, string> = {
-  OPEN: "badge-status-open",
-  PENDING: "badge-status-pending",
-  RESOLVED: "badge-status-resolved",
+  OPEN: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/55 dark:text-emerald-200",
+  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-950/45 dark:text-amber-200",
+  RESOLVED: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300",
 };
 
-const awaitingHumanBadgeClass = "badge-alert";
+const awaitingHumanBadgeClass =
+  "inline-flex shrink-0 items-center gap-0.5 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm ring-1 ring-red-700/30 dark:bg-red-600 dark:text-white dark:ring-red-500/40";
 
 function formatListTimestamp(iso: string, dateLocale: Locale): string {
   const date = new Date(iso);
@@ -117,12 +118,12 @@ export function ConversationListItem({
           onFocus={onPrefetch}
           className={({ isActive }) =>
             clsx(
-              "flex min-w-0 flex-1 gap-2.5 border-b inbox-hairline-soft px-3 py-2.5 transition",
+              "flex min-w-0 flex-1 gap-2.5 border-b border-ink-100 px-3 py-2.5 transition dark:border-ink-800",
               priorityListCardClass(conv.priority),
               conv.isUnread && "bg-brand-50/40 dark:bg-brand-950/20",
               isActive || isSelected
-                ? "border-l-2 border-l-brand-500 bg-brand-50/60 dark:bg-brand-950/35"
-                : "border-l-2 border-l-transparent hover:bg-ink-50/80 dark:hover:bg-ink-900/40",
+                ? "border-l-[3px] border-l-brand-500 bg-brand-50/70 dark:bg-brand-950/35"
+                : "border-l-[3px] border-l-transparent hover:bg-ink-50/80 dark:hover:bg-ink-900/40",
             )
           }
         >
@@ -160,23 +161,26 @@ export function ConversationListItem({
                 <div className="mt-0.5 flex flex-wrap items-center gap-1">
                   <span
                     className={clsx(
-                      "badge-status",
+                      "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none",
                       statusColors[conv.status] ?? statusColors.OPEN,
                     )}
                   >
                     {statusLabel(conv.status)}
                   </span>
                   {channelLabel ? (
-                    <span className="badge-meta" title={conv.inbox?.name}>
+                    <span
+                      className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
+                      title={conv.inbox?.name}
+                    >
                       {channelLabel}
                     </span>
                   ) : null}
                   {showBotBadge ? (
                     <span
-                      className="badge-meta"
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
                       title={t("conversationDetail.botTriageBanner")}
                     >
-                      <Bot className="h-2.5 w-2.5" aria-hidden />
+                      <Bot className="h-3 w-3" aria-hidden />
                       {hasHumanAssignee
                         ? t("conversationDetail.transferToBot")
                         : t("conversationDetail.botInAttendance")}
@@ -187,7 +191,7 @@ export function ConversationListItem({
                       className={awaitingHumanBadgeClass}
                       title={t("conversationDetail.awaitingHumanBanner")}
                     >
-                      <Headset className="h-2.5 w-2.5" aria-hidden />
+                      <Headset className="h-3 w-3" aria-hidden />
                       {t("conversationDetail.awaitingHumanBadge")}
                     </span>
                   ) : null}
@@ -223,17 +227,17 @@ export function ConversationListItem({
               (conv.status === "OPEN" || conv.status === "PENDING") ? (
                 splitView ? (
                   <span
-                    className="badge-status badge-status-open max-w-full flex-wrap gap-1"
+                    className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-emerald-200/80 bg-emerald-50 px-2 py-0.5 dark:border-emerald-800/45 dark:bg-emerald-950/40"
                     title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
                   >
-                    <UserCircle className="h-3 w-3 shrink-0" aria-hidden />
-                    <span className="break-words font-semibold leading-snug">
+                    <UserCircle className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
+                    <span className="break-words text-[11px] font-semibold leading-snug text-emerald-900 dark:text-emerald-100">
                       {conv.assignedTo!.name}
                     </span>
                   </span>
                 ) : (
                   <span
-                    className="badge-status badge-status-open"
+                    className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
                     title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
                   >
                     {t("conversations.inAttendance")}
@@ -271,7 +275,7 @@ export function ConversationListItem({
               ) : null}
               {conv.status === "RESOLVED" && conv.leadType ? (
                 <span
-                  className="badge-tag max-w-[7rem] truncate"
+                  className="shrink-0 truncate rounded px-1.5 py-0.5 font-semibold text-white"
                   style={{ backgroundColor: conv.leadType.color }}
                   title={conv.leadType.name}
                 >
@@ -289,7 +293,7 @@ export function ConversationListItem({
               {displayTags.slice(0, 2).map(({ tag }) => (
                 <span
                   key={tag.id}
-                  className="badge-tag max-w-[5.5rem] truncate"
+                  className="shrink-0 truncate rounded px-1.5 py-0.5 font-semibold text-white"
                   style={{ backgroundColor: tag.color }}
                   title={tag.name}
                 >
@@ -307,7 +311,7 @@ export function ConversationListItem({
           </div>
         </NavLink>
 
-        <div className="flex shrink-0 items-center border-b inbox-hairline-soft pr-2">
+        <div className="flex shrink-0 items-center border-b border-ink-100 pr-2 dark:border-ink-800">
           <TelephonyCallButton
             phone={conv.contact.phone}
             inboxId={conv.inbox?.id}

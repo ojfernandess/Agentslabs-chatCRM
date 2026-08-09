@@ -2084,20 +2084,16 @@ export function ConversationDetailPage() {
 
   const renderCrmPanel = (opts?: { showMobileClose?: boolean }) => {
     const parsedContactNotes = parseContactNotes(conversation.contact.notes);
-    const contactInitials = conversation.contact.name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0]?.toUpperCase() ?? "")
-      .join("") || "?";
     return (
-    <div className="flex min-h-0 flex-col gap-0">
-      <div className="flex items-start justify-between gap-2 border-b inbox-hairline-soft pb-3">
-        <p className="crm-section-title">{t("conversationDetail.crmPanelTitle")}</p>
+    <div className="flex min-h-0 flex-col gap-4">
+      <div className="flex items-start justify-between gap-2 border-b border-ink-100 pb-3 dark:border-white/10">
+        <p className="text-xs font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
+          {t("conversationDetail.crmPanelTitle")}
+        </p>
         {opts?.showMobileClose ? (
           <button
             type="button"
-            className="shrink-0 rounded border inbox-hairline bg-white px-2.5 py-1 text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:bg-white/5 dark:text-ink-200 dark:hover:bg-white/10"
+            className="shrink-0 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-200 dark:shadow-none dark:hover:bg-white/10"
             onClick={() => setCrmMobileOpen(false)}
           >
             {t("common.close")}
@@ -2105,127 +2101,70 @@ export function ConversationDetailPage() {
         ) : null}
       </div>
 
-      <div className="pt-3">
-        <div className="flex items-start gap-3">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700 dark:bg-brand-950/50 dark:text-brand-300"
-            aria-hidden
-          >
-            {contactInitials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{conversation.contact.name}</p>
-            {(() => {
-              const phone = conversation.contact.phone ?? "";
-              const phoneDigits = phone.replace(/\D/g, "");
-              const hasPhone = phoneDigits.length > 0;
-              return (
-                <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
-                  <span className="truncate">{phone}</span>
-                  {hasPhone ? (
-                    <TelephonyCallButton
-                      phone={phone}
-                      inboxId={conversation.inbox?.id}
-                      conversationId={conversation.id}
-                      contactId={conversation.contact.id}
-                      activeVoiceCall={conversation.activeVoiceCall}
-                      iconOnly
-                      compact
-                    />
-                  ) : null}
-                </div>
-              );
-            })()}
-            {(() => {
-              const hasEmail = Boolean(conversation.contact.email?.trim());
-              const btnClass =
-                "flex h-8 w-8 items-center justify-center rounded border inbox-hairline bg-white text-ink-700 transition hover:bg-ink-50 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10";
-              const disabledClass = "pointer-events-none opacity-40";
-              return (
-                <div className="mt-2 flex items-center gap-1.5">
-                  <a
-                    href={hasEmail ? `mailto:${conversation.contact.email}` : undefined}
-                    className={clsx(btnClass, !hasEmail && disabledClass)}
-                    aria-label={t("conversationDetail.email")}
-                    title={t("conversationDetail.email")}
-                  >
-                    <Mail className="h-3.5 w-3.5" />
-                  </a>
-                  <Link
-                    to={`/contacts/${conversation.contact.id}`}
-                    onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
-                    className={btnClass}
-                    aria-label={t("conversationDetail.openContactCrm")}
-                    title={t("conversationDetail.openContactCrm")}
-                  >
-                    <MoreHorizontal className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-
-        <div className="crm-panel-section mt-3">
-          <p className="crm-section-title mb-1">{t("conversationDetail.crmTabContact")}</p>
-          <dl className="divide-y divide-ink-100 dark:divide-white/5">
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("contacts.fieldName")}</dt>
-              <dd className="crm-field-value break-words">{conversation.contact.name}</dd>
+      <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#111C2B]/55 dark:shadow-none">
+        <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{conversation.contact.name}</p>
+        {(() => {
+          const phone = conversation.contact.phone ?? "";
+          const phoneDigits = phone.replace(/\D/g, "");
+          const hasPhone = phoneDigits.length > 0;
+          return (
+            <div className="mt-1 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
+              <span>{phone}</span>
+              {hasPhone ? (
+                <TelephonyCallButton
+                  phone={phone}
+                  inboxId={conversation.inbox?.id}
+                  conversationId={conversation.id}
+                  contactId={conversation.contact.id}
+                  activeVoiceCall={conversation.activeVoiceCall}
+                  iconOnly
+                  compact
+                />
+              ) : null}
             </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("contacts.fieldPhone")}</dt>
-              <dd className="crm-field-value break-all">{conversation.contact.phone || "—"}</dd>
+          );
+        })()}
+        {conversation.contact.email ? (
+          <p className="mt-1 text-xs text-ink-600 dark:text-ink-300">
+            <span className="font-medium text-ink-700 dark:text-ink-200">{t("conversationDetail.email")}:</span>{" "}
+            {conversation.contact.email}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-ink-500 dark:text-ink-500">
+            <span className="font-medium">{t("conversationDetail.email")}:</span> {t("conversationDetail.noDealValue")}
+          </p>
+        )}
+        {(() => {
+          const hasEmail = Boolean(conversation.contact.email?.trim());
+          const btnClass =
+            "flex h-9 w-9 items-center justify-center rounded-xl border border-ink-200 bg-white text-ink-700 shadow-sm transition hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10";
+          const disabledClass = "pointer-events-none opacity-40";
+          return (
+            <div className="mt-3 flex items-center gap-2">
+              <a
+                href={hasEmail ? `mailto:${conversation.contact.email}` : undefined}
+                className={clsx(btnClass, !hasEmail && disabledClass)}
+                aria-label={t("conversationDetail.email")}
+                title={t("conversationDetail.email")}
+              >
+                <Mail className="h-4 w-4" />
+              </a>
+              <Link
+                to={`/contacts/${conversation.contact.id}`}
+                onClick={() => opts?.showMobileClose && setCrmMobileOpen(false)}
+                className={btnClass}
+                aria-label={t("conversationDetail.openContactCrm")}
+                title={t("conversationDetail.openContactCrm")}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Link>
             </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("conversationDetail.email")}</dt>
-              <dd className="crm-field-value break-all">
-                {conversation.contact.email?.trim() || t("conversationDetail.noDealValue")}
-              </dd>
-            </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("conversationDetail.leadSource")}</dt>
-              <dd className="crm-field-value">
-                {conversation.contact.createdBy?.name ?? t("audit.sourceInbound")}
-              </dd>
-            </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("audit.contactOwner")}</dt>
-              <dd className="crm-field-value">
-                {conversation.contact.assignedTo?.name ?? t("conversationDetail.handoffUnassigned")}
-              </dd>
-            </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("conversationDetail.team")}</dt>
-              <dd className="crm-field-value">
-                {conversation.team?.name ?? t("conversationDetail.noTeam")}
-              </dd>
-            </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("conversationDetail.tagsSection")}</dt>
-              <dd className="crm-field-value">
-                {(conversation.contact.tags ?? []).length === 0 ? (
-                  <span className="font-normal text-ink-400">{t("conversationDetail.tagsEmpty")}</span>
-                ) : (
-                  <span className="flex flex-wrap justify-end gap-1">
-                    {(conversation.contact.tags ?? []).map((ct) => (
-                      <span
-                        key={ct.tag.id}
-                        className="badge-tag"
-                        style={{ backgroundColor: ct.tag.color }}
-                      >
-                        {ct.tag.name}
-                      </span>
-                    ))}
-                  </span>
-                )}
-              </dd>
-            </div>
-          </dl>
-        </div>
-
-        <div className="crm-panel-section">
-          <p className="crm-section-title">{t("conversationDetail.blockContact")}</p>
+          );
+        })()}
+        <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-white/10">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+            {t("conversationDetail.blockContact")}
+          </p>
           <p className="mt-1 text-[10px] leading-snug text-ink-500 dark:text-ink-500">
             {t("conversationDetail.contactBlockedHint")}
           </p>
@@ -2234,7 +2173,7 @@ export function ConversationDetailPage() {
             disabled={contactBlockBusy}
             onClick={() => void toggleContactBlocked()}
             className={clsx(
-              "mt-2 inline-flex w-full items-center justify-center gap-2 rounded border px-3 py-2 text-xs font-semibold transition disabled:opacity-50",
+              "mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:opacity-50",
               conversation.contact.isBlocked
                 ? "border-emerald-200 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40"
                 : "border-red-200 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-900/45 dark:bg-red-950/35 dark:text-red-200 dark:hover:bg-red-900/40",
@@ -2250,8 +2189,10 @@ export function ConversationDetailPage() {
               : t("conversationDetail.blockContact")}
           </button>
         </div>
-        <div className="crm-panel-section">
-          <p className="crm-section-title">{t("conversationDetail.prioritySection")}</p>
+        <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-ink-700">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+            {t("conversationDetail.prioritySection")}
+          </p>
           <p className="mt-1 text-[10px] leading-snug text-ink-500 dark:text-ink-500">
             {t("conversationDetail.priorityHint")}
           </p>
@@ -2272,9 +2213,11 @@ export function ConversationDetailPage() {
           const assignedIds = new Set(assigned.map((x) => x.tag.id));
           const availableToAdd = orgTags.filter((x) => !assignedIds.has(x.id));
           return (
-            <div className="crm-panel-section">
+            <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-ink-700">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="crm-section-title">{t("conversationDetail.tagsSection")}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                  {t("conversationDetail.tagsSection")}
+                </p>
                 {tenantAdmin ? (
                   <div className="flex flex-wrap gap-1">
                     <button
@@ -2284,7 +2227,7 @@ export function ConversationDetailPage() {
                         void refreshOrgTags();
                         openTagModalCreate(false);
                       }}
-                      className="inline-flex items-center gap-1 rounded border inbox-hairline bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                      className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
                     >
                       <Plus className="h-3 w-3" />
                       {t("conversationDetail.tagNew")}
@@ -2296,7 +2239,7 @@ export function ConversationDetailPage() {
                         void refreshOrgTags();
                         openTagModalManage();
                       }}
-                      className="inline-flex items-center gap-1 rounded border inbox-hairline bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                      className="inline-flex items-center gap-1 rounded-lg border border-ink-200 bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
                     >
                       <Pencil className="h-3 w-3" />
                       {t("conversationDetail.tagManage")}
@@ -2304,14 +2247,14 @@ export function ConversationDetailPage() {
                   </div>
                 ) : null}
               </div>
-              <div className="mt-2 flex flex-wrap gap-1">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {assigned.length === 0 ? (
                   <p className="text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.tagsEmpty")}</p>
                 ) : (
                   assigned.map((ct) => (
                     <span
                       key={ct.tag.id}
-                      className="badge-tag group gap-0.5"
+                      className="group inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
                       style={{ backgroundColor: ct.tag.color }}
                     >
                       <Tag className="h-2.5 w-2.5 shrink-0 opacity-90" />
@@ -2320,10 +2263,10 @@ export function ConversationDetailPage() {
                         type="button"
                         disabled={tagBusy}
                         title={t("conversationDetail.tagRemove")}
-                        className="rounded p-0.5 opacity-80 hover:bg-white/20 hover:opacity-100 disabled:opacity-40"
+                        className="rounded-full p-0.5 opacity-80 hover:bg-white/20 hover:opacity-100 disabled:opacity-40"
                         onClick={() => void removeContactTag(ct.tag.id)}
                       >
-                        <X className="h-2.5 w-2.5" />
+                        <X className="h-3 w-3" />
                       </button>
                     </span>
                   ))
@@ -2334,7 +2277,7 @@ export function ConversationDetailPage() {
                   value={tagAddSelectId}
                   onChange={(e) => setTagAddSelectId(e.target.value)}
                   disabled={tagBusy || availableToAdd.length === 0}
-                  className="min-w-0 flex-1 rounded border inbox-hairline bg-white px-2 py-1.5 text-xs text-ink-800 dark:bg-ink-900 dark:text-ink-100"
+                  className="min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-800 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
                   aria-label={t("conversationDetail.tagSelectPlaceholder")}
                 >
                   <option value="">{t("conversationDetail.tagSelectPlaceholder")}</option>
@@ -2348,7 +2291,7 @@ export function ConversationDetailPage() {
                   type="button"
                   disabled={tagBusy || !tagAddSelectId}
                   onClick={() => void addContactTag(tagAddSelectId)}
-                  className="shrink-0 rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
+                  className="shrink-0 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
                 >
                   {t("conversationDetail.tagAdd")}
                 </button>
@@ -2361,21 +2304,29 @@ export function ConversationDetailPage() {
             </div>
           );
         })()}
-        <div className="crm-panel-section">
-          <div className="flex items-center justify-between gap-2">
-            <p className="crm-section-title">{t("conversationDetail.contactNotes")}</p>
-            <span className="text-[10px] text-ink-400">{t("conversationDetail.contactNotesAddHint")}</span>
-          </div>
-          <div className="mt-2 max-h-52 overflow-y-auto rounded border inbox-hairline bg-ink-50/50 px-2.5 py-2 dark:bg-white/5">
+        <p className="mt-2 text-[11px] text-ink-600 dark:text-ink-400">
+          <span className="font-medium text-ink-700 dark:text-ink-300">{t("conversationDetail.leadSource")}:</span>{" "}
+          {conversation.contact.createdBy?.name ?? t("audit.sourceInbound")}
+        </p>
+        <p className="mt-1 text-[11px] text-ink-600 dark:text-ink-400">
+          <span className="font-medium text-ink-700 dark:text-ink-300">{t("audit.contactOwner")}:</span>{" "}
+          {conversation.contact.assignedTo?.name ?? t("conversationDetail.handoffUnassigned")}
+        </p>
+        <div className="mt-3 border-t border-ink-200/80 pt-3 dark:border-white/10">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+            {t("conversationDetail.contactNotes")}
+          </p>
+          <p className="mt-1 text-[10px] text-ink-500 dark:text-ink-400">{t("conversationDetail.contactNotesAddHint")}</p>
+          <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-ink-200/80 bg-ink-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/5">
             {parsedContactNotes.length > 0 ? (
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {parsedContactNotes.map((note, index) => {
                   const canManage = Boolean(user?.id && note.createdById === user.id);
                   const isEditing = editingContactNoteIndex === index;
                   return (
                     <li
                       key={`${note.headerLine}-${index}`}
-                      className="rounded border inbox-hairline-soft bg-white/90 px-2 py-1.5 dark:bg-ink-950/40"
+                      className="rounded-lg border border-ink-200/70 bg-white/80 px-2.5 py-2 dark:border-white/10 dark:bg-ink-950/40"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-[10px] font-medium text-ink-500 dark:text-ink-400">{note.headerLine}</p>
@@ -2410,7 +2361,7 @@ export function ConversationDetailPage() {
                             value={editingContactNoteDraft}
                             onChange={(e) => setEditingContactNoteDraft(e.target.value)}
                             rows={3}
-                            className="w-full resize-y rounded border inbox-hairline bg-white px-2 py-1.5 text-xs text-ink-900 dark:bg-ink-900 dark:text-ink-50"
+                            className="w-full resize-y rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-900 dark:border-white/10 dark:bg-ink-900 dark:text-ink-50"
                           />
                           <div className="flex justify-end gap-2">
                             <button
@@ -2420,7 +2371,7 @@ export function ConversationDetailPage() {
                                 setEditingContactNoteDraft("");
                               }}
                               disabled={contactNotesBusy}
-                              className="rounded border inbox-hairline px-2 py-1 text-[11px] font-semibold text-ink-700 dark:text-ink-200"
+                              className="rounded-lg border border-ink-200 px-2 py-1 text-[11px] font-semibold text-ink-700 dark:border-white/10 dark:text-ink-200"
                             >
                               {t("common.cancel")}
                             </button>
@@ -2428,7 +2379,7 @@ export function ConversationDetailPage() {
                               type="button"
                               onClick={() => void saveEditedContactNote()}
                               disabled={contactNotesBusy || !editingContactNoteDraft.trim()}
-                              className="rounded bg-brand-500 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                              className="rounded-lg bg-brand-500 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
                             >
                               {contactNotesBusy ? t("common.saving") : t("common.save")}
                             </button>
@@ -2450,32 +2401,32 @@ export function ConversationDetailPage() {
           <textarea
             value={newContactNoteDraft}
             onChange={(e) => setNewContactNoteDraft(e.target.value)}
-            rows={2}
+            rows={3}
             placeholder={t("conversationDetail.contactNotesComposePlaceholder")}
-            className="mt-2 w-full resize-y rounded border inbox-hairline bg-white px-2.5 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 dark:bg-white/5 dark:text-ink-50 dark:placeholder:text-ink-500"
+            className="mt-2 w-full resize-y rounded-xl border border-ink-200 bg-white/90 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 shadow-sm focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 dark:border-white/10 dark:bg-white/5 dark:text-ink-50 dark:placeholder:text-ink-500 dark:shadow-none"
           />
           <div className="mt-2 flex justify-end">
             <button
               type="button"
               onClick={() => void addContactNote()}
               disabled={contactNotesBusy || !newContactNoteDraft.trim()}
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-brand-600 hover:text-brand-500 disabled:opacity-50 dark:text-brand-400"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500"
             >
               <Plus className="h-3.5 w-3.5" />
               {contactNotesBusy ? t("common.saving") : t("conversationDetail.contactNotesAdd")}
             </button>
           </div>
           {contactNotesError ? (
-            <p className="mt-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/35 dark:text-rose-100">
+            <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/35 dark:text-rose-100">
               {contactNotesError}
             </p>
           ) : null}
         </div>
       </div>
 
-      <div className="mt-1 space-y-0">
-        <div className="crm-panel-section">
-        <p className="crm-section-title">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#111C2B]/55 dark:shadow-none">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
           {t("conversationDetail.dealValue")} / {t("conversationDetail.pipelineStage")}
         </p>
         {funnelEnabled ? (
@@ -2483,7 +2434,7 @@ export function ConversationDetailPage() {
             {conversation.contact.pipelineStage ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span
-                  className="badge-tag"
+                  className="inline-flex items-center rounded-lg px-2 py-1 text-xs font-semibold text-white"
                   style={{ backgroundColor: conversation.contact.pipelineStage.color }}
                 >
                   {conversation.contact.pipelineStage.name}
@@ -2543,8 +2494,8 @@ export function ConversationDetailPage() {
       </div>
 
       {tenantAdmin ? (
-        <div className="crm-panel-section">
-          <p className="crm-section-title">{t("conversationDetail.team")}</p>
+        <div className="rounded-2xl border border-ink-200/80 bg-white/70 p-4 backdrop-blur-sm dark:border-ink-800 dark:bg-ink-950/20">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">{t("conversationDetail.team")}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <label htmlFor="conv-team-aside" className="sr-only">
               {t("conversationDetail.assignTeam")}
@@ -2575,14 +2526,14 @@ export function ConversationDetailPage() {
       ) : null}
 
       {conversation.closureRecords && conversation.closureRecords.length > 0 ? (
-        <details className="crm-panel-section !border-t !pt-3">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400 [&::-webkit-details-marker]:hidden">
+        <details className="rounded-xl border border-ink-200/70 bg-ink-50/40 dark:border-white/10 dark:bg-white/[0.03]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400 [&::-webkit-details-marker]:hidden">
             <span>{t("conversationDetail.attendanceHistoryTitle")}</span>
-            <span className="badge-count bg-ink-100 text-ink-600 dark:bg-white/10 dark:text-ink-300">
+            <span className="rounded-full bg-ink-200/80 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-ink-600 dark:bg-white/10 dark:text-ink-300">
               {conversation.closureRecords.length}
             </span>
           </summary>
-          <div className="mt-1 divide-y divide-ink-100 border-t inbox-hairline-soft dark:divide-white/5">
+          <div className="divide-y divide-ink-200/60 border-t border-ink-200/60 dark:divide-white/10 dark:border-white/10">
             {conversation.closureRecords.map((rec) => {
               const historyRollupRows = conversation.closureRecords!.map((r) => ({
                 conversationId: conversation.id,
@@ -2729,8 +2680,8 @@ export function ConversationDetailPage() {
         conversation.csatScore != null ||
         conversation.csatSurveyPending ||
         (conversation.closureValue != null && conversation.closureValue > 0)) ? (
-        <div className="crm-panel-section rounded border border-brand-200/60 bg-brand-50/40 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
-          <p className="crm-section-title text-brand-800 dark:text-brand-300">
+        <div className="rounded-2xl border border-brand-200/60 bg-brand-50/40 p-4 dark:border-brand-900/40 dark:bg-brand-950/20">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-brand-800 dark:text-brand-300">
             {t("conversationDetail.resolvedSummary")}
           </p>
           {conversation.leadType ? (
@@ -2794,9 +2745,9 @@ export function ConversationDetailPage() {
         </p>
       ) : null}
 
-      <div className="crm-panel-section">
+      <div className="rounded-2xl border border-ink-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-[#111C2B]/55 dark:shadow-none">
         <div className="flex items-start justify-between gap-2">
-          <p className="crm-section-title">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
             {t("conversationDetail.recentHistoryTitle")}
           </p>
           <Link
@@ -2819,51 +2770,53 @@ export function ConversationDetailPage() {
               const at = new Date(ev.occurredAt);
               const timeStr = format(at, "HH:mm", { locale: dateLocale });
               const iconWrap =
-                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border inbox-hairline bg-white dark:bg-ink-900";
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-ink-200/90 bg-white shadow-sm dark:border-ink-600 dark:bg-ink-900";
               let icon: ReactNode = <Circle className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.5} />;
               if (ev.eventType === "conversation.handoff") {
-                icon = <ArrowRightLeft className="h-3.5 w-3.5 text-violet-500" />;
+                icon = <ArrowRightLeft className="h-4 w-4 text-violet-500" />;
               } else if (ev.eventType.startsWith("deal.")) {
-                icon = <Briefcase className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />;
+                icon = <Briefcase className="h-4 w-4 text-amber-600 dark:text-amber-400" />;
               } else if (ev.eventType === "message.inbound" || ev.eventType === "message.outbound") {
                 const wa = (ev.channel ?? "").toLowerCase() === "whatsapp";
                 icon = wa ? (
-                  <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                  <WhatsAppBrandIcon className="h-4 w-4" />
                 ) : (
-                  <MessageSquare className="h-3.5 w-3.5 text-ink-500 dark:text-ink-400" />
+                  <MessageSquare className="h-4 w-4 text-ink-500 dark:text-ink-400" />
                 );
               } else if (ev.eventType === "conversation.started") {
                 const waStart = (ev.channel ?? "").toLowerCase() === "whatsapp";
                 icon = waStart ? (
-                  <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                  <WhatsAppBrandIcon className="h-4 w-4" />
                 ) : (
-                  <MessageSquare className="h-3.5 w-3.5 text-ink-500 dark:text-ink-400" />
+                  <MessageSquare className="h-4 w-4 text-ink-500 dark:text-ink-400" />
                 );
               } else if (
                 ev.eventType === "wavoip_call" ||
                 ev.eventType === "threecx_call" ||
                 ev.eventType === "nvoip_call"
               ) {
-                icon = <PhoneCall className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />;
+                icon = <PhoneCall className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />;
               }
               const showLine = index < contactTimelinePreview.length - 1;
               return (
-                <div key={ev.id} className="relative flex gap-2.5 pb-3 last:pb-0">
+                <div key={ev.id} className="relative flex gap-3 pb-4 last:pb-0">
                   {showLine ? (
                     <div
-                      className="absolute top-7 bottom-0 left-[13px] w-px bg-ink-200 dark:bg-ink-600"
+                      className="absolute top-8 bottom-0 left-[15px] w-px bg-ink-200 dark:bg-ink-600"
                       aria-hidden
                     />
                   ) : null}
                   <div className={iconWrap}>{icon}</div>
                   <div className="min-w-0 flex-1 pt-0.5">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <time dateTime={ev.occurredAt} className="text-[11px] font-semibold tabular-nums text-ink-500 dark:text-ink-400">
+                      <time dateTime={ev.occurredAt} className="text-xs font-semibold tabular-nums text-ink-500 dark:text-ink-400">
                         {timeStr}
                       </time>
-                      <span className="text-[11px] font-semibold text-ink-900 dark:text-ink-100">{title}</span>
+                      <span className="text-xs font-semibold text-ink-900 dark:text-ink-100">{title}</span>
                       {channel ? (
-                        <span className="badge-meta">{channel}</span>
+                        <span className="rounded-full bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-600 dark:bg-ink-800 dark:text-ink-300">
+                          {channel}
+                        </span>
                       ) : null}
                     </div>
                     {summary ? (
@@ -2973,7 +2926,7 @@ export function ConversationDetailPage() {
         ) : null}
         {!emailWorkspaceMode ? (
         <motion.div
-          className="shrink-0 border-b inbox-hairline bg-white dark:bg-[#0F1B2B]"
+          className="shrink-0 border-b border-ink-200/70 bg-white/85 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-[#0F1B2B]/55"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
@@ -3024,15 +2977,18 @@ export function ConversationDetailPage() {
                       </h2>
                       <span
                         className={clsx(
-                          "badge-status",
-                          conversation.status === "OPEN" && "badge-status-open",
-                          conversation.status === "PENDING" && "badge-status-pending",
-                          conversation.status === "RESOLVED" && "badge-status-resolved",
+                          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          conversation.status === "OPEN" &&
+                            "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200",
+                          conversation.status === "PENDING" &&
+                            "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200",
+                          conversation.status === "RESOLVED" &&
+                            "bg-ink-200 text-ink-700 dark:bg-white/10 dark:text-ink-200",
                         )}
                       >
                         {statusLabel(conversation.status)}
                       </span>
-                      <ConversationPriorityBadge priority={conversation.priority} variant="compact" />
+                      <ConversationPriorityBadge priority={conversation.priority} />
                       <WavoipConversationOnCallBadge conversationId={conversation.id} />
                       {conversation.activeVoiceCall?.provider === "wavoip" ? (
                         <WavoipForceEndCallButton
@@ -3052,10 +3008,10 @@ export function ConversationDetailPage() {
                       {hasHumanAssignee &&
                       (conversation.status === "OPEN" || conversation.status === "PENDING") ? (
                         <span
-                          className="badge-status badge-status-open max-w-full flex-wrap"
+                          className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
                           title={`${conversation.assignedTo?.name ?? ""} · ${t("conversations.inAttendance")}`}
                         >
-                          <Headset className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                          <Headset className="h-3 w-3 shrink-0" aria-hidden />
                           {isSplitLayout ? (
                             <span className="break-words font-semibold normal-case tracking-normal">
                               {conversation.assignedTo?.name}
@@ -3066,10 +3022,10 @@ export function ConversationDetailPage() {
                         </span>
                       ) : conversation.awaitingHumanHandoff ? (
                         <span
-                          className="badge-alert"
+                          className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm ring-1 ring-red-700/30 dark:bg-red-600 dark:ring-red-500/40"
                           title={t("conversationDetail.awaitingHumanBanner")}
                         >
-                          <Headset className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                          <Headset className="h-3 w-3 shrink-0" aria-hidden />
                           {t("conversationDetail.awaitingHumanBadge")}
                         </span>
                       ) : null}
@@ -3137,11 +3093,11 @@ export function ConversationDetailPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {conversation.contact.tags?.map((ct) => (
                     <span
                       key={ct.tag.id}
-                      className="badge-tag"
+                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
                       style={{ backgroundColor: ct.tag.color }}
                     >
                       {ct.tag.name}
@@ -3149,7 +3105,7 @@ export function ConversationDetailPage() {
                   ))}
                   {conversation.status === "RESOLVED" && conversation.leadType ? (
                     <span
-                      className="badge-tag"
+                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
                       style={{ backgroundColor: conversation.leadType.color }}
                     >
                       {conversation.leadType.name}
@@ -3194,7 +3150,7 @@ export function ConversationDetailPage() {
 
           <div
             className={clsx(
-              "flex flex-wrap items-center gap-1.5 border-t inbox-hairline-soft",
+              "flex flex-wrap items-center gap-1.5 border-t border-ink-100/80 dark:border-white/10",
               isSplitLayout
                 ? "px-2.5 pb-2.5 pt-2 lg:px-3"
                 : "mt-3 gap-2 px-3 pb-3 pt-3 lg:mt-4 lg:border-t-0 lg:pt-0 lg:px-5",
@@ -3202,10 +3158,13 @@ export function ConversationDetailPage() {
           >
             {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
               <span
-                className="badge-meta"
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200",
+                  actionBtnSize,
+                )}
                 title={t("conversationDetail.botTriageBanner")}
               >
-                <Bot className="h-2.5 w-2.5" />
+                <Bot className="h-3.5 w-3.5" />
                 {t("conversationDetail.botInAttendance")}
               </span>
             ) : null}
@@ -3700,10 +3659,10 @@ export function ConversationDetailPage() {
 
         <motion.div
           className={clsx(
-            "w-full min-w-0 shrink-0 border-t inbox-hairline",
+            "w-full min-w-0 shrink-0 border-t",
             emailWorkspaceMode
-              ? "bg-[#f8fafc] px-4 py-3 dark:bg-[#0B1220]"
-              : "bg-white px-3 py-2.5 dark:bg-[#0F1B2B] sm:px-4",
+              ? "border-ink-200 bg-[#f8fafc] px-4 py-4 dark:border-ink-800 dark:bg-[#0B1220]"
+              : "border-ink-200 bg-white/95 px-3 py-3 shadow-[0_-6px_20px_-12px_rgba(0,0,0,0.12)] backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/65 sm:px-5",
           )}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -3712,18 +3671,22 @@ export function ConversationDetailPage() {
           <form onSubmit={handleSend} className="w-full min-w-0">
             <div
               className={clsx(
-                "composer-shell",
-                emailWorkspaceMode && "dark:border-ink-700",
+                "w-full min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-[#111C2B]/70",
+                emailWorkspaceMode
+                  ? "border-ink-200 dark:border-ink-700"
+                  : "border-ink-200 dark:border-white/10",
               )}
             >
-              <div className="flex min-w-0 flex-wrap items-end gap-2 border-b inbox-hairline-soft px-2">
-                <div className="flex min-w-0 flex-1 items-center gap-0">
+              <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-ink-100 px-2 pt-2 dark:border-white/10">
+                <div className="flex min-w-0 flex-1 items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setPrivateNote(false)}
                     className={clsx(
-                      "composer-tab",
-                      !privateNote && "composer-tab-active",
+                      "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                      !privateNote
+                        ? "bg-ink-200 text-ink-900 dark:bg-white/10 dark:text-ink-50"
+                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-white/5 dark:hover:text-ink-50",
                     )}
                   >
                     {isEmailInbox ? t("conversationDetail.composerEmailTab") : t("conversationDetail.composerReplyTab")}
@@ -3732,15 +3695,17 @@ export function ConversationDetailPage() {
                     type="button"
                     onClick={() => setPrivateNote(true)}
                     className={clsx(
-                      "composer-tab inline-flex items-center gap-1",
-                      privateNote && "composer-tab-active",
+                      "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                      privateNote
+                        ? "bg-ink-200 text-ink-900 dark:bg-white/10 dark:text-ink-50"
+                        : "text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-white/5 dark:hover:text-ink-50",
                     )}
                   >
                     <Lock className="h-3 w-3 opacity-70" />
                     {t("conversationDetail.composerPrivateTab")}
                   </button>
                 </div>
-                <div className="flex shrink-0 items-center gap-1 pb-1.5">
+                <div className="flex shrink-0 items-center gap-1 pb-0.5">
                   {copilotEnabled ? (
                     <motion.button
                       type="button"
@@ -3755,13 +3720,13 @@ export function ConversationDetailPage() {
                       }
                       onClick={() => void handleAiSuggestReply()}
                       title={suggestReplyBusy ? t("conversationDetail.generateReplyBusy") : t("conversationDetail.generateReply")}
-                      className="flex h-7 w-7 items-center justify-center rounded text-violet-700 hover:bg-violet-50 disabled:opacity-40 dark:text-violet-300 dark:hover:bg-violet-950/40"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200/80 bg-violet-50 text-violet-800 hover:bg-violet-100/90 disabled:opacity-40 dark:border-violet-800/50 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/50"
                       whileTap={{ scale: 0.94 }}
                     >
                       {suggestReplyBusy ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <Sparkles className="h-3.5 w-3.5" />
+                        <Sparkles className="h-4 w-4" />
                       )}
                     </motion.button>
                   ) : null}
@@ -3769,10 +3734,10 @@ export function ConversationDetailPage() {
                     type="button"
                     onClick={() => setComposerExpanded((e) => !e)}
                     disabled={!!voicePreview || recording}
-                    className="flex h-7 w-7 items-center justify-center rounded text-ink-500 hover:bg-ink-50 disabled:opacity-40 dark:text-ink-400 dark:hover:bg-ink-800"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 disabled:opacity-40 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300 dark:hover:bg-ink-800"
                     title={composerExpanded ? t("conversationDetail.composerCollapse") : t("conversationDetail.composerExpand")}
                   >
-                    {composerExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                    {composerExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                   </button>
                 </div>
               </div>
@@ -3891,7 +3856,7 @@ export function ConversationDetailPage() {
                 onChange={onFileInputChange}
               />
 
-              <div className="composer-toolbar justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-ink-50/60 px-2 py-2 dark:border-ink-800 dark:bg-ink-900/50">
                 <div className="flex min-w-0 flex-wrap items-center gap-0.5">
                   {cannedResponses.length > 0 ? (
                     <div className="relative" ref={cannedWrapRef}>
@@ -4076,11 +4041,14 @@ export function ConversationDetailPage() {
                     recording
                   }
                   className={clsx(
-                    "btn-primary inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs",
+                    "inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50",
+                    emailWorkspaceMode
+                      ? "bg-brand-500 hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
+                      : "bg-brand-500 hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500",
                   )}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <Send className="h-3.5 w-3.5" />
+                  <Send className="h-4 w-4" />
                   {t("conversationDetail.composerSend")}
                 </motion.button>
               </div>
@@ -4144,7 +4112,7 @@ export function ConversationDetailPage() {
 
       <aside
         className={clsx(
-          "min-h-0 shrink-0 flex-col overflow-hidden border-l inbox-hairline bg-white transition-[width] duration-200 ease-out dark:bg-[#0F1B2B]",
+          "min-h-0 shrink-0 flex-col overflow-hidden border-l border-ink-200/90 bg-white/95 transition-[width] duration-200 ease-out dark:border-white/10 dark:bg-[#0F1B2B]/70",
           // Fechado: sem rail (o toolbar flutuante controla). Aberto: largura fluida, sem roubar a conversa em notebooks.
           emailWorkspaceMode
             ? crmDesktopOpen
@@ -4157,7 +4125,7 @@ export function ConversationDetailPage() {
       >
         <div
           className={clsx(
-            "flex shrink-0 items-center border-b inbox-hairline-soft",
+            "flex shrink-0 items-center border-b border-ink-100 dark:border-white/10",
             "justify-end px-1 py-2",
           )}
         >
@@ -4172,12 +4140,12 @@ export function ConversationDetailPage() {
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
-        {crmDesktopOpen ? <div className="min-h-0 flex-1 overflow-y-auto p-3 lg:p-4">{renderCrmPanel()}</div> : null}
+        {crmDesktopOpen ? <div className="min-h-0 flex-1 overflow-y-auto p-4">{renderCrmPanel()}</div> : null}
       </aside>
 
       {copilotDesktopOpen ? (
-        <aside className="hidden min-h-0 w-[min(100%,min(300px,28vw))] shrink-0 flex-col overflow-hidden border-l inbox-hairline bg-white dark:bg-[#0F1B2B] xl:flex 2xl:w-[min(100%,340px)]">
-          <div className="flex shrink-0 items-center justify-between border-b inbox-hairline-soft px-3 py-2">
+        <aside className="hidden min-h-0 w-[min(100%,min(300px,28vw))] shrink-0 flex-col overflow-hidden border-l border-ink-200/90 bg-white/95 dark:border-white/10 dark:bg-[#0F1B2B]/70 xl:flex 2xl:w-[min(100%,340px)]">
+          <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-3 py-2 dark:border-white/10">
             <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.copilotTitle")}</p>
             <button
               type="button"

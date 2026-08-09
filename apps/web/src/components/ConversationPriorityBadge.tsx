@@ -29,8 +29,8 @@ export function ConversationPriorityBadge({ priority, variant = "badge", classNa
     return (
       <span
         className={clsx(
-          "inline-flex items-center justify-center rounded",
-          variant === "compact" ? "h-4 w-4" : "h-[18px] w-[18px]",
+          "inline-flex items-center justify-center rounded-full",
+          variant === "compact" ? "h-[18px] w-[18px]" : "h-5 w-5",
           priorityBadgeClass(priority),
           className,
         )}
@@ -45,13 +45,13 @@ export function ConversationPriorityBadge({ priority, variant = "badge", classNa
   return (
     <span
       className={clsx(
-        "badge-status gap-1",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
         priorityBadgeClass(priority),
         className,
       )}
       title={tip}
     >
-      <Icon className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
+      <Icon className="h-3 w-3 shrink-0" strokeWidth={2.5} />
       {label}
     </span>
   );
