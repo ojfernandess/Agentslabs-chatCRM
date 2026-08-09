@@ -32,7 +32,7 @@ export function ConversationsLayout() {
       >
         <aside
           className={clsx(
-            "flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
+            "flex min-h-0 min-w-0 flex-col overflow-hidden border-b inbox-hairline bg-white dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
             activeThreadId && "hidden lg:flex",
           )}
         >

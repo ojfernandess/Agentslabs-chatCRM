@@ -166,15 +166,15 @@ export function ConversationsSplitToolbar(props: Props) {
 
   const statusCountBadgeClass = (active: boolean, key: string) => {
     if (active) {
-      return "rounded-full bg-brand-100 px-1.5 py-px text-[10px] font-bold tabular-nums leading-none text-brand-700 dark:bg-brand-500/20 dark:text-brand-200";
+      return "badge-count bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-200";
     }
     if (key === "PENDING") {
-      return "rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-bold tabular-nums leading-none text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
+      return "badge-count bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
     }
     if (key === "OPEN") {
-      return "rounded-full bg-emerald-50 px-1.5 py-px text-[10px] font-bold tabular-nums leading-none text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200";
+      return "badge-count bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200";
     }
-    return "text-[10px] font-bold tabular-nums leading-none text-ink-400 dark:text-ink-500";
+    return "badge-count text-ink-400 dark:text-ink-500";
   };
 
   const statusTabButtonClass = (active: boolean) =>
@@ -194,7 +194,7 @@ export function ConversationsSplitToolbar(props: Props) {
   };
 
   return (
-    <div className="shrink-0 space-y-1 border-b border-ink-200/70 bg-white/95 px-2 py-1.5 backdrop-blur-md dark:border-ink-800/80 dark:bg-ink-950/50">
+    <div className="shrink-0 space-y-1 border-b inbox-hairline bg-white px-2 py-1.5 dark:bg-ink-950/50">
       {/* Pesquisa + nova conversa */}
       <div className="flex flex-nowrap items-center gap-1.5">
         <div className="relative min-w-0 flex-1">
@@ -256,7 +256,7 @@ export function ConversationsSplitToolbar(props: Props) {
 
       {/* Âmbito: atendimento · todas · bot */}
       <div
-        className="overflow-hidden rounded-lg border border-ink-200/90 bg-ink-50/50 dark:border-ink-700/80 dark:bg-ink-900/25"
+        className="overflow-hidden rounded border inbox-hairline bg-ink-50/40 dark:bg-ink-900/25"
         role="tablist"
         aria-label={t("conversations.title")}
       >

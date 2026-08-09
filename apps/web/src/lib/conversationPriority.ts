@@ -25,10 +25,10 @@ export function priorityIcon(p: ConversationPriority): LucideIcon {
 /** Classes do badge (pill) por prioridade. */
 export function priorityBadgeClass(p: ConversationPriority): string {
   if (p === "URGENT") {
-    return "bg-red-600 text-white shadow-sm shadow-red-500/30 ring-1 ring-red-400/50 dark:bg-red-600 dark:ring-red-400/40";
+    return "bg-red-600 text-white dark:bg-red-600";
   }
   if (p === "HIGH") {
-    return "bg-orange-500 text-white shadow-sm dark:bg-orange-600";
+    return "bg-orange-500 text-white dark:bg-orange-600";
   }
   if (p === "MEDIUM") {
     return "bg-amber-100 text-amber-900 dark:bg-amber-950/55 dark:text-amber-200";
