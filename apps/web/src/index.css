@@ -290,6 +290,10 @@
     @apply border-brand-500 text-brand-700 dark:border-brand-400 dark:text-brand-300;
   }
 
+  .composer-header-actions {
+    @apply flex shrink-0 items-center gap-2 self-center py-2;
+  }
+
   .composer-toolbar {
     @apply flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-transparent px-2.5 py-2 dark:border-white/5;
   }

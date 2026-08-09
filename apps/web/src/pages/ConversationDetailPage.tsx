@@ -425,13 +425,41 @@ export function ConversationDetailPage() {
     }
   }, [isEmailLayout]);
 
-  const toggleEmailCrmPanel = useCallback(() => {
-    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
-      setCrmDesktopOpen((open) => !open);
-    } else {
-      setCrmMobileOpen((open) => !open);
-    }
+  const preserveScrollAndToggleCrm = useCallback((toggle: () => void) => {
+    const main = document.querySelector("main");
+    const mainScroll = main instanceof HTMLElement ? main.scrollTop : 0;
+    const pageScrollY = window.scrollY;
+    toggle();
+    requestAnimationFrame(() => {
+      if (main instanceof HTMLElement) main.scrollTop = mainScroll;
+      window.scrollTo(0, pageScrollY);
+      document.documentElement.scrollTop = pageScrollY;
+      document.body.scrollTop = pageScrollY;
+      if (crmAsideScrollRef.current) crmAsideScrollRef.current.scrollTop = 0;
+    });
   }, []);
+
+  const toggleEmailCrmPanel = useCallback(() => {
+    preserveScrollAndToggleCrm(() => {
+      if (typeof window !== "undefined" && window.matchMedia("(min-width: 1280px)").matches) {
+        setCrmDesktopOpen((open) => !open);
+      } else {
+        setCrmMobileOpen((open) => !open);
+      }
+    });
+  }, [preserveScrollAndToggleCrm]);
+
+  const toggleCrmDesktopPanel = useCallback(() => {
+    preserveScrollAndToggleCrm(() => setCrmDesktopOpen((open) => !open));
+  }, [preserveScrollAndToggleCrm]);
+
+  useEffect(() => {
+    if (!crmDesktopOpen) return;
+    const id = requestAnimationFrame(() => {
+      if (crmAsideScrollRef.current) crmAsideScrollRef.current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [crmDesktopOpen]);
 
   useEffect(() => {
     if (!resolveOpen) {
@@ -510,6 +538,7 @@ export function ConversationDetailPage() {
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const crmAsideScrollRef = useRef<HTMLDivElement>(null);
   /** Só faz auto-scroll ao fundo se o utilizador já estava junto ao fundo (evita saltar ao fazer poll / ler histórico). */
   const stickToBottomRef = useRef(true);
   const seenMessageIds = useRef(new Set<string>());
@@ -1115,7 +1144,13 @@ export function ConversationDetailPage() {
   useEffect(() => {
     if (isEmailLayout) return;
     if (!stickToBottomRef.current) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    const viewport = messagesViewportRef.current;
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
+      return;
+    }
+    // Fallback: nunca usar scrollIntoView no documento/main (salta a página ao abrir painéis).
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "nearest", inline: "nearest" });
   }, [conversation?.messages, isEmailLayout]);
 
   const lastInbound = conversation?.messages?.filter((m) => m.direction === "INBOUND").at(-1);
@@ -2411,8 +2446,14 @@ export function ConversationDetailPage() {
               type="button"
               onClick={() => {
                 const el = document.getElementById("crm-contact-note-compose");
-                el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-                (el as HTMLTextAreaElement | null)?.focus();
+                const scrollParent = el?.closest(".crm-aside-scroll");
+                if (el && scrollParent instanceof HTMLElement) {
+                  const top = Math.max(0, el.offsetTop - 12);
+                  scrollParent.scrollTo({ top, behavior: "smooth" });
+                  el.focus({ preventScroll: true });
+                } else {
+                  el?.focus({ preventScroll: true });
+                }
               }}
               className="crm-card-action"
             >
@@ -2953,7 +2994,7 @@ export function ConversationDetailPage() {
   return (
     <div
       className={clsx(
-        "relative flex h-full min-h-0 min-w-0 overflow-x-hidden",
+        "relative flex h-full min-h-0 min-w-0 overflow-hidden",
         emailWorkspaceMode
           ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0E1624] xl:flex-row"
           : "flex-col bg-ink-50 dark:bg-[#0E1624] lg:flex-row",
@@ -3008,6 +3049,7 @@ export function ConversationDetailPage() {
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={toggleEmailCrmPanel}
                 >
                   <User className="h-3.5 w-3.5" />
@@ -3781,7 +3823,7 @@ export function ConversationDetailPage() {
                 emailWorkspaceMode && "dark:border-ink-700",
               )}
             >
-              <div className="flex min-w-0 flex-wrap items-end gap-2 border-b border-ink-100 px-2 dark:border-white/5">
+              <div className="flex min-w-0 items-center justify-between gap-3 border-b border-ink-100 px-3 dark:border-white/5">
                 <div className="flex min-w-0 flex-1 items-center gap-0">
                   <button
                     type="button"
@@ -3805,7 +3847,7 @@ export function ConversationDetailPage() {
                     {t("conversationDetail.composerPrivateTab")}
                   </button>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5 pb-2">
+                <div className="composer-header-actions pl-1">
                   {copilotEnabled ? (
                     <motion.button
                       type="button"
@@ -3820,7 +3862,7 @@ export function ConversationDetailPage() {
                       }
                       onClick={() => void handleAiSuggestReply()}
                       title={suggestReplyBusy ? t("conversationDetail.generateReplyBusy") : t("conversationDetail.generateReply")}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-40 dark:border-violet-800/50 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-40 dark:border-violet-800/50 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/50"
                       whileTap={{ scale: 0.94 }}
                     >
                       {suggestReplyBusy ? (
@@ -3834,7 +3876,7 @@ export function ConversationDetailPage() {
                     type="button"
                     onClick={() => setComposerExpanded((e) => !e)}
                     disabled={!!voicePreview || recording}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-ink-200/80 bg-white text-ink-500 hover:bg-ink-50 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-ink-400 dark:hover:bg-white/10"
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-500 hover:bg-ink-50 disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-ink-400 dark:hover:bg-white/10"
                     title={composerExpanded ? t("conversationDetail.composerCollapse") : t("conversationDetail.composerExpand")}
                   >
                     {composerExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
@@ -4167,7 +4209,8 @@ export function ConversationDetailPage() {
           <div className="flex flex-col gap-1 rounded-2xl border border-ink-200 bg-white/90 p-1 shadow-lg backdrop-blur dark:border-white/10 dark:bg-[#0F1B2B]/70 dark:shadow-black/30">
             <button
               type="button"
-              onClick={() => setCrmDesktopOpen((o) => !o)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleCrmDesktopPanel()}
               title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
               aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
               className={clsx(
@@ -4228,7 +4271,8 @@ export function ConversationDetailPage() {
         >
           <button
             type="button"
-            onClick={() => setCrmDesktopOpen((o) => !o)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => toggleCrmDesktopPanel()}
             className="rounded-lg p-1.5 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100"
             title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
             aria-expanded={crmDesktopOpen}
@@ -4237,7 +4281,11 @@ export function ConversationDetailPage() {
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
-        {crmDesktopOpen ? <div className="crm-aside-scroll min-h-0 flex-1 overflow-y-auto p-3">{renderCrmPanel()}</div> : null}
+        {crmDesktopOpen ? (
+          <div ref={crmAsideScrollRef} className="crm-aside-scroll min-h-0 flex-1 overflow-y-auto p-3">
+            {renderCrmPanel()}
+          </div>
+        ) : null}
       </aside>
 
       {copilotDesktopOpen ? (
