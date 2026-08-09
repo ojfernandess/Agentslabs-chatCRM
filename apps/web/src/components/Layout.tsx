@@ -765,7 +765,7 @@ export function Layout() {
     <WavoipVoiceShell>
     <ThreeCxVoiceShell>
     <NvoipVoiceShell>
-    <div className="flex h-[100dvh] w-full max-w-[100vw] min-w-0 overflow-x-clip">
+    <div className="flex h-[100dvh] w-full min-w-0 max-w-full overflow-x-clip">
       <aside
         className={clsx(
           "hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-in-out dark:border-white/10 dark:bg-ink-950 lg:flex",
@@ -850,7 +850,7 @@ export function Layout() {
             onComplete={(id) => void completeReminder(id)}
           />
         ) : null}
-        <main className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto bg-ink-50 dark:bg-transparent">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-ink-50 dark:bg-transparent">
           <Outlet />
         </main>
       </div>

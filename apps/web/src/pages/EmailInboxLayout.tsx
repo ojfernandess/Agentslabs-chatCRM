@@ -544,7 +544,7 @@ export function EmailInboxLayout() {
             : t("inboxesPage.emailWorkspace.emptyThreads");
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#f6f8fc] dark:bg-[#0B1220]">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#f6f8fc] dark:bg-[#0B1220]">
       <header className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-ink-800 dark:bg-[#0F1B2B] sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -655,8 +655,8 @@ export function EmailInboxLayout() {
           </div>
         </div>
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r">
+        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 lg:grid-cols-[clamp(280px,28vw,360px)_minmax(0,1fr)]">
+          <aside className="flex min-h-0 min-w-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2.5 dark:border-ink-800">
               <button
                 type="button"

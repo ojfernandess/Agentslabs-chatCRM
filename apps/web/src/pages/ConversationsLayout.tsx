@@ -17,11 +17,11 @@ export function ConversationsLayout() {
   const refreshList = useCallback(() => refreshListRef.current?.() ?? Promise.resolve(), []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(340px,420px)_minmax(0,1fr)]">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 lg:grid-cols-[clamp(280px,30vw,400px)_minmax(0,1fr)]">
         <aside
           className={clsx(
-            "flex min-h-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
+            "flex min-h-0 min-w-0 flex-col border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
             activeThreadId && "hidden lg:flex",
           )}
         >

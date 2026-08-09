@@ -17,14 +17,22 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    height: 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow-x: clip;
     @apply bg-ink-50;
     @apply dark:bg-[#0e1624];
   }
 
   body {
+    height: 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow-x: clip;
-    @apply min-h-screen bg-ink-50 font-sans text-ink-900;
+    @apply min-h-[100dvh] bg-ink-50 font-sans text-ink-900;
     @apply dark:text-ink-100;
   }
 
@@ -38,7 +46,10 @@
   }
 
   #root {
+    display: flex;
+    flex-direction: column;
     min-height: 100dvh;
+    height: 100%;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -66,32 +77,6 @@
 
   html.font-size-large {
     font-size: 112.5%;
-  }
-
-  /**
-   * Escala proporcional automática em desktop compacto (≥1024px, pointer fine).
-   * Preserva identidade visual; reduz zoom manual do browser em 1366×768 e similares.
-   */
-  @media (min-width: 1024px) and (pointer: fine) {
-    html.desktop-viewport-scaled {
-      zoom: var(--desktop-ui-scale, 1);
-    }
-  }
-
-  @supports not (zoom: 1) {
-    @media (min-width: 1024px) and (pointer: fine) {
-      html.desktop-viewport-scaled {
-        height: 100dvh;
-        overflow: hidden;
-      }
-
-      html.desktop-viewport-scaled body {
-        transform: scale(var(--desktop-ui-scale, 1));
-        transform-origin: top left;
-        width: calc(100% / var(--desktop-ui-scale, 1));
-        min-height: calc(100dvh / var(--desktop-ui-scale, 1));
-      }
-    }
   }
 
   ::-webkit-scrollbar {
