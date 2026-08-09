@@ -169,7 +169,6 @@ export function Layout() {
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
   const [emailInboxUnread, setEmailInboxUnread] = useState<EmailInboxUnreadCounts>({});
-  const [pilotFlags, setPilotFlags] = useState<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | null>(null);
 
   const showRemindersFeature = user?.organizationFeatures?.reminders !== false;
   const { reminders: actionableReminders, completingId, completeReminder } = useActionableReminders(
@@ -189,32 +188,6 @@ export function Layout() {
     if (!user?.actingOrganizationId) return;
     void refreshUser();
   }, [user?.actingOrganizationId, refreshUser]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!user) return;
-    void api
-      .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean }>("/settings/pilot")
-      .then((res) => {
-        if (!cancelled) setPilotFlags(res);
-      })
-      .catch(() => {
-        if (!cancelled) setPilotFlags({ assistantAiEnabled: true, aiPilotAccessEnabled: false });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, orgThemeKey]);
-
-  useEffect(() => {
-    const on = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean } | undefined;
-      if (!detail) return;
-      setPilotFlags(detail);
-    };
-    window.addEventListener("openconduit:pilot-flags-updated", on as EventListener);
-    return () => window.removeEventListener("openconduit:pilot-flags-updated", on as EventListener);
-  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -658,14 +631,6 @@ export function Layout() {
             ),
           )}
         <NavLink
-          to="/inboxes"
-          title={collapsed ? t("nav.inboxes") : undefined}
-          className={({ isActive }) => navLinkClass(isActive, collapsed)}
-        >
-          <Inbox className="h-5 w-5 shrink-0" />
-          {!collapsed ? <span className="min-w-0 truncate">{t("nav.inboxes")}</span> : null}
-        </NavLink>
-        <NavLink
           to="/my-attendance"
           title={collapsed ? t("nav.myAttendance") : undefined}
           className={({ isActive }) => navLinkClass(isActive, collapsed)}
@@ -685,6 +650,14 @@ export function Layout() {
         ) : null}
         {tenantAdmin ? (
           <>
+            <NavLink
+              to="/inboxes"
+              title={collapsed ? t("nav.inboxes") : undefined}
+              className={({ isActive }) => navLinkClass(isActive, collapsed)}
+            >
+              <Inbox className="h-5 w-5 shrink-0" />
+              {!collapsed ? <span className="min-w-0 truncate">{t("nav.inboxes")}</span> : null}
+            </NavLink>
             <NavLink
               to="/conversation-audit"
               title={collapsed ? t("nav.conversationAudit") : undefined}
@@ -709,18 +682,15 @@ export function Layout() {
               <Megaphone className="h-5 w-5 shrink-0" />
               {!collapsed ? <span className="min-w-0 truncate">{t("nav.broadcast")}</span> : null}
             </NavLink>
+            <NavLink
+              to="/automation"
+              title={collapsed ? t("nav.automation") : undefined}
+              className={({ isActive }) => navLinkClass(isActive, collapsed)}
+            >
+              <Sparkles className="h-5 w-5 shrink-0" />
+              {!collapsed ? <span className="min-w-0 truncate">{t("nav.automation")}</span> : null}
+            </NavLink>
           </>
-        ) : null}
-
-        {tenantAdmin || pilotFlags?.aiPilotAccessEnabled ? (
-          <NavLink
-            to="/automation"
-            title={collapsed ? t("nav.automation") : undefined}
-            className={({ isActive }) => navLinkClass(isActive, collapsed)}
-          >
-            <Sparkles className="h-5 w-5 shrink-0" />
-            {!collapsed ? <span className="min-w-0 truncate">{t("nav.automation")}</span> : null}
-          </NavLink>
         ) : null}
       </nav>
 

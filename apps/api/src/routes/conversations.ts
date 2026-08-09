@@ -547,7 +547,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  /** Encerramentos do atendente atual (histórico permanente; inclui conversas reabertas). */
+  /** Encerramentos feitos pelo atendente atual (histórico permanente; inclui conversas reabertas). */
   app.get("/my-attendance", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -555,7 +555,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const query = myAttendanceQuerySchema.parse(request.query);
     const where: Prisma.ConversationClosureRecordWhereInput = {
       organizationId,
-      assignedToId: request.user.id,
+      // Quem finalizou o atendimento — não exige assignee prévio na conversa.
+      resolvedById: request.user.id,
     };
 
     const contactListSelect = {
@@ -2095,7 +2096,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
               organizationId,
               conversationId: existing.id,
               resolvedById: request.user.id,
-              assignedToId: effectiveAssignee,
+              // Se a conversa não tinha responsável, atribui quem resolveu (histórico / auditoria).
+              assignedToId: effectiveAssignee ?? request.user.id,
               teamId: conv.teamId,
               leadTypeId: data.leadTypeId ?? null,
               closureReason: data.closureReason ?? null,

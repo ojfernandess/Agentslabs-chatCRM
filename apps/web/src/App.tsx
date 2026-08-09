@@ -212,7 +212,14 @@ export function App() {
           <Route index element={<EmailInboxThreadPlaceholder />} />
           <Route path="c/:id" element={<ConversationDetailPage />} />
         </Route>
-        <Route path="inboxes" element={<InboxesPage />} />
+        <Route
+          path="inboxes"
+          element={
+            <TenantAdminRoute>
+              <InboxesPage />
+            </TenantAdminRoute>
+          }
+        />
         <Route
           path="bots"
           element={
@@ -221,7 +228,14 @@ export function App() {
             </TenantAdminRoute>
           }
         />
-        <Route path="automation" element={<AutomationPage />} />
+        <Route
+          path="automation"
+          element={
+            <TenantAdminRoute>
+              <AutomationPage />
+            </TenantAdminRoute>
+          }
+        />
         <Route
           path="broadcasts"
           element={
