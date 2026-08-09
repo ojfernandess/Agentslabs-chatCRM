@@ -26,6 +26,12 @@ export function computeDesktopViewportScale(
   return Math.max(MIN_SCALE, Math.min(MAX_SCALE, raw));
 }
 
+function resetDocumentScroll(): void {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
 function clearDesktopViewportScale(): void {
   const root = document.documentElement;
   root.classList.remove("desktop-viewport-scaled");
@@ -49,6 +55,8 @@ function applyDesktopViewportScale(): void {
 
   root.style.setProperty("--desktop-ui-scale", scale.toFixed(4));
   root.classList.add("desktop-viewport-scaled");
+  // Altura layout > viewport (antes do zoom) — evita abrir já com scrollY > 0.
+  resetDocumentScroll();
 }
 
 function scheduleApply(): void {

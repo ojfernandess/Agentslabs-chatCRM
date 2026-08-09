@@ -81,31 +81,38 @@
 
   /**
    * Densidade desktop em notebooks (~80% em 1366×768).
-   * zoom + width/height compensados → preenche a viewport (sem faixa vazia)
-   * e mantém position:fixed / portais alinhados. Mobile/touch não entra.
+   * zoom + width/height compensados → preenche a viewport (sem faixa vazia).
+   * overflow:hidden no documento — a altura layout (100dvh/scale) não pode
+   * criar scroll de página (sintoma: entra já “rolada” para baixo).
    */
   @media (min-width: 1024px) and (pointer: fine) {
     html.desktop-viewport-scaled {
       zoom: var(--desktop-ui-scale, 1);
-      width: calc(100% / var(--desktop-ui-scale, 1));
-      height: calc(100% / var(--desktop-ui-scale, 1));
-      min-height: calc(100% / var(--desktop-ui-scale, 1));
-      overflow-x: clip;
+      width: calc(100vw / var(--desktop-ui-scale, 1));
+      height: calc(100dvh / var(--desktop-ui-scale, 1));
+      min-height: calc(100dvh / var(--desktop-ui-scale, 1));
+      max-height: calc(100dvh / var(--desktop-ui-scale, 1));
+      overflow: hidden;
+      overscroll-behavior: none;
     }
 
     html.desktop-viewport-scaled body {
       width: 100%;
       height: 100%;
-      min-height: 100%;
+      min-height: 0;
+      max-height: 100%;
       max-width: none;
-      overflow-x: clip;
+      overflow: hidden;
+      overscroll-behavior: none;
     }
 
     html.desktop-viewport-scaled #root {
       width: 100%;
       height: 100%;
-      min-height: 100%;
+      min-height: 0;
+      max-height: 100%;
       max-width: none;
+      overflow: hidden;
     }
   }
 
