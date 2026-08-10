@@ -38,6 +38,11 @@ import { OrganizationTagsPanel } from "@/components/settings/OrganizationTagsPan
 import { TeamSettingsPanel } from "@/components/settings/TeamSettingsPanel";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import {
+  CONVERSATIONS_SPLIT_VIEW_SIZES,
+  parseConversationsSplitViewSize,
+  type ConversationsSplitViewSize,
+} from "@/lib/conversationSplitView";
 import { resolveLeadTypeClosurePlaybook, type LeadValueRollupKind } from "@openconduit/shared";
 import { isTenantAdmin } from "@/lib/authRole";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
@@ -132,6 +137,7 @@ interface AppSettings {
   conversationsAttendanceTabAutoOpen?: boolean;
   conversationsListShowContactTags?: boolean;
   conversationsQuickContactAddEnabled?: boolean;
+  conversationsSplitViewSize?: "default" | "medium" | "large";
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
@@ -312,6 +318,7 @@ export function SettingsPage() {
   const [wfAttendanceTabAutoOpen, setWfAttendanceTabAutoOpen] = useState(true);
   const [wfListShowContactTags, setWfListShowContactTags] = useState(false);
   const [wfQuickContactAddEnabled, setWfQuickContactAddEnabled] = useState(false);
+  const [wfSplitViewSize, setWfSplitViewSize] = useState<ConversationsSplitViewSize>("default");
   const [workflowError, setWorkflowError] = useState("");
 
   const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
@@ -634,6 +641,7 @@ export function SettingsPage() {
         setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
         setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
         setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
+        setWfSplitViewSize(parseConversationsSplitViewSize(data.conversationsSplitViewSize));
         setWorkflowError("");
         setAssistantOpenaiKey("");
         setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
@@ -822,6 +830,7 @@ export function SettingsPage() {
         conversationsAttendanceTabAutoOpen: wfAttendanceTabAutoOpen,
         conversationsListShowContactTags: wfListShowContactTags,
         conversationsQuickContactAddEnabled: wfQuickContactAddEnabled,
+        conversationsSplitViewSize: wfSplitViewSize,
       });
       setSettings(data);
       setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
@@ -839,6 +848,7 @@ export function SettingsPage() {
       setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
       setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
       setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
+      setWfSplitViewSize(parseConversationsSplitViewSize(data.conversationsSplitViewSize));
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
     } finally {
@@ -2466,6 +2476,58 @@ export function SettingsPage() {
                         )}
                       />
                     </button>
+                  </div>
+
+                  <div className="mb-6 border-b border-gray-100 pb-6">
+                    <p className="text-sm font-medium text-ink-900 dark:text-ink-50">
+                      {t("settings.workflowSplitViewSize")}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                      {t("settings.workflowSplitViewSizeHint")}
+                    </p>
+                    <div
+                      className="mt-3 grid gap-2 sm:grid-cols-3"
+                      role="radiogroup"
+                      aria-label={t("settings.workflowSplitViewSize")}
+                    >
+                      {CONVERSATIONS_SPLIT_VIEW_SIZES.map((size) => {
+                        const selected = wfSplitViewSize === size;
+                        const labelKey =
+                          size === "medium"
+                            ? "settings.workflowSplitViewSize_medium"
+                            : size === "large"
+                              ? "settings.workflowSplitViewSize_large"
+                              : "settings.workflowSplitViewSize_default";
+                        const hintKey =
+                          size === "medium"
+                            ? "settings.workflowSplitViewSize_mediumHint"
+                            : size === "large"
+                              ? "settings.workflowSplitViewSize_largeHint"
+                              : "settings.workflowSplitViewSize_defaultHint";
+                        return (
+                          <button
+                            key={size}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => setWfSplitViewSize(size)}
+                            className={clsx(
+                              "rounded-xl border px-3 py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
+                              selected
+                                ? "border-brand-500 bg-brand-50/80 dark:border-brand-400 dark:bg-brand-950/40"
+                                : "border-ink-200 bg-white hover:border-ink-300 dark:border-ink-700 dark:bg-ink-900 dark:hover:border-ink-600",
+                            )}
+                          >
+                            <span className="block text-sm font-semibold text-ink-900 dark:text-ink-50">
+                              {t(labelKey)}
+                            </span>
+                            <span className="mt-1 block text-[11px] leading-snug text-ink-500 dark:text-ink-400">
+                              {t(hintKey)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-4 border-b border-gray-100 pb-6">

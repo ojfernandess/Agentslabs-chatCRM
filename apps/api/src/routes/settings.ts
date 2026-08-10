@@ -150,6 +150,7 @@ const settingsSchema = z.object({
   conversationsAttendanceTabAutoOpen: z.boolean().optional(),
   conversationsListShowContactTags: z.boolean().optional(),
   conversationsQuickContactAddEnabled: z.boolean().optional(),
+  conversationsSplitViewSize: z.enum(["default", "medium", "large"]).optional(),
   conversationBubbleClientColor: hexColorField,
   conversationBubbleAgentColor: hexColorField,
   conversationBubbleClientColorDark: hexColorField,
@@ -402,6 +403,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationsAttendanceTabAutoOpen: true,
         conversationsListShowContactTags: true,
         conversationsQuickContactAddEnabled: true,
+        conversationsSplitViewSize: true,
       },
     });
     return {
@@ -419,6 +421,11 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationsAttendanceTabAutoOpen: orgSettings?.conversationsAttendanceTabAutoOpen ?? true,
       conversationsListShowContactTags: orgSettings?.conversationsListShowContactTags ?? false,
       conversationsQuickContactAddEnabled: orgSettings?.conversationsQuickContactAddEnabled ?? false,
+      conversationsSplitViewSize:
+        orgSettings?.conversationsSplitViewSize === "medium" ||
+        orgSettings?.conversationsSplitViewSize === "large"
+          ? orgSettings.conversationsSplitViewSize
+          : "default",
       /** Evolution gerida pela plataforma: tenants ligam só por QR (sem URL/chave no browser). */
       evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
       /** Evolution Go gerida pela plataforma: tenants usam credenciais globais e guardam apenas instanceId. */

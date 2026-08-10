@@ -1,8 +1,14 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Outlet, useMatch } from "react-router-dom";
 import { MessageSquare } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { api } from "@/lib/api";
+import {
+  conversationsSplitViewGridClass,
+  parseConversationsSplitViewSize,
+  type ConversationsSplitViewSize,
+} from "@/lib/conversationSplitView";
 import { ConversationsPage } from "@/pages/ConversationsPage";
 
 export type ConversationsOutletContext = {
@@ -13,21 +19,35 @@ export function ConversationsLayout() {
   const activeThreadMatch = useMatch("/conversations/:id");
   const activeThreadId = activeThreadMatch?.params.id;
   const refreshListRef = useRef<(() => Promise<void>) | null>(null);
+  const [splitViewSize, setSplitViewSize] = useState<ConversationsSplitViewSize>("default");
 
   const refreshList = useCallback(() => refreshListRef.current?.() ?? Promise.resolve(), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .get<{ conversationsSplitViewSize?: string }>("/settings/channel")
+      .then((res) => {
+        if (!cancelled) setSplitViewSize(parseConversationsSplitViewSize(res.conversationsSplitViewSize));
+      })
+      .catch(() => {
+        /* keep default */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       {/*
-        Desktop compacto: lista estreita para a conversa ocupar o resto.
+        Desktop: largura da fila conforme preferência da organização.
         Mobile (<lg): coluna única — comportamento inalterado.
       */}
       <div
         className={clsx(
           "grid min-h-0 min-w-0 flex-1 grid-cols-1",
-          "lg:grid-cols-[minmax(0,min(220px,34%))_minmax(0,1fr)]",
-          "xl:grid-cols-[minmax(0,min(260px,28%))_minmax(0,1fr)]",
-          "2xl:grid-cols-[minmax(0,min(320px,24%))_minmax(0,1fr)]",
+          conversationsSplitViewGridClass(splitViewSize),
         )}
       >
         <aside

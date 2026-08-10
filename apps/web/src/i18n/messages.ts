@@ -4974,6 +4974,15 @@ export const messages = {
       workflowQuickContactAdd: "Contacto rápido em Nova mensagem",
       workflowQuickContactAddHint:
         "Quando activo, a equipa vê o separador «Telefone rápido» ao iniciar conversa: digita o número, encontra ou cria o contacto e segue para a mensagem.",
+      workflowSplitViewSize: "Largura da fila de atendimento",
+      workflowSplitViewSizeHint:
+        "Define o tamanho do painel da fila (lista) no ecrã dividido de Conversas. Não altera regras de atendimento — só a área visual da fila.",
+      workflowSplitViewSize_default: "Padrão",
+      workflowSplitViewSize_defaultHint: "Fila compacta — o layout actual, ideal para notebooks.",
+      workflowSplitViewSize_medium: "Confortável",
+      workflowSplitViewSize_mediumHint: "Fila um pouco mais larga — mais espaço para nomes e etiquetas.",
+      workflowSplitViewSize_large: "Ampla",
+      workflowSplitViewSize_largeHint: "Fila larga (~536px), com margem extra em monitores grandes.",
       workflowSave: "Guardar fluxos de conversa",
       workflowSaveError: "Não foi possível guardar as configurações.",
       sectionTemplates: "Modelos de mensagem",
@@ -10555,6 +10564,15 @@ export const messages = {
       workflowQuickContactAdd: "Quick contact in New message",
       workflowQuickContactAddHint:
         "When enabled, agents see a «Quick phone» tab when starting a chat: type the number, find or create the contact, then compose the message.",
+      workflowSplitViewSize: "Inbox queue width",
+      workflowSplitViewSizeHint:
+        "Sets the inbox queue (list) panel size in the Conversations split view. Does not change attendance rules — only the visual queue area.",
+      workflowSplitViewSize_default: "Standard",
+      workflowSplitViewSize_defaultHint: "Compact queue — the current layout, ideal for notebooks.",
+      workflowSplitViewSize_medium: "Comfortable",
+      workflowSplitViewSize_mediumHint: "Slightly wider queue — more room for names and tags.",
+      workflowSplitViewSize_large: "Wide",
+      workflowSplitViewSize_largeHint: "Wide queue (~536px), with extra room on large monitors.",
       workflowSave: "Save conversation workflows",
       workflowSaveError: "Could not save these settings.",
       sectionTemplates: "Message templates",

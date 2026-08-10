@@ -1350,6 +1350,8 @@ model Settings {
   conversationsListShowContactTags Boolean @default(false) @map("conversations_list_show_contact_tags")
   /// Modo «Telefone rápido» em Nova mensagem (Conversas) para adicionar/seleccionar contacto por número.
   conversationsQuickContactAddEnabled Boolean @default(false) @map("conversations_quick_contact_add_enabled")
+  /// Largura da fila (split view) em Conversas: default | medium | large.
+  conversationsSplitViewSize String @default("default") @map("conversations_split_view_size") @db.VarChar(16)
 
   /// URL para webhook de alertas de IA (sentimento negativo, frustração, etc.).
   aiAlertWebhookUrl String? @map("ai_alert_webhook_url") @db.VarChar(2048)
