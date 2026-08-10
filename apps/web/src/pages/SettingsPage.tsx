@@ -41,6 +41,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import {
   CONVERSATIONS_SPLIT_VIEW_SIZES,
   parseConversationsSplitViewSize,
+  writeCachedConversationsSplitViewSize,
   type ConversationsSplitViewSize,
 } from "@/lib/conversationSplitView";
 import { resolveLeadTypeClosurePlaybook, type LeadValueRollupKind } from "@openconduit/shared";
@@ -641,7 +642,11 @@ export function SettingsPage() {
         setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
         setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
         setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
-        setWfSplitViewSize(parseConversationsSplitViewSize(data.conversationsSplitViewSize));
+        {
+          const splitSize = parseConversationsSplitViewSize(data.conversationsSplitViewSize);
+          setWfSplitViewSize(splitSize);
+          writeCachedConversationsSplitViewSize(splitSize, user?.organizationId);
+        }
         setWorkflowError("");
         setAssistantOpenaiKey("");
         setAssistantOpenaiBaseUrl(data.assistantOpenaiApiBaseUrl ?? "");
@@ -848,7 +853,11 @@ export function SettingsPage() {
       setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
       setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
       setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
-      setWfSplitViewSize(parseConversationsSplitViewSize(data.conversationsSplitViewSize));
+      {
+        const splitSize = parseConversationsSplitViewSize(data.conversationsSplitViewSize);
+        setWfSplitViewSize(splitSize);
+        writeCachedConversationsSplitViewSize(splitSize, user?.organizationId);
+      }
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
     } finally {
