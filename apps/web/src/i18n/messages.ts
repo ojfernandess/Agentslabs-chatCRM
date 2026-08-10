@@ -4205,6 +4205,7 @@ export const messages = {
       outsideWindowTemplateHint:
         "A janela de 24 horas expirou. Use o ícone de modelos (📄) para enviar um template aprovado pela Meta.",
       viewContact: "Ver contato",
+      viewContactDetails: "Ver detalhes do contato",
       placeholderNormal: "Digite uma mensagem…",
       placeholderTemplate: "Fora da sessão — use apenas modelos",
       notFound: "Conversa não encontrada",
@@ -9796,6 +9797,7 @@ export const messages = {
       outsideWindowTemplateHint:
         "The 24-hour session window has expired. Use the templates icon to send a Meta-approved template.",
       viewContact: "View contact",
+      viewContactDetails: "View contact details",
       placeholderNormal: "Type a message…",
       placeholderTemplate: "Outside session — templates only",
       notFound: "Conversation not found",

@@ -2273,12 +2273,14 @@ export function ConversationDetailPage() {
                 {conversation.contact.assignedTo?.name ?? t("conversationDetail.handoffUnassigned")}
               </dd>
             </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("conversationDetail.team")}</dt>
-              <dd className="crm-field-value">
-                {conversation.team?.name ?? t("conversationDetail.noTeam")}
-              </dd>
-            </div>
+            {teamOptions.length > 0 ? (
+              <div className="crm-field-row">
+                <dt className="crm-field-label">{t("conversationDetail.team")}</dt>
+                <dd className="crm-field-value">
+                  {conversation.team?.name ?? t("conversationDetail.noTeam")}
+                </dd>
+              </div>
+            ) : null}
             <div className="crm-field-row">
               <dt className="crm-field-label">{t("conversationDetail.tagsSection")}</dt>
               <dd className="crm-field-value">
@@ -2642,7 +2644,7 @@ export function ConversationDetailPage() {
         )}
       </div>
 
-      {tenantAdmin ? (
+      {tenantAdmin && teamOptions.length > 0 ? (
         <div className="crm-panel-section">
           <p className="crm-section-title">{t("conversationDetail.team")}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -3120,9 +3122,13 @@ export function ConversationDetailPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="break-words text-base font-semibold leading-snug tracking-tight text-ink-900 dark:text-ink-50">
+                      <Link
+                        to={`/contacts/${conversation.contact.id}`}
+                        title={t("conversationDetail.viewContactDetails")}
+                        className="break-words text-base font-semibold leading-snug tracking-tight text-ink-900 transition-colors hover:text-brand-600 dark:text-ink-50 dark:hover:text-brand-400"
+                      >
                         {conversation.contact.name}
-                      </h2>
+                      </Link>
                       <span
                         className={clsx(
                           "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
@@ -3202,12 +3208,14 @@ export function ConversationDetailPage() {
                         />
                         <span>{presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}</span>
                       </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-ink-400 dark:text-ink-500">•</span>
-                        <span>
-                          {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
+                      {conversation.team?.name ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-ink-400 dark:text-ink-500">•</span>
+                          <span>
+                            {t("conversationDetail.team")}: {conversation.team.name}
+                          </span>
                         </span>
-                      </span>
+                      ) : null}
                       {clientWaitLabel ? (
                         <span className="inline-flex items-center gap-1 font-medium text-amber-800 dark:text-amber-200/90">
                           <span className="text-ink-400 dark:text-ink-500">•</span>
@@ -3238,6 +3246,18 @@ export function ConversationDetailPage() {
                         <Brain className="h-4 w-4 shrink-0" />
                         <span className="hidden 2xl:inline">{t("conversationDetail.linkAiInsights")}</span>
                       </Link>
+                    ) : null}
+                    {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
+                      <span
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200",
+                          actionBtnSize,
+                        )}
+                        title={t("conversationDetail.botTriageBanner")}
+                      >
+                        <Bot className="h-3.5 w-3.5" />
+                        {t("conversationDetail.botInAttendance")}
+                      </span>
                     ) : null}
                     {canStartAttendance ? (
                       <button
@@ -3338,16 +3358,6 @@ export function ConversationDetailPage() {
                         {t("conversationDetail.reopen")}
                       </button>
                     ) : null}
-                    <Link
-                      to={`/contacts/${conversation.contact.id}`}
-                      className={clsx(
-                        "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                        actionBtnSize,
-                      )}
-                    >
-                      <User className="h-3.5 w-3.5" />
-                      {t("conversationDetail.viewContact")}
-                    </Link>
                     <button
                       type="button"
                       className="rounded-xl border border-ink-200 bg-white p-2 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10 xl:hidden"
@@ -3358,33 +3368,12 @@ export function ConversationDetailPage() {
                     </button>
                   </div>
                 </div>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {conversation.contact.tags?.map((ct) => (
-                    <span
-                      key={ct.tag.id}
-                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
-                      style={{ backgroundColor: ct.tag.color }}
-                    >
-                      {ct.tag.name}
-                    </span>
-                  ))}
-                  {conversation.status === "RESOLVED" && conversation.leadType ? (
-                    <span
-                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-                      style={{ backgroundColor: conversation.leadType.color }}
-                    >
-                      {conversation.leadType.name}
-                    </span>
-                  ) : null}
-                </div>
               </div>
             </div>
           </div>
           </div>
 
-          {(agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff) ||
-          (isEmailInbox && !emailWorkspaceMode) ||
+          {(isEmailInbox && !emailWorkspaceMode) ||
           isOutsideWindow ||
           contactIsBlocked ? (
           <div
@@ -3395,18 +3384,6 @@ export function ConversationDetailPage() {
                 : "mt-3 gap-2 px-3 pb-3 pt-3 lg:mt-4 lg:border-t-0 lg:pt-0 lg:px-5",
             )}
           >
-            {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
-              <span
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200",
-                  actionBtnSize,
-                )}
-                title={t("conversationDetail.botTriageBanner")}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                {t("conversationDetail.botInAttendance")}
-              </span>
-            ) : null}
             {isEmailInbox && !emailWorkspaceMode ? (
               <div className="flex w-full items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-950 dark:text-amber-100">
                 <Mail className="h-3.5 w-3.5 shrink-0" />
