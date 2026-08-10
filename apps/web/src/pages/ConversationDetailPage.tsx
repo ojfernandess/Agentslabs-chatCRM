@@ -3084,8 +3084,8 @@ export function ConversationDetailPage() {
           <div
             className={clsx(
               isSplitLayout
-                ? "max-h-[min(40vh,22rem)] overflow-y-auto overscroll-contain px-2.5 pt-2.5 lg:px-3"
-                : "px-3 pt-3 lg:px-5",
+                ? "max-h-[min(40vh,22rem)] overflow-y-auto overscroll-contain px-2.5 py-2.5 lg:px-3"
+                : "px-3 py-3 lg:px-5",
             )}
           >
           <div className="flex items-start gap-3">
