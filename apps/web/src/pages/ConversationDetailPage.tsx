@@ -3208,10 +3208,19 @@ export function ConversationDetailPage() {
                           {t("conversationDetail.team")}: {conversation.team?.name ?? t("conversationDetail.noTeam")}
                         </span>
                       </span>
+                      {clientWaitLabel ? (
+                        <span className="inline-flex items-center gap-1 font-medium text-amber-800 dark:text-amber-200/90">
+                          <span className="text-ink-400 dark:text-ink-500">•</span>
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            {t("conversationDetail.waitingSince")} {clientWaitLabel}
+                          </span>
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">
                     <TelephonyCallButton
                       phone={conversation.contact.phone}
                       inboxId={conversation.inbox?.id}
@@ -3230,6 +3239,115 @@ export function ConversationDetailPage() {
                         <span className="hidden 2xl:inline">{t("conversationDetail.linkAiInsights")}</span>
                       </Link>
                     ) : null}
+                    {canStartAttendance ? (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => {
+                          if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
+                        }}
+                        title={t("conversationDetail.startAttendanceHint")}
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 font-medium text-emerald-950 hover:bg-emerald-100/80 disabled:opacity-50 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40",
+                          actionBtnSize,
+                        )}
+                      >
+                        <Headset className="h-3.5 w-3.5" />
+                        {t("conversationDetail.startAttendance")}
+                      </button>
+                    ) : null}
+                    {canShowTransfer ? (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={openTransferModal}
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
+                          actionBtnSize,
+                        )}
+                      >
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                        {t("conversationDetail.transferOpen")}
+                      </button>
+                    ) : null}
+                    {funnelEnabled ? (
+                      <Link
+                        to="/crm"
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
+                          actionBtnSize,
+                        )}
+                      >
+                        <Kanban className="h-3.5 w-3.5" />
+                        {t("conversationDetail.actionMoveFunnel")}
+                      </Link>
+                    ) : null}
+                    {showTransferToBot ? (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => void applyStatus("PENDING", { assignedToId: null })}
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-950 hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100 dark:hover:bg-violet-900/40",
+                          actionBtnSize,
+                        )}
+                      >
+                        <Bot className="h-3.5 w-3.5" />
+                        {t("conversationDetail.transferToBot")}
+                      </button>
+                    ) : null}
+                    {conversation.status === "OPEN" && !agentBotTriageActive ? (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => void applyStatus("PENDING")}
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 font-medium text-amber-950 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40",
+                          actionBtnSize,
+                        )}
+                      >
+                        <PauseCircle className="h-3.5 w-3.5" />
+                        {t("conversationDetail.setPending")}
+                      </button>
+                    ) : null}
+                    {canResolve ? (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => openResolveModal(null)}
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600",
+                          actionBtnSize,
+                        )}
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {t("conversationDetail.finalize")}
+                      </button>
+                    ) : null}
+                    {conversation.status === "RESOLVED" ? (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => void applyStatus("OPEN")}
+                        className={clsx(
+                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+                          actionBtnSize,
+                        )}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        {t("conversationDetail.reopen")}
+                      </button>
+                    ) : null}
+                    <Link
+                      to={`/contacts/${conversation.contact.id}`}
+                      className={clsx(
+                        "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
+                        actionBtnSize,
+                      )}
+                    >
+                      <User className="h-3.5 w-3.5" />
+                      {t("conversationDetail.viewContact")}
+                    </Link>
                     <button
                       type="button"
                       className="rounded-xl border border-ink-200 bg-white p-2 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10 xl:hidden"
@@ -3260,42 +3378,15 @@ export function ConversationDetailPage() {
                     </span>
                   ) : null}
                 </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p
-                    className={clsx(
-                      "text-[11px] text-ink-600 dark:text-ink-400",
-                      isSplitLayout && hasHumanAssignee && "text-xs",
-                    )}
-                  >
-                    <span className="font-medium text-ink-700 dark:text-ink-300">
-                      {t("conversationDetail.conversationAssignee")}:
-                    </span>{" "}
-                    <span
-                      className={clsx(
-                        isSplitLayout &&
-                          hasHumanAssignee &&
-                          (conversation.status === "OPEN" || conversation.status === "PENDING") &&
-                          "break-words font-semibold text-emerald-800 dark:text-emerald-200",
-                      )}
-                    >
-                      {conversation.assignedTo?.name ?? t("conversationDetail.noConversationAssignee")}
-                    </span>
-                  </p>
-                  {clientWaitLabel ? (
-                    <p className="flex items-center gap-1 text-[11px] font-medium text-amber-800 dark:text-amber-200/90">
-                      <Clock className="h-3.5 w-3.5 shrink-0" />
-                      <span>
-                        {t("conversationDetail.waitingSince")} {clientWaitLabel}
-                      </span>
-                    </p>
-                  ) : null}
-                </div>
               </div>
             </div>
           </div>
           </div>
 
+          {(agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff) ||
+          (isEmailInbox && !emailWorkspaceMode) ||
+          isOutsideWindow ||
+          contactIsBlocked ? (
           <div
             className={clsx(
               "flex flex-wrap items-center gap-1.5 border-t border-ink-100/80 dark:border-white/10",
@@ -3337,116 +3428,8 @@ export function ConversationDetailPage() {
                 {t("conversationDetail.contactBlocked")}
               </div>
             ) : null}
-            {canStartAttendance ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => {
-                  if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
-                }}
-                title={t("conversationDetail.startAttendanceHint")}
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 font-medium text-emerald-950 hover:bg-emerald-100/80 disabled:opacity-50 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40",
-                  actionBtnSize,
-                )}
-              >
-                <Headset className="h-3.5 w-3.5" />
-                {t("conversationDetail.startAttendance")}
-              </button>
-            ) : null}
-            {canShowTransfer ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={openTransferModal}
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
-                  actionBtnSize,
-                )}
-              >
-                <ArrowRightLeft className="h-3.5 w-3.5" />
-                {t("conversationDetail.transferOpen")}
-              </button>
-            ) : null}
-            {funnelEnabled ? (
-              <Link
-                to="/crm"
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
-                  actionBtnSize,
-                )}
-              >
-                <Kanban className="h-3.5 w-3.5" />
-                {t("conversationDetail.actionMoveFunnel")}
-              </Link>
-            ) : null}
-            {showTransferToBot ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => void applyStatus("PENDING", { assignedToId: null })}
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-950 hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100 dark:hover:bg-violet-900/40",
-                  actionBtnSize,
-                )}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                {t("conversationDetail.transferToBot")}
-              </button>
-            ) : null}
-            {conversation.status === "OPEN" && !agentBotTriageActive ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => void applyStatus("PENDING")}
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 font-medium text-amber-950 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40",
-                  actionBtnSize,
-                )}
-              >
-                <PauseCircle className="h-3.5 w-3.5" />
-                {t("conversationDetail.setPending")}
-              </button>
-            ) : null}
-            {canResolve ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => openResolveModal(null)}
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600",
-                  actionBtnSize,
-                )}
-              >
-                <CheckCircle className="h-3.5 w-3.5" />
-                {t("conversationDetail.finalize")}
-              </button>
-            ) : null}
-            {conversation.status === "RESOLVED" ? (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() => void applyStatus("OPEN")}
-                className={clsx(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                  actionBtnSize,
-                )}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {t("conversationDetail.reopen")}
-              </button>
-            ) : null}
-            <Link
-              to={`/contacts/${conversation.contact.id}`}
-              className={clsx(
-                "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                actionBtnSize,
-              )}
-            >
-              <User className="h-3.5 w-3.5" />
-              {t("conversationDetail.viewContact")}
-            </Link>
           </div>
+          ) : null}
         </motion.div>
         ) : null}
 
