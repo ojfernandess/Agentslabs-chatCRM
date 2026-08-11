@@ -21,7 +21,8 @@ const PANEL_MAX = 380;
 const MIN_USEFUL_SPACE = 96;
 
 type PanelPos = {
-  top: number;
+  top?: number;
+  bottom?: number;
   left: number;
   width: number;
   maxHeight: number;
@@ -29,45 +30,75 @@ type PanelPos = {
 };
 
 /**
+ * CSS `zoom` no html (notebooks) faz getBoundingClientRect (coords visuais)
+ * divergir de `position: fixed` (coords de layout). Dividimos pelo zoom.
+ * No fallback com `transform: scale` no #root, o portal fica no body (fora do
+ * scale) e as coords já batem — o zoom computado do html é "normal"/1.
+ */
+function getCssZoomFactor(): number {
+  if (typeof document === "undefined") return 1;
+  const root = document.documentElement;
+  if (!root.classList.contains("desktop-viewport-scaled")) return 1;
+  const zoomRaw = getComputedStyle(root).zoom;
+  const zoom = Number(zoomRaw);
+  if (Number.isFinite(zoom) && zoom > 0 && Math.abs(zoom - 1) > 0.001) {
+    return zoom;
+  }
+  return 1;
+}
+
+/**
  * Ancora o painel ao sino.
- * Em "above", o top fica na borda superior do ícone e `translateY(-100%)`
- * cola a base do painel nele — sem estimar altura (causa do painel “longe”).
+ * Em monitores pequenos o sino fica no fundo: abrimos para cima com `bottom`
+ * (sem translateY/% da altura máxima, que afastava o painel do ícone).
  */
 function computePanelPosition(anchor: DOMRect): PanelPos {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const width = Math.min(PANEL_W, vw - MARGIN * 2);
-  let left = anchor.right - width;
-  left = Math.max(MARGIN, Math.min(left, vw - width - MARGIN));
+  const scale = getCssZoomFactor();
+  const top = anchor.top / scale;
+  const bottom = anchor.bottom / scale;
+  const right = anchor.right / scale;
+  const vw = window.innerWidth / scale;
+  const vh = window.innerHeight / scale;
+  const gap = GAP / scale;
+  const margin = MARGIN / scale;
+  const panelMax = PANEL_MAX / scale;
+  const minUseful = MIN_USEFUL_SPACE / scale;
 
-  const spaceBelow = vh - anchor.bottom - GAP - MARGIN;
-  const spaceAbove = anchor.top - GAP - MARGIN;
+  const width = Math.min(PANEL_W / scale, vw - margin * 2);
+  let left = right - width;
+  left = Math.max(margin, Math.min(left, vw - width - margin));
 
-  if (spaceBelow >= MIN_USEFUL_SPACE && spaceBelow >= spaceAbove) {
+  const spaceBelow = vh - bottom - gap - margin;
+  const spaceAbove = top - gap - margin;
+
+  if (spaceBelow >= minUseful && spaceBelow >= spaceAbove) {
     return {
-      top: anchor.bottom + GAP,
+      top: bottom + gap,
       left,
       width,
-      maxHeight: Math.min(PANEL_MAX, spaceBelow),
+      maxHeight: Math.min(panelMax, spaceBelow),
       placement: "below",
     };
   }
 
-  if (spaceAbove >= spaceBelow) {
+  // Preferir acima (caso típico do sino na sidebar inferior)
+  if (spaceAbove >= spaceBelow || spaceAbove >= minUseful) {
+    // bottom CSS = distância da base do viewport até a base do painel
+    // Base do painel = topo do ícone − gap  →  vh - (top - gap)
     return {
-      top: anchor.top - GAP,
+      bottom: Math.max(margin, vh - top + gap),
       left,
       width,
-      maxHeight: Math.max(72, Math.min(PANEL_MAX, spaceAbove)),
+      maxHeight: Math.max(72 / scale, Math.min(panelMax, spaceAbove)),
       placement: "above",
     };
   }
 
   return {
-    top: anchor.bottom + GAP,
+    top: bottom + gap,
     left,
     width,
-    maxHeight: Math.max(72, Math.min(PANEL_MAX, spaceBelow)),
+    maxHeight: Math.max(72 / scale, Math.min(panelMax, spaceBelow)),
     placement: "below",
   };
 }
@@ -77,7 +108,6 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<PanelPos>({
     top: 0,
     left: 0,
@@ -102,9 +132,13 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
     };
     window.addEventListener("resize", on);
     window.addEventListener("scroll", on, true);
+    window.visualViewport?.addEventListener("resize", on);
+    window.visualViewport?.addEventListener("scroll", on);
     return () => {
       window.removeEventListener("resize", on);
       window.removeEventListener("scroll", on, true);
+      window.visualViewport?.removeEventListener("resize", on);
+      window.visualViewport?.removeEventListener("scroll", on);
     };
   }, [open]);
 
@@ -124,13 +158,12 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
       id="openconduit-notify-panel"
       role="menu"
       style={{
-        top: pos.top,
+        top: pos.placement === "below" ? pos.top : "auto",
+        bottom: pos.placement === "above" ? pos.bottom : "auto",
         left: pos.left,
         width: pos.width,
         maxHeight: pos.maxHeight,
-        transform: pos.placement === "above" ? "translateY(-100%)" : undefined,
       }}
-      ref={panelRef}
       className={clsx(
         "fixed z-[1000] flex flex-col overflow-hidden rounded-xl border shadow-xl",
         "border-ink-200 bg-white dark:border-slate-500/25 dark:bg-[#24344d]/85",
