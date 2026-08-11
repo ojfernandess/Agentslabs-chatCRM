@@ -6,6 +6,7 @@ import type { ConversationAlertPreview } from "@/hooks/useConversationAlerts";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { useI18n } from "@/i18n/I18nProvider";
 import clsx from "clsx";
+
 export interface ConversationNotifyBellProps {
   badgeCount: number;
   alertPreviews: ConversationAlertPreview[];
@@ -19,15 +20,20 @@ const MARGIN = 12;
 const PANEL_MAX = 380;
 const MIN_USEFUL_SPACE = 96;
 
+type PanelPos = {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+  placement: "above" | "below";
+};
+
 /**
- * Ancora o painel ao sino: abaixo quando há espaço; por cima quando o sino está no fundo do ecrã.
- * Evita o clamp antigo (`min(top, vh - estHeight)`) que deslocava o painel para o fundo da viewport,
- * longe do ícone.
+ * Ancora o painel ao sino.
+ * Em "above", o top fica na borda superior do ícone e `translateY(-100%)`
+ * cola a base do painel nele — sem estimar altura (causa do painel “longe”).
  */
-function computePanelPosition(
-  anchor: DOMRect,
-  panelHeight?: number,
-): { top: number; left: number; width: number; maxHeight: number; placement: "above" | "below" } {
+function computePanelPosition(anchor: DOMRect): PanelPos {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const width = Math.min(PANEL_W, vw - MARGIN * 2);
@@ -37,39 +43,33 @@ function computePanelPosition(
   const spaceBelow = vh - anchor.bottom - GAP - MARGIN;
   const spaceAbove = anchor.top - GAP - MARGIN;
 
-  let top: number;
-  let maxHeight: number;
-  let placement: "above" | "below";
-
-  if (spaceBelow >= MIN_USEFUL_SPACE) {
-    top = anchor.bottom + GAP;
-    maxHeight = Math.min(PANEL_MAX, spaceBelow);
-    placement = "below";
-  } else if (spaceAbove >= MIN_USEFUL_SPACE) {
-    maxHeight = Math.min(PANEL_MAX, spaceAbove);
-    placement = "above";
-    const effectiveH = panelHeight != null ? Math.min(panelHeight, maxHeight) : maxHeight;
-    top = anchor.top - GAP - effectiveH;
-    if (top < MARGIN) {
-      const shift = MARGIN - top;
-      top = MARGIN;
-      maxHeight = Math.max(MIN_USEFUL_SPACE, maxHeight - shift);
-    }
-  } else {
-    if (spaceAbove >= spaceBelow) {
-      maxHeight = Math.max(72, Math.min(PANEL_MAX, spaceAbove));
-      placement = "above";
-      const effectiveH = panelHeight != null ? Math.min(panelHeight, maxHeight) : maxHeight;
-      top = anchor.top - GAP - effectiveH;
-      top = Math.max(MARGIN, top);
-    } else {
-      top = anchor.bottom + GAP;
-      maxHeight = Math.max(72, Math.min(PANEL_MAX, spaceBelow));
-      placement = "below";
-    }
+  if (spaceBelow >= MIN_USEFUL_SPACE && spaceBelow >= spaceAbove) {
+    return {
+      top: anchor.bottom + GAP,
+      left,
+      width,
+      maxHeight: Math.min(PANEL_MAX, spaceBelow),
+      placement: "below",
+    };
   }
 
-  return { top, left, width, maxHeight, placement };
+  if (spaceAbove >= spaceBelow) {
+    return {
+      top: anchor.top - GAP,
+      left,
+      width,
+      maxHeight: Math.max(72, Math.min(PANEL_MAX, spaceAbove)),
+      placement: "above",
+    };
+  }
+
+  return {
+    top: anchor.bottom + GAP,
+    left,
+    width,
+    maxHeight: Math.max(72, Math.min(PANEL_MAX, spaceBelow)),
+    placement: "below",
+  };
 }
 
 export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }: ConversationNotifyBellProps) {
@@ -78,20 +78,19 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    maxHeight: number;
-    placement: "above" | "below";
-  }>({ top: 0, left: 0, width: PANEL_W, maxHeight: PANEL_MAX, placement: "below" });
+  const [pos, setPos] = useState<PanelPos>({
+    top: 0,
+    left: 0,
+    width: PANEL_W,
+    maxHeight: PANEL_MAX,
+    placement: "below",
+  });
 
   useLayoutEffect(() => {
     if (!open) return;
     const anchor = anchorRef.current;
     if (!anchor) return;
-    const h = panelRef.current?.getBoundingClientRect().height;
-    setPos(computePanelPosition(anchor.getBoundingClientRect(), h));
+    setPos(computePanelPosition(anchor.getBoundingClientRect()));
   }, [open, alertPreviews.length]);
 
   useEffect(() => {
@@ -99,8 +98,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
     const on = () => {
       const el = anchorRef.current;
       if (!el) return;
-      const h = panelRef.current?.getBoundingClientRect().height;
-      setPos(computePanelPosition(el.getBoundingClientRect(), h));
+      setPos(computePanelPosition(el.getBoundingClientRect()));
     };
     window.addEventListener("resize", on);
     window.addEventListener("scroll", on, true);
@@ -125,7 +123,13 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
     <div
       id="openconduit-notify-panel"
       role="menu"
-      style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
+      style={{
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        maxHeight: pos.maxHeight,
+        transform: pos.placement === "above" ? "translateY(-100%)" : undefined,
+      }}
       ref={panelRef}
       className={clsx(
         "fixed z-[1000] flex flex-col overflow-hidden rounded-xl border shadow-xl",
