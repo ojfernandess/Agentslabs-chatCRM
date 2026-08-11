@@ -535,6 +535,7 @@ export function ConversationDetailPage() {
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const templateWrapRef = useRef<HTMLDivElement>(null);
   const cannedWrapRef = useRef<HTMLDivElement>(null);
+  const cannedPanelRef = useRef<HTMLDivElement>(null);
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1031,13 +1032,21 @@ export function ConversationDetailPage() {
     return cannedResponses.filter((c) => c.shortcut.startsWith(q));
   }, [newMessage, cannedResponses]);
 
+  const cannedPickerList = cannedSlashFilter ?? (cannedMenuOpen ? cannedResponses : null);
+  const showCannedPicker = Boolean(cannedPickerList && cannedPickerList.length > 0);
+
   useEffect(() => {
     if (!emojiOpen && !templateMenuOpen && !cannedMenuOpen) return;
     const onDown = (e: MouseEvent) => {
       const node = e.target as Node;
       if (emojiOpen && emojiWrapRef.current && !emojiWrapRef.current.contains(node)) setEmojiOpen(false);
       if (templateMenuOpen && templateWrapRef.current && !templateWrapRef.current.contains(node)) setTemplateMenuOpen(false);
-      if (cannedMenuOpen && cannedWrapRef.current && !cannedWrapRef.current.contains(node)) setCannedMenuOpen(false);
+      if (
+        cannedMenuOpen &&
+        !(cannedWrapRef.current?.contains(node) || cannedPanelRef.current?.contains(node))
+      ) {
+        setCannedMenuOpen(false);
+      }
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -3777,6 +3786,29 @@ export function ConversationDetailPage() {
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
           <form onSubmit={handleSend} className="w-full min-w-0">
+            {showCannedPicker ? (
+              <div
+                ref={cannedPanelRef}
+                className="mb-2 max-h-52 w-full max-w-md overflow-y-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800"
+                role="listbox"
+                aria-label={t("conversationDetail.cannedResponses")}
+              >
+                {cannedPickerList!.map((cr) => (
+                  <button
+                    key={cr.id}
+                    type="button"
+                    role="option"
+                    className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
+                    onClick={() => applyCannedResponse(cr)}
+                  >
+                    <span className="font-mono font-semibold text-brand-700 dark:text-brand-300">/{cr.shortcut}</span>
+                    <span className="mt-0.5 line-clamp-2 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
+                      {cr.content}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div
               className={clsx(
                 "composer-shell",
@@ -3973,26 +4005,10 @@ export function ConversationDetailPage() {
                         title={t("conversationDetail.cannedResponses")}
                         className="composer-tool-btn"
                         whileTap={{ scale: 0.94 }}
+                        aria-expanded={showCannedPicker}
                       >
                         <MessageSquare className="h-4 w-4" />
                       </motion.button>
-                      {cannedMenuOpen || (cannedSlashFilter && cannedSlashFilter.length > 0) ? (
-                        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-52 w-72 overflow-y-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800">
-                          {(cannedSlashFilter ?? cannedResponses).map((cr) => (
-                            <button
-                              key={cr.id}
-                              type="button"
-                              className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
-                              onClick={() => applyCannedResponse(cr)}
-                            >
-                              <span className="font-mono font-semibold text-brand-700">/{cr.shortcut}</span>
-                              <span className="mt-0.5 line-clamp-2 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
-                                {cr.content}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
                     </div>
                   ) : null}
                   {messageTemplates.length > 0 ? (
