@@ -150,10 +150,10 @@ export function TeamSettingsPanel({ isAdmin, currentUserId }: TeamSettingsPanelP
           {usersLoading ? (
             <p className="text-sm text-ink-500">{t("common.loading")}</p>
           ) : teamUsers.length > 0 ? (
-            <div className="overflow-x-auto rounded-lg border border-ink-200/80 dark:border-slate-500/25">
+            <div className="overflow-x-auto rounded-lg border border-ink-200/80 dark:border-soft-border">
               <table className="w-full min-w-[520px] text-left text-sm">
                 <thead>
-                  <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-slate-500/25 dark:bg-white/5">
+                  <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-soft-border dark:bg-white/5">
                     <th className="px-4 py-2">{t("settings.teamColName")}</th>
                     <th className="px-4 py-2">{t("settings.teamColEmail")}</th>
                     <th className="px-4 py-2">{t("settings.teamColRole")}</th>
@@ -213,7 +213,7 @@ export function TeamSettingsPanel({ isAdmin, currentUserId }: TeamSettingsPanelP
             <p className="text-sm text-ink-500">{t("settings.teamUsersEmpty")}</p>
           )}
 
-          <form onSubmit={(e) => void handleAddUser(e)} className="space-y-4 border-t border-ink-100 pt-4 dark:border-slate-500/25">
+          <form onSubmit={(e) => void handleAddUser(e)} className="space-y-4 border-t border-ink-100 pt-4 dark:border-soft-border">
             <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-100">{t("settings.teamAddUserTitle")}</h3>
             {userFormError ? (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{userFormError}</p>
@@ -274,7 +274,7 @@ export function TeamSettingsPanel({ isAdmin, currentUserId }: TeamSettingsPanelP
           </form>
         </>
       ) : (
-        <div className="rounded-xl border border-ink-200/80 p-4 dark:border-slate-500/25">
+        <div className="rounded-xl border border-ink-200/80 p-4 dark:border-soft-border">
           <h3 className="mb-1 text-sm font-semibold text-ink-900 dark:text-ink-100">{t("settings.invitesListTitle")}</h3>
           <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">{t("settings.teamTabInvitesHelp")}</p>
           <TeamInvitesList key={invitesReloadKey} />

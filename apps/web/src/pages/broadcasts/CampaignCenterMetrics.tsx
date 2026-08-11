@@ -40,7 +40,7 @@ function MetricCard({
     violet: "text-violet-600 bg-violet-50 dark:text-violet-300 dark:bg-violet-500/10",
   };
   return (
-    <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
+    <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-sm dark:border-soft-border dark:bg-[#202736]/55">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">{label}</p>

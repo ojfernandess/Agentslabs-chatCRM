@@ -25,7 +25,7 @@ export function CampaignAnalyticsFiltersBar({
   const { t } = useI18n();
 
   return (
-    <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-slate-500/25 dark:bg-[#24344d]/55">
+    <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-soft-border dark:bg-[#202736]/55">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.analyticsFiltersTitle")}</h3>
@@ -36,7 +36,7 @@ export function CampaignAnalyticsFiltersBar({
             type="button"
             onClick={onReload}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-slate-500/25 dark:text-ink-200 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-soft-border dark:text-ink-200 dark:hover:bg-white/5"
           >
             <RefreshCw className={loading ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
             {t("broadcastPage.analyticsRefresh")}
@@ -53,7 +53,7 @@ export function CampaignAnalyticsFiltersBar({
           <button
             type="button"
             onClick={onExportPdf}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:border-slate-500/25 dark:text-ink-200"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:border-soft-border dark:text-ink-200"
           >
             <FileText className="h-3.5 w-3.5" />
             {t("broadcastPage.analyticsExportPdf")}
@@ -68,7 +68,7 @@ export function CampaignAnalyticsFiltersBar({
             type="date"
             value={filters.from}
             onChange={(e) => onChange({ from: e.target.value, page: 1 })}
-            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-[#0d1520]"
+            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-soft-border dark:bg-[#0d1520]"
           />
         </label>
         <label className="block text-xs">
@@ -77,7 +77,7 @@ export function CampaignAnalyticsFiltersBar({
             type="date"
             value={filters.to}
             onChange={(e) => onChange({ to: e.target.value, page: 1 })}
-            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-[#0d1520]"
+            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-soft-border dark:bg-[#0d1520]"
           />
         </label>
         <label className="block text-xs">
@@ -87,7 +87,7 @@ export function CampaignAnalyticsFiltersBar({
             onChange={(e) =>
               onChange({ campaignKind: e.target.value as CampaignAnalyticsFilters["campaignKind"], page: 1 })
             }
-            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-[#0d1520]"
+            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-soft-border dark:bg-[#0d1520]"
           >
             <option value="all">{t("broadcastPage.filterAll")}</option>
             <option value="followup">{t("broadcastPage.kindFollowUp")}</option>
@@ -103,7 +103,7 @@ export function CampaignAnalyticsFiltersBar({
             onChange={(e) =>
               onChange({ status: e.target.value as CampaignAnalyticsFilters["status"], page: 1 })
             }
-            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-[#0d1520]"
+            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-soft-border dark:bg-[#0d1520]"
           >
             <option value="ALL">{t("broadcastPage.filterAll")}</option>
             <option value="SENT">{t("broadcastPage.analyticsStatusSent")}</option>
@@ -116,7 +116,7 @@ export function CampaignAnalyticsFiltersBar({
           <select
             value={filters.channel}
             onChange={(e) => onChange({ channel: e.target.value, page: 1 })}
-            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-[#0d1520]"
+            className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-sm dark:border-soft-border dark:bg-[#0d1520]"
           >
             <option value="">{t("broadcastPage.filterAll")}</option>
             {OMNICHANNEL_CHANNELS.filter((c) => c.available).map((c) => {
@@ -138,7 +138,7 @@ export function CampaignAnalyticsFiltersBar({
               value={filters.search}
               onChange={(e) => onChange({ search: e.target.value, page: 1 })}
               placeholder={t("broadcastPage.analyticsSearchPlaceholder")}
-              className="w-full rounded-lg border border-ink-200 bg-white py-1.5 pl-8 pr-2 text-sm dark:border-slate-500/25 dark:bg-[#0d1520]"
+              className="w-full rounded-lg border border-ink-200 bg-white py-1.5 pl-8 pr-2 text-sm dark:border-soft-border dark:bg-[#0d1520]"
             />
           </div>
         </label>

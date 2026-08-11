@@ -52,7 +52,7 @@ export function CampaignCard({
   const isPaused = Boolean(row.pausedAt);
 
   return (
-    <article className="flex flex-col rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-sm transition-shadow hover:shadow-md dark:border-slate-500/25 dark:bg-[#24344d]/55">
+    <article className="flex flex-col rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-sm transition-shadow hover:shadow-md dark:border-soft-border dark:bg-[#202736]/55">
       <div className="min-w-0 flex-1">
         <h3 className="truncate text-sm font-bold text-ink-900 dark:text-ink-50">{row.name}</h3>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -151,7 +151,7 @@ export function CampaignCard({
         </div>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-ink-100 pt-3 text-[10px] text-ink-500 dark:border-slate-500/25 dark:text-ink-400">
+      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-ink-100 pt-3 text-[10px] text-ink-500 dark:border-soft-border dark:text-ink-400">
         <span className="inline-flex items-center gap-1">
           <Users className="h-3 w-3" />
           {creator}
@@ -226,7 +226,7 @@ export function CampaignCard({
               type="button"
               disabled={actionBusy === row.id}
               onClick={() => onEdit(row.id)}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:border-slate-500/25 dark:text-ink-200 dark:hover:bg-white/5"
+              className="inline-flex items-center justify-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:border-soft-border dark:text-ink-200 dark:hover:bg-white/5"
             >
               <Pencil className="h-3.5 w-3.5" />
               {t("broadcastPage.edit")}
@@ -236,7 +236,7 @@ export function CampaignCard({
             type="button"
             disabled={actionBusy === row.id}
             onClick={() => onDelete(row.id)}
-            className="rounded-lg border border-ink-200 px-3 py-2 text-ink-600 hover:bg-ink-50 dark:border-slate-500/25 dark:hover:bg-white/5"
+            className="rounded-lg border border-ink-200 px-3 py-2 text-ink-600 hover:bg-ink-50 dark:border-soft-border dark:hover:bg-white/5"
             aria-label={t("broadcastPage.delete")}
           >
             <Trash2 className="h-4 w-4" />
@@ -278,7 +278,7 @@ export function CampaignCard({
             type="button"
             disabled={actionBusy === row.id}
             onClick={() => onDelete(row.id)}
-            className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-50 dark:border-slate-500/25 dark:hover:bg-white/5"
+            className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-ink-200 px-3 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-50 dark:border-soft-border dark:hover:bg-white/5"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t("broadcastPage.delete")}

@@ -213,7 +213,7 @@ export function EvolutionTemplateBuilder({ inboxes, onCreated }: Props) {
             />
           </div>
           {placeholderIndices.length > 0 ? (
-            <div className="rounded-xl border border-ink-200/80 bg-ink-50/80 p-4 dark:border-slate-500/25 dark:bg-white/5">
+            <div className="rounded-xl border border-ink-200/80 bg-ink-50/80 p-4 dark:border-soft-border dark:bg-white/5">
               <p className="text-xs font-semibold text-ink-700 dark:text-ink-300">{t("settings.evoTplTestVariables")}</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {placeholderIndices.map((idx) => (
@@ -233,12 +233,12 @@ export function EvolutionTemplateBuilder({ inboxes, onCreated }: Props) {
 
         <div className="flex flex-col">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">{t("settings.evoTplPreviewTitle")}</p>
-          <div className="flex flex-1 flex-col rounded-2xl border border-ink-200/80 bg-[#e5ddd5] p-4 dark:border-slate-500/25 dark:bg-[#0b141a]/80">
+          <div className="flex flex-1 flex-col rounded-2xl border border-ink-200/80 bg-[#e5ddd5] p-4 dark:border-soft-border dark:bg-[#0b141a]/80">
             <div className="mx-auto w-full max-w-[280px] flex-1">
               <div className="rounded-lg rounded-tl-none bg-[#dcf8c6] px-3 py-2 text-sm text-ink-900 shadow-sm dark:bg-emerald-900/40 dark:text-ink-50">
                 <p className="whitespace-pre-wrap break-words">{previewBody || t("settings.evoTplPreviewEmpty")}</p>
                 {previewFooter ? (
-                  <p className="mt-2 border-t border-ink-900/10 pt-2 text-xs text-ink-600 dark:border-slate-500/25 dark:text-ink-300">
+                  <p className="mt-2 border-t border-ink-900/10 pt-2 text-xs text-ink-600 dark:border-soft-border dark:text-ink-300">
                     {previewFooter}
                   </p>
                 ) : null}

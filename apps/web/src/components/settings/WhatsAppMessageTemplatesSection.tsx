@@ -222,7 +222,7 @@ export function WhatsAppMessageTemplatesSection({ waInboxes, defaultWaInboxId, o
         <p className={settingsMuted}>{t("settings.templatesPageIntro")}</p>
 
         {showMeta || showEvolution ? (
-          <div className="mt-4 flex flex-wrap gap-2 border-b border-ink-200/80 pb-1 dark:border-slate-500/25">
+          <div className="mt-4 flex flex-wrap gap-2 border-b border-ink-200/80 pb-1 dark:border-soft-border">
             {showMeta ? (
               <button
                 type="button"

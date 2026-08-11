@@ -544,8 +544,8 @@ export function EmailInboxLayout() {
             : t("inboxesPage.emailWorkspace.emptyThreads");
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#f6f8fc] dark:bg-[#141c2c]">
-      <header className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-slate-500/30 dark:bg-[#1c2a40] sm:px-5">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#f6f8fc] dark:bg-[#1B2230]">
+      <header className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-soft-border dark:bg-[#151826] sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <Link
@@ -577,7 +577,7 @@ export function EmailInboxLayout() {
                 : t("inboxesPage.wizard.emailInbox.inboxStatusNotConfigured")}
             </span>
             {isAdmin ? (
-              <nav className="flex rounded-lg border border-ink-200 bg-white p-0.5 dark:border-slate-500/30 dark:bg-ink-900">
+              <nav className="flex rounded-lg border border-ink-200 bg-white p-0.5 dark:border-soft-border dark:bg-ink-900">
                 <button
                   type="button"
                   onClick={() => setTab("messages")}
@@ -613,7 +613,7 @@ export function EmailInboxLayout() {
       {tab === "settings" && isAdmin ? (
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-2">
-            <div className="card-surface border p-5 dark:border-slate-500/30">
+            <div className="card-surface border p-5 dark:border-soft-border">
               <h2 className="mb-1 text-sm font-semibold text-ink-900 dark:text-ink-50">
                 {t("inboxesPage.wizard.emailInbox.editSectionTitle")}
               </h2>
@@ -642,7 +642,7 @@ export function EmailInboxLayout() {
               </div>
             </div>
             {inbox.ingestToken && basePublicInbox ? (
-              <div className="card-surface border p-5 dark:border-slate-500/30">
+              <div className="card-surface border p-5 dark:border-soft-border">
                 <h2 className="mb-3 text-sm font-semibold text-ink-900 dark:text-ink-50">
                   {t("inboxesPage.wizard.emailInbox.inboundSectionTitle")}
                 </h2>
@@ -656,8 +656,8 @@ export function EmailInboxLayout() {
         </div>
       ) : (
         <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,min(240px,32%))_minmax(0,1fr)] xl:grid-cols-[minmax(0,min(300px,28%))_minmax(0,1fr)]">
-          <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200 bg-white dark:border-slate-500/30 dark:bg-[#1c2a40] lg:border-b-0 lg:border-r">
-            <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2.5 dark:border-slate-500/30">
+          <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200 bg-white dark:border-soft-border dark:bg-[#151826] lg:border-b-0 lg:border-r">
+            <div className="flex items-center justify-between gap-2 border-b border-ink-100 px-3 py-2.5 dark:border-soft-border">
               <button
                 type="button"
                 className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50"
@@ -678,7 +678,7 @@ export function EmailInboxLayout() {
               </button>
             </div>
 
-            <div className="space-y-1 border-b border-ink-100 px-2 py-2 dark:border-slate-500/30">
+            <div className="space-y-1 border-b border-ink-100 px-2 py-2 dark:border-soft-border">
               <button
                 type="button"
                 onClick={() => setFolderView({ kind: "inbox" })}
@@ -730,13 +730,13 @@ export function EmailInboxLayout() {
                 </button>
               ))}
               {creatingFolder ? (
-                <div className="space-y-1 rounded-lg border border-ink-200 bg-ink-50 p-2 dark:border-slate-500/30 dark:bg-ink-900/60">
+                <div className="space-y-1 rounded-lg border border-ink-200 bg-ink-50 p-2 dark:border-soft-border dark:bg-ink-900/60">
                   <input
                     type="text"
                     value={newFolderName}
                     onChange={(e) => setNewFolderName(e.target.value)}
                     placeholder={t("inboxesPage.emailWorkspace.newFolderPlaceholder")}
-                    className="w-full rounded-md border border-ink-200 bg-white px-2 py-1.5 text-xs dark:border-slate-500/30 dark:bg-ink-950"
+                    className="w-full rounded-md border border-ink-200 bg-white px-2 py-1.5 text-xs dark:border-soft-border dark:bg-ink-950"
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void createCustomFolder();
@@ -796,7 +796,7 @@ export function EmailInboxLayout() {
               </button>
             </div>
 
-            <div className="border-b border-ink-100 px-3 py-2 dark:border-slate-500/30">
+            <div className="border-b border-ink-100 px-3 py-2 dark:border-soft-border">
               <label className="relative block">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400" />
                 <input
@@ -804,13 +804,13 @@ export function EmailInboxLayout() {
                   value={listSearch}
                   onChange={(e) => setListSearch(e.target.value)}
                   placeholder={t("inboxesPage.emailWorkspace.searchPlaceholder")}
-                  className="w-full rounded-lg border border-ink-200 bg-ink-50 py-2 pl-8 pr-3 text-xs text-ink-800 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-500/30 dark:border-slate-500/30 dark:bg-ink-900 dark:text-ink-100"
+                  className="w-full rounded-lg border border-ink-200 bg-ink-50 py-2 pl-8 pr-3 text-xs text-ink-800 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-500/30 dark:border-soft-border dark:bg-ink-900 dark:text-ink-100"
                 />
               </label>
             </div>
 
             {syncNotice ? (
-              <p className="border-b border-ink-100 px-3 py-2 text-[11px] text-ink-600 dark:border-slate-500/30 dark:text-ink-300">
+              <p className="border-b border-ink-100 px-3 py-2 text-[11px] text-ink-600 dark:border-soft-border dark:text-ink-300">
                 {syncNotice}
               </p>
             ) : null}
@@ -857,7 +857,7 @@ export function EmailInboxLayout() {
                           onFocus={() => prefetchConversation(conv.id)}
                           className={({ isActive }) =>
                             clsx(
-                              "block border-b border-ink-100 px-4 py-3 transition dark:border-slate-500/30",
+                              "block border-b border-ink-100 px-4 py-3 transition dark:border-soft-border",
                               priorityListCardClass(conv.priority),
                               conv.isUnread && "bg-brand-50/50 dark:bg-brand-950/20",
                               isActive || activeThreadId === conv.id
@@ -970,7 +970,7 @@ export function EmailInboxLayout() {
               )}
             </div>
           </aside>
-          <main className="min-h-0 flex min-w-0 flex-col bg-white dark:bg-[#172033]">
+          <main className="min-h-0 flex min-w-0 flex-col bg-white dark:bg-[#0F1420]">
             <Outlet context={{ inboxId, refreshThreads: loadConversations }} />
           </main>
         </div>
@@ -1018,7 +1018,7 @@ export type EmailInboxOutletContext = {
 export function EmailInboxThreadPlaceholder() {
   const { t } = useI18n();
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-[#f6f8fc] p-8 text-center dark:bg-[#172033]">
+    <div className="flex flex-1 flex-col items-center justify-center bg-[#f6f8fc] p-8 text-center dark:bg-[#0F1420]">
       <Mail className="mb-3 h-12 w-12 text-brand-500/70" />
       <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
         {t("inboxesPage.emailWorkspace.selectThread")}

@@ -29,7 +29,7 @@ export function CampaignAnalyticsCharts({ sendByDay, ratesByDay, topCampaigns, l
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-slate-500/25 dark:bg-[#24344d]/55">
+      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-soft-border dark:bg-[#202736]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.analyticsVolume")}</h3>
         <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.analyticsVolumeSub")}</p>
         <div className="mt-4 h-64">
@@ -53,7 +53,7 @@ export function CampaignAnalyticsCharts({ sendByDay, ratesByDay, topCampaigns, l
         </div>
       </div>
 
-      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-slate-500/25 dark:bg-[#24344d]/55">
+      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-soft-border dark:bg-[#202736]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.analyticsRatesChart")}</h3>
         <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.analyticsRatesChartSub")}</p>
         <div className="mt-4 h-64">
@@ -96,7 +96,7 @@ export function CampaignAnalyticsCharts({ sendByDay, ratesByDay, topCampaigns, l
         </div>
       </div>
 
-      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-slate-500/25 dark:bg-[#24344d]/55">
+      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-soft-border dark:bg-[#202736]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.analyticsTop")}</h3>
         {topCampaigns.length === 0 ? (
           <p className="mt-4 text-sm text-ink-500">{t("broadcastPage.analyticsEmpty")}</p>

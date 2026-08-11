@@ -124,14 +124,14 @@ export function EmailComposeModal({
           onClick={onClose}
         >
           <motion.div
-            className="w-full max-w-xl overflow-hidden rounded-2xl border border-amber-200/80 bg-white shadow-2xl dark:border-amber-900/40 dark:bg-[#1c2a40]"
+            className="w-full max-w-xl overflow-hidden rounded-2xl border border-amber-200/80 bg-white shadow-2xl dark:border-amber-900/40 dark:bg-[#151826]"
             variants={modalVariants}
             initial="hidden"
             animate="show"
             exit="exit"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-5 py-4 dark:border-amber-900/30 dark:from-amber-950/30 dark:to-[#1c2a40]">
+            <div className="flex items-start justify-between gap-3 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-5 py-4 dark:border-amber-900/30 dark:from-amber-950/30 dark:to-[#151826]">
               <div className="flex items-start gap-3">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm">
                   <Mail className="h-5 w-5" />

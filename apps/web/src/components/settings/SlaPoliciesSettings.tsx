@@ -137,7 +137,7 @@ function SlaPolicyModal({
       onClick={closeModal}
     >
       <div
-        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-ink-200/80 bg-white p-6 shadow-xl dark:border-slate-500/25 dark:bg-[#24344d]"
+        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-ink-200/80 bg-white p-6 shadow-xl dark:border-soft-border dark:bg-[#202736]"
         role="dialog"
         onClick={(e) => e.stopPropagation()}
       >
@@ -188,7 +188,7 @@ function SlaPolicyModal({
             fields={form.resolution}
             onChange={(resolution) => setForm((f) => ({ ...f, resolution }))}
           />
-          <label className="flex items-center justify-between gap-3 rounded-lg border border-ink-200/80 px-3 py-3 dark:border-slate-500/25">
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-ink-200/80 px-3 py-3 dark:border-soft-border">
             <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.slaBusinessHours")}</span>
             <input
               type="checkbox"

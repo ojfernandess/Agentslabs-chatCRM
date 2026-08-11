@@ -56,8 +56,23 @@ export default {
           700: "#33475b",
           800: "#2d3e50",
           900: "#253342",
-          /** Fundo app / chat no modo escuro (azul-ardósia elevado, mais confortável) */
-          950: "#172033",
+          /** Soft dark — fundo base */
+          950: "#0F1420",
+        },
+        soft: {
+          base: "#0F1420",
+          surface: {
+            1: "#151826",
+            2: "#1B2230",
+            3: "#202736",
+          },
+          border: "#2A3342",
+          text: {
+            DEFAULT: "#E6E8EF",
+            secondary: "#9AA4B2",
+            tertiary: "#6B7280",
+          },
+          primary: "#7C5CFF",
         },
       },
       keyframes: {

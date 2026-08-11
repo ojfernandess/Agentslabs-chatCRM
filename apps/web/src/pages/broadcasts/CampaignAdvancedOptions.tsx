@@ -99,7 +99,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
   const dtmfRules = value.segmentRules.nvoipTorpedo?.dtmfRules ?? [];
 
   return (
-    <div className="space-y-4 border-t border-ink-100 pt-4 dark:border-slate-500/25">
+    <div className="space-y-4 border-t border-ink-100 pt-4 dark:border-soft-border">
       <p className="text-xs font-bold uppercase tracking-wide text-ink-500">{t("broadcastPage.advancedTitle")}</p>
 
       <div>
@@ -115,7 +115,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
                 value.channel === ch.id
                   ? "bg-brand-500 text-white"
                   : ch.available
-                    ? "border border-ink-200 text-ink-600 dark:border-slate-500/25"
+                    ? "border border-ink-200 text-ink-600 dark:border-soft-border"
                     : "border border-ink-100 text-ink-400 opacity-60",
               )}
             >
@@ -131,7 +131,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
           <input
             value={value.subject}
             onChange={(e) => patch({ subject: e.target.value })}
-            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-white/5"
+            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-soft-border dark:bg-white/5"
           />
         </div>
       ) : null}
@@ -158,7 +158,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
               value={value.segmentRules.nvoipTorpedo?.caller ?? ""}
               onChange={(e) => patchNvoip({ caller: e.target.value })}
               placeholder={t("broadcastPage.nvoipCallerPlaceholder")}
-              className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-white/5"
+              className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-soft-border dark:bg-white/5"
             />
           </label>
           <div>
@@ -174,7 +174,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
                       next[idx] = { ...rule, digit: e.target.value.replace(/\D/g, "").slice(0, 1) };
                       patchNvoip({ dtmfRules: next });
                     }}
-                    className="w-12 rounded border border-ink-200 px-2 py-1 text-sm dark:border-slate-500/25 dark:bg-white/5"
+                    className="w-12 rounded border border-ink-200 px-2 py-1 text-sm dark:border-soft-border dark:bg-white/5"
                     placeholder="1"
                   />
                   <select
@@ -184,7 +184,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
                       next[idx] = { ...rule, tagId: e.target.value || undefined };
                       patchNvoip({ dtmfRules: next });
                     }}
-                    className="min-w-0 flex-1 rounded border border-ink-200 px-2 py-1 text-sm dark:border-slate-500/25 dark:bg-white/5"
+                    className="min-w-0 flex-1 rounded border border-ink-200 px-2 py-1 text-sm dark:border-soft-border dark:bg-white/5"
                   >
                     <option value="">{t("broadcastPage.nvoipDtmfTagNone")}</option>
                     {tags.map((tag) => (
@@ -221,7 +221,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
         <select
           value={value.scheduleType}
           onChange={(e) => patch({ scheduleType: e.target.value as AdvancedCampaignOptions["scheduleType"] })}
-          className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-white/5"
+          className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-soft-border dark:bg-white/5"
         >
           <option value="IMMEDIATE">{t("broadcastPage.scheduleImmediate")}</option>
           <option value="SCHEDULED">{t("broadcastPage.scheduleScheduled")}</option>
@@ -237,7 +237,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
             type="datetime-local"
             value={value.scheduledAt}
             onChange={(e) => patch({ scheduledAt: e.target.value })}
-            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-white/5"
+            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-soft-border dark:bg-white/5"
           />
         </div>
       ) : null}
@@ -249,7 +249,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
             value={value.cronExpression}
             onChange={(e) => patch({ cronExpression: e.target.value })}
             placeholder="0 9 * * *"
-            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-white/5"
+            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-soft-border dark:bg-white/5"
           />
         </div>
       ) : null}
@@ -260,7 +260,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
           <select
             value={value.eventTrigger}
             onChange={(e) => patch({ eventTrigger: e.target.value })}
-            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-white/5"
+            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-soft-border dark:bg-white/5"
           >
             <option value="">{t("broadcastPage.selectTemplate")}</option>
             <option value="NEW_LEAD">NEW_LEAD</option>
@@ -272,7 +272,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-ink-200/80 p-3 dark:border-slate-500/25">
+      <div className="rounded-xl border border-ink-200/80 p-3 dark:border-soft-border">
         <p className="text-[11px] font-semibold text-ink-700 dark:text-ink-200">{t("broadcastPage.segmentationTitle")}</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <label className="flex items-center gap-2 text-xs">
@@ -298,7 +298,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
                 })
               }
               placeholder="São Paulo, Lisboa"
-              className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-slate-500/25 dark:bg-white/5"
+              className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-soft-border dark:bg-white/5"
             />
           </div>
           <div>
@@ -310,7 +310,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
                 const selected = Array.from(e.target.selectedOptions).map((o) => o.value);
                 patch({ segmentRules: { ...value.segmentRules, pipelineStageIds: selected } });
               }}
-              className="mt-0.5 h-16 w-full rounded border border-ink-200 text-xs dark:border-slate-500/25 dark:bg-white/5"
+              className="mt-0.5 h-16 w-full rounded border border-ink-200 text-xs dark:border-soft-border dark:bg-white/5"
             >
               {pipelineStages.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -333,7 +333,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
                   },
                 })
               }
-              className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-slate-500/25 dark:bg-white/5"
+              className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-soft-border dark:bg-white/5"
             />
           </div>
         </div>
@@ -360,7 +360,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
                 onChange={(e) =>
                   patch({ abConfig: { ...value.abConfig, splitPercentA: Number(e.target.value) } })
                 }
-                className="w-16 rounded border px-1 py-0.5 text-xs dark:border-slate-500/25 dark:bg-white/5"
+                className="w-16 rounded border px-1 py-0.5 text-xs dark:border-soft-border dark:bg-white/5"
               />
             </div>
             <textarea
@@ -370,7 +370,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
               onChange={(e) =>
                 patch({ abConfig: { ...value.abConfig, variantA: { body: e.target.value } } })
               }
-              className="w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-slate-500/25 dark:bg-white/5"
+              className="w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-soft-border dark:bg-white/5"
             />
             <textarea
               rows={2}
@@ -379,7 +379,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
               onChange={(e) =>
                 patch({ abConfig: { ...value.abConfig, variantB: { body: e.target.value } } })
               }
-              className="w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-slate-500/25 dark:bg-white/5"
+              className="w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-soft-border dark:bg-white/5"
             />
           </div>
         ) : null}
@@ -413,7 +413,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
             max={60000}
             value={value.throttleMs}
             onChange={(e) => patch({ throttleMs: Number(e.target.value) })}
-            className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-slate-500/25 dark:bg-white/5"
+            className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-soft-border dark:bg-white/5"
           />
         </div>
         <div>
@@ -423,7 +423,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
             min={0}
             value={value.revenuePerConversion}
             onChange={(e) => patch({ revenuePerConversion: e.target.value })}
-            className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-slate-500/25 dark:bg-white/5"
+            className="mt-0.5 w-full rounded border border-ink-200 px-2 py-1 text-xs dark:border-soft-border dark:bg-white/5"
           />
         </div>
       </div>
@@ -434,7 +434,7 @@ export function CampaignAdvancedOptions({ value, onChange, integrationTools, pip
           <select
             value={value.integrationToolId}
             onChange={(e) => patch({ integrationToolId: e.target.value })}
-            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-slate-500/25 dark:bg-white/5"
+            className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm dark:border-soft-border dark:bg-white/5"
           >
             <option value="">{t("broadcastPage.selectTemplate")}</option>
             {integrationTools.map((tool) => (

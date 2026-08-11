@@ -269,7 +269,7 @@ function ScheduleModeButton({
         "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
         active
           ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
-          : "border-ink-200 hover:border-ink-300 dark:border-slate-500/25",
+          : "border-ink-200 hover:border-ink-300 dark:border-soft-border",
       )}
     >
       <Icon className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />

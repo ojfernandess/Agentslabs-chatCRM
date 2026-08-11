@@ -121,7 +121,7 @@ function CollapsedLocalePicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-100 bg-ink-50 text-ink-500 hover:bg-ink-100 dark:border-slate-500/25 dark:bg-white/5 dark:text-ink-300 dark:hover:bg-ink-800"
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-100 bg-ink-50 text-ink-500 hover:bg-ink-100 dark:border-soft-border dark:bg-white/5 dark:text-ink-300 dark:hover:bg-ink-800"
         aria-label={t("common.language")}
         title={t("common.language")}
         aria-expanded={open}
@@ -453,7 +453,7 @@ export function Layout() {
     <>
       <div
         className={clsx(
-          "shrink-0 border-b border-ink-100 dark:border-slate-500/15",
+          "shrink-0 border-b border-ink-100 dark:border-soft-border/70",
           collapsed ? "flex flex-col items-center gap-2 px-2 py-4" : "px-3 py-4",
         )}
       >
@@ -706,7 +706,7 @@ export function Layout() {
 
       <div
         className={clsx(
-          "shrink-0 border-t border-ink-200 dark:border-slate-500/25",
+          "shrink-0 border-t border-ink-200 dark:border-soft-border",
           collapsed ? "flex flex-col items-center gap-2 p-2" : "space-y-2 p-3",
         )}
       >
@@ -751,7 +751,7 @@ export function Layout() {
         {collapsed ? (
           <CollapsedLocalePicker locale={locale} setLocale={setLocale} t={t} />
         ) : (
-          <div className="flex w-full items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-slate-500/25 dark:bg-white/5">
+          <div className="flex w-full items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-soft-border dark:bg-white/5">
             <Languages className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-300" />
             <label htmlFor="locale" className="sr-only">
               {t("common.language")}
@@ -778,7 +778,7 @@ export function Layout() {
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full overflow-x-clip">
       <aside
         className={clsx(
-          "hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-in-out dark:border-slate-500/25 dark:bg-ink-950 lg:flex",
+          "hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-in-out dark:border-soft-border dark:bg-ink-950 lg:flex",
           sidebarCollapsed ? "w-[4.25rem]" : "w-52 xl:w-56 2xl:w-64",
         )}
       >
@@ -793,7 +793,7 @@ export function Layout() {
             onClick={() => setMobileNavOpen(false)}
             aria-label={t("common.close")}
           />
-          <aside className="relative flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-ink-200 bg-white shadow-xl dark:border-slate-500/25 dark:bg-ink-950">
+          <aside className="relative flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-ink-200 bg-white shadow-xl dark:border-soft-border dark:bg-ink-950">
             <div className="absolute right-2 top-2">
               <button
                 type="button"
@@ -810,7 +810,7 @@ export function Layout() {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
-        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-slate-500/25 dark:bg-ink-950 lg:hidden">
+        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-soft-border dark:bg-ink-950 lg:hidden">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}

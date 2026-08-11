@@ -13,7 +13,7 @@ export function CampaignTemplatesLibrary({ onUseTemplate }: Props) {
       {CAMPAIGN_TEMPLATE_PRESETS.map((preset) => (
         <article
           key={preset.id}
-          className="flex flex-col rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55"
+          className="flex flex-col rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm dark:border-soft-border dark:bg-[#202736]/55"
         >
           <span className="text-2xl">{preset.emoji}</span>
           <h3 className="mt-2 text-sm font-bold text-ink-900 dark:text-ink-50">{t(preset.titleKey)}</h3>

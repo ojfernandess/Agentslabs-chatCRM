@@ -149,7 +149,7 @@ export function CannedResponsesSettings() {
           onClick={closeModal}
         >
           <div
-            className="relative max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-ink-200/80 bg-white p-4 shadow-xl sm:max-h-[85vh] sm:rounded-2xl sm:p-6 dark:border-slate-500/25 dark:bg-[#24344d]"
+            className="relative max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-ink-200/80 bg-white p-4 shadow-xl sm:max-h-[85vh] sm:rounded-2xl sm:p-6 dark:border-soft-border dark:bg-[#202736]"
             role="dialog"
             onClick={(e) => e.stopPropagation()}
           >

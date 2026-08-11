@@ -78,7 +78,7 @@ export function CannedMessageBuilderField({
         </div>
       </div>
 
-      <div className="rounded-xl border border-ink-200 bg-ink-50/50 p-3 dark:border-slate-500/25 dark:bg-white/5">
+      <div className="rounded-xl border border-ink-200 bg-ink-50/50 p-3 dark:border-soft-border dark:bg-white/5">
         <p className="mb-2 text-xs font-medium text-ink-600 dark:text-ink-400">{t("settings.cannedVariablesBuilder")}</p>
         <div className="flex flex-wrap gap-1.5">
           {CANNED_VARIABLE_INSERT_OPTIONS.map((opt) => (

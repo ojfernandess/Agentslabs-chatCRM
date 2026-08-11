@@ -240,8 +240,8 @@ export function CampaignCreatorPanel({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0" aria-label={t("common.close")} onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-xl flex-col border-l border-ink-200 bg-white shadow-2xl dark:border-slate-500/25 dark:bg-[#0f1728]">
-        <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4 dark:border-slate-500/25">
+      <div className="relative flex h-full w-full max-w-xl flex-col border-l border-ink-200 bg-white shadow-2xl dark:border-soft-border dark:bg-[#0f1728]">
+        <div className="flex items-center justify-between border-b border-ink-100 px-5 py-4 dark:border-soft-border">
           <div>
             <h2 className="text-lg font-bold text-ink-900 dark:text-ink-50">
               {editCampaignId ? t("broadcastPage.editCampaignTitle") : t("broadcastPage.creatorTitle")}
@@ -255,7 +255,7 @@ export function CampaignCreatorPanel({
           </button>
         </div>
 
-        <div className="flex gap-1 border-b border-ink-100 px-4 dark:border-slate-500/25">
+        <div className="flex gap-1 border-b border-ink-100 px-4 dark:border-soft-border">
           {(
             [
               { id: "quick" as const, label: t("broadcastPage.tabQuick"), icon: Send },
@@ -299,7 +299,7 @@ export function CampaignCreatorPanel({
                         draft.advanced.channel === ch.id
                           ? "bg-brand-500 text-white"
                           : ch.available
-                            ? "border border-ink-200 text-ink-600 hover:border-brand-300 dark:border-slate-500/25 dark:text-ink-300"
+                            ? "border border-ink-200 text-ink-600 hover:border-brand-300 dark:border-soft-border dark:text-ink-300"
                             : "border border-ink-100 text-ink-400 opacity-50",
                       )}
                     >
@@ -320,7 +320,7 @@ export function CampaignCreatorPanel({
                     <select
                       value={draft.advanced.inboxId}
                       onChange={(e) => setInboxId(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-slate-500/25 dark:bg-white/5"
+                      className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-soft-border dark:bg-white/5"
                     >
                       <option value="">{t("broadcastPage.selectInbox")}</option>
                       {channelInboxes.map((inbox) => (
@@ -339,7 +339,7 @@ export function CampaignCreatorPanel({
                 <input
                   value={draft.name}
                   onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-slate-500/25 dark:bg-white/5"
+                  className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-soft-border dark:bg-white/5"
                   maxLength={200}
                 />
               </div>
@@ -358,7 +358,7 @@ export function CampaignCreatorPanel({
                       }))
                     }
                     disabled={draft.advanced.channel === "email" || isVoiceChannel}
-                    className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-slate-500/25 dark:bg-white/5 disabled:opacity-60"
+                    className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-soft-border dark:bg-white/5 disabled:opacity-60"
                   >
                     <option value="TEMPLATE">{t("broadcastPage.typeTemplate")}</option>
                     <option value="TEXT">{t("broadcastPage.typeText")}</option>
@@ -374,7 +374,7 @@ export function CampaignCreatorPanel({
                         value={draft.templateId}
                         onChange={(e) => setDraft((d) => ({ ...d, templateId: e.target.value }))}
                         disabled={templatesLoading || !inboxOk}
-                        className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-slate-500/25 dark:bg-white/5 disabled:opacity-60"
+                        className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-soft-border dark:bg-white/5 disabled:opacity-60"
                       >
                         <option value="">
                           {templatesLoading ? t("common.loading") : t("broadcastPage.selectTemplate")}
@@ -403,7 +403,7 @@ export function CampaignCreatorPanel({
                         value={draft.body}
                         onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                         rows={4}
-                        className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-slate-500/25 dark:bg-white/5"
+                        className="mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-soft-border dark:bg-white/5"
                         maxLength={isVoiceChannel ? 900 : 4096}
                         placeholder={isVoiceChannel ? t("broadcastPage.nvoipVoiceScriptPlaceholder") : undefined}
                       />
@@ -434,7 +434,7 @@ export function CampaignCreatorPanel({
                           "rounded-full border px-3 py-1 text-xs font-medium",
                           on
                             ? "border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-950/40"
-                            : "border-ink-200 text-ink-600 dark:border-slate-500/25",
+                            : "border-ink-200 text-ink-600 dark:border-soft-border",
                         )}
                         style={on ? { borderColor: tag.color } : undefined}
                       >
@@ -469,7 +469,7 @@ export function CampaignCreatorPanel({
                 onChange={(e) => setAiPrompt(e.target.value)}
                 rows={5}
                 placeholder={t("broadcastPage.aiGeneratorPlaceholder")}
-                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-slate-500/25 dark:bg-white/5"
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-soft-border dark:bg-white/5"
               />
               <button
                 type="button"
@@ -493,7 +493,7 @@ export function CampaignCreatorPanel({
         </div>
 
         {tab === "quick" || tab === "flow" ? (
-          <div className="border-t border-ink-100 p-4 dark:border-slate-500/25">
+          <div className="border-t border-ink-100 p-4 dark:border-soft-border">
             {formError ? (
               <p className="mb-3 text-sm text-red-600 dark:text-red-400" role="alert">
                 {formError}

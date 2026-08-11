@@ -47,7 +47,7 @@ export function CampaignOutboundSenderFields({ inboxId, value, onChange }: Props
   const botLabel = options?.botName?.trim() || t("broadcastPage.outboundSenderBotFallback");
 
   return (
-    <div className="rounded-xl border border-ink-200/80 p-3 dark:border-slate-500/25">
+    <div className="rounded-xl border border-ink-200/80 p-3 dark:border-soft-border">
       <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.outboundSenderTitle")}</h3>
       <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("broadcastPage.outboundSenderHint")}</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -58,7 +58,7 @@ export function CampaignOutboundSenderFields({ inboxId, value, onChange }: Props
             "rounded-lg border px-3 py-2 text-left text-xs transition-colors",
             value === "default"
               ? "border-brand-400 bg-brand-50 dark:border-brand-500 dark:bg-brand-950/40"
-              : "border-ink-200 hover:bg-ink-50 dark:border-slate-500/25 dark:hover:bg-white/5",
+              : "border-ink-200 hover:bg-ink-50 dark:border-soft-border dark:hover:bg-white/5",
           )}
         >
           <span className="inline-flex items-center gap-1 font-semibold text-ink-800 dark:text-ink-100">
@@ -74,7 +74,7 @@ export function CampaignOutboundSenderFields({ inboxId, value, onChange }: Props
             "rounded-lg border px-3 py-2 text-left text-xs transition-colors",
             value === "agent"
               ? "border-brand-400 bg-brand-50 dark:border-brand-500 dark:bg-brand-950/40"
-              : "border-ink-200 hover:bg-ink-50 dark:border-slate-500/25 dark:hover:bg-white/5",
+              : "border-ink-200 hover:bg-ink-50 dark:border-soft-border dark:hover:bg-white/5",
           )}
         >
           <span className="inline-flex items-center gap-1 font-semibold text-ink-800 dark:text-ink-100">
@@ -91,7 +91,7 @@ export function CampaignOutboundSenderFields({ inboxId, value, onChange }: Props
             "rounded-lg border px-3 py-2 text-left text-xs transition-colors",
             value === "bot"
               ? "border-brand-400 bg-brand-50 dark:border-brand-500 dark:bg-brand-950/40"
-              : "border-ink-200 hover:bg-ink-50 dark:border-slate-500/25 dark:hover:bg-white/5",
+              : "border-ink-200 hover:bg-ink-50 dark:border-soft-border dark:hover:bg-white/5",
             !options?.botAvailable && "cursor-not-allowed opacity-50",
           )}
         >

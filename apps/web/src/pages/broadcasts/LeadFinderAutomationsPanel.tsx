@@ -234,7 +234,7 @@ export function LeadFinderAutomationsPanel({
       ) : null}
 
       {showForm ? (
-        <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
+        <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-soft-border dark:bg-[#202736]/55">
           <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("leadFinder.autoFormTitle")}</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
@@ -281,7 +281,7 @@ export function LeadFinderAutomationsPanel({
             )}
           </div>
 
-          <div className="mt-6 border-t border-ink-100 pt-5 dark:border-slate-500/25">
+          <div className="mt-6 border-t border-ink-100 pt-5 dark:border-soft-border">
             <FollowUpScheduleFields
               state={searchSchedule}
               onChange={patchSearchSchedule}
@@ -290,7 +290,7 @@ export function LeadFinderAutomationsPanel({
             />
           </div>
 
-          <div className="mt-6 border-t border-ink-100 pt-5 dark:border-slate-500/25">
+          <div className="mt-6 border-t border-ink-100 pt-5 dark:border-soft-border">
             <p className="text-xs font-semibold text-ink-600">{t("leadFinder.tagsLabel")}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {tags.map((tag) => (
@@ -330,7 +330,7 @@ export function LeadFinderAutomationsPanel({
             </label>
           </div>
 
-          <div className="mt-6 border-t border-ink-100 pt-5 dark:border-slate-500/25">
+          <div className="mt-6 border-t border-ink-100 pt-5 dark:border-soft-border">
             <label className="flex items-center gap-2 text-sm font-semibold text-ink-800">
               <input type="checkbox" checked={createFollowUp} onChange={(e) => setCreateFollowUp(e.target.checked)} />
               {t("leadFinder.autoCreateFollowUp")}
@@ -399,7 +399,7 @@ export function LeadFinderAutomationsPanel({
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
+      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-soft-border dark:bg-[#202736]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("leadFinder.autoListTitle")}</h3>
         {loading ? (
           <p className="mt-4 text-sm text-ink-500">{t("common.loading")}</p>
@@ -408,7 +408,7 @@ export function LeadFinderAutomationsPanel({
         ) : (
           <div className="mt-4 space-y-3">
             {schedules.map((row) => (
-              <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-100 p-4 dark:border-slate-500/25">
+              <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-100 p-4 dark:border-soft-border">
                 <div>
                   <p className="font-semibold text-ink-900 dark:text-ink-50">{row.name}</p>
                   <p className="mt-0.5 text-xs text-ink-500">

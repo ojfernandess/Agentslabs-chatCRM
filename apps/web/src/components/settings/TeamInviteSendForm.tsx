@@ -48,7 +48,7 @@ export function TeamInviteSendForm({ onSent }: TeamInviteSendFormProps) {
   };
 
   return (
-    <div className="mb-6 space-y-4 rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-slate-500/25 dark:bg-white/5">
+    <div className="mb-6 space-y-4 rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-soft-border dark:bg-white/5">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
         <Mail className="h-4 w-4" />
         {t("settings.invitesTitle")}

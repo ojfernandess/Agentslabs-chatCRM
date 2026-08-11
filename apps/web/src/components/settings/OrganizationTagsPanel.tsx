@@ -89,10 +89,10 @@ export function OrganizationTagsPanel() {
       {loading ? (
         <p className="text-sm text-ink-500">{t("common.loading")}</p>
       ) : tags.length > 0 ? (
-        <div className="mb-6 overflow-x-auto rounded-lg border border-ink-200/80 dark:border-slate-500/25">
+        <div className="mb-6 overflow-x-auto rounded-lg border border-ink-200/80 dark:border-soft-border">
           <table className="w-full min-w-[420px] text-left text-sm">
             <thead>
-              <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-slate-500/25 dark:bg-white/5">
+              <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-soft-border dark:bg-white/5">
                 <th className="px-4 py-2">{t("settings.tagsColName")}</th>
                 <th className="px-4 py-2">{t("settings.tagsColColor")}</th>
                 <th className="px-4 py-2 text-right">{t("settings.tagsColActions")}</th>
@@ -137,7 +137,7 @@ export function OrganizationTagsPanel() {
         <p className="mb-4 text-sm text-ink-500">{t("settings.tagsEmpty")}</p>
       )}
 
-      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 border-t border-ink-100 pt-4 dark:border-slate-500/25">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 border-t border-ink-100 pt-4 dark:border-soft-border">
         <h3 className="text-sm font-semibold text-ink-800 dark:text-ink-200">
           {editingId ? t("settings.tagsFormEdit") : t("settings.tagsFormCreate")}
         </h3>
