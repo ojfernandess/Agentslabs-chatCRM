@@ -217,7 +217,7 @@ export function SuperAdminShell({
 
   return (
     <div className="flex min-h-screen bg-[#f4f6fb] text-slate-900">
-      <aside className="flex w-[260px] shrink-0 flex-col border-r border-white/10 bg-[#0b1220] text-slate-200">
+      <aside className="flex w-[260px] shrink-0 flex-col border-r border-white/10 bg-[#141c2c] text-slate-200">
         <div className="border-b border-white/10 px-5 py-5">
           <img
             src={brandAssetUrl("/logo.svg")}

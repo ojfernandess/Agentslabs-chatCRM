@@ -181,7 +181,7 @@ export function EvolutionGoSettingsPanel({
   };
 
   return (
-    <div className="space-y-4 rounded-xl border border-brand-200/70 bg-gradient-to-br from-brand-50/50 to-white p-4 dark:border-brand-800/40 dark:from-brand-950/20 dark:to-[#111C2B]/55">
+    <div className="space-y-4 rounded-xl border border-brand-200/70 bg-gradient-to-br from-brand-50/50 to-white p-4 dark:border-brand-800/40 dark:from-brand-950/20 dark:to-[#24344d]/55">
       <div>
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">Evolution Go</h3>
         <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
@@ -198,7 +198,7 @@ export function EvolutionGoSettingsPanel({
       ) : null}
 
       {!hasInstance ? (
-        <div className="rounded-lg border border-dashed border-ink-200 bg-white/80 p-4 dark:border-white/10 dark:bg-black/10">
+        <div className="rounded-lg border border-dashed border-ink-200 bg-white/80 p-4 dark:border-slate-500/25 dark:bg-black/10">
           <p className="text-sm font-medium text-ink-900 dark:text-ink-50">1. Criar instância</p>
           <p className="mt-1 text-xs text-ink-500">Escolha um nome curto (ex.: vendas, suporte).</p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -223,7 +223,7 @@ export function EvolutionGoSettingsPanel({
       ) : (
         <>
           {instances.length > 0 ? (
-            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-white/10 dark:bg-black/10">
+            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-slate-500/25 dark:bg-black/10">
               {isLinked && instances.length === 1 ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -269,7 +269,7 @@ export function EvolutionGoSettingsPanel({
             </div>
           ) : null}
 
-          <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-white/10 dark:bg-black/10">
+          <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-slate-500/25 dark:bg-black/10">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium text-ink-900 dark:text-ink-50">2. Webhook e ligação</p>
               {status ? (
@@ -301,7 +301,7 @@ export function EvolutionGoSettingsPanel({
                 type="button"
                 disabled={busy}
                 onClick={() => void refreshStatus()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-white/10 dark:text-ink-200"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-slate-500/25 dark:text-ink-200"
               >
                 <RefreshCw className="h-4 w-4" />
                 Atualizar estado
@@ -315,7 +315,7 @@ export function EvolutionGoSettingsPanel({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-white/10 dark:bg-black/10">
+            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-slate-500/25 dark:bg-black/10">
               <p className="flex items-center gap-1.5 text-sm font-medium text-ink-900 dark:text-ink-50">
                 <QrCode className="h-4 w-4" /> QR Code
               </p>
@@ -339,7 +339,7 @@ export function EvolutionGoSettingsPanel({
               ) : null}
             </div>
 
-            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-white/10 dark:bg-black/10">
+            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-slate-500/25 dark:bg-black/10">
               <p className="text-sm font-medium text-ink-900 dark:text-ink-50">Código de pareamento</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <input
@@ -354,7 +354,7 @@ export function EvolutionGoSettingsPanel({
                   type="button"
                   disabled={busy || !pairPhone.trim()}
                   onClick={() => void requestPairing()}
-                  className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium hover:bg-ink-50 dark:border-white/10"
+                  className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium hover:bg-ink-50 dark:border-slate-500/25"
                 >
                   Gerar código
                 </button>
@@ -381,7 +381,7 @@ export function EvolutionGoSettingsPanel({
                 type="button"
                 disabled={busy || !newName.trim()}
                 onClick={() => void createInstance()}
-                className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium hover:bg-ink-50 dark:border-white/10"
+                className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium hover:bg-ink-50 dark:border-slate-500/25"
               >
                 Criar outra instância
               </button>

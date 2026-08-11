@@ -343,7 +343,7 @@ export function FollowUpCampaignPanel({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-brand-200/60 bg-gradient-to-br from-brand-50/80 to-white/90 p-5 dark:border-brand-800/40 dark:from-brand-950/25 dark:to-[#111C2B]/55">
+      <div className="rounded-2xl border border-brand-200/60 bg-gradient-to-br from-brand-50/80 to-white/90 p-5 dark:border-brand-800/40 dark:from-brand-950/25 dark:to-[#24344d]/55">
         <h2 className="flex items-center gap-2 text-lg font-bold text-ink-900 dark:text-ink-50">
           <Tags className="h-5 w-5 text-brand-600" />
           {t("broadcastPage.followUpTitle")}
@@ -378,7 +378,7 @@ export function FollowUpCampaignPanel({
         </p>
       ) : null}
 
-      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
         <label className="text-xs font-bold uppercase tracking-wider text-ink-500">{t("broadcastPage.name")}</label>
         <input
           type="text"
@@ -390,13 +390,13 @@ export function FollowUpCampaignPanel({
         />
       </section>
 
-      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.tags")}</h3>
             <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.followUpTagsHint")}</p>
           </div>
-          <div className="flex rounded-lg border border-ink-200 p-0.5 dark:border-white/10">
+          <div className="flex rounded-lg border border-ink-200 p-0.5 dark:border-slate-500/25">
             {(["ANY", "ALL"] as const).map((logic) => (
               <button
                 key={logic}
@@ -429,7 +429,7 @@ export function FollowUpCampaignPanel({
                     "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
                     on
                       ? "border-brand-400 bg-brand-100 text-brand-900 dark:border-brand-600 dark:bg-brand-950/50 dark:text-brand-100"
-                      : "border-ink-200 bg-ink-50 text-ink-700 hover:border-brand-300 dark:border-white/10 dark:bg-white/5 dark:text-ink-200",
+                      : "border-ink-200 bg-ink-50 text-ink-700 hover:border-brand-300 dark:border-slate-500/25 dark:bg-white/5 dark:text-ink-200",
                   )}
                 >
                   <span
@@ -452,7 +452,7 @@ export function FollowUpCampaignPanel({
         </p>
       </section>
 
-      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.followUpScheduleTitle")}</h3>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <button
@@ -462,7 +462,7 @@ export function FollowUpCampaignPanel({
               "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
               scheduleMode === "now"
                 ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
-                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+                : "border-ink-200 hover:border-ink-300 dark:border-slate-500/25",
             )}
           >
             <Send className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
@@ -480,7 +480,7 @@ export function FollowUpCampaignPanel({
               "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
               scheduleMode === "scheduled"
                 ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
-                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+                : "border-ink-200 hover:border-ink-300 dark:border-slate-500/25",
             )}
           >
             <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
@@ -498,7 +498,7 @@ export function FollowUpCampaignPanel({
               "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
               scheduleMode === "recurring"
                 ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
-                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+                : "border-ink-200 hover:border-ink-300 dark:border-slate-500/25",
             )}
           >
             <Repeat className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
@@ -592,7 +592,7 @@ export function FollowUpCampaignPanel({
       </section>
 
       {inboxId ? (
-        <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+        <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
           <label className="flex cursor-pointer items-start gap-3">
             <input
               type="checkbox"
@@ -621,7 +621,7 @@ export function FollowUpCampaignPanel({
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.followUpAfterSendTitle")}</h3>
         <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("broadcastPage.followUpAfterSendHint")}</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -632,7 +632,7 @@ export function FollowUpCampaignPanel({
               "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
               followUpAfterSend === "human_handoff"
                 ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
-                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+                : "border-ink-200 hover:border-ink-300 dark:border-slate-500/25",
             )}
           >
             <Headset className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
@@ -650,7 +650,7 @@ export function FollowUpCampaignPanel({
               "flex items-start gap-3 rounded-xl border p-4 text-left transition-colors",
               followUpAfterSend === "bot"
                 ? "border-brand-400 bg-brand-50 dark:border-brand-600 dark:bg-brand-950/40"
-                : "border-ink-200 hover:border-ink-300 dark:border-white/10",
+                : "border-ink-200 hover:border-ink-300 dark:border-slate-500/25",
             )}
           >
             <Bot className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
@@ -664,7 +664,7 @@ export function FollowUpCampaignPanel({
         </div>
       </section>
 
-      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+      <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
         <label className="text-xs font-bold uppercase tracking-wider text-ink-500">{t("broadcastPage.creatorInbox")}</label>
         <select
           className="input mt-2 w-full max-w-md"
@@ -706,7 +706,7 @@ export function FollowUpCampaignPanel({
                 "rounded-lg border px-3 py-2 text-xs font-semibold",
                 messageType === mt
                   ? "border-brand-400 bg-brand-50 text-brand-800 dark:border-brand-600 dark:bg-brand-950/40 dark:text-brand-100"
-                  : "border-ink-200 text-ink-600 dark:border-white/10",
+                  : "border-ink-200 text-ink-600 dark:border-slate-500/25",
               )}
             >
               {mt === "TEMPLATE" ? t("broadcastPage.typeTemplate") : t("broadcastPage.typeText")}

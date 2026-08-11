@@ -401,7 +401,7 @@ export function ProfilePage() {
                     className={clsx(
                       "flex h-11 w-11 items-center justify-center rounded-lg border transition-colors",
                       "border-ink-200 bg-white text-ink-700 hover:bg-ink-50",
-                      "dark:border-white/10 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10",
+                      "dark:border-slate-500/25 dark:bg-white/5 dark:text-ink-100 dark:hover:bg-white/10",
                     )}
                     aria-label={t("profilePage.audioAlertsTest")}
                     title={t("profilePage.audioAlertsTest")}
@@ -425,7 +425,7 @@ export function ProfilePage() {
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-800"
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-slate-500/25 dark:bg-ink-800"
                     checked={audioOnlyWhenHidden}
                     onChange={(e) => {
                       setAudioOnlyWhenHidden(e.target.checked);
@@ -440,7 +440,7 @@ export function ProfilePage() {
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-800"
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-slate-500/25 dark:bg-ink-800"
                     checked={audioRepeat}
                     onChange={(e) => {
                       setAudioRepeat(e.target.checked);

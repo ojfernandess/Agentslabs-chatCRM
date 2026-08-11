@@ -44,7 +44,7 @@ export function CampaignAnalyticsErrorsPanel({ errorsByCategory, errorSpikeAlert
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-white/10 dark:bg-[#111C2B]/55">
+      <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-slate-500/25 dark:bg-[#24344d]/55">
         <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.analyticsErrorsTitle")}</h3>
         <p className="mt-0.5 text-xs text-ink-500">{t("broadcastPage.analyticsErrorsSub")}</p>
         {loading ? (

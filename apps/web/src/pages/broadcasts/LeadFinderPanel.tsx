@@ -468,7 +468,7 @@ export function LeadFinderPanel({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-brand-200/60 bg-gradient-to-br from-brand-50/80 to-white/90 p-5 dark:border-brand-800/40 dark:from-brand-950/25 dark:to-[#111C2B]/55">
+      <div className="rounded-2xl border border-brand-200/60 bg-gradient-to-br from-brand-50/80 to-white/90 p-5 dark:border-brand-800/40 dark:from-brand-950/25 dark:to-[#24344d]/55">
         <h2 className="flex items-center gap-2 text-lg font-bold text-ink-900 dark:text-ink-50">
           <Building2 className="h-5 w-5 text-brand-600" />
           {t("leadFinder.title")}
@@ -484,7 +484,7 @@ export function LeadFinderPanel({
                 "rounded-lg border px-3 py-2 text-xs font-semibold",
                 panelTab === tab
                   ? "border-brand-400 bg-brand-50 text-brand-800 dark:border-brand-600 dark:bg-brand-950/40"
-                  : "border-ink-200 text-ink-600 dark:border-white/10",
+                  : "border-ink-200 text-ink-600 dark:border-slate-500/25",
               )}
             >
               {tab === "search" ? t("leadFinder.tabSearch") : t("leadFinder.tabAutomations")}
@@ -517,7 +517,7 @@ export function LeadFinderPanel({
         />
       ) : (
         <>
-          <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+          <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
             <div className="flex flex-wrap gap-2">
               {(["custom", "segment"] as const).map((mode) => (
                 <button
@@ -528,7 +528,7 @@ export function LeadFinderPanel({
                     "rounded-lg border px-3 py-2 text-xs font-semibold",
                     searchMode === mode
                       ? "border-brand-400 bg-brand-50 text-brand-800 dark:border-brand-600 dark:bg-brand-950/40"
-                      : "border-ink-200 text-ink-600 dark:border-white/10",
+                      : "border-ink-200 text-ink-600 dark:border-slate-500/25",
                   )}
                 >
                   {mode === "custom" ? t("leadFinder.modeCustom") : t("leadFinder.modeSegment")}
@@ -574,7 +574,7 @@ export function LeadFinderPanel({
                   ) : null}
                 </div>
                 {showSegmentForm ? (
-                  <div className="rounded-xl border border-ink-100 bg-ink-50/50 p-4 dark:border-white/10 dark:bg-white/5">
+                  <div className="rounded-xl border border-ink-100 bg-ink-50/50 p-4 dark:border-slate-500/25 dark:bg-white/5">
                     <p className="text-xs font-bold text-ink-700">{editingSegmentId ? t("leadFinder.segmentEditTitle") : t("leadFinder.segmentCreateTitle")}</p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <input className="input" placeholder={t("leadFinder.segmentNamePlaceholder")} value={segmentName} onChange={(e) => setSegmentName(e.target.value)} />
@@ -627,7 +627,7 @@ export function LeadFinderPanel({
 
           {results.length > 0 ? (
             <>
-              <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+              <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">
                     {t("leadFinder.resultsTitle").replace("{count}", String(results.length))}
@@ -648,7 +648,7 @@ export function LeadFinderPanel({
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b border-ink-200 text-xs uppercase text-ink-500 dark:border-white/10">
+                      <tr className="border-b border-ink-200 text-xs uppercase text-ink-500 dark:border-slate-500/25">
                         <th className="px-2 py-2" />
                         <th className="px-2 py-2">{t("leadFinder.colName")}</th>
                         <th className="px-2 py-2">{t("leadFinder.colPhone")}</th>
@@ -665,7 +665,7 @@ export function LeadFinderPanel({
                         <tr
                           key={`${row.placeId ?? row.title}-${index}`}
                           className={clsx(
-                            "border-b border-ink-100 dark:border-white/5",
+                            "border-b border-ink-100 dark:border-slate-500/15",
                             duplicate && "bg-amber-50/60 dark:bg-amber-950/15",
                           )}
                         >
@@ -747,7 +747,7 @@ export function LeadFinderPanel({
                 <p className="mt-2 text-xs text-ink-500">{t("leadFinder.emailNote")}</p>
               </section>
 
-              <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+              <section className="rounded-2xl border border-ink-200/80 bg-white/90 p-5 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-ink-900 dark:text-ink-50">
                   <Download className="h-4 w-4" />
                   {t("leadFinder.importTitle")}

@@ -34,7 +34,7 @@ export function ReminderActionableBanner({
   return (
     <div
       className={clsx(
-        "shrink-0 border-b border-ink-200/60 bg-white/90 px-4 py-3 backdrop-blur-md dark:border-white/10 dark:bg-ink-950/75 sm:px-5",
+        "shrink-0 border-b border-ink-200/60 bg-white/90 px-4 py-3 backdrop-blur-md dark:border-slate-500/25 dark:bg-ink-950/75 sm:px-5",
         hasOverdue ? "border-l-[3px] border-l-red-500" : "border-l-[3px] border-l-brand-500",
       )}
       role="region"

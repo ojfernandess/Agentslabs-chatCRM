@@ -1300,7 +1300,7 @@ export function SettingsPage() {
     <PageTransition>
       <div className="page-shell">
         <div className="page-shell-inner">
-          <div className="mb-8 border-b border-ink-200/80 pb-6 dark:border-white/10">
+          <div className="mb-8 border-b border-ink-200/80 pb-6 dark:border-slate-500/25">
             <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("settings.title")}</h1>
             <p className="mt-1 max-w-2xl text-sm text-ink-500 dark:text-ink-400">{t("settings.subtitle")}</p>
           </div>
@@ -1461,7 +1461,7 @@ export function SettingsPage() {
                           <button
                             type="button"
                             onClick={copyWebhookUrl}
-                            className="rounded-lg border border-ink-200/80 p-2 text-ink-500 hover:bg-ink-50 dark:border-white/10 dark:text-ink-400 dark:hover:bg-white/5"
+                            className="rounded-lg border border-ink-200/80 p-2 text-ink-500 hover:bg-ink-50 dark:border-slate-500/25 dark:text-ink-400 dark:hover:bg-white/5"
                           >
                             {copied ? (
                               <Check className="h-4 w-4 text-green-500" />
@@ -1494,11 +1494,11 @@ export function SettingsPage() {
                       />
 
                       {!provider ? (
-                        <p className="rounded-lg border border-dashed border-ink-200 bg-ink-50/50 px-4 py-3 text-sm text-ink-600 dark:border-white/10 dark:bg-black/10 dark:text-ink-400">
+                        <p className="rounded-lg border border-dashed border-ink-200 bg-ink-50/50 px-4 py-3 text-sm text-ink-600 dark:border-slate-500/25 dark:bg-black/10 dark:text-ink-400">
                           Selecione um provider acima para ver e editar as credenciais.
                         </p>
                       ) : (
-                      <div className="rounded-xl border border-ink-200/80 bg-white/50 p-4 dark:border-white/10 dark:bg-black/5">
+                      <div className="rounded-xl border border-ink-200/80 bg-white/50 p-4 dark:border-slate-500/25 dark:bg-black/5">
                         <p className="mb-4 text-sm font-semibold text-ink-900 dark:text-ink-50">
                           Configuração: {whatsappProviderOverview.find((x) => x.id === provider)?.label ?? provider}
                         </p>
@@ -1901,7 +1901,7 @@ export function SettingsPage() {
                   </h2>
                   <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.appearanceIntro")}</p>
 
-                  <div className="mb-8 rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-white/10 dark:bg-ink-950/40">
+                  <div className="mb-8 rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-slate-500/25 dark:bg-ink-950/40">
                     <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
                       {t("settings.organizationLogoTitle")}
                     </h3>
@@ -1985,7 +1985,7 @@ export function SettingsPage() {
                   ) : null}
 
                   <div className="mb-6 grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-white/10 dark:bg-ink-950/40">
+                    <div className="rounded-xl border border-ink-200/80 bg-ink-50/50 p-4 dark:border-slate-500/25 dark:bg-ink-950/40">
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
                         {t("settings.appearanceLightMode")}
                       </p>
@@ -2084,7 +2084,7 @@ export function SettingsPage() {
                       </div>
                       <div className="mt-4 flex flex-col gap-2 rounded-xl bg-white p-3 dark:bg-ink-900/60">
                         <div
-                          className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-ink-200/60 px-3 py-2 text-sm dark:border-white/10"
+                          className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-ink-200/60 px-3 py-2 text-sm dark:border-slate-500/25"
                           style={bubblePreviewStyle(bubbleClientColor, bubbleClientTextColor, bubbleClientMetaColor)}
                         >
                           <p>{t("settings.appearancePreviewClient")}</p>
@@ -2108,7 +2108,7 @@ export function SettingsPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-ink-200/80 bg-ink-950 p-4 dark:border-white/10">
+                    <div className="rounded-xl border border-ink-200/80 bg-ink-950 p-4 dark:border-slate-500/25">
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-400">
                         {t("settings.appearanceDarkMode")}
                       </p>
@@ -2205,7 +2205,7 @@ export function SettingsPage() {
                           />
                         </label>
                       </div>
-                      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#0e1624] p-3">
+                      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#172033] p-3">
                         <div
                           className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-white/10 px-3 py-2 text-sm"
                           style={bubblePreviewStyle(bubbleClientDark, bubbleClientTextDark, bubbleClientMetaDark)}
@@ -2912,7 +2912,7 @@ export function SettingsPage() {
                     </div>
                   ) : null}
                   {leadTypes.length > 0 && (
-                    <ul className="mb-4 divide-y divide-ink-100 dark:divide-white/10 rounded-lg border border-ink-200/80 dark:border-white/10">
+                    <ul className="mb-4 divide-y divide-ink-100 dark:divide-white/10 rounded-lg border border-ink-200/80 dark:border-slate-500/25">
                       {leadTypes.map((lt) => (
                         <li key={lt.id} className="px-3 py-3 text-sm">
                           {editingLtId === lt.id ? (
@@ -2961,7 +2961,7 @@ export function SettingsPage() {
                                 </select>
                                 <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.leadTypeRollupWonHint")}</p>
                               </div>
-                              <div className="rounded-lg border border-ink-200/80 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-white/5">
+                              <div className="rounded-lg border border-ink-200/80 bg-ink-50/50 p-3 dark:border-slate-500/25 dark:bg-white/5">
                                 <p className="text-xs font-semibold text-ink-800 dark:text-ink-100">
                                   {t("settings.leadTypePlaybookTitle")}
                                 </p>
@@ -3020,7 +3020,7 @@ export function SettingsPage() {
                                   </span>
                                 </label>
                               </div>
-                              <div className="rounded-lg border border-ink-200/80 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-white/5">
+                              <div className="rounded-lg border border-ink-200/80 bg-ink-50/50 p-3 dark:border-slate-500/25 dark:bg-white/5">
                                 <p className="text-xs font-semibold text-ink-800 dark:text-ink-100">
                                   {t("settings.leadTypeAgentBindingTitle")}
                                 </p>

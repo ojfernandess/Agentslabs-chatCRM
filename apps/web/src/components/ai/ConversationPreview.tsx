@@ -43,7 +43,7 @@ export function ConversationPreview({ conversation, insights }: Props) {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-ink-200/80 bg-[#e5ddd5] shadow-sm dark:border-ink-700/60 dark:bg-[#0b141a]">
-      <div className="border-b border-black/5 bg-[#f0f2f5] px-4 py-3 dark:border-white/5 dark:bg-ink-900/80">
+      <div className="border-b border-black/5 bg-[#f0f2f5] px-4 py-3 dark:border-slate-500/15 dark:bg-ink-900/80">
         <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{contactName}</p>
         <p className="text-[10px] text-ink-500">{t("aiInsightsPage.previewSubtitle")}</p>
       </div>

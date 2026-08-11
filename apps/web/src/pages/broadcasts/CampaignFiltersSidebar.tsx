@@ -38,7 +38,7 @@ export function CampaignFiltersSidebar({
   };
 
   return (
-    <aside className="space-y-4 rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm dark:border-white/10 dark:bg-[#111C2B]/55">
+    <aside className="space-y-4 rounded-2xl border border-ink-200/80 bg-white/90 p-4 shadow-sm dark:border-slate-500/25 dark:bg-[#24344d]/55">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-ink-500 dark:text-ink-400">
         <Filter className="h-4 w-4" />
         {t("broadcastPage.filtersTitle")}
@@ -52,7 +52,7 @@ export function CampaignFiltersSidebar({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("broadcastPage.filterSearchPlaceholder")}
-            className="w-full rounded-xl border border-ink-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-white/10 dark:bg-white/5"
+            className="w-full rounded-xl border border-ink-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-500/25 dark:bg-white/5"
           />
         </div>
       </div>

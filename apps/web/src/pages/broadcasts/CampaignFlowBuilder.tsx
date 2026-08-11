@@ -119,7 +119,7 @@ export function CampaignFlowBuilder({ value, onChange }: Props) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-ink-500 dark:text-ink-400">{t("broadcastPage.flowBuilderDragHint")}</p>
-      <div className="rounded-xl border border-dashed border-ink-200 bg-ink-50/50 p-3 dark:border-white/10 dark:bg-white/5">
+      <div className="rounded-xl border border-dashed border-ink-200 bg-ink-50/50 p-3 dark:border-slate-500/25 dark:bg-white/5">
         {flow.nodes.map((node) => (
           <div
             key={node.id}
@@ -128,8 +128,8 @@ export function CampaignFlowBuilder({ value, onChange }: Props) {
             onDragOver={(e) => onDragOver(e, node.id)}
             onDragEnd={() => setDragId(null)}
             className={clsx(
-              "mb-2 flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs shadow-sm dark:bg-[#111C2B]",
-              dragId === node.id ? "border-brand-400" : "border-ink-200 dark:border-white/10",
+              "mb-2 flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs shadow-sm dark:bg-[#24344d]",
+              dragId === node.id ? "border-brand-400" : "border-ink-200 dark:border-slate-500/25",
             )}
           >
             <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-ink-400" />
@@ -141,7 +141,7 @@ export function CampaignFlowBuilder({ value, onChange }: Props) {
                 type="number"
                 min={1}
                 max={1440}
-                className="w-14 rounded border border-ink-200 px-1 py-0.5 text-[10px] dark:border-white/10 dark:bg-white/5"
+                className="w-14 rounded border border-ink-200 px-1 py-0.5 text-[10px] dark:border-slate-500/25 dark:bg-white/5"
                 placeholder="min"
                 value={String(node.data?.minutes ?? "")}
                 onChange={(e) => {
@@ -166,7 +166,7 @@ export function CampaignFlowBuilder({ value, onChange }: Props) {
             key={type}
             type="button"
             onClick={() => addNode(type)}
-            className="inline-flex items-center gap-1 rounded-lg border border-ink-200 px-2 py-1 text-[10px] font-medium hover:bg-ink-50 dark:border-white/10 dark:hover:bg-white/5"
+            className="inline-flex items-center gap-1 rounded-lg border border-ink-200 px-2 py-1 text-[10px] font-medium hover:bg-ink-50 dark:border-slate-500/25 dark:hover:bg-white/5"
           >
             <Plus className="h-3 w-3" />
             {t(BLOCK_LABEL[type] ?? type)}

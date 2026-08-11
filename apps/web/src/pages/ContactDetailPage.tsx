@@ -592,7 +592,7 @@ export function ContactDetailPage() {
                               className={clsx(
                                 "crm-bubble max-w-[min(100%,28rem)] px-3 py-2 text-sm",
                                 inbound
-                                  ? "crm-bubble-in border border-ink-200/60 dark:border-white/10"
+                                  ? "crm-bubble-in border border-ink-200/60 dark:border-slate-500/25"
                                   : "crm-bubble-out border border-brand-500/25 dark:border-brand-400/30",
                               )}
                             >

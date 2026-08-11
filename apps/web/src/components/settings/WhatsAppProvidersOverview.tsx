@@ -35,7 +35,7 @@ export function WhatsAppProvidersOverview({ items, activeProvider, onSelectProvi
                   "rounded-xl border p-3 text-left transition-colors",
                   active
                     ? "border-brand-400 bg-brand-50/80 ring-1 ring-brand-400/60 dark:border-brand-600 dark:bg-brand-950/40"
-                    : "border-ink-200/80 bg-white hover:border-brand-200 hover:bg-brand-50/30 dark:border-white/10 dark:bg-black/10 dark:hover:border-brand-800",
+                    : "border-ink-200/80 bg-white hover:border-brand-200 hover:bg-brand-50/30 dark:border-slate-500/25 dark:bg-black/10 dark:hover:border-brand-800",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -62,7 +62,7 @@ export function WhatsAppProvidersOverview({ items, activeProvider, onSelectProvi
           })}
         </div>
       ) : (
-        <p className="rounded-lg border border-dashed border-ink-200 px-3 py-4 text-sm text-ink-500 dark:border-white/10">
+        <p className="rounded-lg border border-dashed border-ink-200 px-3 py-4 text-sm text-ink-500 dark:border-slate-500/25">
           Nenhum provider configurado ainda. Escolha um tipo abaixo para começar.
         </p>
       )}
@@ -80,7 +80,7 @@ export function WhatsAppProvidersOverview({ items, activeProvider, onSelectProvi
                   "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                   activeProvider === item.id
                     ? "border-brand-300 bg-brand-50 text-brand-900 dark:border-brand-700 dark:bg-brand-950/40 dark:text-brand-100"
-                    : "border-ink-200 text-ink-600 hover:bg-ink-50 dark:border-white/10 dark:text-ink-300",
+                    : "border-ink-200 text-ink-600 hover:bg-ink-50 dark:border-slate-500/25 dark:text-ink-300",
                 )}
               >
                 <Circle className="h-3 w-3" />

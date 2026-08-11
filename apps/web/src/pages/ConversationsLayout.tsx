@@ -79,7 +79,7 @@ export function ConversationsLayout() {
       >
         <aside
           className={clsx(
-            "flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200 bg-white dark:border-ink-800 dark:bg-[#0F1B2B] lg:border-b-0 lg:border-r",
+            "flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-ink-200 bg-white dark:border-slate-500/30 dark:bg-[#1c2a40] lg:border-b-0 lg:border-r",
             activeThreadId && "hidden lg:flex",
           )}
         >
@@ -106,7 +106,7 @@ export function ConversationsLayout() {
 export function ConversationsThreadPlaceholder() {
   const { t } = useI18n();
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-ink-50 p-8 text-center dark:bg-[#0E1624]">
+    <div className="flex flex-1 flex-col items-center justify-center bg-ink-50 p-8 text-center dark:bg-[#172033]">
       <MessageSquare className="mb-3 h-12 w-12 text-brand-500/70" />
       <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
         {t("conversations.selectThread")}

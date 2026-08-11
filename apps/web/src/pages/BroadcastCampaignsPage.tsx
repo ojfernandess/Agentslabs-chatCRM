@@ -579,7 +579,7 @@ export function BroadcastCampaignsPage() {
               "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold",
               ch.available
                 ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-200"
-                : "border-ink-200 bg-ink-50 text-ink-500 dark:border-white/10 dark:bg-white/5 dark:text-ink-400",
+                : "border-ink-200 bg-ink-50 text-ink-500 dark:border-slate-500/25 dark:bg-white/5 dark:text-ink-400",
             )}
           >
             {t(ch.labelKey)}
@@ -591,7 +591,7 @@ export function BroadcastCampaignsPage() {
       </div>
 
       {Object.keys(statusFunnel).length > 0 ? (
-        <div className="flex flex-wrap gap-2 rounded-2xl border border-ink-200/80 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-ink-200/80 bg-white/60 px-4 py-3 dark:border-slate-500/25 dark:bg-white/5">
           <span className="w-full text-[10px] font-bold uppercase tracking-wider text-ink-500 sm:w-auto sm:py-1">
             {t("broadcastPage.funnelTitle")}
           </span>
@@ -613,7 +613,7 @@ export function BroadcastCampaignsPage() {
         </div>
       ) : null}
 
-      <div className="flex gap-1 overflow-x-auto border-b border-ink-200 dark:border-white/10">
+      <div className="flex gap-1 overflow-x-auto border-b border-ink-200 dark:border-slate-500/25">
         {centerTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -691,7 +691,7 @@ export function BroadcastCampaignsPage() {
                   {listError}
                 </p>
               ) : filteredRows.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-ink-200 p-12 text-center dark:border-white/10">
+                <div className="rounded-2xl border border-dashed border-ink-200 p-12 text-center dark:border-slate-500/25">
                   <p className="text-sm text-ink-500">{t("broadcastPage.empty")}</p>
                   <button type="button" className="btn-primary mt-4" onClick={() => openCreator("quick")}>
                     {t("broadcastPage.newCampaign")}
@@ -735,7 +735,7 @@ export function BroadcastCampaignsPage() {
           ) : null}
 
           {centerTab === "flows" ? (
-            <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-8 text-center dark:border-white/10 dark:bg-[#111C2B]/55">
+            <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-8 text-center dark:border-slate-500/25 dark:bg-[#24344d]/55">
               <GitBranch className="mx-auto h-12 w-12 text-brand-500 opacity-60" />
               <h3 className="mt-4 text-lg font-bold text-ink-900 dark:text-ink-50">{t("broadcastPage.flowsTitle")}</h3>
               <p className="mx-auto mt-2 max-w-lg text-sm text-ink-600 dark:text-ink-400">{t("broadcastPage.flowsSubtitle")}</p>

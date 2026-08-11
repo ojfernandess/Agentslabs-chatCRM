@@ -64,7 +64,7 @@ function ChatbotFlowNodeCardComponent({ data, selected }: NodeProps<ChatbotRfNod
       </div>
 
       {preview ? (
-        <div className="border-t border-ink-100 px-3 py-2 dark:border-white/5">
+        <div className="border-t border-ink-100 px-3 py-2 dark:border-slate-500/15">
           <p className="line-clamp-2 text-[11px] leading-relaxed text-ink-600 dark:text-ink-300">{preview}</p>
         </div>
       ) : null}

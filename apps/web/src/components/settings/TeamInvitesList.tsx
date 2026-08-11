@@ -104,10 +104,10 @@ export function TeamInvitesList() {
       ) : invites.length === 0 ? (
         <p className="text-sm text-ink-500">{t("settings.invitesEmpty")}</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-ink-200/80 dark:border-white/10">
+        <div className="overflow-x-auto rounded-lg border border-ink-200/80 dark:border-slate-500/25">
           <table className="w-full min-w-[560px] text-left text-sm">
             <thead>
-              <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-white/10 dark:bg-white/5">
+              <tr className="border-b border-ink-200/80 bg-ink-50 text-xs font-medium uppercase tracking-wide text-ink-500 dark:border-slate-500/25 dark:bg-white/5">
                 <th className="px-3 py-2">{t("settings.invitesEmail")}</th>
                 <th className="px-3 py-2">{t("settings.invitesRole")}</th>
                 <th className="px-3 py-2">{t("settings.invitesStatus")}</th>

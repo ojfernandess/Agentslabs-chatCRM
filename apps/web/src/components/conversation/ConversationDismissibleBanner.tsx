@@ -90,7 +90,7 @@ export function ConversationDismissibleBanner(props: ConversationDismissibleBann
   if (!strip) return banner;
 
   return (
-    <div className="relative z-20 shrink-0 border-b border-ink-100/80 bg-white/70 px-3 py-2.5 backdrop-blur-sm dark:border-white/10 dark:bg-[#0F1B2B]/45 sm:px-5">
+    <div className="relative z-20 shrink-0 border-b border-ink-100/80 bg-white/70 px-3 py-2.5 backdrop-blur-sm dark:border-slate-500/25 dark:bg-[#1c2a40]/45 sm:px-5">
       {banner}
     </div>
   );

@@ -26,7 +26,7 @@ export function CampaignAnalyticsSummary({ summary, loading }: Props) {
       {cards.map((c) => (
         <div
           key={c.label}
-          className="rounded-xl border border-ink-200/80 bg-white/90 px-3 py-3 dark:border-white/10 dark:bg-[#111C2B]/55"
+          className="rounded-xl border border-ink-200/80 bg-white/90 px-3 py-3 dark:border-slate-500/25 dark:bg-[#24344d]/55"
         >
           <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">{c.label}</p>
           <p className="mt-1 text-xl font-bold tabular-nums text-ink-900 dark:text-ink-50">{c.value}</p>

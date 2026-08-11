@@ -56,8 +56,8 @@ export default {
           700: "#33475b",
           800: "#2d3e50",
           900: "#253342",
-          /** Fundo app / chat no modo escuro (azul-carvão, sem bandas) */
-          950: "#0e1624",
+          /** Fundo app / chat no modo escuro (azul-ardósia elevado, mais confortável) */
+          950: "#172033",
         },
       },
       keyframes: {
