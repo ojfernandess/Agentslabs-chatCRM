@@ -11,6 +11,7 @@ import {
 } from "@/lib/websiteWidget";
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
+import { WhatsAppEmbeddedSignupPanel } from "@/components/inboxes/WhatsAppEmbeddedSignupPanel";
 import {
   EmailInboxConfigFields,
   emailInboxFormToPatch,
@@ -48,6 +49,8 @@ type Props = {
   orgUsers: OrgUser[];
   /** Agent bots (WEBHOOK etc.) for optional per-inbox triage; same source as /bots. */
   agentBots?: { id: string; name: string; isActive?: boolean }[];
+  /** Skip channel picker and open on this channel (e.g. WhatsApp from Settings). */
+  initialChannel?: InboxChannelId | null;
 };
 
 type NativeCfgForm = {
@@ -116,7 +119,14 @@ function buildChannelConfigPayload(
   return Object.keys(o).length ? o : undefined;
 }
 
-export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBots = [] }: Props) {
+export function InboxCreateWizard({
+  open,
+  onClose,
+  onCreated,
+  orgUsers,
+  agentBots = [],
+  initialChannel = null,
+}: Props) {
   const { t } = useI18n();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [channel, setChannel] = useState<InboxChannelId | null>(null);
@@ -186,6 +196,11 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
     setEmailTestBusy(false);
     setEmailTestResult(null);
     setEmailTestError(null);
+    if (initialChannel) {
+      setChannel(initialChannel);
+      setName(t(`inboxesPage.wizard.channels.${initialChannel}.title`));
+      setStep(2);
+    }
     void (async () => {
       try {
         const [cfg, inboxesRes] = await Promise.all([
@@ -203,7 +218,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
       } catch {
       }
     })();
-  }, [open]);
+  }, [open, initialChannel, t]);
 
   if (!open) return null;
 
@@ -765,7 +780,18 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                     />
                   </div>
                 ) : channel === "WHATSAPP" ? (
-                  <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                  <div className="mb-4 space-y-4">
+                    <WhatsAppEmbeddedSignupPanel
+                      className="rounded-xl border border-ink-200/80 bg-white p-4 dark:border-soft-border dark:bg-black/10"
+                      onCompleted={() => {
+                        onCreated();
+                        onClose();
+                      }}
+                    />
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                    <p className="mb-4 text-sm font-semibold text-ink-900 dark:text-ink-50">
+                      {t("inboxesPage.wizard.whatsappMeta.manualTitle")}
+                    </p>
                     {providerNewInboxNotice ? (
                       <p className="mb-4 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-950 dark:text-sky-100">
                         {providerNewInboxNotice}
@@ -792,6 +818,7 @@ export function InboxCreateWizard({ open, onClose, onCreated, orgUsers, agentBot
                       testConnectionBusy={waTestBusy}
                       testConnectionResult={waTestResult}
                     />
+                    </div>
                   </div>
                 ) : channel === "EMAIL" ? (
                   <div className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">

@@ -3562,6 +3562,7 @@ export const messages = {
           "Este canal usa rotas públicas nativas (Client API e webhooks por plataforma), sem JSON genérico como fluxo principal.",
         whatsappMeta: {
           step2Subtitle: "Autentique sua conta e crie uma caixa de entrada.",
+          manualTitle: "Ou configure manualmente o provedor",
           fieldProvider: "Provedor",
           fieldPhoneNumber: "Número de telefone",
           fieldPhoneNumberPlaceholder:
@@ -5122,11 +5123,28 @@ export const messages = {
       cannedSaveError: "Não foi possível guardar a resposta pronta.",
       cannedDeleteConfirm: "Eliminar esta resposta pronta?",
       channelHint:
-        "As credenciais WhatsApp ficam aqui e valem para todas as caixas de entrada do tipo WhatsApp. Em Caixas de entrada, defina nome, equipes e dados opcionais (telefone exibido, WABA).",
-      channelUnifiedTitle: "Canal WhatsApp da organização",
+        "As credenciais de cada caixa WhatsApp ficam em Caixas de entrada. Nesta página ligue com a Meta, veja as caixas e ajuste políticas da organização.",
+      channelUnifiedTitle: "Canal WhatsApp",
       channelUnifiedBody:
-        "Esta configuração é compartilhada por todas as caixas WhatsApp. Após salvar, abra Caixas de entrada para ver o status ou criar outra caixa.",
-      channelUnifiedLink: "Abrir Caixas de entrada",
+        "Crie e ligue números em Caixas de entrada. Aqui ficam a configuração rápida com a Meta, o resumo das caixas, o webhook e as políticas da organização.",
+      channelUnifiedLink: "Abrir caixas de entrada",
+      channelCreateWhatsapp: "Nova caixa WhatsApp",
+      channelInboxListTitle: "Caixas WhatsApp desta organização",
+      channelInboxListHint:
+        "Cada caixa tem o seu provedor, credenciais e webhook. Crie ou edite em Caixas de entrada.",
+      channelInboxListEmpty:
+        "Ainda não há caixas WhatsApp. Crie a primeira com a configuração rápida da Meta ou em Caixas de entrada.",
+      channelInboxDefault: "Padrão",
+      channelInboxReady: "Ligada",
+      channelInboxPending: "A configurar",
+      channelInboxOpen: "Abrir",
+      channelAdvancedCredentials: "Credenciais avançadas",
+      channelProviderTitle: "Provedor WhatsApp",
+      channelProviderHint:
+        "Configure e gira cada integração WhatsApp da organização. O provedor principal é o que fica ativo nesta página ao guardar.",
+      channelPoliciesTitle: "Políticas do canal",
+      channelPoliciesHint:
+        "Estas opções aplicam-se a todas as conversas WhatsApp da organização (bot, transcrição, conversa única e opt-in).",
       webhookCopyHint:
         "Copie este URL e utilize-o como URL de callback no painel do seu fornecedor WhatsApp.",
       agentBotWhatsApp: "Bot de agente no canal",
@@ -5165,7 +5183,7 @@ export const messages = {
       embeddedSignupError: "Falha no fluxo incorporado.",
       embeddedInvalidBusiness: "Dados de negócio inválidos devolvidos pela Meta.",
       embeddedCompleteError: "Não foi possível concluir a ligação. Tente novamente.",
-      embeddedManualHint: "Se o número já estiver na Cloud API ou usar outro gateway, utilize a configuração manual (Meta Cloud API) mais abaixo.",
+      embeddedManualHint: "Se o número já estiver na Cloud API ou usar outro gateway, utilize a configuração manual nas credenciais avançadas.",
       embeddedManualLink: "Configuração manual",
       embeddedUnavailable:
         "O administrador da plataforma ainda não configurou o WhatsApp Embedded. Contacte o suporte ou use a configuração manual abaixo.",
@@ -9158,6 +9176,7 @@ export const messages = {
           "This channel uses native public routes (Client API and per-platform webhooks), not a generic JSON webhook as the primary flow.",
         whatsappMeta: {
           step2Subtitle: "Authenticate your account and create an inbox.",
+          manualTitle: "Or configure the provider manually",
           fieldProvider: "Provider",
           fieldPhoneNumber: "Phone number",
           fieldPhoneNumberPlaceholder: "Enter the phone number messages will be sent from.",
@@ -10711,11 +10730,28 @@ export const messages = {
       cannedSaveError: "Could not save canned response.",
       cannedDeleteConfirm: "Delete this canned response?",
       channelHint:
-        "WhatsApp credentials live here and apply to every WhatsApp inbox. In Inboxes, set name, teams, and optional inbox fields (display phone, WABA).",
-      channelUnifiedTitle: "Organization WhatsApp channel",
+        "Each WhatsApp inbox stores its own credentials in Inboxes. Use this page for Meta quick setup, the inbox overview, webhook details, and organization policies.",
+      channelUnifiedTitle: "WhatsApp channel",
       channelUnifiedBody:
-        "This setup is shared by all WhatsApp inboxes. After saving, open Inboxes to see status or add another inbox.",
+        "Create and connect numbers in Inboxes. This page keeps Meta quick setup, the inbox overview, webhook details, and organization policies.",
       channelUnifiedLink: "Open Inboxes",
+      channelCreateWhatsapp: "New WhatsApp inbox",
+      channelInboxListTitle: "WhatsApp inboxes in this organization",
+      channelInboxListHint:
+        "Each inbox has its own provider, credentials, and webhook. Create or edit them in Inboxes.",
+      channelInboxListEmpty:
+        "There are no WhatsApp inboxes yet. Create the first one with Meta quick setup or from Inboxes.",
+      channelInboxDefault: "Default",
+      channelInboxReady: "Connected",
+      channelInboxPending: "Needs setup",
+      channelInboxOpen: "Open",
+      channelAdvancedCredentials: "Advanced credentials",
+      channelProviderTitle: "WhatsApp provider",
+      channelProviderHint:
+        "Configure and manage each WhatsApp integration for the organization. The primary provider is the one saved as active on this page.",
+      channelPoliciesTitle: "Channel policies",
+      channelPoliciesHint:
+        "These options apply to all WhatsApp conversations in the organization (bot, transcription, single conversation, and opt-in).",
       webhookCopyHint:
         "Copy this URL and set it as the callback URL in your WhatsApp provider dashboard.",
       agentBotWhatsApp: "Agent bot on this channel",
@@ -10754,7 +10790,7 @@ export const messages = {
       embeddedSignupError: "Embedded signup failed.",
       embeddedInvalidBusiness: "Invalid business data from Meta.",
       embeddedCompleteError: "Could not finish linking. Please try again.",
-      embeddedManualHint: "If your number is already on the Cloud API or you use another gateway, use manual setup (Meta Cloud API) below.",
+      embeddedManualHint: "If your number is already on the Cloud API or you use another gateway, use manual setup in Advanced credentials.",
       embeddedManualLink: "Manual setup",
       embeddedUnavailable:
         "WhatsApp Embedded has not been configured on this platform yet. Contact support or use manual setup below.",

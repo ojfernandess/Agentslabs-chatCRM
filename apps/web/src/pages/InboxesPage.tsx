@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition } from "@/components/Motion";
 import { HelpCircle, Plus, Trash2 } from "lucide-react";
-import { InboxCreateWizard, INBOX_CHANNEL_ORDER } from "@/components/InboxCreateWizard";
+import { InboxCreateWizard, INBOX_CHANNEL_ORDER, type InboxChannelId } from "@/components/InboxCreateWizard";
 import { InboxesKpiStrip, type InboxKpiStats } from "@/components/inboxes/InboxesKpiStrip";
 import {
   InboxesToolbar,
@@ -120,6 +120,7 @@ export function InboxesPage() {
   const { user } = useAuth();
   const isAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -127,6 +128,7 @@ export function InboxesPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardInitialChannel, setWizardInitialChannel] = useState<InboxChannelId | null>(null);
   const [addUserId, setAddUserId] = useState<Record<string, string>>({});
   const [patchingId, setPatchingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -160,6 +162,16 @@ export function InboxesPage() {
   const [assignEnabled, setAssignEnabled] = useState<Record<string, boolean>>({});
   const [assignLimit, setAssignLimit] = useState<Record<string, string>>({});
   const [assignSavingId, setAssignSavingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (searchParams.get("create") !== "whatsapp") return;
+    setWizardInitialChannel("WHATSAPP");
+    setWizardOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("create");
+    setSearchParams(next, { replace: true });
+  }, [isAdmin, searchParams, setSearchParams]);
 
   const basePublicInbox =
     typeof window !== "undefined" ? `${window.location.origin}/api/v1/public/inbox` : "";
@@ -985,7 +997,10 @@ export function InboxesPage() {
           {isAdmin ? (
             <button
               type="button"
-              onClick={() => setWizardOpen(true)}
+              onClick={() => {
+                setWizardInitialChannel(null);
+                setWizardOpen(true);
+              }}
               className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-700 dark:shadow-brand-900/30"
             >
               <Plus className="h-4 w-4" />
@@ -996,8 +1011,10 @@ export function InboxesPage() {
 
         <InboxCreateWizard
           open={wizardOpen}
+          initialChannel={wizardInitialChannel}
           onClose={() => {
             setWizardOpen(false);
+            setWizardInitialChannel(null);
             void refreshChannelSettings();
           }}
           onCreated={() => void load()}

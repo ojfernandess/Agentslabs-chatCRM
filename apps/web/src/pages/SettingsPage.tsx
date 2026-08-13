@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef, useMemo, type CSSProperties, type FormEvent } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -13,6 +13,7 @@ import {
   Tag,
   Smartphone,
   Pencil,
+  Plus,
   Star,
   FileText,
   GitBranch,
@@ -46,9 +47,9 @@ import {
 } from "@/lib/conversationSplitView";
 import { resolveLeadTypeClosurePlaybook, type LeadValueRollupKind } from "@openconduit/shared";
 import { isTenantAdmin } from "@/lib/authRole";
-import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
+import { WhatsAppEmbeddedSignupPanel } from "@/components/inboxes/WhatsAppEmbeddedSignupPanel";
 import {
   buildInboxWhatsappChannelConfig,
   isInboxWhatsappConfigured,
@@ -68,13 +69,7 @@ import {
   settingsTableWrap,
   settingsTitle,
 } from "@/components/settings/settingsUi";
-import { MASKED_WHATSAPP_SECRET } from "@/lib/whatsappOrgConfig";
-import {
-  createEmbeddedSignupMessageHandler,
-  initWhatsAppEmbeddedSignup,
-  isValidEmbeddedBusinessData,
-  setupFacebookSdk,
-} from "@/lib/whatsappEmbeddedSdk";
+import { MASKED_WHATSAPP_SECRET, whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 import clsx from "clsx";
 import {
   applyConversationBubbleTheme,
@@ -162,14 +157,6 @@ interface AppSettings {
 interface AgentBotOption {
   id: string;
   name: string;
-}
-
-interface WhatsappEmbeddedTenantInfo {
-  available: boolean;
-  appId: string | null;
-  configurationId: string | null;
-  apiVersion: string | null;
-  orgWebhookUrl: string;
 }
 
 interface LeadTypeRow {
@@ -271,6 +258,7 @@ export function SettingsPage() {
       whatsappWebhookUrl?: string;
     }[]
   >([]);
+  const [waAdvancedOpen, setWaAdvancedOpen] = useState(false);
   const [autoOptIn, setAutoOptIn] = useState(false);
   const [lockSingleConversation, setLockSingleConversation] = useState(false);
   const [audioTranscriptionEnabled, setAudioTranscriptionEnabled] = useState(false);
@@ -350,12 +338,6 @@ export function SettingsPage() {
   const [logoError, setLogoError] = useState("");
   const logoFileInputRef = useRef<HTMLInputElement>(null);
 
-  const [embeddedInfo, setEmbeddedInfo] = useState<WhatsappEmbeddedTenantInfo | null>(null);
-  const [embeddedBusy, setEmbeddedBusy] = useState(false);
-  const [embeddedError, setEmbeddedError] = useState("");
-  const [embeddedSuccess, setEmbeddedSuccess] = useState(false);
-  const authCodeRef = useRef<string | null>(null);
-
   const [evolutionPlatformQrMode, setEvolutionPlatformQrMode] = useState(false);
   const [evolutionGoPlatformMode, setEvolutionGoPlatformMode] = useState(false);
   const [evoQrBusy, setEvoQrBusy] = useState(false);
@@ -365,63 +347,6 @@ export function SettingsPage() {
   const [evoQrDataUrl, setEvoQrDataUrl] = useState<string | null>(null);
   const [evoPairingCode, setEvoPairingCode] = useState<string | null>(null);
   const [evoConnPoll, setEvoConnPoll] = useState<{ connected: boolean; state: string } | null>(null);
-  const businessDataRef = useRef<{
-    business_id: string;
-    waba_id: string;
-    phone_number_id?: string;
-  } | null>(null);
-
-  const tryFinishEmbedded = useCallback(async () => {
-    const code = authCodeRef.current;
-    const bd = businessDataRef.current;
-    if (!code || !bd || !isValidEmbeddedBusinessData(bd)) return;
-    setEmbeddedBusy(true);
-    setEmbeddedError("");
-    try {
-      await api.post("/settings/whatsapp-embedded/complete", {
-        code,
-        business_id: bd.business_id,
-        waba_id: bd.waba_id,
-        phone_number_id: bd.phone_number_id || undefined,
-      });
-      authCodeRef.current = null;
-      businessDataRef.current = null;
-      setEmbeddedSuccess(true);
-      const data = await api.get<AppSettings>("/settings");
-      setSettings(data);
-      setProvider("meta");
-      setPhoneNumberId(data.whatsappPhoneNumberId ?? "");
-      setApiKey("");
-    } catch (err) {
-      authCodeRef.current = null;
-      businessDataRef.current = null;
-      setEmbeddedError(err instanceof Error ? err.message : t("settings.embeddedCompleteError"));
-    } finally {
-      setEmbeddedBusy(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    if (!isAdmin || !embeddedInfo?.available) return;
-    const handler = createEmbeddedSignupMessageHandler((data) => {
-      if (data.event === "FINISH" || data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING") {
-        const bd = data.data;
-        if (!isValidEmbeddedBusinessData(bd)) {
-          setEmbeddedError(t("settings.embeddedInvalidBusiness"));
-          return;
-        }
-        businessDataRef.current = bd;
-        void tryFinishEmbedded();
-      } else if (data.event === "CANCEL") {
-        setEmbeddedBusy(false);
-      } else if (data.event === "error") {
-        setEmbeddedBusy(false);
-        setEmbeddedError(data.error_message ?? t("settings.embeddedSignupError"));
-      }
-    });
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [isAdmin, embeddedInfo?.available, tryFinishEmbedded, t]);
 
   useEffect(() => {
     if (provider !== "evolution") {
@@ -529,40 +454,15 @@ export function SettingsPage() {
     }
   };
 
-  const launchEmbeddedSignup = async () => {
-    if (!embeddedInfo?.appId || !embeddedInfo.configurationId || !embeddedInfo.apiVersion) return;
-    setEmbeddedError("");
-    setEmbeddedSuccess(false);
-    setEmbeddedBusy(true);
-    authCodeRef.current = null;
-    businessDataRef.current = null;
-    try {
-      await setupFacebookSdk(embeddedInfo.appId, embeddedInfo.apiVersion);
-      const code = await initWhatsAppEmbeddedSignup(embeddedInfo.configurationId);
-      authCodeRef.current = code;
-      if (businessDataRef.current) {
-        await tryFinishEmbedded();
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg !== "Login cancelled") {
-        setEmbeddedError(msg);
-      }
-    } finally {
-      setEmbeddedBusy(false);
-    }
-  };
-
   useEffect(() => {
     if (!isAdmin) return;
     async function load() {
       try {
-        const [data, lt, tags, botList, emb, inboxesRes] = await Promise.all([
+        const [data, lt, tags, botList, inboxesRes] = await Promise.all([
           api.get<AppSettings>("/settings"),
           api.get<LeadTypeRow[]>("/lead-types"),
           api.get<TagListRow[]>("/tags").catch(() => [] as TagListRow[]),
           api.get<{ data: AgentBotOption[] }>("/bots").catch(() => ({ data: [] as AgentBotOption[] })),
-          api.get<WhatsappEmbeddedTenantInfo>("/settings/whatsapp-embedded").catch(() => null),
           api
             .get<{
               data: {
@@ -576,7 +476,6 @@ export function SettingsPage() {
             }>("/inboxes")
             .catch(() => ({ data: [] })),
         ]);
-        setEmbeddedInfo(emb ?? null);
         setSettings(data);
         setWaInboxes(
           inboxesRes.data
@@ -694,6 +593,61 @@ export function SettingsPage() {
     }
     load();
   }, [isAdmin]);
+
+  const refreshWhatsappChannel = async () => {
+    try {
+      const [data, inboxesRes] = await Promise.all([
+        api.get<AppSettings>("/settings"),
+        api
+          .get<{
+            data: {
+              id: string;
+              channelType: string;
+              isDefault: boolean;
+              channelConfig?: unknown;
+              whatsappWebhookUrl?: string;
+              whatsappWebhookVerifyToken?: string | null;
+              name?: string;
+            }[];
+          }>("/inboxes")
+          .catch(() => ({ data: [] })),
+      ]);
+      setSettings(data);
+      setWaInboxes(
+        inboxesRes.data
+          .filter((i) => i.channelType === "WHATSAPP")
+          .map((i) => ({
+            id: i.id,
+            name: i.name,
+            isDefault: i.isDefault,
+            channelConfig: i.channelConfig,
+            whatsappWebhookUrl: i.whatsappWebhookUrl,
+          })),
+      );
+      const waInbox =
+        inboxesRes.data.find((i) => i.isDefault && i.channelType === "WHATSAPP") ??
+        inboxesRes.data.find((i) => i.channelType === "WHATSAPP") ??
+        null;
+      const waFromInbox = waInbox ? parseInboxWhatsappFromChannelConfig(waInbox.channelConfig) : {};
+      setDefaultWaInbox(
+        waInbox
+          ? {
+              id: waInbox.id,
+              whatsappWebhookUrl: waInbox.whatsappWebhookUrl,
+              whatsappWebhookVerifyToken: waInbox.whatsappWebhookVerifyToken,
+              channelConfig: waInbox.channelConfig,
+            }
+          : null,
+      );
+      setProvider(waFromInbox.whatsappProvider ?? data.whatsappProvider ?? "meta");
+      setPhoneNumberId(waFromInbox.whatsappPhoneNumberId ?? data.whatsappPhoneNumberId ?? "");
+      setApiKey("");
+      setWaDisplayPhone(waFromInbox.whatsappDisplayPhone ?? "");
+      setWaWabaId(waFromInbox.whatsappBusinessAccountId ?? "");
+    } catch {
+      /* keep current form */
+    }
+  };
 
   const refreshLeadTypesAndPipelineOrphans = async () => {
     const lt = await api.get<LeadTypeRow[]>("/lead-types");
@@ -1361,80 +1315,93 @@ export function SettingsPage() {
                   >
                     <p className="font-medium">{t("settings.channelUnifiedTitle")}</p>
                     <p className="mt-1 text-brand-800/90">{t("settings.channelUnifiedBody")}</p>
-                    <a href="/inboxes" className="mt-2 inline-block font-medium text-brand-700 underline">
-                      {t("settings.channelUnifiedLink")}
-                    </a>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        to="/inboxes?create=whatsapp"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-700"
+                      >
+                        <Plus className="h-4 w-4" />
+                        {t("settings.channelCreateWhatsapp")}
+                      </Link>
+                      <Link
+                        to="/inboxes"
+                        className="inline-flex items-center rounded-lg border border-brand-300/80 bg-white/70 px-3 py-1.5 text-sm font-medium text-brand-800 hover:bg-white dark:border-brand-700 dark:bg-black/20 dark:text-brand-100"
+                      >
+                        {t("settings.channelUnifiedLink")}
+                      </Link>
+                    </div>
                   </motion.div>
-                  {embeddedInfo?.available ? (
-                    <motion.div
-                      className="card-surface rounded-xl p-6"
-                      variants={staggerItem}
-                    >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                          <WhatsAppBrandIcon className="h-6 w-6" />
-                        </div>
-                        <div className="min-w-0 flex-1 space-y-3">
-                          <div>
-                            <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("settings.embeddedTitle")}</h2>
-                            <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("settings.embeddedDesc")}</p>
-                          </div>
-                          <ul className="space-y-2 text-sm text-ink-700 dark:text-ink-300">
-                            <li className="flex gap-2">
-                              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
-                              <span>{t("settings.embeddedBenefit1")}</span>
-                            </li>
-                            <li className="flex gap-2">
-                              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
-                              <span>{t("settings.embeddedBenefit2")}</span>
-                            </li>
-                            <li className="flex gap-2">
-                              <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" aria-hidden />
-                              <span>{t("settings.embeddedBenefit3")}</span>
-                            </li>
-                          </ul>
-                          {embeddedError ? (
-                            <p className="text-sm text-red-600" role="alert">
-                              {embeddedError}
-                            </p>
-                          ) : null}
-                          {embeddedSuccess ? (
-                            <p className="text-sm text-green-700">{t("settings.embeddedSuccess")}</p>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => void launchEmbeddedSignup()}
-                            disabled={embeddedBusy}
-                            className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 sm:w-auto"
-                          >
-                            {embeddedBusy ? t("settings.embeddedWorking") : t("settings.embeddedCta")}
-                          </button>
-                          <p className="text-xs text-ink-500 dark:text-ink-400">
-                            {t("settings.embeddedManualHint")}{" "}
-                            <a
-                              href="#whatsapp-manual-setup"
-                              className="font-medium text-brand-600 underline hover:text-brand-700"
+
+                  <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
+                    <h2 className="mb-1 font-semibold text-ink-900 dark:text-ink-50">
+                      {t("settings.channelInboxListTitle")}
+                    </h2>
+                    <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">
+                      {t("settings.channelInboxListHint")}
+                    </p>
+                    {waInboxes.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-ink-200 bg-ink-50/60 px-4 py-3 text-sm text-ink-600 dark:border-soft-border dark:bg-black/10 dark:text-ink-400">
+                        {t("settings.channelInboxListEmpty")}
+                      </p>
+                    ) : (
+                      <ul className="divide-y divide-ink-100 overflow-hidden rounded-lg border border-ink-200/80 dark:divide-soft-border dark:border-soft-border">
+                        {waInboxes.map((inbox) => {
+                          const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
+                          const ready = isInboxWhatsappConfigured(parsed);
+                          return (
+                            <li
+                              key={inbox.id}
+                              className="flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-3 text-sm dark:bg-black/10"
                             >
-                              {t("settings.embeddedManualLink")}
-                            </a>
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ) : embeddedInfo && !embeddedInfo.available ? (
-                    <motion.div
-                      className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
-                      variants={staggerItem}
-                    >
-                      {t("settings.embeddedUnavailable")}
-                    </motion.div>
-                  ) : null}
+                              <div className="min-w-0">
+                                <p className="font-medium text-ink-900 dark:text-ink-50">
+                                  {inbox.name?.trim() || inbox.id}
+                                  {inbox.isDefault ? (
+                                    <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800 dark:bg-brand-950/50 dark:text-brand-200">
+                                      {t("settings.channelInboxDefault")}
+                                    </span>
+                                  ) : null}
+                                </p>
+                                <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                                  {whatsappProviderLabel(parsed.whatsappProvider)}
+                                  {" · "}
+                                  {ready
+                                    ? t("settings.channelInboxReady")
+                                    : t("settings.channelInboxPending")}
+                                </p>
+                              </div>
+                              <Link
+                                to="/inboxes"
+                                className="text-sm font-medium text-brand-700 underline hover:text-brand-800 dark:text-brand-300"
+                              >
+                                {t("settings.channelInboxOpen")}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </motion.div>
+
+                  <motion.div variants={staggerItem}>
+                    <WhatsAppEmbeddedSignupPanel
+                      onCompleted={() => void refreshWhatsappChannel()}
+                      onManualSetup={() => {
+                        setWaAdvancedOpen(true);
+                        window.requestAnimationFrame(() => {
+                          document.getElementById("whatsapp-manual-setup")?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        });
+                      }}
+                    />
+                  </motion.div>
 
                   <motion.div
                     className="card-surface rounded-xl p-6"
                     variants={staggerItem}
                   >
-                    <p className="mb-4 text-sm text-ink-600 dark:text-ink-400">{t("settings.channelHint")}</p>
                     {isMetaCloudSettingsProvider &&
                     (defaultWaInbox?.whatsappWebhookVerifyToken || settings?.whatsappWebhookVerifyToken) ? (
                       <WhatsAppMetaWebhookCopyPanel
@@ -1475,15 +1442,23 @@ export function SettingsPage() {
                   </motion.div>
 
                   <motion.form
-                    id="whatsapp-manual-setup"
                     onSubmit={handleSave}
                     className="card-surface rounded-xl p-6"
                     variants={staggerItem}
                   >
-                    <h2 className="mb-2 font-semibold text-ink-900 dark:text-ink-50">WhatsApp provider</h2>
+                    <details
+                      id="whatsapp-manual-setup"
+                      className="mb-8 rounded-xl border border-ink-200/80 bg-ink-50/40 dark:border-soft-border dark:bg-black/10"
+                      open={waAdvancedOpen}
+                      onToggle={(e) => setWaAdvancedOpen((e.currentTarget as HTMLDetailsElement).open)}
+                    >
+                      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-ink-900 dark:text-ink-50">
+                        {t("settings.channelAdvancedCredentials")}
+                      </summary>
+                      <div className="border-t border-ink-200/70 px-4 pb-4 pt-3 dark:border-soft-border">
+                    <h2 className="mb-2 font-semibold text-ink-900 dark:text-ink-50">{t("settings.channelProviderTitle")}</h2>
                     <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">
-                      Configure e gira cada integração WhatsApp da organização. O provider principal é o que fica ativo
-                      nesta página ao guardar.
+                      {t("settings.channelProviderHint")}
                     </p>
 
                     <div className="space-y-6">
@@ -1759,6 +1734,18 @@ export function SettingsPage() {
                       </div>
                       </div>
                       )}
+
+                      </div>
+                      </div>
+                    </details>
+
+                    <h2 className="mb-2 font-semibold text-ink-900 dark:text-ink-50">
+                      {t("settings.channelPoliciesTitle")}
+                    </h2>
+                    <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">
+                      {t("settings.channelPoliciesHint")}
+                    </p>
+                    <div className="space-y-6">
 
                       <div>
                         <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
