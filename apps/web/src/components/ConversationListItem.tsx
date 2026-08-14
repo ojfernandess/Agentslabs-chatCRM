@@ -220,7 +220,7 @@ export function ConversationListItem({
                 </p>
                 {hasHumanAssignee ? (
                   <span
-                    className="inline-flex max-w-[42%] shrink-0 truncate rounded-full bg-violet-600 px-2.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm dark:bg-violet-500"
+                    className="inline-flex h-5 max-w-[42%] shrink-0 items-center truncate rounded-full bg-brand-600 px-2.5 text-[11px] font-semibold leading-none text-white shadow-sm dark:bg-brand-500"
                     title={
                       conv.status === "OPEN" || conv.status === "PENDING"
                         ? `${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`
