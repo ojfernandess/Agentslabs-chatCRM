@@ -3926,6 +3926,7 @@ export const messages = {
       inviteLogoutAction: "Terminar sessão e continuar",
       inviteAcceptError: "Não foi possível concluir o cadastro.",
       turnstileRequired: "Conclua a verificação de segurança antes de continuar.",
+      developedBy: "OpenNexo CRM é um sistema desenvolvido por",
     },
     dashboard: {
       title: "Painel",
@@ -9536,6 +9537,7 @@ export const messages = {
       inviteLogoutAction: "Sign out and continue",
       inviteAcceptError: "Could not complete registration.",
       turnstileRequired: "Complete the security verification before continuing.",
+      developedBy: "OpenNexo CRM is a system developed by",
     },
     dashboard: {
       title: "Dashboard",

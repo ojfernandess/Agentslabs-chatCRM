@@ -8,6 +8,7 @@ import { isSuperAdminRole } from "@/lib/authRole";
 import { api, ApiError } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
+import { AuthSplitShell } from "@/components/AuthSplitShell";
 
 export function ResetPasswordPage() {
   const { user } = useAuth();
@@ -72,14 +73,7 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col lg:flex-row">
-      <div
-        className="relative min-h-[220px] flex-1 bg-ink-800 bg-cover bg-center lg:min-h-screen"
-        style={{ backgroundImage: `url(${brandAssetUrl("/bg-login.png")})` }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-black/10 lg:bg-gradient-to-r" />
-      </div>
-      <div className="relative z-10 flex w-full max-w-xl flex-1 items-center justify-center bg-ink-50 px-4 py-10 lg:max-w-none lg:bg-transparent lg:px-10 lg:py-12">
+    <AuthSplitShell>
         <motion.div
           className="w-full max-w-md rounded-2xl border border-ink-100 bg-white p-8 shadow-xl dark:border-ink-700 dark:bg-ink-900"
           initial={{ opacity: 0, y: 20 }}
@@ -172,7 +166,6 @@ export function ResetPasswordPage() {
             </Link>
           </p>
         </motion.div>
-      </div>
-    </div>
+    </AuthSplitShell>
   );
 }
