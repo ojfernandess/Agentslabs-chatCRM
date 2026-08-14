@@ -205,17 +205,45 @@ export function ConversationListItem({
               </span>
             </div>
 
-            <p
-              className={clsx(
-                "mt-0.5 line-clamp-1 text-xs leading-snug",
-                conv.isUnread
-                  ? "font-medium text-ink-700 dark:text-ink-200"
-                  : "text-ink-500 dark:text-ink-400",
-              )}
-              title={preview}
-            >
-              {preview}
-            </p>
+            {splitView ? (
+              <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                <p
+                  className={clsx(
+                    "min-w-0 flex-1 line-clamp-1 text-xs leading-snug",
+                    conv.isUnread
+                      ? "font-medium text-ink-700 dark:text-ink-200"
+                      : "text-ink-500 dark:text-ink-400",
+                  )}
+                  title={preview}
+                >
+                  {preview}
+                </p>
+                {hasHumanAssignee ? (
+                  <span
+                    className="inline-flex max-w-[42%] shrink-0 truncate rounded-full bg-violet-600 px-2.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm dark:bg-violet-500"
+                    title={
+                      conv.status === "OPEN" || conv.status === "PENDING"
+                        ? `${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`
+                        : `${t("conversations.listAssignee")}: ${conv.assignedTo!.name}`
+                    }
+                  >
+                    {conv.assignedTo!.name}
+                  </span>
+                ) : null}
+              </div>
+            ) : (
+              <p
+                className={clsx(
+                  "mt-0.5 line-clamp-1 text-xs leading-snug",
+                  conv.isUnread
+                    ? "font-medium text-ink-700 dark:text-ink-200"
+                    : "text-ink-500 dark:text-ink-400",
+                )}
+                title={preview}
+              >
+                {preview}
+              </p>
+            )}
 
             <div
               className={clsx(
@@ -224,25 +252,14 @@ export function ConversationListItem({
               )}
             >
               {hasHumanAssignee &&
+              !splitView &&
               (conv.status === "OPEN" || conv.status === "PENDING") ? (
-                splitView ? (
-                  <span
-                    className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-md border border-emerald-200/80 bg-emerald-50 px-2 py-0.5 dark:border-emerald-800/45 dark:bg-emerald-950/40"
-                    title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
-                  >
-                    <UserCircle className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
-                    <span className="break-words text-[11px] font-semibold leading-snug text-emerald-900 dark:text-emerald-100">
-                      {conv.assignedTo!.name}
-                    </span>
-                  </span>
-                ) : (
-                  <span
-                    className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
-                    title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
-                  >
-                    {t("conversations.inAttendance")}
-                  </span>
-                )
+                <span
+                  className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
+                  title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
+                >
+                  {t("conversations.inAttendance")}
+                </span>
               ) : null}
               {hasHumanAssignee && !splitView ? (
                 <span
@@ -255,19 +272,6 @@ export function ConversationListItem({
                 >
                   <UserCircle className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
                   <span className="truncate">{conv.assignedTo!.name}</span>
-                </span>
-              ) : hasHumanAssignee &&
-                splitView &&
-                conv.status !== "OPEN" &&
-                conv.status !== "PENDING" ? (
-                <span
-                  className="inline-flex max-w-full flex-wrap items-center gap-1"
-                  title={`${t("conversations.listAssignee")}: ${conv.assignedTo!.name}`}
-                >
-                  <UserCircle className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-                  <span className="break-words text-[10px] font-medium leading-snug text-ink-600 dark:text-ink-300">
-                    {conv.assignedTo!.name}
-                  </span>
                 </span>
               ) : null}
               {isConversationPriority(conv.priority) ? (
