@@ -9,18 +9,18 @@ export function AuthSplitShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
 
   return (
-    <div className="relative flex min-h-dvh flex-col xl:flex-row">
-      <div className="relative h-[min(42vh,22rem)] w-full shrink-0 overflow-hidden bg-ink-900 sm:h-[min(46vh,26rem)] xl:h-auto xl:min-h-dvh xl:flex-1 xl:min-w-0">
+    <div className="relative flex min-h-dvh flex-col lg:flex-row">
+      <div className="relative min-h-[220px] min-w-0 flex-1 overflow-hidden bg-ink-800 lg:min-h-dvh">
         <img
           src={brandAssetUrl("/bg-login.png")}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-[center_18%] xl:object-center"
+          className="absolute inset-0 h-full w-full object-cover object-center"
           decoding="async"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-black/10 xl:bg-gradient-to-r" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-black/10 lg:bg-gradient-to-r" />
       </div>
 
-      <div className="relative z-10 flex w-full flex-1 flex-col items-center justify-center bg-ink-50 px-4 py-8 dark:bg-ink-950 xl:w-[min(100%,36rem)] xl:flex-none xl:bg-transparent xl:px-10 xl:py-12 dark:xl:bg-transparent">
+      <div className="relative z-10 flex w-full max-w-xl flex-1 flex-col items-center justify-center bg-ink-50 px-4 py-10 dark:bg-ink-950 lg:max-w-none lg:bg-transparent lg:px-10 lg:py-12 dark:lg:bg-transparent">
         {children}
         <p className="mt-6 max-w-md text-center text-xs leading-relaxed text-ink-500 dark:text-ink-400">
           {t("login.developedBy")}{" "}
