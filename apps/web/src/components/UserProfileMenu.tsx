@@ -275,15 +275,11 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
             <img
               src={avatarSrc}
               alt=""
-              className={clsx("rounded-full object-cover ring-1 ring-ink-200/80 dark:ring-ink-700", compact ? "h-9 w-9" : "h-9 w-9")}
+              className="h-9 w-9 rounded-full object-cover"
             />
           ) : (
             <span
-              className={clsx(
-                "flex items-center justify-center rounded-full text-xs font-semibold text-white",
-                compact ? "h-9 w-9" : "h-9 w-9",
-                "bg-brand-500",
-              )}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white"
             >
               {initialsFromName(user.name ?? user.email ?? "")}
             </span>

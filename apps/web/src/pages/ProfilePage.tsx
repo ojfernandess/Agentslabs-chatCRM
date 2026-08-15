@@ -229,11 +229,11 @@ export function ProfilePage() {
                 <img
                   src={avatarSrc}
                   alt={t("profilePage.avatarAlt")}
-                  className="h-24 w-24 rounded-xl object-cover shadow-md ring-1 ring-ink-200/80 dark:ring-ink-700"
+                  className="h-24 w-24 rounded-xl object-cover"
                 />
               ) : (
                 <div
-                  className="flex h-24 w-24 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-2xl font-bold text-white shadow-md"
+                  className="flex h-24 w-24 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-2xl font-bold text-white"
                   aria-hidden
                 >
                   {initials(name || user.email)}
