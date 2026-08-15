@@ -9,6 +9,10 @@ import {
   parseQuoteOptionCategoriesFromOptionsReply,
   resolveQuoteOptionChoice,
 } from "../quote/quoteAvailabilityReply.js";
+import {
+  resolveKnowledgeLookupOfferQuery,
+  shouldRequireKnowledgeLookupAfterOffer,
+} from "../core/confirmationTurnGuards.js";
 
 /** Perfil declarativo por capability — merge com config.eil da tool. */
 const CAPABILITY_ARG_PROFILES: Record<string, Partial<ToolEilConfig>> = {
@@ -288,20 +292,33 @@ export function resolveSchemaToolArgs(opts: ResolveSchemaToolArgsOpts): Record<s
   const messageArg =
     eil.messageArg ?? TOOL_MESSAGE_ARGS[toolName.trim().toLowerCase()];
   if (messageArg) {
-    if (toolName.trim().toLowerCase() === "call_human") {
-      const flowSlots = turnContext.facts ?? {};
-      let lastAssistant = "";
-      for (const key of ["__lastAssistantPreview", "lastReplyPreview"]) {
-        const v = flowSlots[key];
-        const scalar =
-          v && typeof v === "object" && "value" in (v as object)
-            ? (v as { value?: unknown }).value
-            : v;
-        if (typeof scalar === "string" && scalar.trim()) {
-          lastAssistant = scalar.trim();
-          break;
-        }
+    const flowSlots = turnContext.facts ?? {};
+    let lastAssistant = "";
+    for (const key of ["__lastAssistantPreview", "lastReplyPreview"]) {
+      const v = flowSlots[key];
+      const scalar =
+        v && typeof v === "object" && "value" in (v as object)
+          ? (v as { value?: unknown }).value
+          : v;
+      if (typeof scalar === "string" && scalar.trim()) {
+        lastAssistant = scalar.trim();
+        break;
       }
+    }
+
+    if (toolName.trim().toLowerCase() === "buscar_conhecimento") {
+      if (
+        shouldRequireKnowledgeLookupAfterOffer({
+          userMessage: msg,
+          lastAssistantMessage: lastAssistant,
+        })
+      ) {
+        return { query: resolveKnowledgeLookupOfferQuery(lastAssistant) };
+      }
+      return { [messageArg]: msg };
+    }
+
+    if (toolName.trim().toLowerCase() === "call_human") {
       if (/deseja que eu fa[cç]a essa transfer[eê]ncia/i.test(lastAssistant)) {
         return { reason: "Cotação — hóspede solicitou verificação de desconto" };
       }

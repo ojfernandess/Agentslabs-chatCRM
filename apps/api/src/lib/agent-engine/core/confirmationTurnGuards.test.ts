@@ -8,6 +8,10 @@ import {
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
   messageLooksLikeQuoteOptionChoice,
+  assistantOfferedKnowledgeLookup,
+  isKnowledgeLookupOfferAffirmation,
+  resolveKnowledgeLookupOfferQuery,
+  shouldRequireKnowledgeLookupAfterOffer,
 } from "./confirmationTurnGuards.js";
 
 const TITULAR_MIRROR = `
@@ -204,4 +208,36 @@ test("guestAsksQuoteCategoryInfo detects category question and not bare choice",
     }),
     false,
   );
+});
+
+const PARKING_LOOKUP_OFFER =
+  "Não temos estacionamento no hotel. Gostaria que eu verifique se há estacionamentos próximos?";
+
+test("assistantOfferedKnowledgeLookup detects parking nearby offer", () => {
+  assert.equal(assistantOfferedKnowledgeLookup(PARKING_LOOKUP_OFFER), true);
+  assert.equal(assistantOfferedKnowledgeLookup("Sua reserva está confirmada."), false);
+});
+
+test("knowledge lookup offer affirmation includes gostaria", () => {
+  assert.equal(isKnowledgeLookupOfferAffirmation("Gostaria"), true);
+  assert.equal(isKnowledgeLookupOfferAffirmation("sim"), true);
+  assert.equal(isKnowledgeLookupOfferAffirmation("tem wifi?"), false);
+});
+
+test("shouldRequireKnowledgeLookupAfterOffer on gostaria after parking offer", () => {
+  assert.equal(
+    shouldRequireKnowledgeLookupAfterOffer({
+      userMessage: "Gostaria",
+      lastAssistantMessage: PARKING_LOOKUP_OFFER,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRequireKnowledgeLookupAfterOffer({
+      userMessage: "Gostaria",
+      lastAssistantMessage: "Sua reserva está confirmada.",
+    }),
+    false,
+  );
+  assert.equal(resolveKnowledgeLookupOfferQuery(PARKING_LOOKUP_OFFER), "estacionamentos próximos");
 });

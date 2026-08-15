@@ -21,7 +21,7 @@ function stubTurnContext(overrides: Partial<TurnContext> = {}): TurnContext {
         },
       },
     },
-    userMessage: "check-in ABC12345",
+    userMessage: "fazer check-in ABC12345",
   });
   return { ...base, ...overrides };
 }
@@ -197,4 +197,40 @@ test("planScheduledToolInvocations schedules call_human on sim after C6 discount
     plan.map((p) => p.toolName),
     ["call_human"],
   );
+});
+
+const PARKING_LOOKUP_OFFER =
+  "Não temos estacionamento no hotel. Gostaria que eu verifique se há estacionamentos próximos?";
+
+test("planScheduledToolInvocations schedules buscar_conhecimento on gostaria after KB offer", () => {
+  const ctx = buildTurnContext({
+    turnId: "kb-offer-gostaria",
+    behaviorConfig: {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore: `
+| C5 | Fato da unidade | estacionamento · Wi-Fi | Chame \`buscar_conhecimento\` |
+`,
+      },
+    },
+    userMessage: "Gostaria",
+    lastAssistantMessage: PARKING_LOOKUP_OFFER,
+    availableToolNames: ["buscar_conhecimento"],
+  });
+  const plan = planScheduledToolInvocations(ctx, []);
+  assert.deepEqual(
+    plan.map((p) => p.toolName),
+    ["buscar_conhecimento"],
+  );
+});
+
+test("buildScheduledToolArgs enriches query from KB lookup offer on gostaria", () => {
+  const ctx = stubTurnContext({
+    userMessage: "Gostaria",
+    facts: {
+      __lastAssistantPreview: PARKING_LOOKUP_OFFER,
+    },
+  });
+  const args = buildScheduledToolArgs("buscar_conhecimento", ctx);
+  assert.equal(args.query, "estacionamentos próximos");
 });

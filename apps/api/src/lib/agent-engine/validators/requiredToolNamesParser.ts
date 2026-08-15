@@ -109,6 +109,7 @@ import {
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
   messageLooksLikeQuoteCategoryQuestion,
+  shouldRequireKnowledgeLookupAfterOffer,
 } from "../core/confirmationTurnGuards.js";
 import {
   isOperationalQuoteMessage,
@@ -665,6 +666,12 @@ export function resolveRequiredToolNamesForTurn(
   }
 
   if (shouldRequireFnrhKnowledgeLookupThisTurn(unitCtx)) {
+    return dedupeRequiredToolAliases(
+      filterAgainstAvailable(["buscar_conhecimento"], available),
+    );
+  }
+
+  if (shouldRequireKnowledgeLookupAfterOffer(unitCtx)) {
     return dedupeRequiredToolAliases(
       filterAgainstAvailable(["buscar_conhecimento"], available),
     );

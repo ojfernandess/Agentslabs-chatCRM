@@ -298,6 +298,82 @@ export function isShortAffirmativeConfirmation(userMessage?: string | null): boo
 }
 
 /**
+ * Agente ofereceu verificar/consultar informação na KB
+ * (ex.: “Gostaria que eu verifique estacionamentos próximos?”).
+ * Não cobre ofertas de transferência / espelhos de confirmação.
+ */
+export function assistantOfferedKnowledgeLookup(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  if (assistantIsQuoteDiscountTransferOffer(t)) return false;
+  if (assistantSentNfConfirmationMirror(t) || assistantSentReceiptConfirmationMirror(t)) return false;
+  if (assistantIsTitularMirrorConfirm(t) || assistantIsFichaMirrorConfirm(t)) return false;
+  if (assistantAsksPreConfirmationData(t)) return false;
+  if (/deseja que eu fa[cç]a essa transfer[eê]ncia/i.test(t)) return false;
+
+  // Stems: verificar/verifique (com Q), consultar/consulte, buscar/busque, …
+  const offersLookup =
+    /(?:gostaria|quer|deseja)\s+(?:que\s+(?:eu\s+)?)?(?:verifi\w*|consult\w*|busc\w*|chec\w*|pesquis\w*|olh(?:ar|e|o)?)\b/i.test(
+      t,
+    ) ||
+    /(?:posso|posso\s+(?:te|lhe)|vou)\s+(?:verifi\w*|consult\w*|busc\w*|chec\w*|pesquis\w*)\b/i.test(t) ||
+    /(?:verifi\w*|consult\w*|busc\w*|chec\w*|pesquis\w*)\b[\s\S]{0,80}?(?:pr[oó]xim|para\s+(?:voc[eê]|si)|informa[cç][oõ]es?)\b/i.test(
+      t,
+    );
+
+  if (!offersLookup) return false;
+  return /\?/.test(t) || /(?:posso|gostaria|quer|deseja)\b/i.test(t);
+}
+
+/**
+ * Afirmação curta após oferta de busca KB — inclui “gostaria” / “quero”
+ * (resposta ecoando a pergunta do agente).
+ */
+export function isKnowledgeLookupOfferAffirmation(userMessage?: string | null): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg || msg.length > 40) return false;
+  if (isShortAffirmativeConfirmation(msg)) return true;
+  return /^(gostaria|quero|claro|por\s+favor|pf|pls|please|isso|pode\s+ser|com\s+certeza|pode\s+sim)([\s!.]*)$/i.test(
+    msg,
+  );
+}
+
+/** Extrai tópico da oferta do assistente para query de `buscar_conhecimento`. */
+export function resolveKnowledgeLookupOfferQuery(lastAssistantMessage?: string | null): string {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return "informações solicitadas";
+
+  if (/\bestacionament/i.test(t)) {
+    return /\bpr[oó]xim/i.test(t) ? "estacionamentos próximos" : "estacionamento";
+  }
+  if (/\bparking\b/i.test(t)) {
+    return /\bnear|nearby|close\b/i.test(t) ? "nearby parking" : "parking";
+  }
+
+  const m = t.match(
+    /(?:verifi\w*|consult\w*|busc\w*|chec\w*|pesquis\w*|olh(?:ar|e|o)?)\s+(?:se\s+(?:h[aá]\s+)?)?(?:sobre\s+)?(.{3,80}?)(?:\?|$|\.|\n)/i,
+  );
+  if (m?.[1]) {
+    const topic = m[1]
+      .trim()
+      .replace(/^(para\s+(?:voc[eê]|si)\s+)/i, "")
+      .replace(/\s+/g, " ");
+    if (topic.length >= 3 && topic.length <= 80) return topic;
+  }
+
+  return "informações solicitadas";
+}
+
+/** Sim/gostaria após oferta de consulta → exigir `buscar_conhecimento`. */
+export function shouldRequireKnowledgeLookupAfterOffer(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  if (!assistantOfferedKnowledgeLookup(opts.lastAssistantMessage)) return false;
+  return isKnowledgeLookupOfferAffirmation(opts.userMessage);
+}
+
+/**
  * Turno de confirmação que deve ficar sem tools exclusivas de gate
  * (ex.: titular OK com N≥2 → pergunta acompanhante; ou "sim" fora de contexto C11).
  */

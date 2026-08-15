@@ -603,3 +603,28 @@ test("resolveRequiredToolNamesForTurn — FAQ check-in horario requires buscar_c
   assert.equal(howNames.includes("buscar_conhecimento"), true, JSON.stringify(howNames));
   assert.equal(howNames.some((n) => /consultar_reserva/i.test(n)), false, JSON.stringify(howNames));
 });
+
+test("resolveRequiredToolNamesForTurn — gostaria after KB lookup offer requires buscar_conhecimento", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C5 | Fato da unidade | horário · Wi-Fi · estacionamento | Chame \`buscar_conhecimento\` |
+`,
+    },
+    availableToolNames: ["buscar_conhecimento"],
+  };
+  const offer =
+    "Não temos estacionamento no hotel. Gostaria que eu verifique se há estacionamentos próximos?";
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "Gostaria",
+    lastAssistantMessage: offer,
+  });
+  assert.deepEqual(names, ["buscar_conhecimento"]);
+
+  const withoutOffer = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "Gostaria",
+    lastAssistantMessage: "Sua reserva ABRJQPTF está confirmada.",
+  });
+  assert.deepEqual(withoutOffer, []);
+});
