@@ -6,25 +6,29 @@ const VENDOR_URL = "https://www.agentslabs.cloud/";
 const VENDOR_NAME = "AgentsLabs";
 
 /**
- * Shell de autenticação no padrão 50/50 (referência: foto full-bleed + formulário centrado).
- * md+: grid 2 colunas, altura = viewport — foto cobre 100% da metade esquerda.
- * Abaixo de md: só o painel do formulário (padrão auth moderno deste tipo).
+ * Shell de autenticação 50/50.
+ * Altura: preenche o #root (h-full), não 100dvh — em notebooks com
+ * desktop-viewport-scale o layout é 100dvh/scale; h-dvh deixava faixa vazia.
+ * Foto: background-size cover na coluna esquerda até o fim da tela.
  */
 export function AuthSplitShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
+  const bgUrl = brandAssetUrl("/bg-login.png");
 
   return (
-    <div className="min-h-dvh md:grid md:h-dvh md:grid-cols-2 md:overflow-hidden">
-      <aside className="relative hidden overflow-hidden bg-ink-900 md:block" aria-hidden>
-        <img
-          src={brandAssetUrl("/bg-login.png")}
-          alt=""
-          className="absolute inset-0 size-full object-cover object-[28%_center]"
-          decoding="async"
-        />
-      </aside>
+    <div className="flex w-full min-h-dvh flex-1 flex-col md:grid md:h-full md:min-h-0 md:grid-cols-2 md:grid-rows-1 md:overflow-hidden">
+      <aside
+        className="relative hidden min-h-0 overflow-hidden bg-ink-900 md:block md:h-full md:min-h-full"
+        aria-hidden
+        style={{
+          backgroundImage: `url("${bgUrl}")`,
+          backgroundSize: "cover",
+          backgroundPosition: "28% center",
+          backgroundRepeat: "no-repeat",
+        }}
+      />
 
-      <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-y-auto bg-[#f6f4fb] px-4 py-10 dark:bg-ink-950 md:h-full md:min-h-0 md:px-8 lg:px-12">
+      <main className="relative flex min-h-dvh w-full flex-1 flex-col items-center justify-center overflow-y-auto bg-[#f6f4fb] px-4 py-10 dark:bg-ink-950 md:h-full md:min-h-0 md:flex-none md:px-8 lg:px-12">
         <div className="flex w-full max-w-md flex-col items-center">
           {children}
           <p className="mt-8 max-w-md text-center text-xs leading-relaxed text-ink-500 dark:text-ink-400">
