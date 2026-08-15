@@ -119,7 +119,7 @@ export function LoginPage() {
   return (
     <AuthSplitShell>
         <motion.div
-          className="w-full max-w-md rounded-2xl border border-ink-100 bg-white p-8 shadow-xl dark:border-ink-700 dark:bg-ink-900"
+          className="w-full max-w-md rounded-2xl border border-ink-100 bg-white p-8 shadow-xl dark:border-ink-700 dark:bg-ink-900 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none dark:md:bg-transparent"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}

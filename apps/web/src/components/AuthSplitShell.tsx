@@ -6,30 +6,28 @@ const VENDOR_URL = "https://www.agentslabs.cloud/";
 const VENDOR_NAME = "AgentsLabs";
 
 /**
- * Shell de autenticação com split 50/50 responsivo.
- * Abaixo de md: empilha (foto com altura limitada + formulário).
- * md+: colunas iguais (w-1/2) com altura fixa da viewport (h-dvh),
- * para a foto cobrir a página inteira em notebooks e desktops.
+ * Shell de autenticação no padrão 50/50 (referência: foto full-bleed + formulário centrado).
+ * md+: grid 2 colunas, altura = viewport — foto cobre 100% da metade esquerda.
+ * Abaixo de md: só o painel do formulário (padrão auth moderno deste tipo).
  */
 export function AuthSplitShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
 
   return (
-    <div className="relative flex min-h-dvh flex-col md:h-dvh md:flex-row md:overflow-hidden">
-      <div className="relative h-[min(36vh,15rem)] w-full shrink-0 overflow-hidden bg-ink-900 sm:h-[min(40vh,18rem)] md:h-full md:w-1/2 md:min-w-0 md:shrink-0">
+    <div className="min-h-dvh md:grid md:h-dvh md:grid-cols-2 md:overflow-hidden">
+      <aside className="relative hidden overflow-hidden bg-ink-900 md:block" aria-hidden>
         <img
           src={brandAssetUrl("/bg-login.png")}
           alt=""
-          className="absolute inset-0 size-full object-cover object-[center_18%] md:object-[30%_center] lg:object-[32%_center]"
+          className="absolute inset-0 size-full object-cover object-[28%_center]"
           decoding="async"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-black/10 md:bg-gradient-to-r md:from-black/35 md:to-black/5" />
-      </div>
+      </aside>
 
-      <div className="relative z-10 flex w-full min-w-0 flex-1 flex-col items-center justify-center overflow-y-auto bg-ink-50 px-4 py-8 dark:bg-ink-950 md:h-full md:w-1/2 md:shrink-0 md:bg-transparent md:px-6 md:py-10 lg:px-10 lg:py-12 dark:md:bg-transparent">
+      <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-y-auto bg-[#f6f4fb] px-4 py-10 dark:bg-ink-950 md:h-full md:min-h-0 md:px-8 lg:px-12">
         <div className="flex w-full max-w-md flex-col items-center">
           {children}
-          <p className="mt-6 max-w-md text-center text-xs leading-relaxed text-ink-500 dark:text-ink-400">
+          <p className="mt-8 max-w-md text-center text-xs leading-relaxed text-ink-500 dark:text-ink-400">
             {t("login.developedBy")}{" "}
             <a
               href={VENDOR_URL}
@@ -41,7 +39,7 @@ export function AuthSplitShell({ children }: { children: ReactNode }) {
             </a>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
