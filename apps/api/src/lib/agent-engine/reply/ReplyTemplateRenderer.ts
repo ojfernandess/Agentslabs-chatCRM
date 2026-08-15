@@ -115,10 +115,40 @@ function truthyFlag(v: unknown): boolean {
   return v === true || v === 1 || v === "1" || v === "true";
 }
 
+/**
+ * Audaar / consultar_reserva: check-in realizado se qualquer flag de status estiver true.
+ * Alinha com o prompt (checkinApi | validatedCheckin | hasCheckinApproved | checkin).
+ * Não misturar o path `checkin` (pode ser objeto) com flags escalares no mesmo dig().
+ */
 function isCheckInDone(payload: unknown): boolean {
-  const flag = dig(payload, ["checkInDone", "data.checkInDone", "validatedCheckin", "hasCheckinApproved"]);
+  const flag = dig(payload, [
+    "checkInDone",
+    "data.checkInDone",
+    "checkinApi",
+    "data.checkinApi",
+    "validatedCheckin",
+    "data.validatedCheckin",
+    "hasCheckinApproved",
+    "data.hasCheckinApproved",
+    "checkin.validatedCheckin",
+    "data.checkin.validatedCheckin",
+    "checkin.hasCheckinApproved",
+    "data.checkin.hasCheckinApproved",
+    "checkin.checkInDone",
+    "data.checkin.checkInDone",
+    "checkin.checkinApi",
+    "data.checkin.checkinApi",
+  ]);
   if (truthyFlag(flag)) return true;
-  const status = dig(payload, ["checkinActionDate", "data.checkinActionDate"]);
+  // Flag escalar `checkin: 1` (quando não é o objeto aninhado da API).
+  const checkinScalar = dig(payload, ["checkin", "data.checkin"]);
+  if (truthyFlag(checkinScalar)) return true;
+  const status = dig(payload, [
+    "checkinActionDate",
+    "data.checkinActionDate",
+    "checkin.checkinActionDate",
+    "data.checkin.checkinActionDate",
+  ]);
   return status != null && String(status).trim() !== "" && String(status) !== "null";
 }
 
@@ -198,13 +228,20 @@ export function extractReservationDisplayFields(payload: unknown): {
     pickString(stay, ["checkoutTime", "checkOutTime"]) ||
     pickString(data, ["checkoutTime", "checkOutTime"]) ||
     "12:00";
+  const checkinNode =
+    asRecord(data?.checkin) ?? asRecord(stay?.checkin) ?? asRecord(reservation?.checkin) ?? asRecord(root?.checkin);
   return {
     lodging,
     checkIn,
     checkOut,
     guests,
     locator,
-    checkInDone: isCheckInDone(data) || isCheckInDone(stay) || isCheckInDone(reservation),
+    checkInDone:
+      isCheckInDone(root) ||
+      isCheckInDone(data) ||
+      isCheckInDone(stay) ||
+      isCheckInDone(reservation) ||
+      isCheckInDone(checkinNode),
     roomLabel,
     roomPassword,
     checkInTime,

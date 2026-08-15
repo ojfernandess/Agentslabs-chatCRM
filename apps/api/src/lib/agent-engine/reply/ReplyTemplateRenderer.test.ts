@@ -65,3 +65,59 @@ test("factsFromReservationPayload prefers localizer over uid and userMessage loc
   assert.equal(facts.locator, "WIAHY1HC");
   assert.equal(facts.locatorSuffix, " WIAHY1HC");
 });
+
+test("check-in done via checkinApi / nested validatedCheckin (Audaar flags)", () => {
+  const viaApi = factsFromReservationPayload(
+    {
+      establishmentName: "Hotel Test",
+      checkinDate: "2026-08-01",
+      checkoutDate: "2026-08-03",
+      guestsQuantity: 2,
+      checkinApi: 1,
+      room: { roomNumber: "12" },
+    },
+    "Gostaria de saber se minha reserva está confirmada ABRJQPTF",
+  );
+  assert.equal(viaApi.checkInDone, true);
+  assert.equal(resolveReservationLookupTemplateId(viaApi), "reservation_lookup_done");
+  assert.match(
+    renderReplyTemplate({ templateId: resolveReservationLookupTemplateId(viaApi), facts: viaApi }),
+    /Check-in:\s*já realizado/i,
+  );
+
+  const viaNested = factsFromReservationPayload(
+    {
+      data: {
+        establishmentName: "Hotel Test",
+        checkinDate: "2026-08-01",
+        checkoutDate: "2026-08-03",
+        guestsQuantity: 1,
+        checkin: { validatedCheckin: 1, reservationId: 279321 },
+        room: { roomNumber: "101", categoryName: "Standard" },
+        access: { roomPassword: "9988" },
+      },
+    },
+    "reserva confirmada ABC123",
+  );
+  assert.equal(viaNested.checkInDone, true);
+  assert.equal(resolveReservationLookupTemplateId(viaNested), "reservation_lookup_done");
+
+  const viaPlainCheckin = factsFromReservationPayload(
+    { checkin: 1, establishmentName: "Hotel X", checkinDate: "2026-08-01", checkoutDate: "2026-08-02", guestsQuantity: 1 },
+    "status da reserva XYZ",
+  );
+  assert.equal(viaPlainCheckin.checkInDone, true);
+
+  const stillPending = factsFromReservationPayload(
+    {
+      establishmentName: "Hotel Test",
+      checkinDate: "2026-08-01",
+      checkoutDate: "2026-08-03",
+      guestsQuantity: 2,
+      checkinApi: 0,
+    },
+    "reserva confirmada ABC123",
+  );
+  assert.equal(stillPending.checkInDone, false);
+  assert.equal(resolveReservationLookupTemplateId(stillPending), "reservation_lookup_verify");
+});
