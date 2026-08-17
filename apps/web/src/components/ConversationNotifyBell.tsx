@@ -206,7 +206,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
       <div className="shrink-0 border-t border-ink-100 p-2 dark:border-soft-border">
         <button
           type="button"
-          className="w-full rounded-lg py-1.5 text-center text-xs font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
+          className="w-full rounded-xl bg-slate-100 py-1.5 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80"
           onClick={() => {
             clearBadge();
             setOpen(false);
@@ -227,10 +227,10 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
           type="button"
           onClick={() => setOpen((o) => !o)}
           className={clsx(
-            "relative flex h-11 w-11 items-center justify-center rounded-lg border transition-colors",
+            "relative flex h-11 w-11 items-center justify-center rounded-xl border-0 shadow-none transition-colors",
             badgeCount > 0
-              ? "border-brand-200 bg-brand-50 text-brand-800 hover:bg-brand-100"
-              : "border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-soft-border dark:bg-white/5 dark:text-ink-200 dark:hover:bg-white/10",
+              ? "bg-amber-100 text-amber-800 hover:bg-amber-200/80 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25"
+              : "bg-slate-100 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80",
           )}
           title={t("nav.alerts")}
           aria-expanded={open}
@@ -238,7 +238,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
         >
           <Bell className={clsx("h-5 w-5", badgeCount > 0 && "animate-pulse")} />
           {badgeCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-500 px-1 text-[9px] font-bold text-white">
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-600 px-1 text-[9px] font-bold text-white dark:bg-amber-500">
               {badgeCount > 99 ? "99+" : badgeCount}
             </span>
           )}

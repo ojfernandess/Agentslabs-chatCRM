@@ -739,10 +739,9 @@ export function Layout() {
             onClick={() => void requestDesktopPermission()}
             title={collapsed ? t("nav.enableDesktopNotifications") : undefined}
             className={clsx(
-              "text-brand-600 hover:text-brand-800 dark:text-brand-400",
               collapsed
-                ? "flex h-9 w-9 items-center justify-center rounded-lg hover:bg-ink-50 dark:hover:bg-ink-800"
-                : "w-full rounded-lg py-1 text-center text-[11px]",
+                ? "flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80"
+                : "w-full rounded-xl bg-slate-100 py-1.5 text-center text-[11px] font-semibold text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80",
             )}
           >
             {collapsed ? <Bell className="h-4 w-4" /> : t("nav.enableDesktopNotifications")}
