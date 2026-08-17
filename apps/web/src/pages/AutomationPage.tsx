@@ -4675,6 +4675,118 @@ function IntegrationToolEditor({
   );
 }
 
+function CalComToolEditor({
+  tool,
+  t,
+  onSave,
+}: {
+  tool: AutomationCustomToolRow;
+  t: Translate;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const c = (tool.config ?? {}) as Record<string, unknown>;
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState(String(c.baseUrl ?? "https://api.cal.com/v2"));
+  const [eventTypeId, setEventTypeId] = useState(c.eventTypeId == null ? "" : String(c.eventTypeId));
+  const [eventTypeSlug, setEventTypeSlug] = useState(String(c.eventTypeSlug ?? ""));
+  const [username, setUsername] = useState(String(c.username ?? ""));
+  const [teamSlug, setTeamSlug] = useState(String(c.teamSlug ?? ""));
+  const [organizationSlug, setOrganizationSlug] = useState(String(c.organizationSlug ?? ""));
+  const [timeZone, setTimeZone] = useState(String(c.timeZone ?? "America/Sao_Paulo"));
+  const [language, setLanguage] = useState(String(c.language ?? "pt-BR"));
+
+  useEffect(() => {
+    const cfg = (tool.config ?? {}) as Record<string, unknown>;
+    setApiKey("");
+    setBaseUrl(String(cfg.baseUrl ?? "https://api.cal.com/v2"));
+    setEventTypeId(cfg.eventTypeId == null ? "" : String(cfg.eventTypeId));
+    setEventTypeSlug(String(cfg.eventTypeSlug ?? ""));
+    setUsername(String(cfg.username ?? ""));
+    setTeamSlug(String(cfg.teamSlug ?? ""));
+    setOrganizationSlug(String(cfg.organizationSlug ?? ""));
+    setTimeZone(String(cfg.timeZone ?? "America/Sao_Paulo"));
+    setLanguage(String(cfg.language ?? "pt-BR"));
+  }, [tool.id, tool.config]);
+
+  const fieldCls =
+    "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+  const hasSavedKey = String(c.apiKey ?? "").trim().length > 0;
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+      <p className="text-xs text-ink-500">{t("automationPage.toolCalComHelp")}</p>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComApiKey")}
+        <input
+          type="password"
+          autoComplete="off"
+          value={apiKey}
+          placeholder={hasSavedKey ? t("automationPage.toolGoogleCalendarSecretPlaceholder") : "cal_live_…"}
+          onChange={(e) => setApiKey(e.target.value)}
+          className={fieldCls}
+        />
+      </label>
+      {hasSavedKey ? (
+        <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolCalComKeySaved")}</p>
+      ) : null}
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComBaseUrl")}
+        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComEventTypeId")}
+        <input value={eventTypeId} onChange={(e) => setEventTypeId(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComEventTypeSlug")}
+        <input value={eventTypeSlug} onChange={(e) => setEventTypeSlug(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComUsername")}
+        <input value={username} onChange={(e) => setUsername(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComTeamSlug")}
+        <input value={teamSlug} onChange={(e) => setTeamSlug(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComOrganizationSlug")}
+        <input value={organizationSlug} onChange={(e) => setOrganizationSlug(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComTimeZone")}
+        <input value={timeZone} onChange={(e) => setTimeZone(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolCalComLanguage")}
+        <input value={language} onChange={(e) => setLanguage(e.target.value)} className={fieldCls} />
+      </label>
+      <p className="text-[11px] text-ink-500">{t("automationPage.toolCalComDocsHint")}</p>
+      <button
+        type="button"
+        onClick={() => {
+          const patch: Record<string, unknown> = {
+            baseUrl: baseUrl.trim() || "https://api.cal.com/v2",
+            eventTypeId: eventTypeId.trim() ? Number(eventTypeId.trim()) || eventTypeId.trim() : "",
+            eventTypeSlug: eventTypeSlug.trim(),
+            username: username.trim(),
+            teamSlug: teamSlug.trim(),
+            organizationSlug: organizationSlug.trim(),
+            timeZone: timeZone.trim() || "America/Sao_Paulo",
+            language: language.trim() || "pt-BR",
+          };
+          const keyTrimmed = apiKey.trim();
+          if (keyTrimmed && keyTrimmed !== "***") patch.apiKey = keyTrimmed;
+          onSave(patch);
+        }}
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+      >
+        {t("automationPage.toolSaveCredentials")}
+      </button>
+    </div>
+  );
+}
+
 function parseGoogleCalAvailability(cfg: Record<string, unknown>): { days: number[]; start: string; end: string } {
   const av = (cfg.availability && typeof cfg.availability === "object" ? cfg.availability : {}) as Record<string, unknown>;
   const daysRaw = Array.isArray(av.days) ? (av.days as unknown[]) : [1, 2, 3, 4, 5];
@@ -5285,6 +5397,10 @@ function ToolCredentialEditor({
 
   if (tool.toolType === "GOOGLE_CALENDAR") {
     return <GoogleCalendarToolEditor tool={tool} t={t} onSave={onSave} />;
+  }
+
+  if (tool.toolType === "CAL_COM") {
+    return <CalComToolEditor tool={tool} t={t} onSave={onSave} />;
   }
 
   if (tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK") {

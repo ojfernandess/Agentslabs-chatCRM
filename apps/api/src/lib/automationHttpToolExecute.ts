@@ -10,6 +10,7 @@ import { assembleEmbraturFromSources } from "./agent-engine/checkin/embraturTrav
 import { adaptHttpCheckInPayload } from "./agent-engine/checkin/toolOutcomeAdapters.js";
 import { httpToolBodyIndicatesFailure } from "./agent-engine/checkin/toolOutcomeParsing.js";
 import { buildGoogleCalendarAgentToolDescription } from "./googleCalendarToolExecute.js";
+import { buildCalComAgentToolDescription } from "./calComToolExecute.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
 const LOCAL_MEDIA_PATH = "/api/v1/messages/media/";
@@ -177,7 +178,7 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
     mediaType: string | null;
     createdAt: Date;
   };
-  contact?: { id: string; name: string | null; phone: string | null } | null;
+  contact?: { id: string; name: string | null; phone: string | null; email?: string | null } | null;
 }): Promise<Record<string, unknown>> {
   const lastClearedAt = input.lastClearedAt ?? null;
   const messageWithinContext =
@@ -275,6 +276,7 @@ export async function buildNativeAgentHttpToolRuntimeContext(input: {
         id: input.contact.id,
         name: input.contact.name ?? "",
         phone: input.contact.phone ?? "",
+        email: input.contact.email ?? "",
       }
     : {};
 
@@ -1492,14 +1494,18 @@ export function openAiToolDefinitionForAutomationTool(
   const toolType = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_");
   const calendarHint =
     toolType === "GOOGLE_CALENDAR" ? buildGoogleCalendarAgentToolDescription(tool.config) : "";
+  const calComHint = toolType === "CAL_COM" ? buildCalComAgentToolDescription(tool.config) : "";
+  const integrationHint = calendarHint || calComHint;
   const baseDesc =
     (tool.description ?? "").trim() ||
     (toolType === "GOOGLE_CALENDAR"
       ? calendarHint || `Agendamento Google Calendar «${tool.name}».`
-      : `Ferramenta HTTP da organização «${tool.name}». Invoque quando o cliente precisar dos dados que esta API fornece.`);
+      : toolType === "CAL_COM"
+        ? calComHint || `Agendamento Cal.com «${tool.name}».`
+        : `Ferramenta HTTP da organização «${tool.name}». Invoque quando o cliente precisar dos dados que esta API fornece.`);
   const withCalendarHint =
-    calendarHint && !(tool.description ?? "").includes("calendar_name")
-      ? `${baseDesc}\n\n${calendarHint}`.trim()
+    integrationHint && !(tool.description ?? "").includes(toolType === "CAL_COM" ? "get_slots" : "calendar_name")
+      ? `${baseDesc}\n\n${integrationHint}`.trim()
       : baseDesc;
   const extra = (opts?.agentInstruction ?? "").trim();
   const combined = extra

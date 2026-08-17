@@ -1386,6 +1386,22 @@ export const messages = {
       toolGoogleCalendarOAuthNote:
         "Após ligar a conta, o agente pode usar agendar_google quando a ferramenta estiver activa no perfil. O refresh_token fica guardado de forma segura na configuração da ferramenta.",
       toolGoogleCalendarCalendarsJsonInvalid: "JSON de agendas inválido. Use um array de objetos { id, name }.",
+      toolCalComHelp:
+        "API key Cal.com (Settings → Security). Prefixo cal_ (teste) ou cal_live_ (produção). Enviada como Authorization Bearer. Rate limit: 120 pedidos/min. Ver https://cal.com/docs/api-reference/v2/introduction",
+      toolCalComApiKey: "API key",
+      toolCalComKeySaved: "Chave já configurada. Digite uma nova para substituir.",
+      toolCalComBaseUrl: "Base URL",
+      toolCalComEventTypeId: "Event type ID (predefinido)",
+      toolCalComEventTypeSlug: "Event type slug (alternativa ao ID)",
+      toolCalComUsername: "Username Cal.com",
+      toolCalComTeamSlug: "Team slug (eventos de equipa)",
+      toolCalComOrganizationSlug: "Organization slug (opcional)",
+      toolCalComTimeZone: "Fuso horário do participante (IANA)",
+      toolCalComLanguage: "Idioma do participante (ex. pt-BR)",
+      toolCalComDocsHint:
+        "Ligue a ferramenta no perfil do agente. O modelo usa action=get_slots e depois create_booking com o horário UTC escolhido.",
+      toolsTestCalComHelp:
+        "JSON de argumentos da ferramenta. Ex.: {\"action\":\"list_event_types\"} ou {\"action\":\"get_slots\",\"start\":\"2026-08-20\",\"end\":\"2026-08-27\"}.",
       toolGenericEditorHint: "Edite via API ou contacte o administrador para tipos HTTP personalizados.",
       toolsHubBadge: "Tool registry · MCP-ready",
       toolsHubTitle: "Hub de ferramentas e integrações",
@@ -7005,6 +7021,22 @@ export const messages = {
       toolGoogleCalendarOAuthNote:
         "After connecting, the agent can use agendar_google when the tool is enabled on the profile. The refresh_token is stored securely in the tool configuration.",
       toolGoogleCalendarCalendarsJsonInvalid: "Invalid calendars JSON. Use an array of { id, name } objects.",
+      toolCalComHelp:
+        "Cal.com API key (Settings → Security). Prefix cal_ (test) or cal_live_ (production). Sent as Authorization Bearer. Rate limit: 120 req/min. See https://cal.com/docs/api-reference/v2/introduction",
+      toolCalComApiKey: "API key",
+      toolCalComKeySaved: "Key already stored. Type a new one to replace it.",
+      toolCalComBaseUrl: "Base URL",
+      toolCalComEventTypeId: "Default event type ID",
+      toolCalComEventTypeSlug: "Event type slug (alternative to ID)",
+      toolCalComUsername: "Cal.com username",
+      toolCalComTeamSlug: "Team slug (team events)",
+      toolCalComOrganizationSlug: "Organization slug (optional)",
+      toolCalComTimeZone: "Attendee time zone (IANA)",
+      toolCalComLanguage: "Attendee language (e.g. pt-BR)",
+      toolCalComDocsHint:
+        "Connect this tool on the agent profile. The model should call get_slots, then create_booking with the chosen UTC start.",
+      toolsTestCalComHelp:
+        "Tool arguments JSON. E.g. {\"action\":\"list_event_types\"} or {\"action\":\"get_slots\",\"start\":\"2026-08-20\",\"end\":\"2026-08-27\"}.",
       toolGenericEditorHint: "Use the API or contact an admin for custom HTTP tool types.",
       toolsHubBadge: "Tool registry · MCP-ready",
       toolsHubTitle: "Tools & integrations hub",

@@ -179,6 +179,7 @@ import {
   type AutomationHttpToolRow,
 } from "./automationHttpToolExecute.js";
 import { isAgentExecutableAutomationToolType, runGoogleCalendarTool } from "./googleCalendarToolExecute.js";
+import { runCalComTool } from "./calComToolExecute.js";
 import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
 import { IMAGE_TRANSCRIPTION_PREFIX } from "./imageTranscription.js";
 import {
@@ -1286,7 +1287,7 @@ export async function invokeSingleNativeAgentTool(input: {
     const contactRow = conversation.contactId
       ? await prisma.contact.findFirst({
           where: { id: conversation.contactId, organizationId },
-          select: { id: true, name: true, phone: true },
+          select: { id: true, name: true, phone: true, email: true },
         })
       : null;
     let httpToolRuntimeContext = await buildNativeAgentHttpToolRuntimeContext({
@@ -1325,7 +1326,17 @@ export async function invokeSingleNativeAgentTool(input: {
             conversationId: conversation.id,
             executionSource: "native_agent",
           })
-        : await runAutomationHttpLikeTool({
+        : httpRow.toolType === "CAL_COM"
+          ? await runCalComTool({
+              tool: httpRow,
+              llmArgs: args,
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              executionSource: "native_agent",
+              runtimeSampleContext: httpToolRuntimeContext,
+            })
+          : await runAutomationHttpLikeTool({
             tool: httpRow,
             llmArgs: args,
             organizationId,
@@ -2554,7 +2565,7 @@ async function generateNativeAgentReplyCore(input: {
     const contactRow = effectiveContactId
       ? await prisma.contact.findFirst({
           where: { id: effectiveContactId, organizationId },
-          select: { id: true, name: true, phone: true },
+          select: { id: true, name: true, phone: true, email: true },
         })
       : null;
     httpToolRuntimeContext = await buildNativeAgentHttpToolRuntimeContext({
@@ -2888,7 +2899,17 @@ async function generateNativeAgentReplyCore(input: {
                       conversationId: conversation.id,
                       executionSource: "native_agent",
                     })
-                  : await runAutomationHttpLikeTool({
+                  : row.toolType === "CAL_COM"
+                    ? await runCalComTool({
+                        tool: row,
+                        llmArgs: args,
+                        organizationId,
+                        botId: bot.id,
+                        conversationId: conversation.id,
+                        executionSource: "native_agent",
+                        runtimeSampleContext: httpToolRuntimeContext,
+                      })
+                    : await runAutomationHttpLikeTool({
                       tool: row,
                       llmArgs: args,
                       organizationId,

@@ -408,5 +408,5 @@ async function logGoogleCalendarExecution(input: {
 
 export function isAgentExecutableAutomationToolType(toolType: string): boolean {
   const t = toolType.toUpperCase().replace(/-/g, "_");
-  return t === "HTTP_API" || t === "WEBHOOK" || t === "GOOGLE_CALENDAR";
+  return t === "HTTP_API" || t === "WEBHOOK" || t === "GOOGLE_CALENDAR" || t === "CAL_COM";
 }

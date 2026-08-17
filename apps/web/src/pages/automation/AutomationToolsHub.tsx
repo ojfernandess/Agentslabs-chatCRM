@@ -129,7 +129,7 @@ const MARKETPLACE_FILTER_KEYS = [
 function effectiveMarketCategory(p: ToolPresetMeta): string | null {
   if (p.marketplace?.category) return p.marketplace.category;
   if (p.category === "EMAIL_API") return "EMAIL";
-  if (p.category === "GOOGLE_CALENDAR") return "PRODUCTIVITY";
+  if (p.category === "GOOGLE_CALENDAR" || p.category === "CAL_COM") return "PRODUCTIVITY";
   if (p.category === "ELEVENLABS" || p.category === "MCP_NATIVE" || p.category === "HTTP_CUSTOM") return "AUTOMATION";
   if (p.category === "INTEGRATION_MARKETPLACE") return "AUTOMATION";
   return null;
@@ -742,7 +742,7 @@ export function AutomationToolsHub({
                 const last = tool.lastExecutedAt ? new Date(tool.lastExecutedAt).toLocaleString() : "—";
                 const calls = tool.executionCount ?? 0;
                 const avg = tool.avgDurationMs != null ? `${Math.round(tool.avgDurationMs)} ms` : "—";
-                const canTest = tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK";
+                const canTest = tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK" || tool.toolType === "CAL_COM";
                 const isHttpCustom = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM";
                 return (
                   <div
@@ -1066,9 +1066,13 @@ export function AutomationToolsHub({
             </div>
             <div className="flex-1 overflow-y-auto p-4 text-sm">
               {drawerTab === "test" ? (
-                drawerTool.toolType === "HTTP_API" || drawerTool.toolType === "WEBHOOK" ? (
+                drawerTool.toolType === "HTTP_API" || drawerTool.toolType === "WEBHOOK" || drawerTool.toolType === "CAL_COM" ? (
                   <div className="space-y-3">
-                    <p className="text-xs text-ink-500">{t("automationPage.toolsTestHelp")}</p>
+                    <p className="text-xs text-ink-500">
+                      {drawerTool.toolType === "CAL_COM"
+                        ? t("automationPage.toolsTestCalComHelp")
+                        : t("automationPage.toolsTestHelp")}
+                    </p>
                     <label className="block text-xs font-medium">
                       {t("automationPage.toolsTestPayload")}
                       <textarea

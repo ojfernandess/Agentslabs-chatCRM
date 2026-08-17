@@ -15,6 +15,7 @@ import {
   expandTemplateString,
   resolveHttpRequestBody,
 } from "../lib/automationHttpToolExecute.js";
+import { runCalComTool } from "../lib/calComToolExecute.js";
 import { redactAutomationToolConfig } from "../lib/automationWebhookBundle.js";
 import {
   callGeminiGenerateContent,
@@ -1869,10 +1870,48 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       if (!tool.isActive) {
         return reply.status(400).send({ error: "Bad Request", message: "Tool is inactive", statusCode: 400 });
       }
+      if (tool.toolType === "CAL_COM") {
+        const bodyRaw = parsed.data.body;
+        const llmArgs =
+          bodyRaw && typeof bodyRaw === "object" && !Array.isArray(bodyRaw)
+            ? ({ action: "list_event_types", ...(bodyRaw as Record<string, unknown>) } as Record<string, unknown>)
+            : ({ action: "list_event_types" } as Record<string, unknown>);
+        if (typeof llmArgs.action !== "string" || !llmArgs.action.trim()) llmArgs.action = "list_event_types";
+        const exec = await runCalComTool({
+          tool: {
+            id: tool.id,
+            organizationId: tool.organizationId,
+            name: tool.name,
+            description: tool.description,
+            toolType: tool.toolType,
+            config: tool.config,
+            parametersSchema: tool.parametersSchema,
+          },
+          llmArgs,
+          organizationId,
+          botId: "",
+          conversationId: "",
+          executionSource: "manual_test",
+          runtimeSampleContext: parsed.data.sampleContext ?? {},
+        });
+        let parsedBody: unknown = exec.responseText;
+        try {
+          parsedBody = JSON.parse(exec.responseText);
+        } catch {
+          parsedBody = exec.responseText;
+        }
+        return {
+          ok: exec.ok,
+          statusCode: exec.statusCode,
+          durationMs: exec.durationMs,
+          error: exec.error,
+          body: parsedBody,
+        };
+      }
       if (tool.toolType !== "HTTP_API" && tool.toolType !== "WEBHOOK") {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Test runner supports HTTP_API and WEBHOOK tools only",
+          message: "Test runner supports HTTP_API, WEBHOOK and CAL_COM tools only",
           statusCode: 400,
         });
       }

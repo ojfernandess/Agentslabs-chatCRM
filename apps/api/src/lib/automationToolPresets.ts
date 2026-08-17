@@ -6,6 +6,7 @@
 export type AutomationPresetCategory =
   | "MCP_NATIVE"
   | "GOOGLE_CALENDAR"
+  | "CAL_COM"
   | "ELEVENLABS"
   | "EMAIL_API"
   | "HTTP_CUSTOM"
@@ -174,6 +175,78 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
       calendar_id: "primary",
       availability: { days: [1, 2, 3, 4, 5], start: "09:00", end: "18:00" },
       connectedCalendars: [{ id: "primary", name: "Principal" }],
+    },
+  },
+  {
+    presetKey: "cal_com_api",
+    category: "CAL_COM",
+    name: "agendar_calcom",
+    description:
+      "Cal.com API v2: listar tipos de evento, consultar slots e criar/cancelar bookings. Auth: API key (Bearer cal_ / cal_live_). Fluxo: get_slots → create_booking com start UTC.",
+    toolType: "CAL_COM",
+    parametersSchema: openAiObjectSchema(
+      {
+        action: {
+          type: "string",
+          enum: ["list_event_types", "get_slots", "create_booking", "cancel_booking"],
+          description:
+            "list_event_types = tipos de reunião; get_slots = horários livres (start/end obrigatórios); create_booking = confirmar com start UTC do slot; cancel_booking = cancelar por bookingUid",
+        },
+        start: {
+          type: "string",
+          description:
+            "get_slots: início do intervalo (YYYY-MM-DD ou ISO UTC). create_booking: instante UTC ISO 8601 do slot escolhido (ex. 2026-08-20T14:00:00.000Z)",
+        },
+        end: {
+          type: "string",
+          description: "get_slots: fim do intervalo (YYYY-MM-DD ou ISO UTC)",
+        },
+        name: { type: "string", description: "Nome do participante (create_booking)" },
+        email: { type: "string", description: "E-mail do participante (create_booking)" },
+        phoneNumber: {
+          type: "string",
+          description: "Telefone internacional (ex. +5511999990000). Obrigatório se o evento tiver SMS.",
+        },
+        timeZone: {
+          type: "string",
+          description: "IANA timezone do participante (omita para usar o configurado na ferramenta)",
+        },
+        eventTypeId: { type: "number", description: "ID numérico do event type. Omita se já estiver no config." },
+        eventTypeSlug: { type: "string", description: "Slug do event type (alternativa a eventTypeId)" },
+        username: { type: "string", description: "Username Cal.com do anfitrião (com eventTypeSlug)" },
+        teamSlug: { type: "string", description: "Slug da equipa (eventos de equipa)" },
+        organizationSlug: { type: "string", description: "Slug da organização Cal.com (opcional)" },
+        lengthInMinutes: { type: "number", description: "Duração alternativa quando o event type permite várias" },
+        guests: {
+          type: "array",
+          items: { type: "string" },
+          description: "E-mails de convidados adicionais",
+        },
+        bookingUid: { type: "string", description: "UID da reserva (cancel_booking)" },
+        cancellationReason: { type: "string", description: "Motivo do cancelamento" },
+      },
+      ["action"],
+    ),
+    defaultConfig: {
+      presetKey: "cal_com_api",
+      nativeToolKey: "scheduling_calcom",
+      executor: "cal_com_api",
+      auth_mode: "api_key",
+      apiKey: "",
+      baseUrl: "https://api.cal.com/v2",
+      eventTypeId: "",
+      eventTypeSlug: "",
+      username: "",
+      teamSlug: "",
+      organizationSlug: "",
+      timeZone: "America/Sao_Paulo",
+      language: "pt-BR",
+    },
+    marketplace: {
+      category: "PRODUCTIVITY",
+      icon: "Calendar",
+      popularity: 86,
+      accent: "from-sky-500/25 to-indigo-600/10",
     },
   },
   {
