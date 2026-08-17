@@ -2012,7 +2012,17 @@ export function ConversationDetailPage() {
     setTransferOpen(true);
   };
 
-  const actionBtnSize = isSplitLayout ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs";
+  const actionBtnSize = isSplitLayout ? "px-2.5 py-1.5 text-[11px]" : "px-3.5 py-2 text-xs";
+  const filledSoftBase =
+    "inline-flex shrink-0 items-center gap-2 rounded-xl border-0 font-semibold shadow-none transition-colors disabled:opacity-50";
+  const filledSoftSlate =
+    "bg-slate-100 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80";
+  const filledSoftViolet =
+    "bg-violet-100 text-violet-700 hover:bg-violet-200/80 dark:bg-violet-500/20 dark:text-violet-300 dark:hover:bg-violet-500/30";
+  const filledSoftEmerald =
+    "bg-emerald-100 text-emerald-800 hover:bg-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25";
+  const filledSoftAmber =
+    "bg-amber-100 text-amber-800 hover:bg-amber-200/80 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25";
 
   const inBotQueueOnly =
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
@@ -2136,10 +2146,10 @@ export function ConversationDetailPage() {
             <button
               type="button"
               onClick={toggleCopilotPanel}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200/90 bg-violet-50 px-2.5 py-1.5 text-[11px] font-semibold text-violet-800 transition hover:bg-violet-100 dark:border-violet-800/50 dark:bg-violet-950/50 dark:text-violet-200 dark:hover:bg-violet-900/40"
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80"
               title={t("conversationDetail.crmAiInsights")}
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              <Brain className="h-3.5 w-3.5" />
               {t("conversationDetail.crmAiInsights")}
             </button>
           ) : (
@@ -3237,7 +3247,7 @@ export function ConversationDetailPage() {
                     </div>
                   </div>
 
-                  <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">
+                  <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                     <TelephonyCallButton
                       phone={conversation.contact.phone}
                       inboxId={conversation.inbox?.id}
@@ -3250,18 +3260,15 @@ export function ConversationDetailPage() {
                       <Link
                         to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}
                         title={t("conversationDetail.linkAiInsights")}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 shadow-sm hover:bg-ink-50 dark:border-soft-border dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10"
+                        className={clsx(filledSoftBase, filledSoftSlate, actionBtnSize)}
                       >
                         <Brain className="h-4 w-4 shrink-0" />
-                        <span className="hidden 2xl:inline">{t("conversationDetail.linkAiInsights")}</span>
+                        {t("conversationDetail.linkAiInsights")}
                       </Link>
                     ) : null}
                     {agentBotTriageActive && hasNoHumanAssignee && !conversation.awaitingHumanHandoff ? (
                       <span
-                        className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-900 dark:border-violet-800/40 dark:bg-violet-950/35 dark:text-violet-200",
-                          actionBtnSize,
-                        )}
+                        className={clsx(filledSoftBase, filledSoftViolet, actionBtnSize)}
                         title={t("conversationDetail.botTriageBanner")}
                       >
                         <Bot className="h-3.5 w-3.5" />
@@ -3276,10 +3283,7 @@ export function ConversationDetailPage() {
                           if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
                         }}
                         title={t("conversationDetail.startAttendanceHint")}
-                        className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 font-medium text-emerald-950 hover:bg-emerald-100/80 disabled:opacity-50 dark:border-emerald-800/45 dark:bg-emerald-950/35 dark:text-emerald-100 dark:hover:bg-emerald-900/40",
-                          actionBtnSize,
-                        )}
+                        className={clsx(filledSoftBase, filledSoftEmerald, actionBtnSize)}
                       >
                         <Headset className="h-3.5 w-3.5" />
                         {t("conversationDetail.startAttendance")}
@@ -3290,10 +3294,7 @@ export function ConversationDetailPage() {
                         type="button"
                         disabled={actionLoading}
                         onClick={openTransferModal}
-                        className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
-                          actionBtnSize,
-                        )}
+                        className={clsx(filledSoftBase, filledSoftSlate, actionBtnSize)}
                       >
                         <ArrowRightLeft className="h-3.5 w-3.5" />
                         {t("conversationDetail.transferOpen")}
@@ -3302,10 +3303,7 @@ export function ConversationDetailPage() {
                     {funnelEnabled ? (
                       <Link
                         to="/crm"
-                        className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-800 shadow-sm hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100 dark:hover:bg-ink-700",
-                          actionBtnSize,
-                        )}
+                        className={clsx(filledSoftBase, filledSoftSlate, actionBtnSize)}
                       >
                         <Kanban className="h-3.5 w-3.5" />
                         {t("conversationDetail.actionMoveFunnel")}
@@ -3316,10 +3314,7 @@ export function ConversationDetailPage() {
                         type="button"
                         disabled={actionLoading}
                         onClick={() => void applyStatus("PENDING", { assignedToId: null })}
-                        className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 font-medium text-violet-950 hover:bg-violet-100/80 disabled:opacity-50 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100 dark:hover:bg-violet-900/40",
-                          actionBtnSize,
-                        )}
+                        className={clsx(filledSoftBase, filledSoftViolet, actionBtnSize)}
                       >
                         <Bot className="h-3.5 w-3.5" />
                         {t("conversationDetail.transferToBot")}
@@ -3330,10 +3325,7 @@ export function ConversationDetailPage() {
                         type="button"
                         disabled={actionLoading}
                         onClick={() => void applyStatus("PENDING")}
-                        className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 font-medium text-amber-950 hover:bg-amber-100/80 disabled:opacity-50 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40",
-                          actionBtnSize,
-                        )}
+                        className={clsx(filledSoftBase, filledSoftAmber, actionBtnSize)}
                       >
                         <PauseCircle className="h-3.5 w-3.5" />
                         {t("conversationDetail.setPending")}
@@ -3345,7 +3337,8 @@ export function ConversationDetailPage() {
                         disabled={actionLoading}
                         onClick={() => openResolveModal(null)}
                         className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600",
+                          filledSoftBase,
+                          "bg-brand-500 text-white hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500",
                           actionBtnSize,
                         )}
                       >
@@ -3358,10 +3351,7 @@ export function ConversationDetailPage() {
                         type="button"
                         disabled={actionLoading}
                         onClick={() => void applyStatus("OPEN")}
-                        className={clsx(
-                          "inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-ink-200 bg-white font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700",
-                          actionBtnSize,
-                        )}
+                        className={clsx(filledSoftBase, filledSoftSlate, actionBtnSize)}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         {t("conversationDetail.reopen")}
@@ -3369,7 +3359,7 @@ export function ConversationDetailPage() {
                     ) : null}
                     <button
                       type="button"
-                      className="rounded-xl border border-ink-200 bg-white p-2 text-ink-700 shadow-sm hover:bg-ink-50 dark:border-soft-border dark:bg-white/5 dark:text-ink-100 dark:shadow-none dark:hover:bg-white/10 xl:hidden"
+                      className={clsx(filledSoftBase, filledSoftSlate, "p-2 xl:hidden")}
                       onClick={() => setCrmMobileOpen(true)}
                       aria-label={t("conversationDetail.crmDrawerToggle")}
                     >
