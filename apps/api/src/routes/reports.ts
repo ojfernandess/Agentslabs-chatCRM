@@ -93,8 +93,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       handoffsToHumanRows,
       pendingBotQueueCount,
     ] = await Promise.all([
-      prisma.conversation.count({ where: { organizationId: org, status: "OPEN" } }),
-      prisma.conversation.count({ where: { organizationId: org, status: "PENDING" } }),
+      prisma.conversation.count({ where: { organizationId: org, status: "OPEN", deletedAt: null } }),
+      prisma.conversation.count({ where: { organizationId: org, status: "PENDING", deletedAt: null } }),
       prisma.conversation.count({
         where: { organizationId: org, createdAt: { gte: from, lte: to } },
       }),
@@ -403,6 +403,7 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
           organizationId: org,
           status: "PENDING",
           assignedToId: null,
+          deletedAt: null,
         },
       }),
     ]);

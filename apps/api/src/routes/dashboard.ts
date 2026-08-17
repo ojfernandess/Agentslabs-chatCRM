@@ -1,9 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { startOfDay, subDays, format } from "date-fns";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { listEmailInboxIdsHiddenFromConversations } from "../lib/inboxEmailConfig.js";
+import { loadConversationInboxVisibilityWhere } from "../lib/conversationInboxVisibility.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.addHook("preHandler", async (request) => {
@@ -18,16 +17,11 @@ export async function dashboardRoutes(app: FastifyInstance) {
     const todayStart = startOfDay(now);
     const weekAgoStart = startOfDay(subDays(now, 7));
 
-    const orgWhere = { organizationId };
-
-    const hiddenEmailInboxIds = await listEmailInboxIdsHiddenFromConversations(organizationId);
-    const recentConversationsWhere: Prisma.ConversationWhereInput = {
-      ...orgWhere,
-      status: "OPEN",
-    };
-    if (hiddenEmailInboxIds.length > 0) {
-      recentConversationsWhere.NOT = { inboxId: { in: hiddenEmailInboxIds } };
-    }
+    const visibleConversations = await loadConversationInboxVisibilityWhere({
+      organizationId,
+      userId: request.user.id,
+      role: request.user.role,
+    });
 
     const [
       openConversations,
@@ -39,12 +33,12 @@ export async function dashboardRoutes(app: FastifyInstance) {
       messageStats,
       recentConversations,
     ] = await Promise.all([
-      prisma.conversation.count({ where: { ...orgWhere, status: "OPEN" } }),
-      prisma.conversation.count({ where: { ...orgWhere, status: "PENDING" } }),
-      prisma.contact.count({ where: orgWhere }),
+      prisma.conversation.count({ where: { ...visibleConversations, status: "OPEN" } }),
+      prisma.conversation.count({ where: { ...visibleConversations, status: "PENDING" } }),
+      prisma.contact.count({ where: { organizationId } }),
       prisma.reminder.count({
         where: {
-          ...orgWhere,
+          organizationId,
           userId: request.user.id,
           dueAt: { gte: todayStart, lt: startOfDay(subDays(todayStart, -1)) },
           completed: false,
@@ -56,7 +50,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         orderBy: { order: "asc" },
       }),
       prisma.tag.findMany({
-        where: orgWhere,
+        where: { organizationId },
         include: { _count: { select: { contacts: true } } },
         orderBy: { contacts: { _count: "desc" } },
         take: 5,
@@ -65,12 +59,12 @@ export async function dashboardRoutes(app: FastifyInstance) {
         by: ["direction", "createdAt"],
         where: {
           createdAt: { gte: weekAgoStart },
-          conversation: orgWhere,
+          conversation: { organizationId },
         },
         _count: true,
       }),
       prisma.conversation.findMany({
-        where: recentConversationsWhere,
+        where: { ...visibleConversations, status: "OPEN" },
         take: 5,
         orderBy: { updatedAt: "desc" },
         include: {
