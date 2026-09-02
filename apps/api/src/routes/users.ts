@@ -15,6 +15,7 @@ import {
   isOrgMemberRole,
   organizationMembersWhere,
 } from "../lib/organizationMemberships.js";
+import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
 
 const createUserSchema = z.object({
   name: z.string().min(1).max(255),
@@ -224,6 +225,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
 
         if (otherMemberships.length === 0) {
           // Sem outras orgs: remove a conta (comportamento anterior).
+          await reassignUserRestrictReferences(tx, target.id, request.user.id);
           await tx.user.delete({ where: { id: target.id } });
           return;
         }

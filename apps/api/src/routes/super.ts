@@ -8,6 +8,7 @@ import { requireSuperAdmin } from "../middleware/auth.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
+import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
 import { getRedisHealth } from "../lib/redisHealth.js";
 import {
   FEATURE_FLAG_DEFINITIONS,
@@ -680,22 +681,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
             });
             continue;
           }
-          await tx.auditLog.updateMany({
-            where: { actorUserId: u.id },
-            data: { actorUserId: reassignTo },
-          });
-          await tx.platformApplication.updateMany({
-            where: { createdById: u.id },
-            data: { createdById: reassignTo },
-          });
-          await tx.broadcastCampaign.updateMany({
-            where: { createdById: u.id },
-            data: { createdById: reassignTo },
-          });
-          await tx.automationKnowledgeRevision.updateMany({
-            where: { editorUserId: u.id },
-            data: { editorUserId: reassignTo },
-          });
+          await reassignUserRestrictReferences(tx, u.id, reassignTo);
           await tx.user.delete({ where: { id: u.id } });
         }
         await tx.organization.delete({ where: { id: orgId } });
@@ -979,22 +965,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
 
     const reassignTo = request.user.id;
     await prisma.$transaction(async (tx) => {
-      await tx.auditLog.updateMany({
-        where: { actorUserId: target.id },
-        data: { actorUserId: reassignTo },
-      });
-      await tx.platformApplication.updateMany({
-        where: { createdById: target.id },
-        data: { createdById: reassignTo },
-      });
-      await tx.broadcastCampaign.updateMany({
-        where: { createdById: target.id },
-        data: { createdById: reassignTo },
-      });
-      await tx.automationKnowledgeRevision.updateMany({
-        where: { editorUserId: target.id },
-        data: { editorUserId: reassignTo },
-      });
+      await reassignUserRestrictReferences(tx, target.id, reassignTo);
       await tx.user.delete({ where: { id: target.id } });
     });
 
