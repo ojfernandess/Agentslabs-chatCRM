@@ -190,6 +190,8 @@ model Organization {
   settings           Settings?
   auditLogs          AuditLog[]
   featureFlags       OrganizationFeatureFlag[]
+  intelligentTagSuggestions IntelligentTagSuggestion[]
+  intelligentTaggingRuns    IntelligentTaggingRun[]
   teams              Team[]
   teamChannels       TeamChannel[]
   teamWorkspaceItems TeamWorkspaceItem[]
@@ -561,6 +563,7 @@ model User {
   sipCredentials               UserSipCredentials?
   mcpAccessTokens              McpAccessToken[]
   mcpAuditLogs                 McpAuditLog[]
+  intelligentTagSuggestionsReviewed IntelligentTagSuggestion[] @relation("IntelligentTagSuggestionReviewer")
 
   @@index([organizationId])
   @@map("users")
@@ -743,6 +746,7 @@ model Tag {
   rules                  AutoTagRule[]
   broadcastCampaignTags  BroadcastCampaignTag[]
   settingsAutoResolveTag Settings[]             @relation("SettingsAutoResolveTag")
+  intelligentTagSuggestions IntelligentTagSuggestion[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1008,6 +1012,8 @@ model Conversation {
   threeCxCallLogs        ThreeCxCallLog[]
   nvoipCallLogs          NvoipCallLog[]
   reminders              Reminder[]
+  intelligentTagSuggestions IntelligentTagSuggestion[]
+  intelligentTaggingRuns    IntelligentTaggingRun[]
 
   @@index([organizationId])
   @@index([contactId])
@@ -1275,6 +1281,61 @@ model AutoTagRule {
   @@map("auto_tag_rules")
 }
 
+enum IntelligentTagSuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  AUTO_APPLIED
+}
+
+model IntelligentTaggingRun {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId     String   @map("conversation_id") @db.Uuid
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  trigger            String   @db.VarChar(32)
+  latencyMs          Int?     @map("latency_ms")
+  autoAppliedCount   Int      @default(0) @map("auto_applied_count")
+  pendingReviewCount Int      @default(0) @map("pending_review_count")
+  modelUsed          String?  @map("model_used") @db.VarChar(64)
+  traceId            String?  @map("trace_id") @db.VarChar(128)
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  suggestions IntelligentTagSuggestion[]
+
+  @@index([organizationId, createdAt])
+  @@index([conversationId])
+  @@map("intelligent_tagging_runs")
+}
+
+model IntelligentTagSuggestion {
+  id              String                         @id @default(uuid()) @db.Uuid
+  organizationId  String                         @map("organization_id") @db.Uuid
+  organization    Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId  String                         @map("conversation_id") @db.Uuid
+  conversation    Conversation                   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  runId           String                         @map("run_id") @db.Uuid
+  run             IntelligentTaggingRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  tagId           String?                        @map("tag_id") @db.Uuid
+  tag             Tag?                           @relation(fields: [tagId], references: [id], onDelete: SetNull)
+  tagName         String                         @map("tag_name") @db.VarChar(120)
+  suggestedNewTag Boolean                        @default(false) @map("suggested_new_tag")
+  confidence      Float
+  rationale       String?                        @db.Text
+  status          IntelligentTagSuggestionStatus @default(PENDING)
+  reviewedById    String?                        @map("reviewed_by_id") @db.Uuid
+  reviewedBy      User?                          @relation("IntelligentTagSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?                      @map("reviewed_at")
+  createdAt       DateTime                       @default(now()) @map("created_at")
+
+  @@index([organizationId, status, createdAt])
+  @@index([conversationId])
+  @@index([runId])
+  @@map("intelligent_tag_suggestions")
+}
+
 model Settings {
   id                        String       @id @default(uuid()) @db.Uuid
   organizationId            String       @unique @map("organization_id") @db.Uuid
@@ -1348,6 +1409,16 @@ model Settings {
   conversationsAttendanceTabAutoOpen Boolean @default(true) @map("conversations_attendance_tab_auto_open")
   /// Mostrar etiquetas do contacto nos cartões da lista de conversas.
   conversationsListShowContactTags Boolean @default(false) @map("conversations_list_show_contact_tags")
+
+  /// Etiquetagem inteligente por IA (opt-in). Requer assistantAiEnabled.
+  intelligentTaggingEnabled       Boolean @default(false) @map("intelligent_tagging_enabled")
+  /// Limiar mínimo de confiança (0–1) para aplicar etiqueta automaticamente.
+  intelligentTaggingMinConfidence Float   @default(0.85) @map("intelligent_tagging_min_confidence")
+  /// Máximo de etiquetas por classificação.
+  intelligentTaggingMaxTags       Int     @default(5) @map("intelligent_tagging_max_tags")
+  /// Gatilho: manual | on_resolve
+  intelligentTaggingTrigger       String  @default("manual") @map("intelligent_tagging_trigger") @db.VarChar(16)
+
   /// Modo «Telefone rápido» em Nova mensagem (Conversas) para adicionar/seleccionar contacto por número.
   conversationsQuickContactAddEnabled Boolean @default(false) @map("conversations_quick_contact_add_enabled")
   /// Largura da fila (split view) em Conversas: default | medium | large.

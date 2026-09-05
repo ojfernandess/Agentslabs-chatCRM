@@ -166,6 +166,10 @@ const settingsSchema = z.object({
   conversationBubbleAgentMetaColor: hexColorField,
   conversationBubbleAgentMetaColorDark: hexColorField,
   organizationLogoUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
+  intelligentTaggingEnabled: z.boolean().optional(),
+  intelligentTaggingMinConfidence: z.number().min(0.5).max(1).optional(),
+  intelligentTaggingMaxTags: z.number().int().min(1).max(10).optional(),
+  intelligentTaggingTrigger: z.enum(["manual", "on_resolve"]).optional(),
 });
 
 function maskSettings<

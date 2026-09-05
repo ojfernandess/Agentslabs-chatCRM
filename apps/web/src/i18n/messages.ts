@@ -4892,6 +4892,23 @@ export const messages = {
       tagsSaveError: "Não foi possível guardar a etiqueta.",
       tagsDeleteError: "Não foi possível eliminar a etiqueta.",
       tagsDeleteConfirm: "Eliminar esta etiqueta? Será removida dos contactos associados.",
+      intelligentTaggingTitle: "Etiquetagem inteligente (IA)",
+      intelligentTaggingSubtitle:
+        "A IA analisa conversas e sugere etiquetas do catálogo. Etiquetas com confiança abaixo do limiar vão para validação humana.",
+      intelligentTaggingEnabled: "Activar etiquetagem inteligente",
+      intelligentTaggingMinConfidence: "Confiança mínima para aplicação automática",
+      intelligentTaggingMaxTags: "Máximo de etiquetas por conversa",
+      intelligentTaggingTrigger: "Quando executar",
+      intelligentTaggingTriggerManual: "Manual (botão na conversa / API)",
+      intelligentTaggingTriggerOnResolve: "Automaticamente ao resolver conversa",
+      intelligentTaggingOpenAiHint:
+        "Configure a chave OpenAI da organização (secção IA) antes de activar a etiquetagem inteligente.",
+      intelligentTaggingPrivacyNote:
+        "Requer IA activa na organização. O conteúdo das conversas é processado pelo modelo apenas quando esta função está activada.",
+      intelligentTaggingLoadError: "Não foi possível carregar a configuração de etiquetagem inteligente.",
+      intelligentTaggingSaveError: "Não foi possível guardar a configuração de etiquetagem inteligente.",
+      intelligentTaggingFeatureFlagHint:
+        "A função está activada nas definições, mas o super admin ainda não activou o feature flag «intelligent_tagging» para esta organização.",
       invitesTitle: "Convidar utilizadores",
       invitesSubtitle:
         "Envie um e-mail com link de cadastro ou para juntar-se a esta organização (mesmo que a pessoa já esteja noutra). O modelo do e-mail é configurado no super admin (E-mail transacional).",
@@ -10518,6 +10535,23 @@ export const messages = {
       tagsSaveError: "Could not save tag.",
       tagsDeleteError: "Could not delete tag.",
       tagsDeleteConfirm: "Delete this tag? It will be removed from linked contacts.",
+      intelligentTaggingTitle: "Intelligent tagging (AI)",
+      intelligentTaggingSubtitle:
+        "AI analyzes conversations and suggests tags from your catalog. Tags below the confidence threshold go to human review.",
+      intelligentTaggingEnabled: "Enable intelligent tagging",
+      intelligentTaggingMinConfidence: "Minimum confidence for auto-apply",
+      intelligentTaggingMaxTags: "Maximum tags per conversation",
+      intelligentTaggingTrigger: "When to run",
+      intelligentTaggingTriggerManual: "Manual (conversation button / API)",
+      intelligentTaggingTriggerOnResolve: "Automatically on conversation resolve",
+      intelligentTaggingOpenAiHint:
+        "Configure the organization OpenAI key (AI section) before enabling intelligent tagging.",
+      intelligentTaggingPrivacyNote:
+        "Requires AI enabled for the organization. Conversation content is processed by the model only when this feature is on.",
+      intelligentTaggingLoadError: "Could not load intelligent tagging settings.",
+      intelligentTaggingSaveError: "Could not save intelligent tagging settings.",
+      intelligentTaggingFeatureFlagHint:
+        "Enabled in organization settings, but a super admin must enable the «intelligent_tagging» feature flag for this tenant.",
       invitesTitle: "Invite users",
       invitesSubtitle:
         "Send a link by email to create an account or join this organization (even if they already belong to another). The email template is configured in super admin (Transactional email).",

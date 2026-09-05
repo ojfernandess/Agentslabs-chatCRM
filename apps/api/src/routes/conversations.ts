@@ -61,6 +61,7 @@ import {
   suggestAgentReplyText,
 } from "../lib/agentAssistLlm.js";
 import { loadActiveVoiceCallsByConversation } from "../lib/activeVoiceCalls.js";
+import { scheduleIntelligentTaggingOnResolve } from "../lib/intelligent-tagging/service.js";
 import { listEmailInboxIdsHiddenFromConversations } from "../lib/inboxEmailConfig.js";
 import {
   applyEmailWorkspaceConversationFilters,
@@ -2240,6 +2241,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             assignedToId: conversation.assignedToId,
             dealId: timelineDeal?.id ?? null,
             reminderId: timelineReminder?.id ?? null,
+          },
+          app.log,
+        );
+
+        scheduleIntelligentTaggingOnResolve(
+          {
+            organizationId,
+            conversationId: conversation.id,
+            initiatedByUserId: request.user.id,
           },
           app.log,
         );

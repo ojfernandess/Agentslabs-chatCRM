@@ -19,6 +19,10 @@ export const FEATURE_FLAG_DEFINITIONS = [
     defaultEnabled: true,
   },
   {
+    key: "intelligent_tagging",
+    defaultEnabled: false,
+  },
+  {
     key: "reminders",
     defaultEnabled: true,
   },

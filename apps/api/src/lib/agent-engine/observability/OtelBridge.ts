@@ -170,25 +170,16 @@ function spansToOtlpJson(spans: OtelSpan[], serviceName: string): Record<string,
 /**
  * Regista spans localmente e tenta export OTLP/HTTP se endpoint configurado.
  */
-export async function ingestAgentTraceToOtel(
-  trace: AgentExecutionTrace,
-  opts?: { serviceName?: string; turnId?: string; enabled?: boolean },
+async function exportOtelSpansToEndpoint(
+  spans: OtelSpan[],
+  serviceName: string,
 ): Promise<OtelExportResult> {
-  if (opts?.enabled === false) {
-    return { exported: false, spanCount: 0 };
-  }
-  const serviceName = opts?.serviceName ?? process.env.OTEL_SERVICE_NAME?.trim() ?? "opennexo-agent-engine";
-  const spans = buildOtelSpansFromTrace(trace, { serviceName, turnId: opts?.turnId });
-  for (const s of spans) pushSpan(s);
-
   const endpoint = readOtelEndpoint();
   if (!endpoint) {
     return { exported: false, spanCount: spans.length };
   }
 
-  const url = endpoint.includes("/v1/traces")
-    ? endpoint
-    : `${endpoint}/v1/traces`;
+  const url = endpoint.includes("/v1/traces") ? endpoint : `${endpoint}/v1/traces`;
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -221,4 +212,28 @@ export async function ingestAgentTraceToOtel(
       error: err instanceof Error ? err.message : "export_failed",
     };
   }
+}
+
+/** Grava spans in-memory e exporta OTLP quando configurado. */
+export async function ingestOtelSpans(
+  spans: OtelSpan[],
+  opts?: { serviceName?: string },
+): Promise<OtelExportResult> {
+  for (const s of spans) pushSpan(s);
+  const serviceName =
+    opts?.serviceName ?? process.env.OTEL_SERVICE_NAME?.trim() ?? "opennexo-agent-engine";
+  return exportOtelSpansToEndpoint(spans, serviceName);
+}
+
+export async function ingestAgentTraceToOtel(
+  trace: AgentExecutionTrace,
+  opts?: { serviceName?: string; turnId?: string; enabled?: boolean },
+): Promise<OtelExportResult> {
+  if (opts?.enabled === false) {
+    return { exported: false, spanCount: 0 };
+  }
+  const serviceName = opts?.serviceName ?? process.env.OTEL_SERVICE_NAME?.trim() ?? "opennexo-agent-engine";
+  const spans = buildOtelSpansFromTrace(trace, { serviceName, turnId: opts?.turnId });
+  for (const s of spans) pushSpan(s);
+  return exportOtelSpansToEndpoint(spans, serviceName);
 }
