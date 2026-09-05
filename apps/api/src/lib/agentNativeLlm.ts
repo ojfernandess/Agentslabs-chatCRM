@@ -82,7 +82,12 @@ import {
 } from "./agent-engine/core/confirmationTurnGuards.js";
 import { formatScheduledToolsSystemAppendix, shouldRunToolScheduler } from "./agent-engine/scheduler/TurnToolScheduler.js";
 import { invokeScheduledTools } from "./agent-engine/scheduler/invokeScheduledTools.js";
-import { mergeQuoteFlowSlotsFromConversation } from "./agent-engine/quote/quoteFlowSlots.js";
+import {
+  mergeQuoteFlowSlotsFromConversation,
+  stripCallHumanFromSatisfiedNames,
+} from "./agent-engine/quote/quoteFlowSlots.js";
+import { shouldRequireCallHumanThisTurn } from "./agent-engine/escalation/escalationTurnDetection.js";
+import { shouldRequireCallHumanAfterNfConfirmation } from "./unitKnowledgeFlow.js";
 import { messageLooksLikeQuoteDiscountObjection } from "./agent-engine/quote/quoteAvailabilityReply.js";
 import {
   ensureDeliveringReply,
@@ -2128,6 +2133,22 @@ async function generateNativeAgentReplyCore(input: {
     } catch (err) {
       log.warn({ err, conversationId: conversation.id }, "failed to clear conflicting flow slots");
     }
+  }
+
+  // C13/C19: pedido humano numa conversa reaberta — limpar call_human stale da sessão.
+  const lastAssistantForHandoffStrip =
+    readLastAssistantPreview(sessionFlowSlots) || lastAssistantMessage;
+  if (
+    shouldRequireCallHumanThisTurn({
+      userMessage,
+      lastAssistantMessage: lastAssistantForHandoffStrip,
+    }) ||
+    shouldRequireCallHumanAfterNfConfirmation({
+      userMessage,
+      lastAssistantMessage: lastAssistantForHandoffStrip,
+    })
+  ) {
+    sessionFlowSlots = stripCallHumanFromSatisfiedNames(sessionFlowSlots);
   }
 
   // Políticas exclusive/confirmação usam a sessão ANTES do schedule deste turno

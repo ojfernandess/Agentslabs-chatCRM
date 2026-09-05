@@ -832,7 +832,15 @@ export function toolAliasesToOmitFromCatalog(opts: {
         omit.add(name);
         continue;
       }
-      if (toolSatisfiedInSession(name, priorToolNames, existingToolNames)) {
+      const exclusiveForceNow =
+        policy.forceExclusiveExecution &&
+        policy.exclusiveAllowedTools.some((ex) => toolsMatchAlias(ex, name));
+      const satisfiedThisTurn = existingToolNames.some((n) => toolsMatchAlias(n, name));
+      if (exclusiveForceNow) {
+        // C13/C6e/C6f/C19: reexecutar exclusive mesmo com __satisfiedToolNames antigo —
+        // omitir só se a tool já correu neste turno (Scheduler ou LLM).
+        if (satisfiedThisTurn) omit.add(name);
+      } else if (toolSatisfiedInSession(name, priorToolNames, existingToolNames)) {
         omit.add(name);
       }
     }

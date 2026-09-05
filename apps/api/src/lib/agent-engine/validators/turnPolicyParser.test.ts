@@ -1004,3 +1004,40 @@ test("resolveTurnPolicy — falar com atendimento requires call_human exclusive"
   assert.equal(policy.forceExclusiveExecution, true);
   assert.deepEqual(policy.exclusiveAllowedTools, ["call_human"]);
 });
+
+test("toolAliasesToOmitFromCatalog — C13 keeps call_human when stale in session", () => {
+  const policy = resolveTurnPolicy(
+    {},
+    {
+      userMessage: "Gostaria de falar com atendente",
+      availableToolNames: ["call_human", "buscar_conhecimento", "audaar_consultar_reserva"],
+    },
+  );
+  assert.equal(policy.forceExclusiveExecution, true);
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: [],
+    priorToolNames: ["call_human"],
+    catalogToolNames: ["call_human", "buscar_conhecimento", "audaar_consultar_reserva"],
+  });
+  assert.equal(
+    toolNameMatchesOmitAlias("call_human", omit),
+    false,
+    `call_human must stay available for re-handoff, omit=${JSON.stringify(omit)}`,
+  );
+  assert.ok(toolNameMatchesOmitAlias("buscar_conhecimento", omit));
+});
+
+test("toolAliasesToOmitFromCatalog — C13 omits call_human after scheduler ran this turn", () => {
+  const policy = resolveTurnPolicy(
+    {},
+    { userMessage: "falar com atendimento", availableToolNames: ["call_human"] },
+  );
+  const omit = toolAliasesToOmitFromCatalog({
+    policy,
+    existingToolNames: ["call_human"],
+    priorToolNames: [],
+    catalogToolNames: ["call_human", "buscar_conhecimento"],
+  });
+  assert.ok(toolNameMatchesOmitAlias("call_human", omit));
+});
