@@ -6,7 +6,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { motion, AnimatePresence } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api, ApiError } from "@/lib/api";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import { brandAssetUrl, systemLogoDarkModeClass } from "@/lib/brandingAssets";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 import { AuthSplitShell } from "@/components/AuthSplitShell";
 
@@ -83,7 +83,7 @@ export function ResetPasswordPage() {
             <img
               src={brandAssetUrl("/logo.svg")}
               alt="Logo"
-              className="mx-auto mb-5 h-14 w-auto"
+              className={`mx-auto mb-5 h-14 w-auto ${systemLogoDarkModeClass}`}
               decoding="async"
             />
             <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("login.resetTitle")}</h1>

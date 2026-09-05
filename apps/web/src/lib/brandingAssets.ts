@@ -6,3 +6,9 @@ export function brandAssetUrl(path: string): string {
   const sep = path.includes("?") ? "&" : "?";
   return `${path}${sep}v=${encodeURIComponent(v)}`;
 }
+
+/** Logo do sistema em fundos escuros (rodapé, sidebar super admin). */
+export const systemLogoOnDarkBgClass = "brightness-0 invert";
+
+/** Logo do sistema quando a app está em modo escuro. */
+export const systemLogoDarkModeClass = "dark:brightness-0 dark:invert";

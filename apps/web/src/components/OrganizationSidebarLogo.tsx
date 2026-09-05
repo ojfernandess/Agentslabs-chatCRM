@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import { brandAssetUrl, systemLogoDarkModeClass } from "@/lib/brandingAssets";
 
 type OrganizationSidebarLogoProps = {
   organizationLogoUrl: string | null;
@@ -65,6 +65,7 @@ export function OrganizationSidebarLogo({
   }, [targetSrc, systemLogo]);
 
   const sizeClass = emphasized ? "h-11 w-11 max-w-[2.75rem]" : "h-9 w-auto max-w-[2.75rem]";
+  const isSystemLogo = displaySrc === systemLogo;
 
   return (
     <span
@@ -82,6 +83,7 @@ export function OrganizationSidebarLogo({
           className={clsx(
             sizeClass,
             "object-contain transition-opacity duration-300 ease-out",
+            isSystemLogo && systemLogoDarkModeClass,
             visible ? "opacity-100" : "opacity-0",
           )}
           decoding="async"

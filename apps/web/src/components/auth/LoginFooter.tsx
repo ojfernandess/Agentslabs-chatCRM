@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Instagram, Mail } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import { brandAssetUrl, systemLogoOnDarkBgClass } from "@/lib/brandingAssets";
 
 const VENDOR_URL = "https://www.agentslabs.cloud/";
 const VENDOR_NAME = "AgentsLabs";
@@ -32,7 +32,7 @@ export function LoginFooter() {
             <img
               src={brandAssetUrl("/logo.svg")}
               alt="OpenNexo CRM"
-              className="h-10 w-auto brightness-0 invert"
+              className={`h-10 w-auto ${systemLogoOnDarkBgClass}`}
               decoding="async"
             />
             <p className="max-w-xs text-sm leading-relaxed text-slate-400">

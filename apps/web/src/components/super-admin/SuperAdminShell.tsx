@@ -17,7 +17,7 @@ import {
   ToggleLeft,
   Users,
 } from "lucide-react";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import { brandAssetUrl, systemLogoOnDarkBgClass } from "@/lib/brandingAssets";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export type SuperSection =
@@ -222,7 +222,7 @@ export function SuperAdminShell({
           <img
             src={brandAssetUrl("/logo.svg")}
             alt=""
-            className="h-10 w-auto max-w-[200px] object-contain"
+            className={`h-10 w-auto max-w-[200px] object-contain ${systemLogoOnDarkBgClass}`}
             decoding="async"
           />
           <div className="mt-4 flex items-center gap-2">

@@ -6,7 +6,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { motion } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api, ApiError } from "@/lib/api";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import { brandAssetUrl, systemLogoDarkModeClass } from "@/lib/brandingAssets";
 import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 import { AuthSplitShell } from "@/components/AuthSplitShell";
@@ -177,7 +177,7 @@ export function AcceptInvitePage() {
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="mb-8 text-center">
-            <img src={brandAssetUrl("/logo.svg")} alt="" className="mx-auto mb-4 h-12" />
+            <img src={brandAssetUrl("/logo.svg")} alt="" className={`mx-auto mb-4 h-12 ${systemLogoDarkModeClass}`} />
             <h1 className="text-xl font-bold text-ink-900 dark:text-ink-50">
               {joinMode ? t("login.inviteJoinTitle") : t("login.inviteTitle")}
             </h1>

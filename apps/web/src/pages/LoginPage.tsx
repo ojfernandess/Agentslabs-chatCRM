@@ -6,7 +6,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { motion, AnimatePresence } from "@/components/Motion";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import { brandAssetUrl, systemLogoDarkModeClass } from "@/lib/brandingAssets";
 import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
 import { AuthTurnstileField, useAuthTurnstileGate } from "@/components/AuthTurnstileField";
 import { AuthSplitShell } from "@/components/AuthSplitShell";
@@ -128,7 +128,7 @@ export function LoginPage() {
             <motion.img
               src={brandAssetUrl("/logo.svg")}
               alt="Logo"
-              className="mx-auto mb-5 h-14 w-auto"
+              className={`mx-auto mb-5 h-14 w-auto ${systemLogoDarkModeClass}`}
               decoding="async"
               initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
