@@ -1281,6 +1281,7 @@ export function AutomationPage() {
   const [ctxRows, setCtxRows] = useState<
     Array<{
       conversationId: string;
+      contactName: string;
       botId: string;
       botName: string;
       updatedAt: string;
@@ -1357,6 +1358,7 @@ export function AutomationPage() {
     const res = await api.get<{
       data: Array<{
         conversationId: string;
+        contactName: string;
         botId: string;
         botName: string;
         updatedAt: string;

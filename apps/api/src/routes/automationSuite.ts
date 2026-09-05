@@ -2980,16 +2980,30 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       where: { organizationId },
       orderBy: { updatedAt: "desc" },
       take: 100,
-      include: { bot: { select: { id: true, name: true } } },
+      include: {
+        bot: { select: { id: true, name: true } },
+        conversation: {
+          select: {
+            contact: { select: { name: true, phone: true } },
+          },
+        },
+      },
     });
     return {
-      data: rows.map((r) => ({
-        conversationId: r.conversationId,
-        botId: r.botId,
-        botName: r.bot.name,
-        updatedAt: r.updatedAt,
-        lastClearedAt: r.lastClearedAt,
-      })),
+      data: rows.map((r) => {
+        const contactName =
+          r.conversation.contact.name?.trim() ||
+          r.conversation.contact.phone?.trim() ||
+          "—";
+        return {
+          conversationId: r.conversationId,
+          contactName,
+          botId: r.botId,
+          botName: r.bot.name,
+          updatedAt: r.updatedAt,
+          lastClearedAt: r.lastClearedAt,
+        };
+      }),
     };
   });
 

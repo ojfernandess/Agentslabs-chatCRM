@@ -43,6 +43,7 @@ export type MemoryCenterData = {
 
 type ContextRow = {
   conversationId: string;
+  contactName: string;
   botId: string;
   botName: string;
   updatedAt: string;
@@ -447,8 +448,11 @@ export function MemoryCenterPanel({
                 )}
               >
                 <div className="min-w-0">
-                  <code className="break-all text-ink-800 dark:text-ink-200">{r.conversationId}</code>
-                  <div className="text-ink-500">
+                  <p className="font-medium text-ink-900 dark:text-ink-100">{r.contactName}</p>
+                  <code className="mt-0.5 block break-all text-[10px] text-ink-500 dark:text-ink-400">
+                    {r.conversationId}
+                  </code>
+                  <div className="mt-0.5 text-ink-500">
                     {r.botName} · {formatDate(r.updatedAt, locale)}
                   </div>
                 </div>
