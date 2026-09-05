@@ -1417,7 +1417,7 @@ model Settings {
   /// Máximo de etiquetas por classificação.
   intelligentTaggingMaxTags       Int     @default(5) @map("intelligent_tagging_max_tags")
   /// Gatilho: manual | on_resolve
-  intelligentTaggingTrigger       String  @default("manual") @map("intelligent_tagging_trigger") @db.VarChar(16)
+  intelligentTaggingTrigger       String  @default("manual") @map("intelligent_tagging_trigger") @db.VarChar(32)
 
   /// Modo «Telefone rápido» em Nova mensagem (Conversas) para adicionar/seleccionar contacto por número.
   conversationsQuickContactAddEnabled Boolean @default(false) @map("conversations_quick_contact_add_enabled")

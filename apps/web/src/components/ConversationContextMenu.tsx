@@ -257,6 +257,9 @@ export function ConversationContextMenu({
     setBusy(true);
     try {
       await api.post(`/contacts/${target.contact.id}/tags`, { tagIds: [tagId] });
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: target.id } }),
+      );
       onUpdated({ id: target.id });
       onClose();
     } catch {

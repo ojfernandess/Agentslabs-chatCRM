@@ -169,7 +169,7 @@ const settingsSchema = z.object({
   intelligentTaggingEnabled: z.boolean().optional(),
   intelligentTaggingMinConfidence: z.number().min(0.5).max(1).optional(),
   intelligentTaggingMaxTags: z.number().int().min(1).max(10).optional(),
-  intelligentTaggingTrigger: z.enum(["manual", "on_resolve"]).optional(),
+  intelligentTaggingTrigger: z.enum(["manual", "on_resolve", "during_conversation"]).optional(),
 });
 
 function maskSettings<

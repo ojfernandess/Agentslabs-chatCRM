@@ -7,9 +7,14 @@ import { buildMetadataSummary } from "./nodes/helpers.js";
 import {
   DEFAULT_MAX_TAGS,
   DEFAULT_MIN_CONFIDENCE,
+  INTELLIGENT_TAGGING_TRIGGERS,
+  parseIntelligentTaggingTrigger,
   type IntelligentTaggingGraphState,
   type IntelligentTaggingTrigger,
 } from "./types.js";
+
+const DURING_CONVERSATION_COOLDOWN_MS = 90_000;
+const duringConversationLastRun = new Map<string, number>();
 
 export type IntelligentTaggingConfig = {
   enabled: boolean;
@@ -38,8 +43,7 @@ export async function loadIntelligentTaggingConfig(
 
   const orgEnabled = settings?.intelligentTaggingEnabled ?? false;
   const aiPrivacyOk = settings?.assistantAiEnabled !== false;
-  const triggerRaw = settings?.intelligentTaggingTrigger ?? "manual";
-  const trigger: IntelligentTaggingTrigger = triggerRaw === "on_resolve" ? "on_resolve" : "manual";
+  const trigger = parseIntelligentTaggingTrigger(settings?.intelligentTaggingTrigger);
 
   return {
     enabled: orgEnabled && featureEnabled && aiPrivacyOk,
@@ -57,7 +61,7 @@ export async function shouldRunIntelligentTagging(
   const config = await loadIntelligentTaggingConfig(organizationId);
   if (!config.enabled) return false;
   if (trigger === "manual") return true;
-  return config.trigger === "on_resolve";
+  return config.trigger === trigger;
 }
 
 async function buildGraphState(input: {
@@ -207,3 +211,41 @@ export function scheduleIntelligentTaggingOnResolve(
     }
   })();
 }
+
+/** Disparo assíncrono após mensagem inbound (modo during_conversation). */
+export function scheduleIntelligentTaggingDuringConversation(
+  input: { organizationId: string; conversationId: string },
+  log?: { warn: (obj: unknown, msg: string) => void },
+): void {
+  const debounceKey = `${input.organizationId}:${input.conversationId}`;
+  const now = Date.now();
+  const lastRun = duringConversationLastRun.get(debounceKey) ?? 0;
+  if (now - lastRun < DURING_CONVERSATION_COOLDOWN_MS) return;
+  duringConversationLastRun.set(debounceKey, now);
+
+  void (async () => {
+    try {
+      const config = await loadIntelligentTaggingConfig(input.organizationId);
+      if (!config.enabled || config.trigger !== "during_conversation") return;
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: input.conversationId, organizationId: input.organizationId },
+        select: { id: true, status: true },
+      });
+      if (!conversation || conversation.status === "RESOLVED") return;
+
+      await runIntelligentTagging({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        trigger: "during_conversation",
+      });
+    } catch (err) {
+      log?.warn(
+        { err, conversationId: input.conversationId },
+        "intelligent tagging during conversation failed",
+      );
+    }
+  })();
+}
+
+export { INTELLIGENT_TAGGING_TRIGGERS };

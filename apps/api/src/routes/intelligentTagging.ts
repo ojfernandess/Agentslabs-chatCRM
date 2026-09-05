@@ -9,6 +9,7 @@ import {
   loadIntelligentTaggingConfig,
   runIntelligentTagging,
 } from "../lib/intelligent-tagging/service.js";
+import { parseIntelligentTaggingTrigger } from "../lib/intelligent-tagging/types.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { storeTaggingFeedbackInMem0 } from "../lib/intelligent-tagging/mem0Feedback.js";
 
@@ -44,8 +45,7 @@ export async function intelligentTaggingRoutes(app: FastifyInstance): Promise<vo
       featureFlagEnabled,
       minConfidence: settings?.intelligentTaggingMinConfidence ?? config.minConfidence,
       maxTags: settings?.intelligentTaggingMaxTags ?? config.maxTags,
-      trigger:
-        settings?.intelligentTaggingTrigger === "on_resolve" ? "on_resolve" : config.trigger,
+      trigger: parseIntelligentTaggingTrigger(settings?.intelligentTaggingTrigger),
       openAiConfigured: Boolean(openAiConfigured),
     };
   });

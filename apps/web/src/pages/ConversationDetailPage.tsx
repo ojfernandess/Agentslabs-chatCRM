@@ -384,6 +384,13 @@ export function ConversationDetailPage() {
     [voicePreview],
   );
   const [orgTags, setOrgTags] = useState<OrgTagRow[]>([]);
+  const [intelligentTagging, setIntelligentTagging] = useState<{
+    enabled: boolean;
+    trigger: "manual" | "on_resolve" | "during_conversation";
+    openAiConfigured: boolean;
+  }>({ enabled: false, trigger: "manual", openAiConfigured: false });
+  const [intelligentTagBusy, setIntelligentTagBusy] = useState(false);
+  const [intelligentTagFeedback, setIntelligentTagFeedback] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [tagAddSelectId, setTagAddSelectId] = useState("");
   const [tagModalOpen, setTagModalOpen] = useState(false);
@@ -944,10 +951,23 @@ export function ConversationDetailPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const rows = await api.get<OrgTagRow[]>("/tags");
+        const [rows, cfg] = await Promise.all([
+          api.get<OrgTagRow[]>("/tags"),
+          api.get<{
+            enabled: boolean;
+            trigger: "manual" | "on_resolve" | "during_conversation";
+            openAiConfigured: boolean;
+          }>("/intelligent-tagging/config"),
+        ]);
         setOrgTags(rows);
+        setIntelligentTagging({
+          enabled: cfg.enabled,
+          trigger: cfg.trigger,
+          openAiConfigured: cfg.openAiConfigured,
+        });
       } catch {
         setOrgTags([]);
+        setIntelligentTagging({ enabled: false, trigger: "manual", openAiConfigured: false });
       }
     })();
   }, []);
@@ -1619,6 +1639,12 @@ export function ConversationDetailPage() {
       );
       setConversation((c) => (c ? { ...c, contact: { ...c.contact, tags: updated.tags } } : c));
       setTagAddSelectId("");
+      if (id) {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: id } }),
+        );
+        void conversationsOutlet?.refreshList?.();
+      }
     } catch {
       /* ignore */
     } finally {
@@ -1641,12 +1667,46 @@ export function ConversationDetailPage() {
           },
         };
       });
+      if (id) {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: id } }),
+        );
+        void conversationsOutlet?.refreshList?.();
+      }
     } catch {
       /* ignore */
     } finally {
       setTagBusy(false);
     }
   };
+
+  const runIntelligentTagClassify = async () => {
+    if (!conversation || !id || intelligentTagBusy) return;
+    setIntelligentTagBusy(true);
+    setIntelligentTagFeedback("");
+    try {
+      await api.post<{ autoAppliedTagIds: string[]; pendingReviewCount: number }>(
+        `/intelligent-tagging/conversations/${id}/classify`,
+      );
+      await loadConversation({ silent: true });
+      window.dispatchEvent(
+        new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: id } }),
+      );
+      void conversationsOutlet?.refreshList?.();
+      setIntelligentTagFeedback(t("conversationDetail.intelligentTagClassifyDone"));
+    } catch (err) {
+      setIntelligentTagFeedback(
+        err instanceof ApiError ? err.message : t("conversationDetail.intelligentTagClassifyError"),
+      );
+    } finally {
+      setIntelligentTagBusy(false);
+    }
+  };
+
+  const showIntelligentTagButton =
+    intelligentTagging.enabled &&
+    intelligentTagging.openAiConfigured &&
+    intelligentTagging.trigger === "manual";
 
   const openTagModalCreate = (fromList: boolean) => {
     setTagFormError("");
@@ -2374,35 +2434,57 @@ export function ConversationDetailPage() {
             <div className="crm-panel-section">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="crm-section-title">{t("conversationDetail.tagsSection")}</p>
-                {tenantAdmin ? (
-                  <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1">
+                  {showIntelligentTagButton ? (
                     <button
                       type="button"
-                      disabled={tagBusy}
-                      onClick={() => {
-                        void refreshOrgTags();
-                        openTagModalCreate(false);
-                      }}
+                      disabled={intelligentTagBusy || tagBusy}
+                      onClick={() => void runIntelligentTagClassify()}
                       className="inline-flex items-center gap-1 rounded border inbox-hairline bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
                     >
-                      <Plus className="h-3 w-3" />
-                      {t("conversationDetail.tagNew")}
+                      {intelligentTagBusy ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      {intelligentTagBusy
+                        ? t("conversationDetail.intelligentTagClassifyBusy")
+                        : t("conversationDetail.intelligentTagClassify")}
                     </button>
-                    <button
-                      type="button"
-                      disabled={tagBusy}
-                      onClick={() => {
-                        void refreshOrgTags();
-                        openTagModalManage();
-                      }}
-                      className="inline-flex items-center gap-1 rounded border inbox-hairline bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
-                    >
-                      <Pencil className="h-3 w-3" />
-                      {t("conversationDetail.tagManage")}
-                    </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                  {tenantAdmin ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={tagBusy}
+                        onClick={() => {
+                          void refreshOrgTags();
+                          openTagModalCreate(false);
+                        }}
+                        className="inline-flex items-center gap-1 rounded border inbox-hairline bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                      >
+                        <Plus className="h-3 w-3" />
+                        {t("conversationDetail.tagNew")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={tagBusy}
+                        onClick={() => {
+                          void refreshOrgTags();
+                          openTagModalManage();
+                        }}
+                        className="inline-flex items-center gap-1 rounded border inbox-hairline bg-white px-2 py-1 text-[10px] font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        {t("conversationDetail.tagManage")}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </div>
+              {intelligentTagFeedback ? (
+                <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-400">{intelligentTagFeedback}</p>
+              ) : null}
               <div className="mt-2 flex flex-wrap gap-1">
                 {assigned.length === 0 ? (
                   <p className="text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.tagsEmpty")}</p>

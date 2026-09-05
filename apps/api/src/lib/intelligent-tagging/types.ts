@@ -15,7 +15,19 @@ export type TagClassification = {
   suggestedNewTag: boolean;
 };
 
-export type IntelligentTaggingTrigger = "manual" | "on_resolve";
+export type IntelligentTaggingTrigger = "manual" | "on_resolve" | "during_conversation";
+
+export const INTELLIGENT_TAGGING_TRIGGERS = [
+  "manual",
+  "on_resolve",
+  "during_conversation",
+] as const satisfies readonly IntelligentTaggingTrigger[];
+
+export function parseIntelligentTaggingTrigger(raw: string | null | undefined): IntelligentTaggingTrigger {
+  if (raw === "on_resolve") return "on_resolve";
+  if (raw === "during_conversation") return "during_conversation";
+  return "manual";
+}
 
 export type IntelligentTaggingGraphState = {
   organizationId: string;

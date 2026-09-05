@@ -4481,6 +4481,10 @@ export const messages = {
       tagNameInvalid: "O nome deve ter entre 1 e 50 caracteres.",
       tagColorInvalid: "Use uma cor em hexadecimal (#RRGGBB).",
       tagSaveFailed: "Não foi possível guardar a etiqueta.",
+      intelligentTagClassify: "Etiquetar com IA",
+      intelligentTagClassifyBusy: "A analisar…",
+      intelligentTagClassifyDone: "Etiquetagem concluída.",
+      intelligentTagClassifyError: "Não foi possível etiquetar com IA.",
       sendFailed: "Não foi possível enviar a mensagem.",
     },
     attendance: {
@@ -4901,6 +4905,8 @@ export const messages = {
       intelligentTaggingTrigger: "Quando executar",
       intelligentTaggingTriggerManual: "Manual (botão na conversa / API)",
       intelligentTaggingTriggerOnResolve: "Automaticamente ao resolver conversa",
+      intelligentTaggingTriggerDuringConversation:
+        "Durante a conversa (automático após mensagens do cliente)",
       intelligentTaggingOpenAiHint:
         "Configure a chave OpenAI da organização (secção IA) antes de activar a etiquetagem inteligente.",
       intelligentTaggingPrivacyNote:
@@ -10126,6 +10132,10 @@ export const messages = {
       tagNameInvalid: "Name must be between 1 and 50 characters.",
       tagColorInvalid: "Use a hexadecimal color (#RRGGBB).",
       tagSaveFailed: "Could not save the tag.",
+      intelligentTagClassify: "Tag with AI",
+      intelligentTagClassifyBusy: "Analyzing…",
+      intelligentTagClassifyDone: "Tagging complete.",
+      intelligentTagClassifyError: "Could not run AI tagging.",
       sendFailed: "Could not send the message.",
     },
     attendance: {
@@ -10545,6 +10555,8 @@ export const messages = {
       intelligentTaggingTrigger: "When to run",
       intelligentTaggingTriggerManual: "Manual (conversation button / API)",
       intelligentTaggingTriggerOnResolve: "Automatically on conversation resolve",
+      intelligentTaggingTriggerDuringConversation:
+        "During conversation (automatic after customer messages)",
       intelligentTaggingOpenAiHint:
         "Configure the organization OpenAI key (AI section) before enabling intelligent tagging.",
       intelligentTaggingPrivacyNote:

@@ -10,6 +10,7 @@ import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { runCrmAiClassifyBlock } from "./crmFlowAiBlock.js";
 import { distributeLeadToUser, type DistributeMethod } from "./crmFlowLeadDistribution.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { broadcastContactTagChange } from "./contactTagBroadcast.js";
 import { appendTimelineEvent } from "./timeline.js";
 
 const silentLog: FastifyBaseLogger = {
@@ -130,20 +131,24 @@ async function runNode(
     case "add_tag": {
       const tagId = data.tagId as string | undefined;
       const contactId = ctx.contactId as string | undefined;
+      const conversationId = ctx.conversationId as string | undefined;
       if (tagId && contactId) {
         await prisma.contactTag.upsert({
           where: { contactId_tagId: { contactId, tagId } },
           create: { contactId, tagId },
           update: {},
         });
+        void broadcastContactTagChange(organizationId, contactId, conversationId);
       }
       return ctx;
     }
     case "remove_tag": {
       const tagId = data.tagId as string | undefined;
       const contactId = ctx.contactId as string | undefined;
+      const conversationId = ctx.conversationId as string | undefined;
       if (tagId && contactId) {
         await prisma.contactTag.deleteMany({ where: { contactId, tagId } });
+        void broadcastContactTagChange(organizationId, contactId, conversationId);
       }
       return ctx;
     }

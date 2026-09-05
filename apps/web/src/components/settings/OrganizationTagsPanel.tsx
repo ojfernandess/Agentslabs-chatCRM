@@ -11,7 +11,7 @@ type IntelligentTaggingConfig = {
   featureFlagEnabled: boolean;
   minConfidence: number;
   maxTags: number;
-  trigger: "manual" | "on_resolve";
+  trigger: "manual" | "on_resolve" | "during_conversation";
   openAiConfigured: boolean;
 };
 
@@ -218,6 +218,9 @@ export function OrganizationTagsPanel() {
               >
                 <option value="manual">{t("settings.intelligentTaggingTriggerManual")}</option>
                 <option value="on_resolve">{t("settings.intelligentTaggingTriggerOnResolve")}</option>
+                <option value="during_conversation">
+                  {t("settings.intelligentTaggingTriggerDuringConversation")}
+                </option>
               </select>
             </div>
 

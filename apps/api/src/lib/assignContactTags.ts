@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { broadcastContactTagsUpdated } from "./workspaceHub.js";
 
 type Db = Pick<PrismaClient, "conversation" | "tag" | "contactTag" | "$transaction">;
 
@@ -55,6 +56,8 @@ export async function assignTagsToConversationContact(
     select: { id: true, name: true, color: true },
     orderBy: { name: "asc" },
   });
+
+  broadcastContactTagsUpdated(input.organizationId, [input.conversationId]);
 
   return { ok: true, contactId: conversation.contactId, tags };
 }

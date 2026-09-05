@@ -52,6 +52,20 @@ export function broadcastConversationUpdated(
   });
 }
 
+/** Etiquetas mudaram no contacto — actualiza todas as conversas visíveis desse contacto. */
+export function broadcastContactTagsUpdated(
+  organizationId: string,
+  conversationIds: string[],
+): void {
+  const seen = new Set<string>();
+  for (const conversationId of conversationIds) {
+    const id = conversationId.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    broadcastConversationUpdated(organizationId, id);
+  }
+}
+
 export function broadcastUserAvailabilityChanged(
   organizationId: string,
   userId: string,

@@ -13,6 +13,7 @@ import { findConversationByEmailThreadHeaders } from "./emailThreadRouting.js";
 import { ensureConversationForChannelInbox, reopenResolvedConversationData } from "./conversationRouting.js";
 import { tryAutoAssignInboxConversation } from "./inboxAutoAssignment.js";
 import { fireCrmFlowTriggers } from "./crmFlowHooks.js";
+import { scheduleIntelligentTaggingDuringConversation } from "./intelligent-tagging/service.js";
 import { applyPreChatFormToContact, mergeContactNotes } from "./preChatContactSync.js";
 
 export function newIngestToken(): string {
@@ -342,6 +343,11 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   }
 
   broadcastConversationUpdated(organizationId, conversation.id);
+
+  scheduleIntelligentTaggingDuringConversation(
+    { organizationId, conversationId: conversation.id },
+    log,
+  );
 
   const conversationJustCreated =
     conversation.createdAt.getTime() >= conversationCreatedAtBefore - 2000;

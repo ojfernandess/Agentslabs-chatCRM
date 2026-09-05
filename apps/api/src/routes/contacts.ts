@@ -8,6 +8,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
+import { broadcastContactTagChange } from "../lib/contactTagBroadcast.js";
 import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 import {
   resolveContactProfilePictureBuffer,
@@ -885,6 +886,8 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    void broadcastContactTagChange(organizationId, request.params.id);
+
     return contact;
   });
 
@@ -908,6 +911,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           },
         },
       });
+      void broadcastContactTagChange(organizationId, request.params.id);
       return reply.status(204).send();
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Tag assignment not found", statusCode: 404 });
