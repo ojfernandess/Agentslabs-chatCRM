@@ -208,12 +208,12 @@ export function OrganizationTagsPanel() {
               </label>
               <select
                 value={aiConfig.trigger}
-                onChange={(e) =>
-                  setAiConfig((c) => ({
-                    ...c,
-                    trigger: e.target.value === "on_resolve" ? "on_resolve" : "manual",
-                  }))
-                }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const trigger: IntelligentTaggingConfig["trigger"] =
+                    value === "on_resolve" || value === "during_conversation" ? value : "manual";
+                  setAiConfig((c) => ({ ...c, trigger }));
+                }}
                 className="mt-1 block w-full input-field"
               >
                 <option value="manual">{t("settings.intelligentTaggingTriggerManual")}</option>
