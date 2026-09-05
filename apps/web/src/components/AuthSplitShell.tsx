@@ -1,49 +1,38 @@
 import type { ReactNode } from "react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { brandAssetUrl } from "@/lib/brandingAssets";
-
-const VENDOR_URL = "https://www.agentslabs.cloud/";
-const VENDOR_NAME = "AgentsLabs";
+import { LoginFooter } from "@/components/auth/LoginFooter";
 
 /**
- * Shell de autenticação 50/50.
- * Altura: preenche o #root (h-full), não 100dvh — em notebooks com
- * desktop-viewport-scale o layout é 100dvh/scale; h-dvh deixava faixa vazia.
- * Foto: background-size cover na coluna esquerda até o fim da tela.
+ * Shell de autenticação 50/50 com rodapé institucional em largura total.
  */
 export function AuthSplitShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const bgUrl = brandAssetUrl("/bg-login.png");
 
   return (
-    <div className="flex w-full min-h-dvh flex-1 flex-col md:grid md:h-full md:min-h-0 md:grid-cols-2 md:grid-rows-1 md:overflow-hidden">
-      <aside
-        className="relative hidden min-h-0 overflow-hidden bg-ink-900 md:block md:h-full md:min-h-full"
-        aria-hidden
-        style={{
-          backgroundImage: `url("${bgUrl}")`,
-          backgroundSize: "cover",
-          backgroundPosition: "28% center",
-          backgroundRepeat: "no-repeat",
-        }}
-      />
+    <div className="flex min-h-dvh w-full flex-col">
+      <div className="flex flex-1 flex-col md:grid md:min-h-0 md:grid-cols-2 md:grid-rows-1">
+        <aside
+          className="relative hidden min-h-0 overflow-hidden bg-ink-900 md:block md:h-full"
+          aria-hidden
+          style={{
+            backgroundImage: `url("${bgUrl}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "28% center",
+            backgroundRepeat: "no-repeat",
+          }}
+        >
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#071428]/90 via-[#071428]/40 to-transparent px-10 pb-12 pt-24">
+            <p className="max-w-md text-lg font-medium leading-snug text-white/95">{t("loginFooter.heroTagline")}</p>
+          </div>
+        </aside>
 
-      <main className="relative flex min-h-dvh w-full flex-1 flex-col items-center justify-center overflow-y-auto bg-[#f6f4fb] px-4 py-10 dark:bg-ink-950 md:h-full md:min-h-0 md:flex-none md:px-8 lg:px-12">
-        <div className="flex w-full max-w-md flex-col items-center">
-          {children}
-          <p className="mt-8 max-w-md text-center text-xs leading-relaxed text-ink-500 dark:text-ink-400">
-            {t("login.developedBy")}{" "}
-            <a
-              href={VENDOR_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-400"
-            >
-              {VENDOR_NAME}
-            </a>
-          </p>
-        </div>
-      </main>
+        <main className="relative flex min-h-[60vh] w-full flex-1 flex-col items-center justify-center overflow-y-auto bg-[#f6f4fb] px-4 py-10 dark:bg-ink-950 md:min-h-0 md:px-8 lg:px-12">
+          <div className="flex w-full max-w-md flex-col items-center">{children}</div>
+        </main>
+      </div>
+      <LoginFooter />
     </div>
   );
 }

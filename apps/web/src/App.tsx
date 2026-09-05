@@ -30,6 +30,7 @@ import { InboxesPage } from "@/pages/InboxesPage";
 import { EmailInboxLayout, EmailInboxThreadPlaceholder } from "@/pages/EmailInboxLayout";
 import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
 import { GoogleCalendarConnectedPage } from "@/pages/GoogleCalendarConnectedPage";
+import { LegalPage } from "@/pages/legal/LegalPage";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { TenantAdminRoute } from "@/components/TenantAdminRoute";
 import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
@@ -133,6 +134,7 @@ export function App() {
       <Route path="/invite" element={<AcceptInvitePage />} />
       <Route path="/login/invite" element={<AcceptInvitePage />} />
       <Route path="/calendar-connected" element={<GoogleCalendarConnectedPage />} />
+      <Route path="/legal/:slug" element={<LegalPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/super"
