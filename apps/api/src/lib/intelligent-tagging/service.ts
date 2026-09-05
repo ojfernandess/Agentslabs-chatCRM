@@ -1,4 +1,4 @@
-import { prisma } from "../db.js";
+import { prisma } from "../../db.js";
 import { buildPublicConversationTranscript } from "../agentAssistLlm.js";
 import { isOrganizationFeatureEnabled } from "../featureFlags.js";
 import { runIntelligentTaggingGraph, type IntelligentTaggingGraphDeps } from "./graph.js";
