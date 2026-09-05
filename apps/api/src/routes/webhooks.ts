@@ -36,6 +36,7 @@ import {
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
 import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
+import { scheduleIntelligentTaggingDuringConversation } from "../lib/intelligent-tagging/service.js";
 import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWebhookHandler.js";
 import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
 import { handleNvoipDtmfWebhook } from "../lib/nvoipDtmfWebhook.js";
@@ -738,6 +739,12 @@ async function handleWhatsAppPost(
       }
 
       broadcastConversationUpdated(organizationId, conversation.id);
+
+      scheduleIntelligentTaggingDuringConversation(
+        { organizationId, conversationId: conversation.id },
+        app.log,
+      );
+
       processedWebhookEvents += 1;
     } catch (err) {
       app.log.error(err, "Error processing incoming webhook message");
