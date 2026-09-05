@@ -2,7 +2,7 @@ export type LegalSlug = "terms" | "privacy" | "usage-rights" | "features" | "abo
 
 export type LegalSection = {
   heading?: string;
-  paragraphs: string[];
+  paragraphs?: string[];
   bullets?: string[];
 };
 

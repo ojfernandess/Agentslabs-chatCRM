@@ -42,7 +42,7 @@ export function LegalPage() {
                     {section.heading}
                   </h2>
                 ) : null}
-                {section.paragraphs.map((p, pIdx) => (
+                {(section.paragraphs ?? []).map((p, pIdx) => (
                   <p key={pIdx} className="mb-3 text-sm leading-relaxed text-ink-700 dark:text-ink-300">
                     {p}
                   </p>
