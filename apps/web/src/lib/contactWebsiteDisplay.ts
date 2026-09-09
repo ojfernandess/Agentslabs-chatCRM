@@ -17,3 +17,13 @@ export function websitePhoneDisplay(phone: string | null | undefined): string | 
   if (!phone || isWebsiteContactPhone(phone)) return null;
   return phone;
 }
+
+/** Telefone para listagens: visitantes do site mostram rótulo do canal em vez do id interno. */
+export function formatContactPhoneForDisplay(
+  phone: string | null | undefined,
+  siteLabel = "Site",
+): string | null {
+  if (!phone) return null;
+  if (isWebsiteContactPhone(phone)) return siteLabel;
+  return phone;
+}

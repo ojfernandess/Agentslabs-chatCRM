@@ -43,6 +43,7 @@ import {
   downloadContactConversationHistory,
   hasExportableContactHistory,
 } from "@/lib/exportContactConversationHistory";
+import { formatContactPhoneForDisplay } from "@/lib/contactWebsiteDisplay";
 
 interface TagItem {
   id: string;
@@ -382,9 +383,18 @@ export function ContactDetailPage() {
               ) : null}
             </div>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-ink-400">
-              <span className="inline-flex items-center gap-1">
-                <Phone className="h-3.5 w-3.5" /> {contact.phone}
-              </span>
+              {formatContactPhoneForDisplay(
+                contact.phone,
+                t("conversationDetail.channelLabelWebsite"),
+              ) ? (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="h-3.5 w-3.5" />{" "}
+                  {formatContactPhoneForDisplay(
+                    contact.phone,
+                    t("conversationDetail.channelLabelWebsite"),
+                  )}
+                </span>
+              ) : null}
               {contact.email ? (
                 <span className="inline-flex items-center gap-1">
                   <Mail className="h-3.5 w-3.5" /> {contact.email}

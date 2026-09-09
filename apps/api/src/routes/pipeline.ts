@@ -7,6 +7,7 @@ import {
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
+import { enrichWebsiteContacts } from "../lib/websiteVisitorContacts.js";
 
 const BOARD_CONTACT_LIMIT = 500;
 
@@ -60,7 +61,8 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
       take: BOARD_CONTACT_LIMIT,
     });
 
-    return { stages, contacts };
+    const enrichedContacts = await enrichWebsiteContacts(organizationId, contacts);
+    return { stages, contacts: enrichedContacts };
   });
 
   app.get("/stages", { preHandler: [authenticateSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {

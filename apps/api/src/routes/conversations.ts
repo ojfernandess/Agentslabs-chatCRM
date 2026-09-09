@@ -4,7 +4,11 @@ import { prisma } from "../db.js";
 import { authenticate, requireSuperAdmin } from "../middleware/auth.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
-import { buildWebsiteVisitorIndexMap, enrichWebsiteContact } from "../lib/websiteVisitorContacts.js";
+import {
+  buildWebsiteVisitorIndexMap,
+  enrichWebsiteContact,
+  enrichWebsiteContacts,
+} from "../lib/websiteVisitorContacts.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
 import { isOnlineForTransfer } from "../lib/userAvailability.js";
@@ -604,6 +608,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     ]);
 
     const summary = computeClosureRollupTotals(rollupRows);
+    const contacts = records.map((row) => row.conversation.contact);
+    const enrichedContacts = await enrichWebsiteContacts(organizationId, contacts);
+    const contactById = new Map(enrichedContacts.map((contact) => [contact.id, contact]));
 
     return {
       summary,
@@ -617,7 +624,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         isNewAttendance: row.isNewAttendance,
         closureValue: row.closureValue,
         closureReason: row.closureReason,
-        contact: row.conversation.contact,
+        contact: contactById.get(row.conversation.contact.id) ?? row.conversation.contact,
         team: row.team,
         leadType: row.leadType,
         messages: row.conversation.messages,

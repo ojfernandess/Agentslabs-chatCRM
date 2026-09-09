@@ -43,6 +43,10 @@ import { ContactNvoipWaTemplateModal } from "@/components/nvoip/ContactNvoipWaTe
 import { useAuth } from "@/hooks/useAuth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
+import {
+  formatContactPhoneForDisplay,
+  isWebsiteContactPhone,
+} from "@/lib/contactWebsiteDisplay";
 
 interface TagItem {
   id: string;
@@ -770,10 +774,18 @@ export function ContactsPage() {
                               </div>
                               <div className="min-w-0">
                                 <p className="truncate font-semibold text-slate-900 dark:text-ink-50">{contact.name}</p>
-                                <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-ink-400">
-                                  <Phone className="h-3 w-3 shrink-0" />
-                                  {contact.phone}
-                                </span>
+                                {formatContactPhoneForDisplay(
+                                  contact.phone,
+                                  t("conversationDetail.channelLabelWebsite"),
+                                ) ? (
+                                  <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-ink-400">
+                                    <Phone className="h-3 w-3 shrink-0" />
+                                    {formatContactPhoneForDisplay(
+                                      contact.phone,
+                                      t("conversationDetail.channelLabelWebsite"),
+                                    )}
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
                           </td>
@@ -1005,12 +1017,14 @@ export function ContactsPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex flex-nowrap items-center gap-0.5">
-                              <TelephonyCallButton
-                                phone={contact.phone}
-                                contactId={contact.id}
-                                iconOnly
-                                stopPropagation
-                              />
+                              {!isWebsiteContactPhone(contact.phone) ? (
+                                <TelephonyCallButton
+                                  phone={contact.phone}
+                                  contactId={contact.id}
+                                  iconOnly
+                                  stopPropagation
+                                />
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() =>

@@ -67,3 +67,14 @@ export function enrichWebsiteContact<T extends { id: string; name: string; phone
     name: resolveWebsiteContactDisplayName(contact.name, contact.phone, index, locale),
   };
 }
+
+export async function enrichWebsiteContacts<T extends { id: string; name: string; phone: string }>(
+  organizationId: string,
+  contacts: T[],
+  locale = "pt",
+): Promise<T[]> {
+  const hasWebsite = contacts.some((contact) => contact.phone.startsWith(WEBSITE_PHONE_PREFIX));
+  if (!hasWebsite) return contacts;
+  const visitorIndexMap = await buildWebsiteVisitorIndexMap(organizationId);
+  return contacts.map((contact) => enrichWebsiteContact(contact, visitorIndexMap, locale));
+}

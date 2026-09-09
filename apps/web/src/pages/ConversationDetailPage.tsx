@@ -147,6 +147,7 @@ import {
 import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import {
   isWebsiteContactPhone,
+  formatContactPhoneForDisplay,
   parseWebsiteSiteMeta,
   websitePhoneDisplay,
 } from "@/lib/contactWebsiteDisplay";
@@ -4738,7 +4739,15 @@ export function ConversationDetailPage() {
                     {conversation ? (
                       <p className="mt-2 text-xs text-ink-600 dark:text-ink-300">
                         {conversation.contact.name}
-                        {conversation.contact.phone ? ` · ${conversation.contact.phone}` : ""}
+                        {formatContactPhoneForDisplay(
+                          conversation.contact.phone,
+                          t("conversationDetail.channelLabelWebsite"),
+                        )
+                          ? ` · ${formatContactPhoneForDisplay(
+                              conversation.contact.phone,
+                              t("conversationDetail.channelLabelWebsite"),
+                            )}`
+                          : ""}
                       </p>
                     ) : null}
                     <label className="mt-3 flex cursor-pointer items-center gap-2">

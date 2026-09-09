@@ -14,6 +14,7 @@ import {
   shouldDisplayClosureValueBadge,
 } from "@/lib/closureValueRollup";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
+import { formatContactPhoneForDisplay } from "@/lib/contactWebsiteDisplay";
 
 interface Row {
   id: string;
@@ -244,8 +245,16 @@ export function MyAttendancePage() {
                               </span>
                             ) : null}
                           </div>
-                          {call.contact?.phone ? (
-                            <p className="mt-0.5 text-xs text-gray-500 dark:text-ink-400">{call.contact.phone}</p>
+                          {formatContactPhoneForDisplay(
+                            call.contact?.phone,
+                            t("conversationDetail.channelLabelWebsite"),
+                          ) ? (
+                            <p className="mt-0.5 text-xs text-gray-500 dark:text-ink-400">
+                              {formatContactPhoneForDisplay(
+                                call.contact?.phone,
+                                t("conversationDetail.channelLabelWebsite"),
+                              )}
+                            </p>
                           ) : null}
                         </div>
                         <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-ink-500">

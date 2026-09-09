@@ -20,6 +20,7 @@ import {
 } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
+import { formatContactPhoneForDisplay } from "@/lib/contactWebsiteDisplay";
 
 const UNASSIGNED_KEY = "__unassigned__";
 const DND_MIME = "application/x-openconduit-contact-id";
@@ -115,12 +116,12 @@ export function CrmKanbanPage() {
     if (!board) return [];
     const q = search.trim().toLowerCase();
     if (!q) return board.contacts;
-    return board.contacts.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.phone.toLowerCase().includes(q),
-    );
-  }, [board, search]);
+    const siteLabel = t("conversationDetail.channelLabelWebsite");
+    return board.contacts.filter((c) => {
+      const phoneLabel = formatContactPhoneForDisplay(c.phone, siteLabel)?.toLowerCase() ?? "";
+      return c.name.toLowerCase().includes(q) || phoneLabel.includes(q);
+    });
+  }, [board, search, t]);
 
   const contactsByColumn = useMemo(() => {
     const map = new Map<string, BoardContact[]>();
@@ -288,10 +289,18 @@ export function CrmKanbanPage() {
                               >
                                 {c.name}
                               </Link>
-                              <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-ink-400">
-                                <Phone className="h-3 w-3" />
-                                {c.phone}
-                              </span>
+                              {formatContactPhoneForDisplay(
+                                c.phone,
+                                t("conversationDetail.channelLabelWebsite"),
+                              ) ? (
+                                <span className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-ink-400">
+                                  <Phone className="h-3 w-3" />
+                                  {formatContactPhoneForDisplay(
+                                    c.phone,
+                                    t("conversationDetail.channelLabelWebsite"),
+                                  )}
+                                </span>
+                              ) : null}
                               {c.assignedTo && (
                                 <span className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-ink-400">
                                   <User className="h-3 w-3" />
