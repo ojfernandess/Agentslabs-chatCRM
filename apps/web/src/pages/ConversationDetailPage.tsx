@@ -3829,11 +3829,12 @@ export function ConversationDetailPage() {
             })}
             {agentBotTyping ? (
               <motion.div
-                className="mb-2 mt-2 flex w-full justify-start gap-2"
+                className="mb-2 mt-2 flex w-full justify-end gap-3"
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
               >
                 <BotTypingIndicator botName={agentBotTyping.botName} />
+                {!emailWorkspaceMode ? <span className="block h-8 w-8 shrink-0" aria-hidden /> : null}
               </motion.div>
             ) : null}
             {sending ? (

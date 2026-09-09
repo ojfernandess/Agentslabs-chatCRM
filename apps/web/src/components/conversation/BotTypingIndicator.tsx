@@ -45,7 +45,10 @@ export function BotTypingIndicator({
 
   return (
     <div
-      className={clsx("crm-bubble crm-bubble-in rounded-[16px] border border-ink-200/60 p-4 dark:border-soft-border", className)}
+      className={clsx(
+        "crm-bubble crm-bubble-out rounded-[16px] border border-brand-500/25 p-4 dark:border-brand-400/30",
+        className,
+      )}
       aria-live="polite"
       aria-label={label}
     >
@@ -53,7 +56,7 @@ export function BotTypingIndicator({
         {botName?.trim() || t("conversationDetail.botInAttendance")}
       </p>
       <div className="flex items-center gap-1 px-0.5">
-        <TypingDots dotClassName="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-400 dark:bg-ink-500" />
+        <TypingDots dotClassName="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500" />
       </div>
     </div>
   );
