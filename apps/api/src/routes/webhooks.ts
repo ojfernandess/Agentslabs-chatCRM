@@ -741,7 +741,7 @@ async function handleWhatsAppPost(
       broadcastConversationUpdated(organizationId, conversation.id);
 
       scheduleIntelligentTaggingDuringConversation(
-        { organizationId, conversationId: conversation.id },
+        { organizationId, conversationId: conversation.id, triggerMessageId: inboundForPipeline.id },
         app.log,
       );
 

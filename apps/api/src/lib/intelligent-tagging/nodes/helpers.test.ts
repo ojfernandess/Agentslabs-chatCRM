@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeConfidence, parseLlmTaggingResponse, splitByConfidence } from "./helpers.js";
+import {
+  buildDuringConversationTranscript,
+  filterAlreadyAppliedTags,
+  normalizeConfidence,
+  parseLlmTaggingResponse,
+  splitByConfidence,
+} from "./helpers.js";
 
 describe("intelligent-tagging helpers", () => {
   const catalog = [
@@ -40,5 +46,30 @@ describe("intelligent-tagging helpers", () => {
     assert.equal(normalizeConfidence(-0.2), 0);
     assert.equal(normalizeConfidence("0.75"), 0.75);
     assert.equal(normalizeConfidence("x"), 0);
+  });
+
+  it("buildDuringConversationTranscript focuses on trigger inbound block", () => {
+    const transcript = buildDuringConversationTranscript(
+      [
+        { id: "m1", direction: "INBOUND", body: "preciso de fatura antiga", isPrivate: false },
+        { id: "m2", direction: "OUTBOUND", body: "como posso ajudar?", isPrivate: false },
+        { id: "m3", direction: "INBOUND", body: "quero cancelar o plano", isPrivate: false },
+      ],
+      "m3",
+    );
+    assert.match(transcript, /mensagem actual.*cancelar o plano/i);
+    assert.doesNotMatch(transcript, /fatura antiga/i);
+  });
+
+  it("filterAlreadyAppliedTags removes tags already on contact", () => {
+    const filtered = filterAlreadyAppliedTags(
+      [
+        { tagId: "t1", tagName: "Suporte", confidence: 0.95, rationale: "", suggestedNewTag: false },
+        { tagId: "t2", tagName: "Vendas", confidence: 0.95, rationale: "", suggestedNewTag: false },
+      ],
+      ["Suporte"],
+    );
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0]?.tagName, "Vendas");
   });
 });

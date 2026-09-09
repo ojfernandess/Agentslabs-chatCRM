@@ -71,7 +71,9 @@ export type InferTagsFn = (input: {
   transcript: string;
   metadataSummary: string;
   mem0Context: string;
+  existingTagNames: string[];
   tagCatalog: TagCatalogEntry[];
   maxTags: number;
   language: string;
+  trigger: IntelligentTaggingTrigger;
 }) => Promise<LlmTaggingResult>;

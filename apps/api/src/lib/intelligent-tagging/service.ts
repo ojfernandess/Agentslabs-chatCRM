@@ -3,7 +3,7 @@ import { buildPublicConversationTranscript } from "../agentAssistLlm.js";
 import { isOrganizationFeatureEnabled } from "../featureFlags.js";
 import { runIntelligentTaggingGraph, type IntelligentTaggingGraphDeps } from "./graph.js";
 import { loadTaggingMem0Context } from "./mem0Feedback.js";
-import { buildMetadataSummary } from "./nodes/helpers.js";
+import { buildDuringConversationTranscript, buildMetadataSummary } from "./nodes/helpers.js";
 import {
   DEFAULT_MAX_TAGS,
   DEFAULT_MIN_CONFIDENCE,
@@ -68,6 +68,7 @@ async function buildGraphState(input: {
   organizationId: string;
   conversationId: string;
   trigger: IntelligentTaggingTrigger;
+  triggerMessageId?: string;
   initiatedByUserId?: string;
   language?: string;
 }): Promise<IntelligentTaggingGraphState | { error: string }> {
@@ -94,6 +95,7 @@ async function buildGraphState(input: {
       messages: {
         orderBy: { createdAt: "asc" },
         select: {
+          id: true,
           direction: true,
           body: true,
           isPrivate: true,
@@ -108,17 +110,23 @@ async function buildGraphState(input: {
     return { error: "conversation_not_found" };
   }
 
+  const duringConversation = input.trigger === "during_conversation";
+
   const [tagCatalog, mem0Context] = await Promise.all([
     prisma.tag.findMany({
       where: { organizationId: input.organizationId },
       select: { id: true, name: true, color: true },
       orderBy: { name: "asc" },
     }),
-    loadTaggingMem0Context(input.organizationId, conversation.contactId),
+    duringConversation
+      ? Promise.resolve("")
+      : loadTaggingMem0Context(input.organizationId, conversation.contactId),
   ]);
 
   const attachmentCount = conversation.messages.filter((m) => Boolean(m.mediaUrl)).length;
-  const transcript = buildPublicConversationTranscript(conversation.messages, 80);
+  const transcript = duringConversation
+    ? buildDuringConversationTranscript(conversation.messages, input.triggerMessageId)
+    : buildPublicConversationTranscript(conversation.messages, 80);
   if (attachmentCount > 0 && transcript.trim()) {
     // Metadado leve sobre anexos (conteúdo binário não é enviado ao modelo).
   }
@@ -159,6 +167,7 @@ export async function runIntelligentTagging(
     organizationId: string;
     conversationId: string;
     trigger: IntelligentTaggingTrigger;
+    triggerMessageId?: string;
     initiatedByUserId?: string;
     language?: string;
   },
@@ -214,7 +223,7 @@ export function scheduleIntelligentTaggingOnResolve(
 
 /** Disparo assíncrono após mensagem inbound (modo during_conversation). */
 export function scheduleIntelligentTaggingDuringConversation(
-  input: { organizationId: string; conversationId: string },
+  input: { organizationId: string; conversationId: string; triggerMessageId?: string },
   log?: { warn: (obj: unknown, msg: string) => void },
 ): void {
   const debounceKey = `${input.organizationId}:${input.conversationId}`;
@@ -238,6 +247,7 @@ export function scheduleIntelligentTaggingDuringConversation(
         organizationId: input.organizationId,
         conversationId: input.conversationId,
         trigger: "during_conversation",
+        triggerMessageId: input.triggerMessageId,
       });
     } catch (err) {
       log?.warn(

@@ -1,6 +1,84 @@
 import type { TagClassification } from "../types.js";
 import { DEFAULT_MIN_CONFIDENCE } from "../types.js";
 
+export type TranscriptMessage = {
+  id: string;
+  direction: string;
+  body: string | null;
+  isPrivate: boolean | null;
+};
+
+/** Transcript focado na mensagem inbound que disparou a etiquetagem (modo during_conversation). */
+export function buildDuringConversationTranscript(
+  messages: TranscriptMessage[],
+  triggerMessageId?: string,
+): string {
+  if (!messages.length) return "";
+
+  let triggerIdx = -1;
+  if (triggerMessageId) {
+    triggerIdx = messages.findIndex((m) => m.id === triggerMessageId);
+  }
+  if (triggerIdx < 0) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.direction === "INBOUND" && !m.isPrivate) {
+        triggerIdx = i;
+        break;
+      }
+    }
+  }
+  if (triggerIdx < 0) return "";
+
+  const inboundBlock: TranscriptMessage[] = [];
+  for (let i = triggerIdx; i >= 0; i--) {
+    const m = messages[i];
+    if (m.isPrivate) continue;
+    if (m.direction === "INBOUND") {
+      inboundBlock.unshift(m);
+    } else if (inboundBlock.length > 0) {
+      break;
+    }
+  }
+  if (!inboundBlock.length) return "";
+
+  const blockStartIdx = messages.findIndex((m) => m.id === inboundBlock[0]!.id);
+  let priorAgent: TranscriptMessage | null = null;
+  if (blockStartIdx > 0) {
+    for (let i = blockStartIdx - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.isPrivate) continue;
+      if (m.direction === "OUTBOUND") {
+        priorAgent = m;
+        break;
+      }
+      if (m.direction === "INBOUND") break;
+    }
+  }
+
+  const lines: string[] = [];
+  if (priorAgent) {
+    const body = (priorAgent.body ?? "").trim();
+    if (body) lines.push(`Atendente (pergunta anterior): ${body}`);
+  }
+  for (const m of inboundBlock) {
+    const body = (m.body ?? "").trim();
+    if (body) {
+      lines.push(`Cliente (mensagem actual — classificar só com base nisto): ${body}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+export function filterAlreadyAppliedTags(
+  classifications: TagClassification[],
+  existingTagNames: string[],
+): TagClassification[] {
+  const existing = new Set(existingTagNames.map((name) => name.trim().toLowerCase()).filter(Boolean));
+  if (!existing.size) return classifications;
+  return classifications.filter((c) => !existing.has(c.tagName.trim().toLowerCase()));
+}
+
 export function splitByConfidence(
   classifications: TagClassification[],
   minConfidence: number = DEFAULT_MIN_CONFIDENCE,

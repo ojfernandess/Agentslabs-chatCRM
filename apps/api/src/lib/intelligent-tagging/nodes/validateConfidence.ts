@@ -1,15 +1,17 @@
 import type { IntelligentTaggingGraphState } from "../types.js";
-import { splitByConfidence } from "./helpers.js";
+import { filterAlreadyAppliedTags, splitByConfidence } from "./helpers.js";
 
 export function validateConfidenceNode(
   state: IntelligentTaggingGraphState,
 ): Partial<IntelligentTaggingGraphState> {
   if (state.error) return {};
 
-  const { autoApply, pendingReview } = splitByConfidence(
-    state.classifications,
-    state.minConfidence,
-  );
+  const classifications =
+    state.trigger === "during_conversation"
+      ? filterAlreadyAppliedTags(state.classifications, state.existingTagNames ?? [])
+      : state.classifications;
+
+  const { autoApply, pendingReview } = splitByConfidence(classifications, state.minConfidence);
 
   return {
     autoApply,

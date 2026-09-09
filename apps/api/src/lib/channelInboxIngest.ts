@@ -345,7 +345,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
   broadcastConversationUpdated(organizationId, conversation.id);
 
   scheduleIntelligentTaggingDuringConversation(
-    { organizationId, conversationId: conversation.id },
+    { organizationId, conversationId: conversation.id, triggerMessageId: inboundForPipeline.id },
     log,
   );
 
