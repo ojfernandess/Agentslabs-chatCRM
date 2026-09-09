@@ -7,6 +7,7 @@ import { translate } from "@/i18n/messages";
 import { playIncomingCallRing } from "@/lib/audioAlerts";
 import { invalidateCachedConversation } from "@/lib/conversationDetailCache";
 import { publishUserAvailabilityChanged, type UserAvailability } from "@/lib/userAvailability";
+import { publishConversationAgentTyping } from "@/lib/conversationAgentTyping";
 
 const TOKEN_KEY = "openconduit_token";
 
@@ -65,6 +66,9 @@ export function WorkspaceRealtime() {
       teamName?: string | null;
       conversationId?: string;
       awaitingHumanHandoff?: boolean;
+      typing?: boolean;
+      botId?: string;
+      botName?: string;
       caller?: string;
       deviceId?: string;
       whatsappCallId?: number;
@@ -106,6 +110,17 @@ export function WorkspaceRealtime() {
             detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
           }),
         );
+      } else if (
+        data.type === "conversation.agent_typing" &&
+        typeof data.conversationId === "string" &&
+        typeof data.typing === "boolean"
+      ) {
+        publishConversationAgentTyping({
+          conversationId: data.conversationId,
+          typing: data.typing,
+          botId: data.botId,
+          botName: data.botName,
+        });
       } else if (
         data.type === "wavoip.call.incoming" ||
         data.type === "threecx.call.incoming" ||

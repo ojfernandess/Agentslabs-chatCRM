@@ -34,6 +34,7 @@ import {
   buildWebhookConversationContext,
   loadAutomationConversationContext,
 } from "./automationConversationContextLib.js";
+import { broadcastConversationAgentTyping } from "./workspaceHub.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -252,6 +253,11 @@ async function executeNativeAgentTurn(input: ExecuteNativeAgentTurnInput): Promi
       resolveAgentEngineQueuePriority(conversation.priority),
     );
     if (enqueued) {
+      broadcastConversationAgentTyping(organizationId, conversation.id, {
+        typing: true,
+        botId: bot.id,
+        botName: bot.name,
+      });
       exLog.info(
         { id: "agent_engine_queue", name: "Agent Engine Queue" },
         "Execução enfileirada — worker BullMQ processará a resposta",

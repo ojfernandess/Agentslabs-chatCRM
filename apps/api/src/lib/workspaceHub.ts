@@ -39,6 +39,21 @@ export function broadcastToOrganization(organizationId: string, payload: unknown
   }
 }
 
+/** Indica que o bot está a processar / a gerar resposta (CRM chat + split-view). */
+export function broadcastConversationAgentTyping(
+  organizationId: string,
+  conversationId: string,
+  payload: { typing: boolean; botId: string; botName: string },
+): void {
+  broadcastToOrganization(organizationId, {
+    type: "conversation.agent_typing",
+    conversationId,
+    typing: payload.typing,
+    botId: payload.botId,
+    botName: payload.botName,
+  });
+}
+
 /** Notifica clientes conectados para recarregar lista/detalhe da conversa (novas mensagens, status, etc.). */
 export function broadcastConversationUpdated(
   organizationId: string,

@@ -6,6 +6,7 @@ import { prisma } from "../db.js";
 import { getWhatsAppProviderForInbox } from "../providers/factory.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { startAutomationExecution } from "./automationExecutionLog.js";
+import { broadcastConversationAgentTyping } from "./workspaceHub.js";
 import {
   parseChatbotFlowDefinition,
   parseChatbotVariableDefs,
@@ -221,6 +222,12 @@ export async function dispatchVisualChatbotFlow(input: {
     workflowKey: "visual_chatbot",
     workflowName: chatbotFlow.name.slice(0, 200),
     log,
+  });
+
+  broadcastConversationAgentTyping(organizationId, conversation.id, {
+    typing: true,
+    botId: bot.id,
+    botName: bot.name,
   });
 
   try {
@@ -792,6 +799,12 @@ export async function dispatchVisualChatbotFlow(input: {
   } catch (err) {
     log.warn({ err, chatbotFlowId: chatbotFlow.id }, "visual chatbot flow failed");
     await exLog.completeError(err);
+  } finally {
+    broadcastConversationAgentTyping(organizationId, conversation.id, {
+      typing: false,
+      botId: bot.id,
+      botName: bot.name,
+    });
   }
 }
 

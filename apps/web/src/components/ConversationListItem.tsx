@@ -12,6 +12,8 @@ import type { ActiveVoiceCall } from "@/lib/activeVoiceCall";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 import { isConversationPriority, priorityListCardClass, type ConversationPriority } from "@/lib/conversationPriority";
+import { BotTypingIndicator } from "@/components/conversation/BotTypingIndicator";
+import type { ConversationAgentTypingState } from "@/hooks/useConversationAgentTyping";
 
 export type ConversationListRow = {
   id: string;
@@ -74,6 +76,7 @@ type Props = {
   showContactTags: boolean;
   currentUserId?: string;
   splitView?: boolean;
+  agentTyping?: ConversationAgentTypingState | null;
   onPrefetch: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 };
@@ -87,6 +90,7 @@ export function ConversationListItem({
   showContactTags,
   currentUserId,
   splitView = false,
+  agentTyping = null,
   onPrefetch,
   onContextMenu,
 }: Props) {
@@ -96,6 +100,7 @@ export function ConversationListItem({
     formatMessageBodyForPreview(lastMessage?.body, {
       messageType: lastMessage?.type,
     }) || t("conversations.noMessages");
+  const showAgentTypingPreview = Boolean(agentTyping);
   const channelLabel = channelBadgeLabel(conv.inbox, t);
   const displayTags = showContactTags ? filterTagsForDisplay(conv.contact.tags ?? []) : [];
   const hasHumanAssignee =
@@ -207,6 +212,13 @@ export function ConversationListItem({
 
             {splitView ? (
               <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                {showAgentTypingPreview ? (
+                  <BotTypingIndicator
+                    variant="inline"
+                    botName={agentTyping!.botName}
+                    className="min-w-0 flex-1"
+                  />
+                ) : (
                 <p
                   className={clsx(
                     "min-w-0 flex-1 line-clamp-1 text-xs leading-snug",
@@ -218,6 +230,7 @@ export function ConversationListItem({
                 >
                   {preview}
                 </p>
+                )}
                 {hasHumanAssignee ? (
                   <span
                     className="inline-flex h-5 max-w-[42%] shrink-0 items-center truncate rounded-full bg-brand-600 px-2.5 text-[11px] font-semibold leading-none text-white shadow-sm dark:bg-brand-500"
@@ -230,6 +243,10 @@ export function ConversationListItem({
                     {conv.assignedTo!.name}
                   </span>
                 ) : null}
+              </div>
+            ) : showAgentTypingPreview ? (
+              <div className="mt-0.5 min-w-0">
+                <BotTypingIndicator variant="inline" botName={agentTyping!.botName} />
               </div>
             ) : (
               <p

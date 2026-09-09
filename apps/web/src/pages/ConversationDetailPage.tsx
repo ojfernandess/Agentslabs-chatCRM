@@ -78,6 +78,8 @@ import {
   type UserAvailability,
 } from "@/lib/userAvailability";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
+import { useConversationAgentTyping } from "@/hooks/useConversationAgentTyping";
+import { BotTypingIndicator } from "@/components/conversation/BotTypingIndicator";
 import { useOrgAvailabilityRealtime } from "@/hooks/useOrgAvailabilityRealtime";
 import { AssigneePickerList, type AssigneePickerRow } from "@/components/AssigneePickerList";
 import { localDueToIso, tomorrowLocalYmd, isoToLocalDateParts } from "@/lib/reminderDue";
@@ -316,6 +318,7 @@ export function ConversationDetailPage() {
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const funnelEnabled = user?.organizationFeatures?.crm_kanban ?? true;
+  const agentBotTyping = useConversationAgentTyping(id);
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -3824,6 +3827,15 @@ export function ConversationDetailPage() {
                 </motion.div>
               );
             })}
+            {agentBotTyping ? (
+              <motion.div
+                className="mb-2 mt-2 flex w-full justify-start gap-2"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <BotTypingIndicator botName={agentBotTyping.botName} />
+              </motion.div>
+            ) : null}
             {sending ? (
               <motion.div
                 className="mb-2 mt-2 flex w-full justify-end gap-2"

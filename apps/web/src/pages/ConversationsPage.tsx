@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { PageTransition, motion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
+import { useConversationAgentTypingMap } from "@/hooks/useConversationAgentTyping";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
 import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
@@ -109,6 +110,7 @@ export function ConversationsPage({
   const showTelephonyDial = useTelephonyCanDial();
   const [searchParams, setSearchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const agentTypingByConversation = useConversationAgentTypingMap();
   const [loading, setLoading] = useState(true);
   const [listSearch, setListSearch] = useState(() => searchParams.get("q") ?? "");
   const [composeOpen, setComposeOpen] = useState(false);
@@ -1008,6 +1010,7 @@ export function ConversationsPage({
                       fmtMoney={fmtMoney}
                       showContactTags={orgListShowContactTags}
                       splitView={splitView}
+                      agentTyping={agentTypingByConversation.get(conv.id) ?? null}
                       currentUserId={user?.id}
                       onPrefetch={() => prefetchConversation(conv.id)}
                       onContextMenu={(e) => {

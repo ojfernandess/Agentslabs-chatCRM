@@ -16,6 +16,7 @@ import {
   shouldSuppressOutboundCheckInAck,
 } from "./agent-engine/continuation/postCompletionFollowUp.js";
 import { replyShouldPreemptEscalationTransferMessage } from "./agent-engine/quote/quoteAvailabilityReply.js";
+import { broadcastConversationAgentTyping } from "./workspaceHub.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
@@ -60,6 +61,13 @@ export async function runNativeAgentReplyAndDeliver(input: {
   const skipFollowUp =
     input.skipPostCompletionFollowUp === true || isPostCompletionFollowUpMessage(message);
 
+  broadcastConversationAgentTyping(organizationId, conversation.id, {
+    typing: true,
+    botId: bot.id,
+    botName: bot.name,
+  });
+
+  try {
   if (isAgentKbDebugEnabled()) {
     logAgentKbDebug(log, {
       stage: "dispatchAgentBotNativeFallback",
@@ -367,5 +375,12 @@ export async function runNativeAgentReplyAndDeliver(input: {
     return;
   } catch (err) {
     await exLog.completeError(err);
+  }
+  } finally {
+    broadcastConversationAgentTyping(organizationId, conversation.id, {
+      typing: false,
+      botId: bot.id,
+      botName: bot.name,
+    });
   }
 }
