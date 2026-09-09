@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
+import { isWebsiteContactPhone, websitePhoneDisplay } from "@/lib/contactWebsiteDisplay";
 
 interface TagItem {
   id: string;
@@ -273,13 +274,17 @@ export function ContactProfileDrawer({
               {contact && tab === "general" ? (
                 <div className="space-y-5">
                   <dl className="space-y-3 text-sm">
-                    <div className="flex gap-2">
-                      <dt className="flex w-28 shrink-0 items-center gap-1.5 text-slate-400 dark:text-ink-500">
-                        <Phone className="h-3.5 w-3.5" />
-                        {t("contactDrawer.phone")}
-                      </dt>
-                      <dd className="font-medium text-slate-900 dark:text-ink-100">{contact.phone}</dd>
-                    </div>
+                    {!isWebsiteContactPhone(contact.phone) ? (
+                      <div className="flex gap-2">
+                        <dt className="flex w-28 shrink-0 items-center gap-1.5 text-slate-400 dark:text-ink-500">
+                          <Phone className="h-3.5 w-3.5" />
+                          {t("contactDrawer.phone")}
+                        </dt>
+                        <dd className="font-medium text-slate-900 dark:text-ink-100">
+                          {websitePhoneDisplay(contact.phone) ?? "—"}
+                        </dd>
+                      </div>
+                    ) : null}
                     <div className="flex gap-2">
                       <dt className="flex w-28 shrink-0 items-center gap-1.5 text-slate-400 dark:text-ink-500">
                         <Mail className="h-3.5 w-3.5" />

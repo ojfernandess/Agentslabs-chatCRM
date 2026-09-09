@@ -62,6 +62,7 @@ function channelBadgeLabel(
 ): string | null {
   if (!inbox) return null;
   if (inbox.channelType === "WHATSAPP") return t("conversationDetail.channelLabelWhatsapp");
+  if (inbox.channelType === "WEBSITE") return t("conversationDetail.channelLabelWebsite");
   if (inbox.channelType === "EMAIL") return "E-mail";
   const name = inbox.name.trim();
   return name.length > 18 ? `${name.slice(0, 16)}…` : name;

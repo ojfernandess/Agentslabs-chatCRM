@@ -7,7 +7,7 @@ import {
 } from "./websiteBusinessHours.js";
 
 /** Incrementar quando o JS público do widget mudar estruturalmente (cache bust global). */
-export const WIDGET_SDK_VERSION = "6";
+export const WIDGET_SDK_VERSION = "7";
 
 export const DEFAULT_PRE_CHAT_FIELDS: PreChatFormField[] = [
   {

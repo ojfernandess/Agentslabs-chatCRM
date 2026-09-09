@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { authenticate, requireSuperAdmin } from "../middleware/auth.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@openconduit/shared";
+import { buildWebsiteVisitorIndexMap, enrichWebsiteContact } from "../lib/websiteVisitorContacts.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
 import { isOnlineForTransfer } from "../lib/userAvailability.js";
@@ -477,7 +478,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           contact: { select: contactListSelect },
           assignedTo: { select: { id: true, name: true } },
           team: { select: { id: true, name: true } },
-          inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
+          inbox: {
+            select: { id: true, name: true, isDefault: true, channelType: true, channelConfig: true },
+          },
           leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
           messages: { orderBy: { createdAt: "desc" }, take: 1 },
         },
@@ -521,11 +524,22 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       request.user.id,
       withFlags.map((row) => row.id),
     );
+    const hasWebsiteInbox = withFlags.some((row) => row.inbox?.channelType === "WEBSITE");
+    const websiteVisitorIndexMap = hasWebsiteInbox
+      ? await buildWebsiteVisitorIndexMap(organizationId)
+      : new Map<string, number>();
 
     return {
       data: withFlags.map((row) => {
         const { lastMessage: _lastMessage, ...rest } = row;
         const emailState = emailStateByConversation.get(row.id);
+        const contactBase = {
+          ...rest.contact,
+          hasAvatar: avatarByContact.get(rest.contact.id) ?? false,
+          thumbnail: avatarByContact.get(rest.contact.id)
+            ? `/api/v1/contacts/${rest.contact.id}/profile-picture`
+            : null,
+        };
         return {
           ...stripCsatSurveyToken(rest),
           agentBotTriageActive: triageByInbox.get(row.inboxId) ?? false,
@@ -533,13 +547,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           isStarred: emailState?.isStarred ?? false,
           emailFolderId: emailState?.emailFolderId ?? null,
           activeVoiceCall: activeVoiceByConversation.get(row.id) ?? null,
-          contact: {
-            ...rest.contact,
-            hasAvatar: avatarByContact.get(rest.contact.id) ?? false,
-            thumbnail: avatarByContact.get(rest.contact.id)
-              ? `/api/v1/contacts/${rest.contact.id}/profile-picture`
-              : null,
-          },
+          contact: enrichWebsiteContact(contactBase, websiteVisitorIndexMap),
         };
       }),
       total,
@@ -1435,7 +1443,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         },
         assignedTo: { select: { id: true, name: true } },
         team: { select: { id: true, name: true } },
-        inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
+        inbox: {
+          select: { id: true, name: true, isDefault: true, channelType: true, channelConfig: true },
+        },
         leadType: { select: { id: true, name: true, color: true, valueRollup: true } },
         closureRecords: {
           orderBy: { sessionIndex: "asc" },
@@ -1462,6 +1472,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
       }
     }
+
+    const websiteVisitorIndexMap =
+      conversation.inbox.channelType === "WEBSITE"
+        ? await buildWebsiteVisitorIndexMap(organizationId)
+        : new Map<string, number>();
 
     const contactTimeline = await fetchContactTimelineForConversation(organizationId, conversation.contactId);
 
@@ -1513,13 +1528,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     return {
       ...stripCsatSurveyToken(convRest),
       activeVoiceCall: activeVoiceByConversation.get(conversation.id) ?? null,
-      contact: {
-        ...conversation.contact,
-        hasAvatar: contactHasAvatar,
-        thumbnail: contactHasAvatar
-          ? `/api/v1/contacts/${conversation.contact.id}/profile-picture`
-          : null,
-      },
+      contact: enrichWebsiteContact(
+        {
+          ...conversation.contact,
+          hasAvatar: contactHasAvatar,
+          thumbnail: contactHasAvatar
+            ? `/api/v1/contacts/${conversation.contact.id}/profile-picture`
+            : null,
+        },
+        websiteVisitorIndexMap,
+      ),
       closureRecords: mappedClosureRecords,
       reopenClosureDefaults:
         carryForward && lastClosure

@@ -15,6 +15,8 @@ import { tryAutoAssignInboxConversation } from "./inboxAutoAssignment.js";
 import { fireCrmFlowTriggers } from "./crmFlowHooks.js";
 import { scheduleIntelligentTaggingDuringConversation } from "./intelligent-tagging/service.js";
 import { applyPreChatFormToContact, mergeContactNotes } from "./preChatContactSync.js";
+import { isUuidLike } from "@openconduit/shared";
+import { nextWebsiteVisitorLabel } from "./websiteVisitorContacts.js";
 
 export function newIngestToken(): string {
   return randomBytes(32).toString("hex");
@@ -84,11 +86,24 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     visitorPhone,
     preChatFormData,
   });
-  const displayName =
+  let displayName =
     preChatUpdates.name?.trim() ||
     participantName?.trim() ||
     (channelType === "EMAIL" && email ? email : null) ||
     participantId;
+
+  if (channelType === "WEBSITE") {
+    const hasRealName =
+      Boolean(preChatUpdates.name?.trim()) ||
+      Boolean(participantName?.trim() && !isUuidLike(participantName.trim()));
+    const looksAnonymous =
+      !hasRealName ||
+      isUuidLike(String(displayName)) ||
+      displayName.trim() === normalizedParticipantId;
+    if (looksAnonymous) {
+      displayName = await nextWebsiteVisitorLabel(organizationId);
+    }
+  }
 
   let contactJustCreated = false;
   let contact = await prisma.contact.findFirst({

@@ -58,6 +58,7 @@ import {
   MoreHorizontal,
   PhoneCall,
   ShieldBan,
+  ExternalLink,
 } from "lucide-react";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
@@ -144,6 +145,11 @@ import {
   setInflightConversation,
 } from "@/lib/conversationDetailCache";
 import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
+import {
+  isWebsiteContactPhone,
+  parseWebsiteSiteMeta,
+  websitePhoneDisplay,
+} from "@/lib/contactWebsiteDisplay";
 import {
   timelineChannelLabel,
   timelineEventSummary,
@@ -2097,10 +2103,18 @@ export function ConversationDetailPage() {
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
     hasHumanAssignee;
   const isWhatsappInbox = conversation.inbox?.channelType === "WHATSAPP";
+  const isWebsiteInbox = conversation.inbox?.channelType === "WEBSITE";
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
   const emailCrmPanelOpen = crmDesktopOpen || crmMobileOpen;
   const contactEmail = contactEmailDisplay(conversation.contact);
+  const websiteSiteMeta = parseWebsiteSiteMeta(
+    (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
+  );
+  const websiteSiteName =
+    websiteSiteMeta.siteName || conversation.inbox?.name?.trim() || t("conversationDetail.channelLabelWebsite");
+  const websiteSiteUrl = websiteSiteMeta.websiteUrl;
+  const contactPhoneDisplay = websitePhoneDisplay(conversation.contact.phone);
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
   ).emailFromAddress;
@@ -2257,28 +2271,50 @@ export function ConversationDetailPage() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{conversation.contact.name}</p>
-            {(() => {
-              const phone = conversation.contact.phone ?? "";
-              const phoneDigits = phone.replace(/\D/g, "");
-              const hasPhone = phoneDigits.length > 0;
-              return (
-                <div className="mt-1 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
-                  {isWhatsappInbox && hasPhone ? <WhatsAppBrandIcon className="h-3.5 w-3.5 shrink-0" /> : null}
-                  <span className="truncate">{phone || "—"}</span>
-                  {hasPhone ? (
-                    <TelephonyCallButton
-                      phone={phone}
-                      inboxId={conversation.inbox?.id}
-                      conversationId={conversation.id}
-                      contactId={conversation.contact.id}
-                      activeVoiceCall={conversation.activeVoiceCall}
-                      iconOnly
-                      compact
-                    />
+            {isWebsiteInbox ? (
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink-600 dark:text-ink-300">
+                <span>{t("conversationDetail.channelLabelWebsite")}</span>
+                <span className="text-ink-400 dark:text-ink-500">|</span>
+                <span className="inline-flex min-w-0 items-center gap-1">
+                  <span className="truncate">{websiteSiteName}</span>
+                  {websiteSiteUrl ? (
+                    <a
+                      href={websiteSiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-ink-500 transition hover:bg-ink-100 hover:text-brand-600 dark:text-ink-400 dark:hover:bg-white/10 dark:hover:text-brand-400"
+                      title={websiteSiteUrl}
+                      aria-label={websiteSiteUrl}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   ) : null}
-                </div>
-              );
-            })()}
+                </span>
+              </div>
+            ) : (
+              (() => {
+                const phone = contactPhoneDisplay ?? "";
+                const phoneDigits = phone.replace(/\D/g, "");
+                const hasPhone = phoneDigits.length > 0;
+                return (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-300">
+                    {isWhatsappInbox && hasPhone ? <WhatsAppBrandIcon className="h-3.5 w-3.5 shrink-0" /> : null}
+                    <span className="truncate">{phone || "—"}</span>
+                    {hasPhone ? (
+                      <TelephonyCallButton
+                        phone={phone}
+                        inboxId={conversation.inbox?.id}
+                        conversationId={conversation.id}
+                        contactId={conversation.contact.id}
+                        activeVoiceCall={conversation.activeVoiceCall}
+                        iconOnly
+                        compact
+                      />
+                    ) : null}
+                  </div>
+                );
+              })()
+            )}
             {(() => {
               const hasEmail = Boolean(conversation.contact.email?.trim());
               const btnClass =
@@ -2326,17 +2362,19 @@ export function ConversationDetailPage() {
               <dt className="crm-field-label">{t("contacts.fieldName")}</dt>
               <dd className="crm-field-value break-words">{conversation.contact.name}</dd>
             </div>
-            <div className="crm-field-row">
-              <dt className="crm-field-label">{t("contacts.fieldPhone")}</dt>
-              <dd className="crm-field-value break-all">
-                <span className="inline-flex items-center justify-end gap-1.5">
-                  {conversation.contact.phone || "—"}
-                  {isWhatsappInbox && conversation.contact.phone ? (
-                    <WhatsAppBrandIcon className="h-3.5 w-3.5 shrink-0" />
-                  ) : null}
-                </span>
-              </dd>
-            </div>
+            {!isWebsiteContactPhone(conversation.contact.phone) ? (
+              <div className="crm-field-row">
+                <dt className="crm-field-label">{t("contacts.fieldPhone")}</dt>
+                <dd className="crm-field-value break-all">
+                  <span className="inline-flex items-center justify-end gap-1.5">
+                    {contactPhoneDisplay || "—"}
+                    {isWhatsappInbox && contactPhoneDisplay ? (
+                      <WhatsAppBrandIcon className="h-3.5 w-3.5 shrink-0" />
+                    ) : null}
+                  </span>
+                </dd>
+              </div>
+            ) : null}
             <div className="crm-field-row">
               <dt className="crm-field-label">{t("conversationDetail.email")}</dt>
               <dd className="crm-field-value break-all">
@@ -3290,18 +3328,42 @@ export function ConversationDetailPage() {
                     </div>
 
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500 dark:text-ink-300">
-                      <span className="inline-flex items-center gap-2">
-                        <span className="truncate">{conversation.contact.phone}</span>
-                        {isWhatsappInbox ? (
-                          <span
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/5"
-                            title="WhatsApp"
-                            aria-hidden
-                          >
-                            <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                      {isWebsiteInbox ? (
+                        <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                          <span>{t("conversationDetail.channelLabelWebsite")}</span>
+                          <span className="text-ink-400 dark:text-ink-500">|</span>
+                          <span className="inline-flex min-w-0 items-center gap-1">
+                            <span className="truncate">{websiteSiteName}</span>
+                            {websiteSiteUrl ? (
+                              <a
+                                href={websiteSiteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-ink-500 transition hover:bg-ink-100 hover:text-brand-600 dark:text-ink-400 dark:hover:bg-white/10 dark:hover:text-brand-400"
+                                title={websiteSiteUrl}
+                                aria-label={websiteSiteUrl}
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : null}
                           </span>
-                        ) : null}
-                      </span>
+                          <span className="text-ink-400 dark:text-ink-500">|</span>
+                          <span className="truncate">{conversation.contact.name}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="truncate">{contactPhoneDisplay || "—"}</span>
+                          {isWhatsappInbox ? (
+                            <span
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/5"
+                              title="WhatsApp"
+                              aria-hidden
+                            >
+                              <WhatsAppBrandIcon className="h-3.5 w-3.5" />
+                            </span>
+                          ) : null}
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-2">
                         <span
                           className={clsx(
@@ -3333,14 +3395,16 @@ export function ConversationDetailPage() {
                   </div>
 
                   <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
-                    <TelephonyCallButton
-                      phone={conversation.contact.phone}
-                      inboxId={conversation.inbox?.id}
-                      conversationId={conversation.id}
-                      contactId={conversation.contact.id}
-                      activeVoiceCall={conversation.activeVoiceCall}
-                      compact
-                    />
+                    {!isWebsiteInbox && contactPhoneDisplay ? (
+                      <TelephonyCallButton
+                        phone={contactPhoneDisplay}
+                        inboxId={conversation.inbox?.id}
+                        conversationId={conversation.id}
+                        contactId={conversation.contact.id}
+                        activeVoiceCall={conversation.activeVoiceCall}
+                        compact
+                      />
+                    ) : null}
                     {copilotEnabled ? (
                       <Link
                         to={`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`}

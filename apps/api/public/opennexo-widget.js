@@ -45,6 +45,7 @@
     s.id = STYLE_ID;
     s.textContent =
       "#opennexo-widget-root,#opennexo-widget-root *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}" +
+      "#opennexo-widget-root input,#opennexo-widget-root textarea{color:#0f172a;background:#fff;caret-color:#0f172a;-webkit-text-fill-color:#0f172a}" +
       "@keyframes onx-slide-up{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}" +
       "@keyframes onx-pop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}" +
       "@keyframes onx-msg-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}" +
@@ -313,7 +314,7 @@
       inputField.placeholder = field.placeholder || "";
       inputField.setAttribute(
         "style",
-        "width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:14px;outline:none;font-family:inherit;",
+        "width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:14px;outline:none;font-family:inherit;color:#0f172a;background:#fff;caret-color:#0f172a;-webkit-text-fill-color:#0f172a;",
       );
       if (storedProfile && storedProfile[field.key]) inputField.value = storedProfile[field.key];
       preChatInputs[field.key] = inputField;
@@ -353,7 +354,7 @@
     input.placeholder = "Escreva a sua mensagem…";
     input.setAttribute(
       "style",
-      "flex:1;resize:none;border:1px solid #e2e8f0;border-radius:14px;padding:10px 14px;font-size:14px;line-height:1.4;max-height:96px;outline:none;font-family:inherit;transition:border-color .15s,box-shadow .15s;",
+      "flex:1;resize:none;border:1px solid #e2e8f0;border-radius:14px;padding:10px 14px;font-size:14px;line-height:1.4;max-height:96px;outline:none;font-family:inherit;color:#0f172a;background:#fff;caret-color:#0f172a;-webkit-text-fill-color:#0f172a;transition:border-color .15s,box-shadow .15s;",
     );
     input.onfocus = function () {
       input.style.borderColor = color;

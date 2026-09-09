@@ -24,6 +24,8 @@ import {
   parseContactImportFile,
 } from "../lib/contactImportExport.js";
 import { contactHasEmailFilter } from "../lib/conversationUserEmailState.js";
+import { WEBSITE_PHONE_PREFIX } from "@openconduit/shared";
+import { buildWebsiteVisitorIndexMap, enrichWebsiteContact } from "../lib/websiteVisitorContacts.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -342,7 +344,13 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       }),
     ]);
 
-    const data: ContactListRow[] = raw.map(mapContactListRow);
+    const hasWebsiteContacts = raw.some((row) => row.phone.startsWith(WEBSITE_PHONE_PREFIX));
+    const websiteVisitorIndexMap = hasWebsiteContacts
+      ? await buildWebsiteVisitorIndexMap(organizationId)
+      : new Map<string, number>();
+    const data: ContactListRow[] = raw.map((row) =>
+      mapContactListRow(enrichWebsiteContact(row, websiteVisitorIndexMap)),
+    );
     const engagementSum = data.reduce((acc, row) => acc + row.engagementScore, 0);
     const avgEngagement = data.length > 0 ? Math.round(engagementSum / data.length) : 0;
     return {
@@ -547,7 +555,11 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "Contact not found", statusCode: 404 });
     }
 
-    return contact;
+    const websiteVisitorIndexMap = contact.phone.startsWith(WEBSITE_PHONE_PREFIX)
+      ? await buildWebsiteVisitorIndexMap(organizationId)
+      : new Map<string, number>();
+
+    return enrichWebsiteContact(contact, websiteVisitorIndexMap);
   });
 
   app.post("/", async (request, reply) => {
