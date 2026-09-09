@@ -10,9 +10,9 @@ type BotTypingIndicatorProps = {
 function TypingDots({ dotClassName }: { dotClassName: string }) {
   return (
     <>
-      <span className={clsx(dotClassName, "[animation-delay:-0.2s]")} />
-      <span className={clsx(dotClassName, "[animation-delay:-0.1s]")} />
-      <span className={dotClassName} />
+      <span className={clsx("inline-block shrink-0", dotClassName, "[animation-delay:-0.2s]")} />
+      <span className={clsx("inline-block shrink-0", dotClassName, "[animation-delay:-0.1s]")} />
+      <span className={clsx("inline-block shrink-0", dotClassName)} />
     </>
   );
 }
@@ -56,7 +56,10 @@ export function BotTypingIndicator({
         {botName?.trim() || t("conversationDetail.botInAttendance")}
       </p>
       <div className="flex items-center gap-1 px-0.5">
-        <TypingDots dotClassName="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500" />
+        <TypingDots dotClassName="h-2 w-2 animate-bounce rounded-full bg-brand-700 dark:bg-brand-200" />
+        <span className="ml-2 text-xs font-medium text-brand-800 dark:text-brand-100">
+          {t("conversationDetail.botTypingShort")}
+        </span>
       </div>
     </div>
   );

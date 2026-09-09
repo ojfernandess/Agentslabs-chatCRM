@@ -4257,6 +4257,7 @@ export const messages = {
       transferToBot: "Transferir para o bot",
       botInAttendance: "Bot em atendimento",
       botTypingMessage: "{name} está digitando…",
+      botTypingShort: "digitando…",
       botTriageListHuman: "Com agente humano",
       botTriageBanner:
         "Esta conversa está pendente e ainda não foi atribuída a nenhum atendente. O assistente virtual responde automaticamente às mensagens do cliente até alguém da equipe assumir o atendimento.",
@@ -9932,6 +9933,7 @@ export const messages = {
       transferToBot: "Transfer to bot",
       botInAttendance: "Bot handling",
       botTypingMessage: "{name} is typing…",
+      botTypingShort: "typing…",
       botTriageListHuman: "Human agent",
       botTriageBanner:
         "This conversation is pending and has not been assigned to an agent yet. The virtual assistant automatically replies to the customer until a team member takes over.",

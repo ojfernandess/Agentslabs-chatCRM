@@ -3,7 +3,6 @@ import {
   CONVERSATION_AGENT_TYPING_EVENT,
   type ConversationAgentTypingDetail,
 } from "@/lib/conversationAgentTyping";
-import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 
 export type ConversationAgentTypingState = {
   botName: string;
@@ -33,10 +32,6 @@ export function useConversationAgentTyping(conversationId?: string) {
     return () => window.removeEventListener(CONVERSATION_AGENT_TYPING_EVENT, onTyping);
   }, [conversationId]);
 
-  useDebouncedConversationUpdated(() => {
-    setTyping(null);
-  }, { conversationId });
-
   return typing;
 }
 
@@ -65,17 +60,6 @@ export function useConversationAgentTypingMap() {
     window.addEventListener(CONVERSATION_AGENT_TYPING_EVENT, onTyping);
     return () => window.removeEventListener(CONVERSATION_AGENT_TYPING_EVENT, onTyping);
   }, []);
-
-  useDebouncedConversationUpdated((detail) => {
-    const conversationId = detail?.conversationId;
-    if (!conversationId) return;
-    setByConversation((prev) => {
-      if (!prev.has(conversationId)) return prev;
-      const next = new Map(prev);
-      next.delete(conversationId);
-      return next;
-    });
-  });
 
   return byConversation;
 }
