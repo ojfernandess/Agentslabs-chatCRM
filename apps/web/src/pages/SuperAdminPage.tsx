@@ -43,6 +43,13 @@ interface OrgRow {
   _count: { users: number; contacts: number; conversations: number };
 }
 
+type CatalogPlanRow = {
+  id: string;
+  slug: string;
+  name: string;
+  isActive: boolean;
+};
+
 interface SuperStats {
   organizationTotal: number;
   organizationActive: number;
@@ -335,7 +342,9 @@ export function SuperAdminPage() {
   const [publicDocsBusy, setPublicDocsBusy] = useState(false);
   const [settingKeyInput, setSettingKeyInput] = useState("maintenance_mode");
   const [settingValueInput, setSettingValueInput] = useState('{"enabled":false}');
+  const [catalogPlans, setCatalogPlans] = useState<CatalogPlanRow[]>([]);
   const [billingOrg, setBillingOrg] = useState<OrgRow | null>(null);
+  const [billingPlanId, setBillingPlanId] = useState("");
   const [billingPlanTier, setBillingPlanTier] = useState("free");
   const [billingEmailState, setBillingEmailState] = useState("");
   const [billingQuota, setBillingQuota] = useState("");
@@ -344,6 +353,7 @@ export function SuperAdminPage() {
   const [editOrgName, setEditOrgName] = useState("");
   const [editOrgSlug, setEditOrgSlug] = useState("");
   const [editOrgActive, setEditOrgActive] = useState(true);
+  const [editOrgPlanId, setEditOrgPlanId] = useState("");
   const [editOrgPlan, setEditOrgPlan] = useState("free");
   const [editOrgSaving, setEditOrgSaving] = useState(false);
   const [deleteOrgConfirm, setDeleteOrgConfirm] = useState<OrgRow | null>(null);
@@ -511,6 +521,21 @@ export function SuperAdminPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void api
+      .get<{ plans: CatalogPlanRow[] }>("/super/billing/plans")
+      .then((res) => setCatalogPlans(res.plans.filter((p) => p.isActive)))
+      .catch(() => setCatalogPlans([]));
+  }, []);
+
+  const resolvePlanIdForTier = useCallback(
+    (planTier: string | undefined): string => {
+      const slug = planTier?.trim() || "free";
+      return catalogPlans.find((p) => p.slug === slug)?.id ?? catalogPlans[0]?.id ?? "";
+    },
+    [catalogPlans],
+  );
 
   useEffect(() => {
     if (orgs.length > 0 && !flagsOrgId) {
@@ -986,7 +1011,9 @@ export function SuperAdminPage() {
 
   const openBillingModal = (o: OrgRow) => {
     setBillingOrg(o);
-    setBillingPlanTier(o.planTier ?? "free");
+    const tier = o.planTier ?? "free";
+    setBillingPlanTier(tier);
+    setBillingPlanId(resolvePlanIdForTier(tier));
     setBillingEmailState(o.billingEmail ?? "");
     setBillingQuota(o.monthlyMessageQuota != null ? String(o.monthlyMessageQuota) : "");
   };
@@ -996,7 +1023,9 @@ export function SuperAdminPage() {
     setEditOrgName(o.name);
     setEditOrgSlug(o.slug);
     setEditOrgActive(o.isActive);
-    setEditOrgPlan(o.planTier ?? "free");
+    const tier = o.planTier ?? "free";
+    setEditOrgPlan(tier);
+    setEditOrgPlanId(resolvePlanIdForTier(tier));
   };
 
   const saveEditOrg = async (e: FormEvent) => {
@@ -1009,7 +1038,7 @@ export function SuperAdminPage() {
         name: editOrgName.trim(),
         slug: editOrgSlug.trim(),
         isActive: editOrgActive,
-        planTier: editOrgPlan,
+        ...(editOrgPlanId ? { planId: editOrgPlanId } : { planTier: editOrgPlan }),
       });
       setEditOrg(null);
       await load();
@@ -1052,7 +1081,7 @@ export function SuperAdminPage() {
     setError("");
     try {
       await api.patch(`/super/organizations/${billingOrg.id}`, {
-        planTier: billingPlanTier,
+        ...(billingPlanId ? { planId: billingPlanId } : { planTier: billingPlanTier }),
         billingEmail: billingEmailState.trim() || "",
         monthlyMessageQuota,
       });
@@ -3062,15 +3091,29 @@ export function SuperAdminPage() {
               <form onSubmit={(e) => void submitBilling(e)} className="mt-4 space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-ink-600">Plano</label>
-                  <select
-                    value={billingPlanTier}
-                    onChange={(e) => setBillingPlanTier(e.target.value)}
-                    className="input-field mt-1"
-                  >
-                    <option value="free">{t("superAdmin.planFree")}</option>
-                    <option value="growth">{t("superAdmin.planGrowth")}</option>
-                    <option value="enterprise">{t("superAdmin.planEnterprise")}</option>
-                  </select>
+                  {catalogPlans.length > 0 ? (
+                    <select
+                      value={billingPlanId}
+                      onChange={(e) => setBillingPlanId(e.target.value)}
+                      className="input-field mt-1"
+                    >
+                      {catalogPlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={billingPlanTier}
+                      onChange={(e) => setBillingPlanTier(e.target.value)}
+                      className="input-field mt-1"
+                    >
+                      <option value="free">{t("superAdmin.planFree")}</option>
+                      <option value="growth">{t("superAdmin.planGrowth")}</option>
+                      <option value="enterprise">{t("superAdmin.planEnterprise")}</option>
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingEmail")}</label>
@@ -3120,11 +3163,25 @@ export function SuperAdminPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink-600">{t("superAdmin.planColumn")}</label>
-                  <select value={editOrgPlan} onChange={(e) => setEditOrgPlan(e.target.value)} className="input-field mt-1">
-                    <option value="free">{t("superAdmin.planFree")}</option>
-                    <option value="growth">{t("superAdmin.planGrowth")}</option>
-                    <option value="enterprise">{t("superAdmin.planEnterprise")}</option>
-                  </select>
+                  {catalogPlans.length > 0 ? (
+                    <select
+                      value={editOrgPlanId}
+                      onChange={(e) => setEditOrgPlanId(e.target.value)}
+                      className="input-field mt-1"
+                    >
+                      {catalogPlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select value={editOrgPlan} onChange={(e) => setEditOrgPlan(e.target.value)} className="input-field mt-1">
+                      <option value="free">{t("superAdmin.planFree")}</option>
+                      <option value="growth">{t("superAdmin.planGrowth")}</option>
+                      <option value="enterprise">{t("superAdmin.planEnterprise")}</option>
+                    </select>
+                  )}
                 </div>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input type="checkbox" checked={editOrgActive} onChange={(e) => setEditOrgActive(e.target.checked)} />

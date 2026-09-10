@@ -2,6 +2,8 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import { UserRole } from "@openconduit/shared";
 import { authenticateAgentBot } from "./agentBotAuth.js";
 import { authenticateUserApiToken } from "./userApiTokenAuth.js";
+import { resolveEffectiveRole } from "../lib/organizationMemberships.js";
+import { resolveUserOrganizationId } from "../lib/tenantContext.js";
 
 export interface JwtPayload {
   id: string;
@@ -120,8 +122,26 @@ export async function requireAdmin(
   if (reply.sent) return;
   const u = request.user;
   if (!u) return;
-  if (u.role === "ADMIN") return;
-  if (u.role === "SUPER_ADMIN" && u.actingOrganizationId) return;
+
+  if (u.role === "SUPER_ADMIN") {
+    if (u.actingOrganizationId) return;
+    reply.status(403).send({
+      error: "Forbidden",
+      message: "Super admin: entre na organização antes de aceder a esta funcionalidade",
+      statusCode: 403,
+    });
+    return;
+  }
+
+  const organizationId = await resolveUserOrganizationId(u);
+  const effectiveRole = await resolveEffectiveRole({
+    userId: u.id,
+    organizationId,
+    fallbackRole: u.role,
+  });
+
+  if (effectiveRole === "ADMIN") return;
+
   reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
 }
 

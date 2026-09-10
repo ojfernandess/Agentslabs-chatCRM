@@ -88,9 +88,50 @@ const patchOrgSchema = z.object({
   slug: z.string().min(1).max(80).optional(),
   isActive: z.boolean().optional(),
   planTier: z.enum(["free", "growth", "enterprise"]).optional(),
+  planId: z.string().uuid().optional(),
   billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
   monthlyMessageQuota: z.union([z.number().int().positive(), z.null()]).optional(),
 });
+
+async function applyCatalogPlanToOrganization(organizationId: string, planId: string): Promise<void> {
+  const plan = await prisma.plan.findFirst({
+    where: { id: planId, isActive: true },
+    select: { id: true, legacyPlanTier: true, limits: true },
+  });
+  if (!plan) {
+    throw new Error("PLAN_NOT_FOUND");
+  }
+
+  const limits = plan.limits as Record<string, unknown> | null;
+  const orgUpdate: Prisma.OrganizationUpdateInput = {};
+  if (plan.legacyPlanTier) orgUpdate.planTier = plan.legacyPlanTier;
+  if (limits && typeof limits.messages === "number") {
+    orgUpdate.monthlyMessageQuota = limits.messages;
+  }
+
+  await prisma.$transaction([
+    ...(Object.keys(orgUpdate).length > 0
+      ? [
+          prisma.organization.update({
+            where: { id: organizationId },
+            data: orgUpdate,
+          }),
+        ]
+      : []),
+    prisma.organizationSubscription.upsert({
+      where: { organizationId },
+      create: {
+        organizationId,
+        planId: plan.id,
+        status: "active",
+      },
+      update: {
+        planId: plan.id,
+        status: "active",
+      },
+    }),
+  ]);
+}
 
 const superUserPatchSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -627,11 +668,14 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     let org;
     try {
       const p = parsed.data;
+      if (p.planId) {
+        await applyCatalogPlanToOrganization(request.params.id, p.planId);
+      }
       const data: Prisma.OrganizationUpdateInput = {};
       if (p.name !== undefined) data.name = p.name;
       if (p.slug !== undefined) data.slug = slugify(p.slug);
       if (p.isActive !== undefined) data.isActive = p.isActive;
-      if (p.planTier !== undefined) data.planTier = p.planTier;
+      if (p.planTier !== undefined && !p.planId) data.planTier = p.planTier;
       if (p.billingEmail !== undefined) {
         data.billingEmail = p.billingEmail === "" ? null : p.billingEmail;
       }
@@ -640,7 +684,14 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         where: { id: request.params.id },
         data,
       });
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === "PLAN_NOT_FOUND") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Plano não encontrado ou inactivo",
+          statusCode: 400,
+        });
+      }
       return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
     }
     await safeAudit(request, {

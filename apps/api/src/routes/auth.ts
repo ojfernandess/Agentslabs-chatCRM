@@ -441,43 +441,63 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    let activeUser = user;
+    if (!activeUser.organizationId && activeUser.role !== "SUPER_ADMIN") {
+      const membership = await prisma.organizationMembership.findFirst({
+        where: { userId: activeUser.id },
+        orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+      });
+      if (membership && isOrgMemberRole(membership.role)) {
+        try {
+          await activateOrganizationForUser({
+            userId: activeUser.id,
+            organizationId: membership.organizationId,
+          });
+          activeUser =
+            (await prisma.user.findUnique({ where: { id: activeUser.id } })) ?? activeUser;
+        } catch {
+          // membership inválida — continua com user legado
+        }
+      }
+    }
+
     // Garante membership legado (users.organization_id sem linha em memberships).
-    if (user.organizationId && isOrgMemberRole(user.role)) {
+    if (activeUser.organizationId && isOrgMemberRole(activeUser.role)) {
       await ensureMembership({
-        organizationId: user.organizationId,
-        userId: user.id,
-        role: user.role,
+        organizationId: activeUser.organizationId,
+        userId: activeUser.id,
+        role: activeUser.role,
       });
     }
 
     const effectiveRole = await resolveEffectiveRole({
-      userId: user.id,
-      organizationId: user.organizationId,
-      fallbackRole: user.role,
+      userId: activeUser.id,
+      organizationId: activeUser.organizationId,
+      fallbackRole: activeUser.role,
     });
 
-    if (effectiveRole !== user.role && isOrgMemberRole(effectiveRole) && user.organizationId) {
+    if (effectiveRole !== activeUser.role && isOrgMemberRole(effectiveRole) && activeUser.organizationId) {
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: activeUser.id },
         data: { role: effectiveRole },
       });
     }
 
     const token = app.jwt.sign({
-      id: user.id,
-      email: user.email,
+      id: activeUser.id,
+      email: activeUser.email,
       role: effectiveRole,
-      organizationId: user.organizationId,
+      organizationId: activeUser.organizationId,
     });
 
     return {
       token,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
+        id: activeUser.id,
+        name: activeUser.name,
+        email: activeUser.email,
         role: effectiveRole as string,
-        organizationId: user.organizationId,
+        organizationId: activeUser.organizationId,
       },
     };
   },

@@ -218,7 +218,7 @@ export function BillingSettingsPanel() {
         </div>
       ) : null}
 
-      {!overview?.stripeConfigured ? (
+      {overview && !overview.stripeConfigured ? (
         <div className={clsx(settingsCard, "flex gap-3 text-sm text-ink-700 dark:text-ink-200")}>
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
           <div className="space-y-1">

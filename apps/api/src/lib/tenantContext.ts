@@ -1,5 +1,24 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { prisma } from "../db.js";
+import type { JwtPayload } from "../middleware/auth.js";
+
+/**
+ * Resolve a organização activa do utilizador (JWT + fallback membership).
+ */
+export async function resolveUserOrganizationId(user: JwtPayload): Promise<string | null> {
+  if (user.role === "SUPER_ADMIN") {
+    return user.actingOrganizationId?.trim() || null;
+  }
+  if (user.organizationId?.trim()) {
+    return user.organizationId;
+  }
+  const membership = await prisma.organizationMembership.findFirst({
+    where: { userId: user.id },
+    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    select: { organizationId: true },
+  });
+  return membership?.organizationId ?? null;
+}
 
 /**
  * Tenant efectivo: organizationId (ADMIN/AGENT) ou actingOrganizationId (SUPER_ADMIN a impersonar).
@@ -34,7 +53,7 @@ export async function resolveTenantOrganizationId(
     return acting;
   }
 
-  const id = request.user.organizationId;
+  const id = await resolveUserOrganizationId(request.user);
   if (!id) {
     reply.status(403).send({
       error: "Forbidden",
