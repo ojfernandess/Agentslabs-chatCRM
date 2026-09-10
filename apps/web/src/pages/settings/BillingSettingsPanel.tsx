@@ -1,0 +1,425 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { CreditCard, ExternalLink, Loader2, AlertTriangle } from "lucide-react";
+import clsx from "clsx";
+import { api, ApiError } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
+import {
+  settingsCard,
+  settingsMuted,
+  settingsSubtitle,
+  settingsTitle,
+} from "@/components/settings/settingsUi";
+
+type PlanRow = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  currency: string;
+  amountCents: number;
+  interval: string;
+  trialDays: number | null;
+  limits: Record<string, number | null | undefined>;
+  features: Record<string, boolean | undefined>;
+  isCurrent: boolean;
+  requiresCheckout: boolean;
+};
+
+type UsageDimension = {
+  used: number;
+  limit: number | null;
+};
+
+type BillingOverview = {
+  stripeConfigured: boolean;
+  publishableKey: string | null;
+  billingEmail: string | null;
+  legacyPlanTier: string;
+  usage?: {
+    agents: UsageDimension;
+    automations: UsageDimension;
+    contacts: UsageDimension;
+    messages: UsageDimension & { periodStart: string };
+  };
+  subscription: {
+    status: string;
+    stripeManaged: boolean;
+    currentPeriodStart: string | null;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+    canceledAt: string | null;
+    trialEnd: string | null;
+    plan: Omit<PlanRow, "isCurrent" | "requiresCheckout"> | null;
+  } | null;
+  entitlements?: {
+    hasAccess: boolean;
+    inGracePeriod: boolean;
+    limits: Record<string, number | null | undefined>;
+    features: Record<string, boolean | undefined>;
+  } | null;
+};
+
+type InvoiceRow = {
+  id: string;
+  number: string | null;
+  status: string | null;
+  amountPaid: number;
+  currency: string;
+  created: string;
+  hostedInvoiceUrl: string | null;
+};
+
+function formatMoney(cents: number, currency: string, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, { style: "currency", currency: currency.toUpperCase() }).format(
+      cents / 100,
+    );
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}
+
+function formatDate(iso: string | null, locale: string): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(locale);
+}
+
+function formatUsageLabel(
+  t: (key: string) => string,
+  labelKey: string,
+  used: number,
+  limit: number | null,
+): string {
+  const base = t(labelKey).replace("{used}", String(used));
+  if (limit === null) return base.replace("{limit}", "∞");
+  return base.replace("{limit}", String(limit));
+}
+
+function statusLabelKey(status: string): string {
+  return `settings.billingStatus_${status}`;
+}
+
+export function BillingSettingsPanel() {
+  const { t, locale } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const checkoutNotice = searchParams.get("checkout");
+
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [overview, setOverview] = useState<BillingOverview | null>(null);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+
+  const load = useCallback(async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const [ov, pl] = await Promise.all([
+        api.get<BillingOverview>("/billing/overview"),
+        api.get<{ plans: PlanRow[] }>("/billing/plans"),
+      ]);
+      setOverview(ov);
+      setPlans(pl.plans);
+      if (ov.stripeConfigured) {
+        try {
+          const inv = await api.get<{ invoices: InvoiceRow[] }>("/billing/invoices");
+          setInvoices(inv.invoices);
+        } catch {
+          setInvoices([]);
+        }
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("settings.billingLoadError"));
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!checkoutNotice) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("checkout");
+    setSearchParams(next, { replace: true });
+  }, [checkoutNotice, searchParams, setSearchParams]);
+
+  const currentPlan = overview?.subscription?.plan;
+  const subscription = overview?.subscription;
+  const localeTag = locale === "en" ? "en-US" : "pt-BR";
+
+  const checkoutBanner = useMemo(() => {
+    if (checkoutNotice === "success") {
+      return (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100">
+          {t("settings.billingCheckoutSuccess")}
+        </div>
+      );
+    }
+    if (checkoutNotice === "cancel") {
+      return (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+          {t("settings.billingCheckoutCancel")}
+        </div>
+      );
+    }
+    return null;
+  }, [checkoutNotice, t]);
+
+  const runAction = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key);
+    setError("");
+    try {
+      await fn();
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("settings.billingActionError"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const subscribeToPlan = async (plan: PlanRow) => {
+    if (subscription?.stripeManaged && subscription.status !== "canceled") {
+      await runAction(`change-${plan.id}`, async () => {
+        await api.post("/billing/change-plan", { planId: plan.id });
+      });
+      return;
+    }
+    await runAction(`checkout-${plan.id}`, async () => {
+      const res = await api.post<{ url: string }>("/billing/checkout", { planId: plan.id });
+      window.location.href = res.url;
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className={settingsTitle}>{t("settings.sectionBilling")}</h2>
+        <p className={settingsSubtitle}>{t("settings.billingIntro")}</p>
+      </div>
+
+      {checkoutBanner}
+      {error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100">
+          {error}
+        </div>
+      ) : null}
+
+      {!overview?.stripeConfigured ? (
+        <div className={clsx(settingsCard, "flex gap-3 text-sm text-ink-700 dark:text-ink-200")}>
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <p>{t("settings.billingStripeNotConfigured")}</p>
+        </div>
+      ) : null}
+
+      {overview?.usage ? (
+        <section className={settingsCard}>
+          <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("settings.billingUsageTitle")}</h3>
+          <ul className="mt-3 space-y-2 text-sm text-ink-700 dark:text-ink-200">
+            <li>{formatUsageLabel(t, "settings.billingUsageAgents", overview.usage.agents.used, overview.usage.agents.limit)}</li>
+            <li>{formatUsageLabel(t, "settings.billingUsageAutomations", overview.usage.automations.used, overview.usage.automations.limit)}</li>
+            <li>{formatUsageLabel(t, "settings.billingUsageContacts", overview.usage.contacts.used, overview.usage.contacts.limit)}</li>
+            <li>{formatUsageLabel(t, "settings.billingUsageMessages", overview.usage.messages.used, overview.usage.messages.limit)}</li>
+          </ul>
+          {!overview.entitlements?.hasAccess ? (
+            <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">{t("settings.billingAccessSuspended")}</p>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section className={settingsCard}>
+        <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("settings.billingCurrentPlan")}</h3>
+        {currentPlan ? (
+          <div className="mt-4 space-y-2">
+            <p className="text-lg font-semibold text-ink-900 dark:text-ink-50">{currentPlan.name}</p>
+            <p className={settingsMuted}>
+              {currentPlan.amountCents > 0
+                ? `${formatMoney(currentPlan.amountCents, currentPlan.currency, localeTag)} / ${currentPlan.interval === "month" ? t("settings.billingPerMonth") : currentPlan.interval}`
+                : t("settings.billingFreePlan")}
+            </p>
+            {subscription ? (
+              <>
+                <p className="text-sm text-ink-600 dark:text-ink-300">
+                  {t("settings.billingStatus")}:{" "}
+                  <span className="font-medium">{t(statusLabelKey(subscription.status))}</span>
+                </p>
+                {subscription.currentPeriodEnd ? (
+                  <p className="text-sm text-ink-600 dark:text-ink-300">
+                    {subscription.cancelAtPeriodEnd
+                      ? t("settings.billingActiveUntil")
+                      : t("settings.billingNextCharge")}{" "}
+                    {formatDate(subscription.currentPeriodEnd, localeTag)}
+                  </p>
+                ) : null}
+                {subscription.status === "past_due" ? (
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                    {t("settings.billingPastDueHint")}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <p className={clsx(settingsMuted, "mt-3")}>{t("settings.billingNoPlan")}</p>
+        )}
+
+        {overview?.stripeConfigured && subscription?.stripeManaged ? (
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                void runAction("portal", async () => {
+                  const res = await api.post<{ url: string }>("/billing/portal", {});
+                  window.location.href = res.url;
+                })
+              }
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {busy === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+              {t("settings.billingManage")}
+            </button>
+            {subscription.cancelAtPeriodEnd ? (
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => void runAction("resume", () => api.post("/billing/resume", {}))}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium text-ink-800 hover:bg-ink-50 dark:border-soft-border dark:text-ink-100 dark:hover:bg-white/5 disabled:opacity-60"
+              >
+                {t("settings.billingResume")}
+              </button>
+            ) : subscription.status === "active" || subscription.status === "trialing" ? (
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() =>
+                  void runAction("cancel", () => api.post("/billing/cancel", { cancelAtPeriodEnd: true }))
+                }
+                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30 disabled:opacity-60"
+              >
+                {t("settings.billingCancel")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className={settingsCard}>
+        <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("settings.billingAvailablePlans")}</h3>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {plans.map((plan) => (
+            <div
+              key={plan.id}
+              className={clsx(
+                "rounded-xl border p-4",
+                plan.isCurrent
+                  ? "border-brand-300 bg-brand-50/50 dark:border-brand-800 dark:bg-brand-950/20"
+                  : "border-ink-200 dark:border-soft-border",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-ink-900 dark:text-ink-50">{plan.name}</p>
+                  {plan.description ? <p className={clsx(settingsMuted, "mt-1 text-xs")}>{plan.description}</p> : null}
+                </div>
+                {plan.isCurrent ? (
+                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-800 dark:bg-brand-900/50 dark:text-brand-100">
+                    {t("settings.billingCurrentBadge")}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-3 text-lg font-bold text-ink-900 dark:text-ink-50">
+                {plan.amountCents > 0
+                  ? `${formatMoney(plan.amountCents, plan.currency, localeTag)} / ${plan.interval === "month" ? t("settings.billingPerMonth") : plan.interval}`
+                  : t("settings.billingFreePlan")}
+              </p>
+              <ul className="mt-3 space-y-1 text-xs text-ink-600 dark:text-ink-300">
+                {plan.limits.agents != null ? (
+                  <li>{t("settings.billingLimitAgents").replace("{count}", String(plan.limits.agents))}</li>
+                ) : null}
+                {plan.limits.automations != null ? (
+                  <li>{t("settings.billingLimitAutomations").replace("{count}", String(plan.limits.automations))}</li>
+                ) : null}
+                {plan.limits.contacts != null ? (
+                  <li>{t("settings.billingLimitContacts").replace("{count}", String(plan.limits.contacts))}</li>
+                ) : null}
+                {plan.features.rag ? <li>{t("settings.billingFeatureRag")}</li> : null}
+                {plan.features.api ? <li>{t("settings.billingFeatureApi")}</li> : null}
+                {plan.features.mcp ? <li>{t("settings.billingFeatureMcp")}</li> : null}
+              </ul>
+              {!plan.isCurrent && overview?.stripeConfigured && plan.requiresCheckout ? (
+                <button
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() => void subscribeToPlan(plan)}
+                  className="mt-4 w-full rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {busy === `checkout-${plan.id}` || busy === `change-${plan.id}` ? (
+                    <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                  ) : (
+                    t("settings.billingSubscribe")
+                  )}
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {invoices.length > 0 ? (
+        <section className={settingsCard}>
+          <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("settings.billingHistory")}</h3>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-ink-200 text-left text-ink-500 dark:border-soft-border dark:text-ink-400">
+                  <th className="py-2 pr-4">{t("settings.billingHistoryDate")}</th>
+                  <th className="py-2 pr-4">{t("settings.billingHistoryAmount")}</th>
+                  <th className="py-2 pr-4">{t("settings.billingHistoryStatus")}</th>
+                  <th className="py-2">{t("settings.billingHistoryInvoice")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv) => (
+                  <tr key={inv.id} className="border-b border-ink-100 dark:border-soft-border/60">
+                    <td className="py-2 pr-4">{formatDate(inv.created, localeTag)}</td>
+                    <td className="py-2 pr-4">{formatMoney(inv.amountPaid, inv.currency, localeTag)}</td>
+                    <td className="py-2 pr-4">{inv.status ?? "—"}</td>
+                    <td className="py-2">
+                      {inv.hostedInvoiceUrl ? (
+                        <a
+                          href={inv.hostedInvoiceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-brand-600 hover:underline dark:text-brand-400"
+                        >
+                          {t("settings.billingViewInvoice")}
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}

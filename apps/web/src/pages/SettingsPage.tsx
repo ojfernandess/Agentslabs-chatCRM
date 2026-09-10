@@ -24,7 +24,9 @@ import {
   Palette,
   CheckCheck,
   Phone,
+  CreditCard,
 } from "lucide-react";
+import { BillingSettingsPanel } from "@/pages/settings/BillingSettingsPanel";
 import { WavoipIntegrationSettings } from "@/pages/settings/WavoipIntegrationSettings";
 import { ThreeCxIntegrationSettings } from "@/pages/settings/ThreeCxIntegrationSettings";
 import { NvoipIntegrationSettings } from "@/pages/settings/NvoipIntegrationSettings";
@@ -95,7 +97,8 @@ type SettingsSection =
   | "team"
   | "wavoip"
   | "threecx"
-  | "nvoip";
+  | "nvoip"
+  | "billing";
 
 type CsatRatingType = "number" | "star" | "emoji";
 
@@ -226,6 +229,7 @@ export function SettingsPage() {
     if (initialSection === "wavoip" && showWavoip) return "wavoip";
     if (initialSection === "threecx" && showThreeCx) return "threecx";
     if (initialSection === "nvoip" && showNvoip) return "nvoip";
+    if (initialSection === "billing" && isAdmin) return "billing";
     return "channel";
   });
   const effectiveOrgId = user?.actingOrganizationId ?? user?.organizationId ?? null;
@@ -1281,6 +1285,7 @@ export function SettingsPage() {
                   ...(showWavoip ? ([["wavoip", t("settings.sectionWavoip"), Phone]] as const) : []),
                   ...(showThreeCx ? ([["threecx", t("settings.sectionThreeCx"), Phone]] as const) : []),
                   ...(showNvoip ? ([["nvoip", t("settings.sectionNvoip"), Phone]] as const) : []),
+                  ...(isAdmin ? ([["billing", t("settings.sectionBilling"), CreditCard]] as const) : []),
                   ["templates", t("settings.sectionTemplates"), FileText],
                   ["tags", t("settings.sectionTags"), Tag],
                   ["team", t("settings.sectionTeam"), UserPlus],
@@ -3184,6 +3189,12 @@ export function SettingsPage() {
               {section === "threecx" && showThreeCx && (
                 <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
                   <ThreeCxIntegrationSettings />
+                </motion.div>
+              )}
+
+              {section === "billing" && isAdmin && (
+                <motion.div variants={staggerItem}>
+                  <BillingSettingsPanel />
                 </motion.div>
               )}
 

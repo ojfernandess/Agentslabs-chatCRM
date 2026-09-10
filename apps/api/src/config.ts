@@ -209,4 +209,22 @@ export const config = {
   nvoipSipWssPort: optionalEnv("NVOIP_SIP_WSS_PORT", "6443").trim(),
   /** @deprecated use NVOIP_SIP_DOMAIN — mantido por compatibilidade. */
   nvoipSipServer: optionalEnv("NVOIP_SIP_SERVER", optionalEnv("NVOIP_SIP_DOMAIN", "app.nvoip.com.br")).trim(),
+  /** Stripe — billing SaaS (secret key só no servidor). */
+  stripeSecretKey: optionalEnv("STRIPE_SECRET_KEY", "").trim(),
+  stripePublishableKey: optionalEnv("STRIPE_PUBLISHABLE_KEY", "").trim(),
+  stripeWebhookSecret: optionalEnv("STRIPE_WEBHOOK_SECRET", "").trim(),
+  stripeApiVersion: optionalEnv("STRIPE_API_VERSION", "2025-02-24.acacia").trim(),
+  stripeCheckoutSuccessUrl: optionalEnv(
+    "STRIPE_CHECKOUT_SUCCESS_URL",
+    `${getWebAppPublicOrigin()}/settings?section=billing&checkout=success`,
+  ).trim(),
+  stripeCheckoutCancelUrl: optionalEnv(
+    "STRIPE_CHECKOUT_CANCEL_URL",
+    `${getWebAppPublicOrigin()}/settings?section=billing&checkout=cancel`,
+  ).trim(),
 } as const;
+
+/** Stripe configurado para checkout/webhooks (não exige publishable key no backend). */
+export function isStripeBillingConfigured(): boolean {
+  return Boolean(config.stripeSecretKey && config.stripeWebhookSecret);
+}

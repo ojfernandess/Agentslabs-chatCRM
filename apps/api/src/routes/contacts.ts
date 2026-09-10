@@ -26,6 +26,7 @@ import {
 import { contactHasEmailFilter } from "../lib/conversationUserEmailState.js";
 import { WEBSITE_PHONE_PREFIX } from "@openconduit/shared";
 import { buildWebsiteVisitorIndexMap, enrichWebsiteContact } from "../lib/websiteVisitorContacts.js";
+import { assertCanAddContacts, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 
 const createContactSchema = z.object({
   phone: z.string().min(7).max(16),
@@ -472,6 +473,13 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
 
     const updateExisting = fields.updateExisting !== "false" && fields.updateExisting !== "0";
 
+    try {
+      await assertCanAddContacts(organizationId, parsed.rows.length);
+    } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
+      throw err;
+    }
+
     const result = await importContactRows(app, organizationId, parsed.rows, {
       updateExisting,
       createdById: request.user.id,
@@ -581,6 +589,13 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       return reply
         .status(409)
         .send({ error: "Conflict", message: "Contact with this phone number already exists", statusCode: 409 });
+    }
+
+    try {
+      await assertCanAddContacts(organizationId);
+    } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
+      throw err;
     }
 
     const contact = await prisma.contact.create({

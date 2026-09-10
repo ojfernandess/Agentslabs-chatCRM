@@ -182,7 +182,6 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
               role="menuitem"
               className="flex w-full gap-3 px-3 py-2.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-700/60"
               onClick={() => {
-                clearBadge();
                 setOpen(false);
                 navigate(`/conversations/${row.id}`);
               }}

@@ -15,6 +15,7 @@ import {
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
@@ -141,6 +142,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     postSendConversationPolicy = "default",
     skipCrmFlowTrigger = false,
   } = options;
+
   const {
     contactId,
     type,
@@ -156,6 +158,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
     emailCc,
     emailBcc,
   } = data;
+
+  if (!isPrivate) {
+    await assertCanSendOutboundMessage(organizationId);
+  }
 
   if (actor.kind === "agent_bot" && isPrivate) {
     throw new Error("Agent bot cannot send private notes");

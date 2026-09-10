@@ -1,0 +1,43 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  isAccessGrantingStatus,
+  mapStripeSubscriptionStatus,
+  parsePlanFeatures,
+  parsePlanLimits,
+  subscriptionHasStripeBilling,
+} from "./billingTypes.js";
+
+describe("billingTypes", () => {
+  it("mapStripeSubscriptionStatus maps known statuses", () => {
+    assert.equal(mapStripeSubscriptionStatus("active"), "active");
+    assert.equal(mapStripeSubscriptionStatus("past_due"), "past_due");
+    assert.equal(mapStripeSubscriptionStatus("unknown"), "inactive");
+  });
+
+  it("isAccessGrantingStatus grants trialing, active, past_due", () => {
+    assert.equal(isAccessGrantingStatus("active"), true);
+    assert.equal(isAccessGrantingStatus("past_due"), true);
+    assert.equal(isAccessGrantingStatus("canceled"), false);
+  });
+
+  it("parsePlanLimits and parsePlanFeatures read JSON", () => {
+    assert.deepEqual(parsePlanLimits({ agents: 10, messages: null }), {
+      agents: 10,
+      automations: undefined,
+      contacts: undefined,
+      messages: null,
+    });
+    assert.deepEqual(parsePlanFeatures({ rag: true, api: false }), {
+      rag: true,
+      api: false,
+      mcp: false,
+    });
+  });
+
+  it("subscriptionHasStripeBilling detects stripe ids", () => {
+    assert.equal(subscriptionHasStripeBilling({}), false);
+    assert.equal(subscriptionHasStripeBilling({ stripeCustomerId: "cus_x" }), true);
+    assert.equal(subscriptionHasStripeBilling({ stripeSubscriptionId: "sub_x" }), true);
+  });
+});

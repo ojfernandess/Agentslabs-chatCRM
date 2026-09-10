@@ -16,6 +16,7 @@ import {
   Shield,
   ToggleLeft,
   Users,
+  CreditCard,
 } from "lucide-react";
 import { brandAssetUrl, systemLogoOnDarkBgClass } from "@/lib/brandingAssets";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -34,7 +35,8 @@ export type SuperSection =
   | "auditLog"
   | "conversationMedia"
   | "featureFlags"
-  | "mcpServer";
+  | "mcpServer"
+  | "billing";
 
 type NavItem = { id: SuperSection; labelKey: string; icon: typeof LayoutDashboard };
 
@@ -50,6 +52,7 @@ const NAV_GROUPS: { labelKey: string; items: NavItem[] }[] = [
     labelKey: "superAdmin.navGroupTenants",
     items: [
       { id: "organizations", labelKey: "superAdmin.organizations", icon: Building2 },
+      { id: "billing", labelKey: "superAdmin.billingNav", icon: CreditCard },
       { id: "platformUsers", labelKey: "superAdmin.platformUsers", icon: Users },
     ],
   },
@@ -95,6 +98,7 @@ const SECTION_TITLE_KEYS: Record<SuperSection, string> = {
   conversationMedia: "superAdmin.conversationMedia.nav",
   featureFlags: "superAdmin.featureFlags",
   mcpServer: "superAdmin.mcp.title",
+  billing: "superAdmin.billingNav",
 };
 
 const SECTION_SUBTITLE_KEYS: Partial<Record<SuperSection, string>> = {
@@ -108,6 +112,7 @@ const SECTION_SUBTITLE_KEYS: Partial<Record<SuperSection, string>> = {
   conversationMedia: "superAdmin.conversationMedia.subtitle",
   featureFlags: "superAdmin.flagsSubtitle",
   mcpServer: "superAdmin.mcp.subtitle",
+  billing: "superAdmin.billingSectionSubtitle",
 };
 
 type SuperAdminShellProps = {

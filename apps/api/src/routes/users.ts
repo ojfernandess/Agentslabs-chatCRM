@@ -16,6 +16,7 @@ import {
   organizationMembersWhere,
 } from "../lib/organizationMemberships.js";
 import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
+import { assertCanAddAgents, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 
 const createUserSchema = z.object({
   name: z.string().min(1).max(255),
@@ -115,6 +116,15 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
 
       const passwordHash = await bcrypt.hash(parsed.data.password, config.bcryptCostFactor);
 
+      if (parsed.data.role === "AGENT") {
+        try {
+          await assertCanAddAgents(organizationId);
+        } catch (err) {
+          if (replyPlanEnforcementError(reply, err)) return;
+          throw err;
+        }
+      }
+
       const user = await prisma.$transaction(async (tx) => {
         const created = await tx.user.create({
           data: {
@@ -171,6 +181,18 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
 
       // Papel na org: actualiza membership; só sincroniza users.role se for o workspace activo.
       if (parsed.data.role !== undefined) {
+        if (parsed.data.role === "AGENT") {
+          const membership = await getMembership(organizationId, target.id);
+          const currentRole = membership?.role ?? target.role;
+          if (currentRole !== "AGENT") {
+            try {
+              await assertCanAddAgents(organizationId);
+            } catch (err) {
+              if (replyPlanEnforcementError(reply, err)) return;
+              throw err;
+            }
+          }
+        }
         await ensureMembership({
           organizationId,
           userId: target.id,

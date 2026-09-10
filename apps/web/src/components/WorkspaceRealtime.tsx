@@ -111,6 +111,25 @@ export function WorkspaceRealtime() {
           }),
         );
       } else if (
+        (data.type === "conversation.read" || data.type === "conversation.unread") &&
+        typeof data.conversationId === "string" &&
+        typeof data.userId === "string" &&
+        user?.id === data.userId
+      ) {
+        if (data.type === "conversation.read") {
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-read", {
+              detail: { conversationId: data.conversationId },
+            }),
+          );
+        } else {
+          window.dispatchEvent(
+            new CustomEvent("openconduit:conversation-unread", {
+              detail: { conversationId: data.conversationId },
+            }),
+          );
+        }
+      } else if (
         data.type === "conversation.agent_typing" &&
         typeof data.conversationId === "string" &&
         typeof data.typing === "boolean"

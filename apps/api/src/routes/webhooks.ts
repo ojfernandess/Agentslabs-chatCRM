@@ -42,6 +42,12 @@ import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
 import { handleNvoipDtmfWebhook } from "../lib/nvoipDtmfWebhook.js";
 import { handleNvoipCallWebhook } from "../lib/nvoipCallWebhook.js";
 import { verifyNvoipCallWebhookSecret } from "../lib/nvoipWebhookSecret.js";
+import {
+  constructStripeWebhookEvent,
+  processStripeWebhookEvent,
+  StripeWebhookError,
+} from "../lib/billing/stripeWebhookHandler.js";
+import { isStripeBillingConfigured } from "../config.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -1063,4 +1069,40 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true };
     },
   );
+
+  app.post("/stripe", webhookPostOpts, async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isStripeBillingConfigured()) {
+      return reply.status(503).send({
+        error: "stripe_not_configured",
+        message: "Stripe billing is not configured on this server",
+        statusCode: 503,
+      });
+    }
+
+    const signatureRaw = request.headers["stripe-signature"];
+    const signature = Array.isArray(signatureRaw) ? signatureRaw[0] : signatureRaw;
+    const rawBody =
+      (request as WebhookRequest).rawBody ??
+      (typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? ""));
+
+    try {
+      const event = constructStripeWebhookEvent(rawBody, signature);
+      const processed = await processStripeWebhookEvent(event);
+      return { received: true, duplicate: !processed };
+    } catch (err) {
+      if (err instanceof StripeWebhookError) {
+        return reply.status(err.statusCode).send({
+          error: "stripe_webhook_error",
+          message: err.message,
+          statusCode: err.statusCode,
+        });
+      }
+      request.log.error({ err }, "Stripe webhook processing failed");
+      return reply.status(500).send({
+        error: "internal_error",
+        message: "Stripe webhook processing failed",
+        statusCode: 500,
+      });
+    }
+  });
 }

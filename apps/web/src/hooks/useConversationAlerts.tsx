@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
 import { api } from "@/lib/api";
 import { brandAssetUrl } from "@/lib/brandingAssets";
 import { isSuperAdminRole } from "@/lib/authRole";
@@ -15,6 +23,7 @@ const BELL_CLEARED_KEY = "openconduit_bell_cleared_at";
 const POLL_MS = 22_000;
 const SHOWN_CAP = 400;
 const AUDIO_REPEAT_MS = 30_000;
+const REALTIME_POLL_DEBOUNCE_MS = 350;
 
 export interface ConversationNotificationPrefs {
   notifyConversationOpen: boolean;
@@ -33,6 +42,7 @@ interface ConversationRow {
   id: string;
   status: string;
   updatedAt: string;
+  isUnread?: boolean;
   contact: { id: string; name: string; phone: string; profilePictureUrl?: string | null };
   messages: LastMessage[];
 }
@@ -64,6 +74,19 @@ function qualifies(
   return false;
 }
 
+function shouldShowInBell(
+  c: ConversationRow,
+  prefs: ConversationNotificationPrefs,
+  clearedAt: number,
+): boolean {
+  if (!qualifies(c, prefs)) return false;
+  const last = c.messages?.[0];
+  if (!last || last.direction !== "INBOUND") return false;
+  if (c.isUnread === false) return false;
+  if (new Date(c.updatedAt).getTime() <= clearedAt) return false;
+  return true;
+}
+
 function countBadge(
   rows: ConversationRow[],
   prefs: ConversationNotificationPrefs,
@@ -71,10 +94,7 @@ function countBadge(
 ): number {
   let n = 0;
   for (const c of rows) {
-    if (!qualifies(c, prefs)) continue;
-    const last = c.messages?.[0];
-    if (!last || last.direction !== "INBOUND") continue;
-    if (new Date(c.updatedAt).getTime() > clearedAt) n++;
+    if (shouldShowInBell(c, prefs, clearedAt)) n++;
   }
   return n;
 }
@@ -96,10 +116,9 @@ function buildAlertPreviews(
 ): ConversationAlertPreview[] {
   const out: ConversationAlertPreview[] = [];
   for (const c of rows) {
-    if (!qualifies(c, prefs)) continue;
+    if (!shouldShowInBell(c, prefs, clearedAt)) continue;
     const last = c.messages?.[0];
-    if (!last || last.direction !== "INBOUND") continue;
-    if (new Date(c.updatedAt).getTime() <= clearedAt) continue;
+    if (!last) continue;
     out.push({
       id: c.id,
       contactId: c.contact.id,
@@ -113,6 +132,33 @@ function buildAlertPreviews(
   return out.slice(0, 20);
 }
 
+function getOpenConversationId(): string | null {
+  const m = window.location.pathname.match(/\/conversations\/(?:c\/)?([^/]+)/);
+  const id = m?.[1];
+  if (!id || id === "c") return null;
+  return id;
+}
+
+function applyReadToBellState(
+  conversationId: string,
+  setAlertPreviews: Dispatch<SetStateAction<ConversationAlertPreview[]>>,
+  setBadgeCount: Dispatch<SetStateAction<number>>,
+  badgeCountRef: MutableRefObject<number>,
+): void {
+  setAlertPreviews((prev) => {
+    const had = prev.some((p) => p.id === conversationId);
+    const next = prev.filter((p) => p.id !== conversationId);
+    if (had) {
+      setBadgeCount((count) => {
+        const updated = Math.max(0, count - 1);
+        badgeCountRef.current = updated;
+        return updated;
+      });
+    }
+    return next;
+  });
+}
+
 export function useConversationAlerts() {
   const { user, loading: authLoading } = useAuth();
   const [badgeCount, setBadgeCount] = useState(0);
@@ -121,6 +167,7 @@ export function useConversationAlerts() {
   const shownKeysRef = useRef(new Set<string>());
   const badgeCountRef = useRef(0);
   const audioRepeatIdRef = useRef<number | null>(null);
+  const pollDebounceRef = useRef<number | null>(null);
 
   const clearAudioRepeat = useCallback(() => {
     if (audioRepeatIdRef.current != null) window.clearInterval(audioRepeatIdRef.current);
@@ -169,10 +216,14 @@ export function useConversationAlerts() {
     setBadgeCount(nextBadge);
     setAlertPreviews(buildAlertPreviews(full.data, prefs, clearedAt));
 
+    const openConversationId = getOpenConversationId();
+
     for (const c of delta.data) {
       if (!qualifies(c, prefs)) continue;
       const last = c.messages?.[0];
       if (!last || last.direction !== "INBOUND") continue;
+      if (c.isUnread === false) continue;
+      if (openConversationId && c.id === openConversationId) continue;
 
       const key = `${c.id}-${last.id}`;
       if (shownKeysRef.current.has(key)) continue;
@@ -226,12 +277,46 @@ export function useConversationAlerts() {
     }
   }, [user, clearAudioRepeat]);
 
+  const schedulePoll = useCallback(() => {
+    if (pollDebounceRef.current != null) window.clearTimeout(pollDebounceRef.current);
+    pollDebounceRef.current = window.setTimeout(() => {
+      pollDebounceRef.current = null;
+      void poll();
+    }, REALTIME_POLL_DEBOUNCE_MS);
+  }, [poll]);
+
   useEffect(() => {
     if (authLoading || !user) return;
     poll();
     const id = window.setInterval(poll, POLL_MS);
     return () => window.clearInterval(id);
   }, [authLoading, user, poll]);
+
+  useEffect(() => {
+    const onRead = (event: Event) => {
+      const conversationId = (event as CustomEvent<{ conversationId?: string }>).detail
+        ?.conversationId;
+      if (!conversationId) return;
+      applyReadToBellState(conversationId, setAlertPreviews, setBadgeCount, badgeCountRef);
+      if (badgeCountRef.current <= 0) clearAudioRepeat();
+      schedulePoll();
+    };
+    const onUnread = () => {
+      schedulePoll();
+    };
+    const onUpdated = () => {
+      schedulePoll();
+    };
+    window.addEventListener("openconduit:conversation-read", onRead);
+    window.addEventListener("openconduit:conversation-unread", onUnread);
+    window.addEventListener("openconduit:conversation-updated", onUpdated);
+    return () => {
+      window.removeEventListener("openconduit:conversation-read", onRead);
+      window.removeEventListener("openconduit:conversation-unread", onUnread);
+      window.removeEventListener("openconduit:conversation-updated", onUpdated);
+      if (pollDebounceRef.current != null) window.clearTimeout(pollDebounceRef.current);
+    };
+  }, [schedulePoll, clearAudioRepeat]);
 
   useEffect(() => {
     const on = () => {

@@ -10,7 +10,7 @@ import {
   enrichWebsiteContacts,
 } from "../lib/websiteVisitorContacts.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { broadcastToOrganization } from "../lib/workspaceHub.js";
+import { broadcastConversationReadState, broadcastToOrganization } from "../lib/workspaceHub.js";
 import { isOnlineForTransfer } from "../lib/userAvailability.js";
 import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
@@ -963,6 +963,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       userId: request.user.id,
       conversationId: existing.id,
     });
+    broadcastConversationReadState(organizationId, {
+      conversationId: existing.id,
+      userId: request.user.id,
+      read: true,
+    });
     return reply.status(204).send();
   });
 
@@ -988,6 +993,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       organizationId,
       userId: request.user.id,
       conversationId: existing.id,
+    });
+    broadcastConversationReadState(organizationId, {
+      conversationId: existing.id,
+      userId: request.user.id,
+      read: false,
     });
     return reply.status(204).send();
   });

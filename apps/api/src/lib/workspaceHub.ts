@@ -67,6 +67,18 @@ export function broadcastConversationUpdated(
   });
 }
 
+/** Sincroniza estado lido/não lido entre abas do mesmo utilizador (badges + sino). */
+export function broadcastConversationReadState(
+  organizationId: string,
+  payload: { conversationId: string; userId: string; read: boolean },
+): void {
+  broadcastToOrganization(organizationId, {
+    type: payload.read ? "conversation.read" : "conversation.unread",
+    conversationId: payload.conversationId,
+    userId: payload.userId,
+  });
+}
+
 /** Etiquetas mudaram no contacto — actualiza todas as conversas visíveis desse contacto. */
 export function broadcastContactTagsUpdated(
   organizationId: string,

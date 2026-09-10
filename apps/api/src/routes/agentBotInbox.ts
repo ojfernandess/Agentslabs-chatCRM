@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { authenticateAgentBot } from "../middleware/agentBotAuth.js";
 import { sendMessageSchema } from "../lib/messagePayload.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
+import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import {
   assignConversationTeamBodySchema,
   assignConversationTeamForOrg,
@@ -110,6 +111,7 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
         agent_bot_id: bot.id,
       });
     } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
       const msg = err instanceof Error ? err.message : "Failed";
       if (msg.includes("not found") || msg.includes("Contact")) {
         return reply.status(404).send({ error: "Not Found", message: msg, statusCode: 404 });

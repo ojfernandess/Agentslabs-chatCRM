@@ -61,6 +61,11 @@ import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
 import {
+  assertCanAddAutomations,
+  assertPlanFeature,
+  replyPlanEnforcementError,
+} from "../lib/billing/planEnforcement.js";
+import {
   dispatchHttpApiCustomTool,
   mergeHttpApiCustomDispatchConfig,
   parseHttpApiCustomConfig,
@@ -536,6 +541,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     const parsed = knowledgeCreateSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    try {
+      await assertPlanFeature(organizationId, "rag");
+    } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
+      throw err;
     }
 
     const botIds = parsed.data.botIds ?? [];
@@ -2426,6 +2438,15 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     const parsed = createAutomationAgentSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    if (parsed.data.createBot) {
+      try {
+        await assertCanAddAutomations(organizationId);
+      } catch (err) {
+        if (replyPlanEnforcementError(reply, err)) return;
+        throw err;
+      }
     }
 
     let botId: string;

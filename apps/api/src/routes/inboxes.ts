@@ -26,6 +26,7 @@ import {
 import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
 import { syncInboxEmailNow } from "../lib/inboxEmailSyncJob.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
+import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import { parseEmailAddressList } from "@openconduit/shared";
 import { getEmailInboxUnreadCounts } from "../lib/inboxUnreadCounts.js";
 
@@ -790,6 +791,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         contactId: contact.id,
       });
     } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
       const msg = err instanceof Error ? err.message : "Failed to send email";
       app.log.error(err, "compose-email failed");
       return reply.status(422).send({

@@ -28,6 +28,7 @@ import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordRe
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 import { SuperAdminConversationMediaSection } from "@/components/super-admin/SuperAdminConversationMediaSection";
 import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSection";
+import { SuperAdminBillingSection } from "@/components/super-admin/SuperAdminBillingSection";
 import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
 
 interface OrgRow {
@@ -2698,6 +2699,8 @@ export function SuperAdminPage() {
           )}
 
           {section === "conversationMedia" && <SuperAdminConversationMediaSection />}
+
+          {section === "billing" && <SuperAdminBillingSection />}
 
           {section === "mcpServer" && (
             <SuperAdminMcpSection

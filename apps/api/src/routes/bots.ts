@@ -9,6 +9,7 @@ import {
   deliverAgentBotTestWebhook,
   AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID,
 } from "../lib/agentBotWebhook.js";
+import { assertCanAddAutomations, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 
 const createBotSchema = z.object({
   name: z.string().min(1).max(120),
@@ -82,6 +83,12 @@ export async function botRoutes(app: FastifyInstance): Promise<void> {
     const parsed = createBotSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    try {
+      await assertCanAddAutomations(organizationId);
+    } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
+      throw err;
     }
     const row = await prisma.bot.create({
       data: {

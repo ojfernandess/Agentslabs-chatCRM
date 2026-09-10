@@ -9,6 +9,7 @@ import { getWebAppPublicOrigin } from "../config.js";
 import { getResendEmailConfigFromDb } from "../lib/resendEmailSettings.js";
 import { sendUserInviteEmail } from "../lib/sendUserInviteEmail.js";
 import { getMembership } from "../lib/organizationMemberships.js";
+import { assertCanAddAgents, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -92,6 +93,15 @@ export async function userInvitationRoutes(app: FastifyInstance): Promise<void> 
         });
       }
       // Conta noutra org: convite permitido (padrão Chatwoot/Slack — uma identidade, várias orgs).
+    }
+
+    if (parsed.data.role === "AGENT") {
+      try {
+        await assertCanAddAgents(organizationId);
+      } catch (err) {
+        if (replyPlanEnforcementError(reply, err)) return;
+        throw err;
+      }
     }
 
     const org = await prisma.organization.findUnique({

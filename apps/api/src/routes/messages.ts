@@ -7,6 +7,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { sendMessageSchema } from "../lib/messagePayload.js";
 import { putMessageMediaFile } from "../lib/mediaStorage.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
+import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 
 function extensionForUploadMimetype(mimetype: string, originalFilename?: string): string {
   const m = mimetype.split(";")[0].trim().toLowerCase();
@@ -178,6 +179,7 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       });
       return reply.status(201).send(message);
     } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
       const msg = err instanceof Error ? err.message : "Request failed";
       if (msg === "Contact not found") {
         return reply.status(404).send({ error: "Not Found", message: msg, statusCode: 404 });
