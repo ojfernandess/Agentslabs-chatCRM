@@ -141,10 +141,17 @@ export function assistantIsCompanionMirrorConfirm(lastAssistantMessage?: string 
   return /confirme\s+os\s+dados\s+do\s+acompanhante|dados\s+do\s+acompanhante/i.test(t);
 }
 
-/** Modelo C6 Confirm — hóspede confirma dados antes de consultar disponibilidade (C6c). */
+/** Modelo C6 Confirm — hóspede confirma dados antes do handoff (C6c). */
 export function assistantIsQuoteAvailabilityConfirm(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
+  if (
+    /posso encaminhar para nossa equipe|posso encaminhar para a equipe|encaminhar para nossa equipe\s*\?/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
   if (
     /posso consultar a disponibilidade|posso verificar a disponibilidade|consultar a disponibilidade\s*\?/i.test(
       t,
@@ -390,7 +397,7 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
   const msg = (opts.userMessage ?? "").trim();
   const isYes = isShortAffirmativeConfirmation(msg);
 
-  // C6c: sim pós Modelo C6 Confirm → consulta disponibilidade (não suppress).
+  // C6c: sim pós Modelo C6 Confirm → call_human (não suppress).
   if (isYes && assistantIsQuoteAvailabilityConfirm(opts.lastAssistantMessage)) {
     return false;
   }

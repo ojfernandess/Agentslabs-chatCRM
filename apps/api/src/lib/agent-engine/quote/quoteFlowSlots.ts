@@ -189,6 +189,7 @@ export function mergeQuoteFlowSlotsFromConversation(opts: {
     assistantIsQuoteAvailabilityConfirm(opts.lastAssistantMessage)
   ) {
     merged = stripAvailabilityToolFromSatisfiedNames(merged);
+    merged = stripCallHumanFromSatisfiedNames(merged);
     delete merged[QUOTE_OPTIONS_CATALOG_SLOT];
   }
 
@@ -228,4 +229,58 @@ export function mergeQuoteFlowSlotsFromConversation(opts: {
   }
 
   return merged;
+}
+
+function formatSlotDateForDisplay(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const raw = String(value).trim();
+  if (!raw) return undefined;
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const br = raw.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  if (br) return `${br[1]!.padStart(2, "0")}/${br[2]!.padStart(2, "0")}/${br[3]}`;
+  return raw;
+}
+
+/** Modelo C6 Handoff Confirm — após `call_human` OK no turno C6c. */
+export function buildModeloC6HandoffConfirmReply(opts: {
+  flowSlots?: QuoteFlowSlots;
+  lastAssistantMessage?: string | null;
+}): string | null {
+  const merged: QuoteFlowSlots = { ...(opts.flowSlots ?? {}) };
+  for (const extracted of [
+    extractQuoteFlowSlotsFromText(opts.lastAssistantMessage ?? ""),
+  ]) {
+    for (const [k, v] of Object.entries(extracted)) {
+      if (v !== undefined && v !== null && String(v).trim() !== "") merged[k] = v;
+    }
+  }
+
+  const establishmentName =
+    typeof merged.establishmentName === "string" ? merged.establishmentName.trim() : "";
+  const checkinDate = formatSlotDateForDisplay(merged.checkinDate ?? merged.checkInDate);
+  const checkoutDate = formatSlotDateForDisplay(merged.checkoutDate ?? merged.checkOutDate);
+  const guestsRaw = merged.guestsQuantity ?? merged.guests;
+  const guests =
+    typeof guestsRaw === "number"
+      ? guestsRaw
+      : Number.parseInt(String(guestsRaw ?? ""), 10);
+
+  if (!establishmentName && !checkinDate && !checkoutDate && !(Number.isFinite(guests) && guests > 0)) {
+    return null;
+  }
+
+  const lines = ["Perfeito! Anotei:", ""];
+  if (establishmentName) lines.push(`🏢 Propriedade: ${establishmentName}`);
+  if (checkinDate) lines.push(`📅 Data de chegada: ${checkinDate}`);
+  if (checkoutDate) lines.push(`📅 Data de partida: ${checkoutDate}`);
+  if (Number.isFinite(guests) && guests > 0) lines.push(`👤 Quantidade de pessoas: ${guests}`);
+  const bedPref =
+    typeof merged.bedPreference === "string" ? merged.bedPreference.trim() : "";
+  if (bedPref) lines.push(`🛏️ Preferência de cama: ${bedPref}`);
+  lines.push(
+    "",
+    "Vou encaminhar seu atendimento para nossa equipe, que dará continuidade na cotação e disponibilidade. Em instantes alguém continuará por aqui. 😊",
+  );
+  return lines.join("\n");
 }

@@ -22,6 +22,7 @@ import {
   replyShouldPreemptEscalationTransferMessage,
   resolveQuoteHandoffContext,
 } from "../quote/quoteAvailabilityReply.js";
+import { buildModeloC6HandoffConfirmReply } from "../quote/quoteFlowSlots.js";
 import {
   assistantIsQuoteDiscountTransferOffer,
   assistantIsQuoteOptionsList,
@@ -420,15 +421,15 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
 
   if (
     quoteC6ConfirmTurn &&
-    !availabilityThisTurn &&
+    !callHumanSucceeded &&
     replyLooksLikeInventedQuote
   ) {
     return {
       reply:
-        "Preciso consultar a disponibilidade no sistema antes de informar valores. " +
-        "Não consegui concluir a consulta agora — pode confirmar novamente com *sim* ou informar outras datas?",
+        "Não posso informar preços ou disponibilidade por aqui. " +
+        "Tive um problema ao encaminhar para a equipe agora — pode confirmar novamente com *sim*?",
       replaced: true,
-      reason: "quote_availability_failed",
+      reason: "quote_call_human_missing",
     };
   }
 
@@ -443,6 +444,21 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
           "Não consegui consultar a disponibilidade agora. Pode repetir as datas e a propriedade, ou prefere que eu encaminhe para a equipe?",
         replaced: true,
         reason: "quote_availability_failed",
+      };
+    }
+    if (
+      quoteC6ConfirmTurn &&
+      !callHumanSucceeded &&
+      (failedCallHuman ||
+        replyClaimsHumanTransfer(input.replyText) ||
+        isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages))
+    ) {
+      return {
+        reply:
+          "Recebi sua confirmação da cotação. Tive um problema ao encaminhar para a equipe agora. " +
+          "Pode confirmar novamente com *sim*?",
+        replaced: true,
+        reason: failedCallHuman ? "quote_call_human_failed" : "quote_call_human_missing",
       };
     }
     if (
@@ -492,6 +508,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     if (
       !quoteChoiceTurn &&
       !quoteDiscountAcceptTurn &&
+      !quoteC6ConfirmTurn &&
       !nfUnitKbTurn &&
       !nfDataCollectionTurn &&
       !failedCallHuman &&
@@ -613,9 +630,22 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   if (
     !postCompletionTurn &&
     callHuman &&
-    (quoteChoiceTurn || quoteDiscountAcceptTurn || soleCallHuman) &&
+    (quoteC6ConfirmTurn || quoteChoiceTurn || quoteDiscountAcceptTurn || soleCallHuman) &&
     !replyLooksLikeModeloC6Handoff(input.replyText)
   ) {
+    if (quoteC6ConfirmTurn) {
+      const handoff = buildModeloC6HandoffConfirmReply({
+        flowSlots: input.flowSlots,
+        lastAssistantMessage: input.lastAssistantMessage,
+      });
+      if (handoff) {
+        return {
+          reply: handoff,
+          replaced: true,
+          reason: "quote_c6_handoff_confirm",
+        };
+      }
+    }
     if (quoteDiscountAcceptTurn) {
       return {
         reply: buildModeloC6DiscountHandoffReply(),

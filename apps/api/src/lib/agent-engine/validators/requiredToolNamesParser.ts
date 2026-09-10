@@ -718,7 +718,7 @@ export function resolveRequiredToolNamesForTurn(
       if (pattern.id === "structured_form_submission" && isNfDataCollectionTurn(unitCtx)) {
         continue;
       }
-      // C6 coleta/confirmação = ZERO tools; C6c (disponibilidade) só via turnPolicy no «sim» pós Confirm.
+      // C6 coleta/confirmação = ZERO tools; C6c (call_human) só via turnPolicy no «sim» pós Confirm.
       if (
         (pattern.id === "quote_request" ||
           pattern.id === "quote_stay_details" ||

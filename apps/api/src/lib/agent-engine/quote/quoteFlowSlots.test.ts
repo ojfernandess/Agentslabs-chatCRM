@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildModeloC6HandoffConfirmReply,
   extractQuoteFlowSlotsFromText,
   mergeQuoteFlowSlotsFromConversation,
   resetQuoteAvailabilitySessionState,
@@ -77,10 +78,10 @@ const C6_CONFIRM = `Perfeito! Então temos:
 👤 Quantidade de pessoas: 2
 Está tudo certo? Posso consultar a disponibilidade?`;
 
-test("mergeQuoteFlowSlotsFromConversation strips prior availability before C6c sim", () => {
+test("mergeQuoteFlowSlotsFromConversation strips prior quote tools before C6c sim", () => {
   const merged = mergeQuoteFlowSlotsFromConversation({
     flowSlots: {
-      [SESSION_SATISFIED_TOOLS_KEY]: "audaar_consultar_disponibilidade",
+      [SESSION_SATISFIED_TOOLS_KEY]: "audaar_consultar_disponibilidade,call_human",
       establishmentId: 3,
       checkinDate: "2026-08-02",
       checkoutDate: "2026-08-04",
@@ -90,6 +91,15 @@ test("mergeQuoteFlowSlotsFromConversation strips prior availability before C6c s
     lastAssistantMessage: C6_CONFIRM,
   });
   assert.equal(merged[SESSION_SATISFIED_TOOLS_KEY], undefined);
+});
+
+test("buildModeloC6HandoffConfirmReply renders summary from Modelo C6 Confirm", () => {
+  const reply = buildModeloC6HandoffConfirmReply({ lastAssistantMessage: C6_CONFIRM });
+  assert.ok(reply);
+  assert.match(reply!, /Perfeito! Anotei:/i);
+  assert.match(reply!, /Vivapp Club Suítes/);
+  assert.match(reply!, /02\/08\/2026/);
+  assert.match(reply!, /Quantidade de pessoas: 2/);
 });
 
 const C6_OPTIONS_MSG = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:

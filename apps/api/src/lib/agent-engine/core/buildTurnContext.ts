@@ -1,5 +1,8 @@
 import { priorToolOutcomesFromSession } from "./sessionToolOutcomes.js";
-import { readLastAssistantPreview } from "./confirmationTurnGuards.js";
+import {
+  readLastAssistantPreview,
+  SESSION_LAST_ASSISTANT_PREVIEW_KEY,
+} from "./confirmationTurnGuards.js";
 import { compilePromptToIR } from "../compiler/PromptCompiler.js";
 import { promptIrToContract } from "../contract/promptIrAdapter.js";
 import { analyzeTurnIntent } from "../compiler/IntentAnalyzer.js";
@@ -154,11 +157,18 @@ export function buildTurnContext(opts: BuildTurnContextOpts): TurnContext {
     opts.priorFacts ?? {},
     factsFromFlowSlots(memoryFlowSlots),
   );
-  const facts = ingestToolOutcomes({
+  let facts = ingestToolOutcomes({
     outcomes: opts.toolOutcomes ?? [],
     prior,
     graph,
   });
+  const preview = lastAssistantMessage.trim();
+  if (preview && !facts[SESSION_LAST_ASSISTANT_PREVIEW_KEY]) {
+    facts = mergeFactStores(
+      facts,
+      factsFromFlowSlots({ [SESSION_LAST_ASSISTANT_PREVIEW_KEY]: preview }),
+    );
+  }
   const toolsCalled = (opts.toolOutcomes ?? []).filter((t) => t.ok).map((t) => t.name);
 
   const unifiedPlan = buildUnifiedExecutionPlan({

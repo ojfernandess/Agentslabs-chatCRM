@@ -165,6 +165,13 @@ Está tudo certo? Posso verificar a disponibilidade?`;
   assert.equal(assistantIsQuoteAvailabilityConfirm(msg), true);
 });
 
+test("assistantIsQuoteAvailabilityConfirm detects Posso encaminhar para nossa equipe", () => {
+  const msg = `Perfeito! Então temos:
+🏢 Propriedade: Audaar Tech Suites
+Está tudo certo? Posso encaminhar para nossa equipe?`;
+  assert.equal(assistantIsQuoteAvailabilityConfirm(msg), true);
+});
+
 test("sim after Modelo C6 Confirm does not suppress exclusive gate", () => {
   assert.equal(
     shouldSuppressConfirmationExclusiveTools({

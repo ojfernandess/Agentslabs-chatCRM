@@ -477,7 +477,7 @@ export function resolveTurnPolicy(
     forceExclusiveExecution = true;
   }
 
-  // C6c: `sim` após Modelo C6 Confirm → audaar_consultar_disponibilidade (exclusive).
+  // C6c: `sim` após Modelo C6 Confirm → call_human (exclusive; handoff humano).
   const fichaConfirm =
     isConfirmation &&
     !suppressExclusive &&
@@ -490,10 +490,8 @@ export function resolveTurnPolicy(
     !forceExclusiveExecution &&
     quoteAvailabilityConfirm
   ) {
-    const quoteTool = parseQuoteAvailabilityToolFromPlaybook(playbook, available);
-    // C6c exige nova consulta a cada confirmação — ignorar tool satisfeita em cotação anterior.
-    if (quoteTool) {
-      exclusiveAllowedTools = [quoteTool];
+    if (available.size === 0 || available.has("call_human")) {
+      exclusiveAllowedTools = ["call_human"];
       forceExclusiveExecution = true;
     }
   } else if (

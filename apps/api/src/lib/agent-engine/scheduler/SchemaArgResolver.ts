@@ -10,9 +10,12 @@ import {
   resolveQuoteOptionChoice,
 } from "../quote/quoteAvailabilityReply.js";
 import {
+  assistantIsQuoteAvailabilityConfirm,
+  readLastAssistantPreview,
   resolveKnowledgeLookupOfferQuery,
   shouldRequireKnowledgeLookupAfterOffer,
 } from "../core/confirmationTurnGuards.js";
+import { factsToFlowSlots } from "../eil/FactsEngine.js";
 
 /** Perfil declarativo por capability — merge com config.eil da tool. */
 const CAPABILITY_ARG_PROFILES: Record<string, Partial<ToolEilConfig>> = {
@@ -292,19 +295,7 @@ export function resolveSchemaToolArgs(opts: ResolveSchemaToolArgsOpts): Record<s
   const messageArg =
     eil.messageArg ?? TOOL_MESSAGE_ARGS[toolName.trim().toLowerCase()];
   if (messageArg) {
-    const flowSlots = turnContext.facts ?? {};
-    let lastAssistant = "";
-    for (const key of ["__lastAssistantPreview", "lastReplyPreview"]) {
-      const v = flowSlots[key];
-      const scalar =
-        v && typeof v === "object" && "value" in (v as object)
-          ? (v as { value?: unknown }).value
-          : v;
-      if (typeof scalar === "string" && scalar.trim()) {
-        lastAssistant = scalar.trim();
-        break;
-      }
-    }
+    const lastAssistant = readLastAssistantPreview(factsToFlowSlots(turnContext.facts ?? {}));
 
     if (toolName.trim().toLowerCase() === "buscar_conhecimento") {
       if (
@@ -319,6 +310,9 @@ export function resolveSchemaToolArgs(opts: ResolveSchemaToolArgsOpts): Record<s
     }
 
     if (toolName.trim().toLowerCase() === "call_human") {
+      if (assistantIsQuoteAvailabilityConfirm(lastAssistant)) {
+        return { reason: "Cotação — encaminhamento após confirmação dos dados" };
+      }
       if (/deseja que eu fa[cç]a essa transfer[eê]ncia/i.test(lastAssistant)) {
         return { reason: "Cotação — hóspede solicitou verificação de desconto" };
       }

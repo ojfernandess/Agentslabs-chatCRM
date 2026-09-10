@@ -221,9 +221,9 @@ const C6_CONFIRM_MSG = `Perfeito! Então temos:
 📅 Data de chegada: 02/08/2026
 📅 Data de partida: 04/08/2026
 👤 Quantidade de pessoas: 2
-Está tudo certo? Posso consultar a disponibilidade?`;
+Está tudo certo? Posso encaminhar para nossa equipe?`;
 
-test("ensureDeliveringReply blocks invented quote after C6 Confirm without availability tool", () => {
+test("ensureDeliveringReply blocks invented quote after C6 Confirm without call_human", () => {
   const invented = `Consultei a disponibilidade para o período informado - 02/08/2026 a 04/08/2026. Estas são as opções:
 
 1️⃣ Standard — R$ 450,00 / diária · R$ 900,00 total
@@ -237,9 +237,23 @@ Qual opção você prefere?`;
     toolOutcomes: [],
   });
   assert.equal(result.replaced, true);
-  assert.equal(result.reason, "quote_availability_failed");
-  assert.match(result.reply, /Preciso consultar a disponibilidade no sistema/i);
+  assert.equal(result.reason, "quote_call_human_missing");
+  assert.match(result.reply, /Não posso informar preços ou disponibilidade/i);
   assert.doesNotMatch(result.reply, /R\$ 450|Standard|Deluxe/i);
+});
+
+test("ensureDeliveringReply renders Modelo C6 Handoff Confirm after call_human on C6c", () => {
+  const result = ensureDeliveringReply({
+    replyText: "Vou encaminhar para a equipe.",
+    userMessage: "sim",
+    lastAssistantMessage: C6_CONFIRM_MSG,
+    toolOutcomes: [{ name: "call_human", ok: true, preview: '{"ok":true}' }],
+  });
+  assert.equal(result.replaced, true);
+  assert.equal(result.reason, "quote_c6_handoff_confirm");
+  assert.match(result.reply, /Perfeito! Anotei:/i);
+  assert.match(result.reply, /Vivapp Club Suítes/);
+  assert.match(result.reply, /encaminhar seu atendimento para nossa equipe/i);
 });
 
 const C6_OPTIONS_MSG = `Consultei a disponibilidade para o período informado - 03/08/2026 a 04/08/2026. Estas são as opções:

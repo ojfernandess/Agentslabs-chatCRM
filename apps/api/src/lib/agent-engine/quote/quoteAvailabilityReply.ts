@@ -727,7 +727,7 @@ export function replyLooksLikeModeloC6Handoff(text: string): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
   return (
-    (/perfeito!\s*ent[aã]o temos/i.test(t) ||
+    (/perfeito!\s*(?:ent[aã]o temos|anotei)/i.test(t) ||
       /encaminhar sua preferência para nossa equipe|encaminhar seu atendimento para nossa equipe/i.test(
         t,
       )) &&

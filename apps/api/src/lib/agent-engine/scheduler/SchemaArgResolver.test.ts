@@ -65,6 +65,21 @@ test("resolveSchemaToolArgs checkin nested mainGuest from session facts", () => 
   assert.equal((args.mainGuest as Record<string, unknown>).name, "João Silva");
 });
 
+test("resolveSchemaToolArgs call_human after Modelo C6 Confirm uses quote handoff reason", () => {
+  const confirm = `Perfeito! Então temos:
+🏢 Propriedade: Audaar Tech Suites
+Está tudo certo? Posso encaminhar para nossa equipe?`;
+  const ctx = buildTurnContext({
+    turnId: "t1",
+    behaviorConfig: {},
+    userMessage: "sim",
+    lastAssistantMessage: confirm,
+    availableToolNames: ["call_human"],
+  });
+  const args = resolveSchemaToolArgs({ toolName: "call_human", turnContext: ctx });
+  assert.equal(args.reason, "Cotação — encaminhamento após confirmação dos dados");
+});
+
 test("resolveSchemaToolArgs availability tool maps quote flow slots", () => {
   const ctx = buildTurnContext({
     turnId: "t1",
