@@ -141,6 +141,19 @@ export function assistantIsCompanionMirrorConfirm(lastAssistantMessage?: string 
   return /confirme\s+os\s+dados\s+do\s+acompanhante|dados\s+do\s+acompanhante/i.test(t);
 }
 
+/** Modelo C6 Abertura — menu de unidades + pedido dos 4 dados (≠ C18/C19). */
+export function assistantIsQuoteAbertura(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  if (assistantIsQuoteOptionsList(t)) return false;
+  if (assistantIsQuoteAvailabilityConfirm(t)) return false;
+  return (
+    /vou te ajudar com a cota[cç][aã]o|preparar sua cota[cç][aã]o com nossa equipe/i.test(t) &&
+    /(?:propriedade\/unidade|propriedade).*chegada|data de chegada\s*\(check-in\)/i.test(t) &&
+    /(?:quantidade de pessoas|👤)/i.test(t)
+  );
+}
+
 /** Modelo C6 Confirm — hóspede confirma dados antes do handoff (C6c). */
 export function assistantIsQuoteAvailabilityConfirm(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();

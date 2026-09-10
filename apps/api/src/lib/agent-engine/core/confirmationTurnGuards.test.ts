@@ -4,6 +4,7 @@ import {
   messageLooksLikePostGateFormData,
   shouldAllowCompletionToolPromotion,
   shouldSuppressConfirmationExclusiveTools,
+  assistantIsQuoteAbertura,
   assistantIsQuoteAvailabilityConfirm,
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
@@ -151,6 +152,25 @@ const C6_CONFIRM = `Perfeito! Então temos:
 👤 Quantidade de pessoas: 2
 
 Está tudo certo? Posso consultar a disponibilidade?`;
+
+const C6_ABERTURA = `Vou te ajudar com a cotação!
+
+🏨 **Nossos estabelecimentos:**
+
+1️⃣ Audaar Tech Suites
+7️⃣ Hotel Brooklin
+
+Para preparar sua cotação com nossa equipe, preciso das seguintes informações:
+
+🏢 Propriedade/unidade desejada
+📅 Data de chegada (check-in) — DD/MM/AAAA
+📅 Data de partida (checkout) — DD/MM/AAAA
+👤 Quantidade de pessoas (total)`;
+
+test("assistantIsQuoteAbertura detects Modelo C6 Abertura", () => {
+  assert.equal(assistantIsQuoteAbertura(C6_ABERTURA), true);
+  assert.equal(assistantIsQuoteAbertura(C6_CONFIRM), false);
+});
 
 test("assistantIsQuoteAvailabilityConfirm detects Modelo C6 Confirm", () => {
   assert.equal(assistantIsQuoteAvailabilityConfirm(C6_CONFIRM), true);

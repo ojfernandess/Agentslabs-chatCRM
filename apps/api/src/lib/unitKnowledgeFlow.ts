@@ -6,6 +6,10 @@ import {
   extractReservationReferenceFromMessage,
 } from "./knowledgeQueryEnrichment.js";
 import { messageLooksLikeHumanHandoffRequest } from "./agent-engine/escalation/escalationTurnDetection.js";
+import {
+  assistantIsQuoteAbertura,
+  assistantIsQuoteAvailabilityConfirm,
+} from "./agent-engine/core/confirmationTurnGuards.js";
 
 export const ESTABLISHMENT_MENU: ReadonlyArray<{ digit: string; name: string }> = [
   { digit: "1", name: "Audaar Tech Suites" },
@@ -152,6 +156,7 @@ export function assistantRequestedEstablishmentForUnitKb(
 ): boolean {
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
+  if (assistantIsQuoteAbertura(t) || assistantIsQuoteAvailabilityConfirm(t)) return false;
 
   const showsEstablishmentMenu =
     (/1️⃣/.test(t) && /7️⃣/.test(t)) ||
@@ -183,6 +188,9 @@ export function shouldRequireUnitKnowledgeLookupThisTurn(opts: {
   lastAssistantMessage?: string | null;
   flowSlots?: Record<string, string | number | boolean> | null;
 }): boolean {
+  if (assistantIsQuoteAbertura(opts.lastAssistantMessage)) return false;
+  if (assistantIsQuoteAvailabilityConfirm(opts.lastAssistantMessage)) return false;
+
   if (!resolveEstablishmentInConversation(opts)) return false;
 
   const msg = (opts.userMessage ?? "").trim();

@@ -78,6 +78,29 @@ test("standalone locator after NF form does not require reservation lookup", () 
   );
 });
 
+test("quote stay details after Modelo C6 Abertura does not require unit KB lookup", () => {
+  const c6Abertura = `Vou te ajudar com a cotação!
+
+1️⃣ Audaar Tech Suites
+7️⃣ Hotel Brooklin
+
+Para preparar sua cotação com nossa equipe, preciso das seguintes informações:
+
+🏢 Propriedade/unidade desejada
+📅 Data de chegada (check-in) — DD/MM/AAAA
+📅 Data de partida (checkout) — DD/MM/AAAA
+👤 Quantidade de pessoas (total)`;
+
+  assert.equal(assistantRequestedEstablishmentForUnitKb(c6Abertura), false);
+  assert.equal(
+    shouldRequireUnitKnowledgeLookupThisTurn({
+      userMessage: "Audaar tech, dia 10/09 a 13/09, 2 hospedes",
+      lastAssistantMessage: c6Abertura,
+    }),
+    false,
+  );
+});
+
 test("establishment-only reply after NF unit collection requires KB lookup", () => {
   const lastAssistant = `Para emitir a nota fiscal, preciso saber em qual unidade você está hospedado:
 
