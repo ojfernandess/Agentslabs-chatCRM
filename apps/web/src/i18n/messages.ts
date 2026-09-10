@@ -4893,7 +4893,10 @@ export const messages = {
       billingIntro: "Consulte o plano atual, altere a assinatura e aceda ao portal de pagamentos Stripe.",
       billingLoadError: "Não foi possível carregar os dados de faturação.",
       billingActionError: "Não foi possível concluir a operação de faturação.",
-      billingStripeNotConfigured: "A integração Stripe ainda não está configurada neste ambiente. Contacte o suporte.",
+      billingStripeNotConfigured:
+        "A integração Stripe ainda não está configurada neste ambiente. O administrador do servidor deve definir STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET no serviço API e reiniciar o contentor.",
+      billingStripeNotConfiguredHint:
+        "Os planos aparecem abaixo, mas o botão Assinar só fica disponível após a API reconhecer as chaves Stripe.",
       billingCurrentPlan: "Plano atual",
       billingNoPlan: "Nenhum plano associado.",
       billingFreePlan: "Gratuito",
@@ -10648,7 +10651,10 @@ export const messages = {
       billingIntro: "View your current plan, change subscription, and open the Stripe billing portal.",
       billingLoadError: "Could not load billing data.",
       billingActionError: "Could not complete the billing operation.",
-      billingStripeNotConfigured: "Stripe integration is not configured in this environment. Contact support.",
+      billingStripeNotConfigured:
+        "Stripe is not configured in this environment. Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET on the API service and restart the container.",
+      billingStripeNotConfiguredHint:
+        "Plans are listed below, but Subscribe stays disabled until the API detects valid Stripe keys.",
       billingCurrentPlan: "Current plan",
       billingNoPlan: "No plan assigned.",
       billingFreePlan: "Free",
