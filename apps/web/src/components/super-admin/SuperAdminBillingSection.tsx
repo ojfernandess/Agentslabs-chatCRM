@@ -161,6 +161,9 @@ export function SuperAdminBillingSection() {
     overage: emptyOverageForm(),
   }));
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [stripeKeyMode, setStripeKeyMode] = useState<"test" | "live" | "unknown">("unknown");
+  const [resetClearPlanIds, setResetClearPlanIds] = useState(true);
+  const [resetBusy, setResetBusy] = useState(false);
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
   const [planForm, setPlanForm] = useState(EMPTY_PLAN_FORM);
@@ -184,8 +187,12 @@ export function SuperAdminBillingSection() {
   }, [subQuery, subStatus]);
 
   const loadSettings = useCallback(async () => {
-    const res = await api.get<{ settings: Parameters<typeof settingsFromApi>[0] }>("/super/billing/settings");
+    const res = await api.get<{
+      settings: Parameters<typeof settingsFromApi>[0];
+      stripeKeyMode?: "test" | "live" | "unknown";
+    }>("/super/billing/settings");
     setBillingSettings(settingsFromApi(res.settings));
+    setStripeKeyMode(res.stripeKeyMode ?? "unknown");
   }, []);
 
   const loadAll = useCallback(async () => {
@@ -280,6 +287,38 @@ export function SuperAdminBillingSection() {
       setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
     } finally {
       setPlanSaving(false);
+    }
+  };
+
+  const resetStripeBindings = async () => {
+    if (
+      !window.confirm(
+        resetClearPlanIds
+          ? t("superAdmin.billingResetStripeConfirmWithPlans")
+          : t("superAdmin.billingResetStripeConfirm"),
+      )
+    ) {
+      return;
+    }
+    setResetBusy(true);
+    setError("");
+    try {
+      const res = await api.post<{
+        organizationsCleared: number;
+        subscriptionsCleared: number;
+        plansCleared: number;
+      }>("/super/billing/reset-stripe-bindings", { clearPlanStripeIds: resetClearPlanIds });
+      await loadSettings();
+      window.alert(
+        t("superAdmin.billingResetStripeDone")
+          .replace("{orgs}", String(res.organizationsCleared))
+          .replace("{subs}", String(res.subscriptionsCleared))
+          .replace("{plans}", String(res.plansCleared)),
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -612,6 +651,37 @@ export function SuperAdminBillingSection() {
             <button type="submit" className="btn-primary" disabled={settingsSaving}>
               {settingsSaving ? t("common.saving") : t("common.save")}
             </button>
+
+            <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+              <h4 className="text-sm font-semibold text-slate-900">{t("superAdmin.billingStripeModeTitle")}</h4>
+              <p className="text-sm text-slate-600">
+                {t("superAdmin.billingStripeModeCurrent").replace(
+                  "{mode}",
+                  stripeKeyMode === "live"
+                    ? t("superAdmin.billingStripeModeLive")
+                    : stripeKeyMode === "test"
+                      ? t("superAdmin.billingStripeModeTest")
+                      : t("superAdmin.billingStripeModeUnknown"),
+                )}
+              </p>
+              <p className="text-sm text-slate-600">{t("superAdmin.billingResetStripeHint")}</p>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={resetClearPlanIds}
+                  onChange={(e) => setResetClearPlanIds(e.target.checked)}
+                />
+                {t("superAdmin.billingResetStripeClearPlans")}
+              </label>
+              <button
+                type="button"
+                className="btn-secondary border-amber-300 text-amber-900"
+                disabled={resetBusy}
+                onClick={() => void resetStripeBindings()}
+              >
+                {resetBusy ? t("common.saving") : t("superAdmin.billingResetStripeAction")}
+              </button>
+            </div>
           </form>
         </SuperAdminPanel>
       ) : null}

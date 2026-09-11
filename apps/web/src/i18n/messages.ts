@@ -5680,6 +5680,20 @@ export const messages = {
         "Crie Billing Meters no Stripe Dashboard com estes event_name e associe preços metered à subscrição. Documentação: docs.stripe.com/api/billing/meter-event/create",
       billingOverageMeterEventName: "event_name do meter",
       billingOverageUnitCents: "Preço unitário ref. (centavos, opcional)",
+      billingStripeModeTitle: "Modo Stripe (test vs live)",
+      billingStripeModeCurrent: "Chave API actual: {mode}.",
+      billingStripeModeLive: "Produção (live)",
+      billingStripeModeTest: "Teste (sandbox)",
+      billingStripeModeUnknown: "Desconhecido",
+      billingResetStripeHint:
+        "Ao mudar STRIPE_SECRET_KEY de teste para produção, limpe os IDs antigos guardados na base de dados e actualize os Stripe Price IDs dos planos com IDs live.",
+      billingResetStripeClearPlans: "Limpar também Stripe Product/Price IDs dos planos",
+      billingResetStripeAction: "Limpar ligações Stripe (test → live)",
+      billingResetStripeConfirm:
+        "Isto remove customer/subscription IDs de todas as organizações. As orgs terão de concluir checkout de novo. Continuar?",
+      billingResetStripeConfirmWithPlans:
+        "Isto remove customer/subscription IDs de todas as organizações e Product/Price IDs dos planos. Terá de reintroduzir os IDs live nos planos. Continuar?",
+      billingResetStripeDone: "Limpeza concluída: {orgs} org(s), {subs} subscrição(ões), {plans} plano(s).",
       billingDescription: "Descrição",
       billingLoadError: "Não foi possível carregar dados de billing.",
       billingSaveError: "Não foi possível guardar.",
@@ -11503,6 +11517,20 @@ export const messages = {
         "Create Billing Meters in the Stripe Dashboard with these event_name values and attach metered prices to subscriptions. Docs: docs.stripe.com/api/billing/meter-event/create",
       billingOverageMeterEventName: "Meter event_name",
       billingOverageUnitCents: "Reference unit price (cents, optional)",
+      billingStripeModeTitle: "Stripe mode (test vs live)",
+      billingStripeModeCurrent: "Current API key: {mode}.",
+      billingStripeModeLive: "Production (live)",
+      billingStripeModeTest: "Test (sandbox)",
+      billingStripeModeUnknown: "Unknown",
+      billingResetStripeHint:
+        "When switching STRIPE_SECRET_KEY from test to live, clear stale IDs in the database and update plan Stripe Price IDs with live values.",
+      billingResetStripeClearPlans: "Also clear Stripe Product/Price IDs on plans",
+      billingResetStripeAction: "Clear Stripe bindings (test → live)",
+      billingResetStripeConfirm:
+        "This removes customer/subscription IDs for all organizations. Orgs must complete checkout again. Continue?",
+      billingResetStripeConfirmWithPlans:
+        "This removes customer/subscription IDs for all organizations and Product/Price IDs on plans. You must re-enter live plan IDs. Continue?",
+      billingResetStripeDone: "Reset complete: {orgs} org(s), {subs} subscription(s), {plans} plan(s).",
       billingDescription: "Description",
       billingLoadError: "Could not load billing data.",
       billingSaveError: "Could not save.",

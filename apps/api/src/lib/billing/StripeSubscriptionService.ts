@@ -1,9 +1,42 @@
 import { prisma } from "../../db.js";
 import { recordBillingAudit } from "./billingAudit.js";
+import { clearOrganizationStripeBindings } from "./clearStripeBindings.js";
 import { BillingError } from "./StripeCustomerService.js";
 import { getStripeClient } from "./stripeClient.js";
 import { syncSubscriptionFromStripe } from "./subscriptionSync.js";
 import { isAccessGrantingStatus } from "./billingTypes.js";
+import { isStaleStripeBindingError } from "./stripeErrors.js";
+
+const STRIPE_MODE_MISMATCH_MESSAGE =
+  "Stripe subscription is from test mode but live keys are configured (or the reverse). Clear Stripe bindings and complete checkout again.";
+
+async function retrieveStripeSubscriptionOrReset(
+  organizationId: string,
+  stripeSubscriptionId: string,
+): Promise<Awaited<ReturnType<ReturnType<typeof getStripeClient>["subscriptions"]["retrieve"]>>> {
+  const stripe = getStripeClient();
+  try {
+    return await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  } catch (err) {
+    if (!isStaleStripeBindingError(err)) throw err;
+    await clearOrganizationStripeBindings(organizationId);
+    throw new BillingError(STRIPE_MODE_MISMATCH_MESSAGE, "stripe_mode_mismatch");
+  }
+}
+
+async function mutateStripeSubscriptionOrReset<T>(
+  organizationId: string,
+  stripeSubscriptionId: string,
+  mutate: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await mutate();
+  } catch (err) {
+    if (!isStaleStripeBindingError(err)) throw err;
+    await clearOrganizationStripeBindings(organizationId);
+    throw new BillingError(STRIPE_MODE_MISMATCH_MESSAGE, "stripe_mode_mismatch");
+  }
+}
 
 export type ChangePlanInput = {
   organizationId: string;
@@ -41,21 +74,28 @@ export async function changeSubscriptionPlan(input: ChangePlanInput): Promise<vo
     throw new BillingError("Subscription is not in a changeable state", "invalid_subscription_state");
   }
 
-  const stripe = getStripeClient();
-  const stripeSub = await stripe.subscriptions.retrieve(sub.stripeSubscriptionId);
+  const stripeSub = await retrieveStripeSubscriptionOrReset(
+    input.organizationId,
+    sub.stripeSubscriptionId,
+  );
   const itemId = stripeSub.items.data[0]?.id;
   if (!itemId) throw new BillingError("Stripe subscription has no line item", "stripe_item_missing");
 
-  const updated = await stripe.subscriptions.update(sub.stripeSubscriptionId, {
-    items: [{ id: itemId, price: plan.stripePriceId }],
-    metadata: {
-      ...stripeSub.metadata,
-      organizationId: input.organizationId,
-      planId: plan.id,
-      planSlug: plan.slug,
-    },
-    proration_behavior: "create_prorations",
-  });
+  const updated = await mutateStripeSubscriptionOrReset(
+    input.organizationId,
+    sub.stripeSubscriptionId,
+    () =>
+      getStripeClient().subscriptions.update(sub.stripeSubscriptionId!, {
+        items: [{ id: itemId, price: plan.stripePriceId! }],
+        metadata: {
+          ...stripeSub.metadata,
+          organizationId: input.organizationId,
+          planId: plan.id,
+          planSlug: plan.slug,
+        },
+        proration_behavior: "create_prorations",
+      }),
+  );
 
   await syncSubscriptionFromStripe(updated, input.organizationId);
 
@@ -78,12 +118,18 @@ export async function cancelOrganizationSubscription(input: CancelSubscriptionIn
     throw new BillingError("No Stripe subscription to cancel", "no_stripe_subscription");
   }
 
-  const stripe = getStripeClient();
   const cancelAtPeriodEnd = input.cancelAtPeriodEnd !== false;
 
-  const updated = cancelAtPeriodEnd
-    ? await stripe.subscriptions.update(sub.stripeSubscriptionId, { cancel_at_period_end: true })
-    : await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+  const updated = await mutateStripeSubscriptionOrReset(
+    input.organizationId,
+    sub.stripeSubscriptionId,
+    () => {
+      const stripe = getStripeClient();
+      return cancelAtPeriodEnd
+        ? stripe.subscriptions.update(sub.stripeSubscriptionId!, { cancel_at_period_end: true })
+        : stripe.subscriptions.cancel(sub.stripeSubscriptionId!);
+    },
+  );
 
   await syncSubscriptionFromStripe(updated, input.organizationId);
 
@@ -110,10 +156,14 @@ export async function resumeScheduledCancellation(input: {
     throw new BillingError("No Stripe subscription", "no_stripe_subscription");
   }
 
-  const stripe = getStripeClient();
-  const updated = await stripe.subscriptions.update(sub.stripeSubscriptionId, {
-    cancel_at_period_end: false,
-  });
+  const updated = await mutateStripeSubscriptionOrReset(
+    input.organizationId,
+    sub.stripeSubscriptionId,
+    () =>
+      getStripeClient().subscriptions.update(sub.stripeSubscriptionId!, {
+        cancel_at_period_end: false,
+      }),
+  );
   await syncSubscriptionFromStripe(updated, input.organizationId);
 
   await recordBillingAudit({

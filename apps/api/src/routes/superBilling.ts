@@ -4,10 +4,16 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { requireSuperAdmin } from "../middleware/auth.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
+import { config } from "../config.js";
 import {
   getBillingPlatformSettings,
   patchBillingPlatformSettings,
 } from "../lib/billing/billingSettings.js";
+import {
+  clearAllOrganizationStripeBindings,
+  clearPlanStripeIds,
+} from "../lib/billing/clearStripeBindings.js";
+import { getStripeKeyMode } from "../lib/billing/stripeErrors.js";
 import { parsePlanFeatures, parsePlanLimits } from "../lib/billing/billingTypes.js";
 import { BillingError } from "../lib/billing/StripeCustomerService.js";
 import {
@@ -43,6 +49,10 @@ const overageDimensionPatchSchema = z.object({
   enabled: z.boolean().optional(),
   stripeMeterEventName: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
   unitAmountCents: z.union([z.number().int().min(0), z.null()]).optional(),
+});
+
+const resetStripeBindingsSchema = z.object({
+  clearPlanStripeIds: z.boolean().optional().default(false),
 });
 
 const billingSettingsPatchSchema = z
@@ -151,7 +161,39 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/settings", async () => {
     const settings = await getBillingPlatformSettings();
-    return { settings };
+    return {
+      settings,
+      stripeKeyMode: getStripeKeyMode(config.stripeSecretKey),
+    };
+  });
+
+  app.post("/reset-stripe-bindings", async (request, reply) => {
+    const parsed = resetStripeBindingsSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const orgBindings = await clearAllOrganizationStripeBindings();
+    const planBindings = parsed.data.clearPlanStripeIds ? await clearPlanStripeIds() : { plansCleared: 0 };
+
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.stripe_bindings_reset",
+      resourceType: "billing_settings",
+      metadata: {
+        clearPlanStripeIds: parsed.data.clearPlanStripeIds,
+        ...orgBindings,
+        ...planBindings,
+      },
+      ip: clientIp(request),
+    });
+
+    return {
+      stripeKeyMode: getStripeKeyMode(config.stripeSecretKey),
+      organizationsCleared: orgBindings.organizationsCleared,
+      subscriptionsCleared: orgBindings.subscriptionsCleared,
+      plansCleared: planBindings.plansCleared,
+    };
   });
 
   app.patch("/settings", async (request, reply) => {
