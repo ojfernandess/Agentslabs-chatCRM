@@ -5,8 +5,6 @@ import { BillingError, ensureStripeCustomer } from "./StripeCustomerService.js";
 import { getStripeClient } from "./stripeClient.js";
 import { isAccessGrantingStatus } from "./billingTypes.js";
 
-const CHECKOUT_BLOCKING_STATUSES = new Set(["incomplete"]);
-
 export type CreateCheckoutSessionInput = {
   organizationId: string;
   planId: string;
@@ -28,7 +26,10 @@ async function assertCheckoutAllowed(organizationId: string, targetPlanId: strin
   if (!sub) return;
 
   const awaitingStripePayment =
-    sub.status === "pending_payment" && !sub.stripeSubscriptionId?.trim();
+    (sub.status === "pending_payment" ||
+      sub.status === "incomplete" ||
+      sub.status === "incomplete_expired") &&
+    !sub.stripeSubscriptionId?.trim();
 
   if (
     sub.planId === targetPlanId &&
@@ -45,9 +46,6 @@ async function assertCheckoutAllowed(organizationId: string, targetPlanId: strin
     );
   }
 
-  if (CHECKOUT_BLOCKING_STATUSES.has(sub.status) && sub.checkoutSessionId) {
-    throw new BillingError("Checkout already in progress for this organization", "checkout_in_progress");
-  }
 }
 
 /**

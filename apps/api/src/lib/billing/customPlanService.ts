@@ -247,6 +247,22 @@ export async function listPlansForOrganization(organizationId: string) {
   });
 }
 
+const AWAITING_STRIPE_PAYMENT_STATUSES = new Set([
+  "pending_payment",
+  "incomplete",
+  "incomplete_expired",
+]);
+
+export function isAwaitingStripePayment(input: {
+  status: string;
+  stripeSubscriptionId: string | null;
+}): boolean {
+  return (
+    AWAITING_STRIPE_PAYMENT_STATUSES.has(input.status) &&
+    !input.stripeSubscriptionId?.trim()
+  );
+}
+
 export function computePaymentGraceInfo(input: {
   status: string;
   paymentDueAt: Date | null;
@@ -254,18 +270,17 @@ export function computePaymentGraceInfo(input: {
   planIsCustom: boolean;
 }): {
   paymentPending: boolean;
+  canCompletePayment: boolean;
   paymentDueAt: string | null;
   daysRemaining: number | null;
   paymentOverdue: boolean;
 } {
-  const pending =
-    input.planIsCustom &&
-    input.status === "pending_payment" &&
-    !input.stripeSubscriptionId?.trim();
+  const pending = isAwaitingStripePayment(input);
 
   if (!pending) {
     return {
       paymentPending: false,
+      canCompletePayment: false,
       paymentDueAt: null,
       daysRemaining: null,
       paymentOverdue: false,
@@ -276,6 +291,7 @@ export function computePaymentGraceInfo(input: {
   if (!due) {
     return {
       paymentPending: true,
+      canCompletePayment: true,
       paymentDueAt: null,
       daysRemaining: null,
       paymentOverdue: false,
@@ -286,6 +302,7 @@ export function computePaymentGraceInfo(input: {
   const daysRemaining = Math.max(0, Math.ceil(msLeft / 86_400_000));
   return {
     paymentPending: true,
+    canCompletePayment: true,
     paymentDueAt: due.toISOString(),
     daysRemaining,
     paymentOverdue: msLeft <= 0,

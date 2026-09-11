@@ -64,6 +64,7 @@ type BillingOverview = {
   hasCustomPlanCatalog?: boolean;
   paymentGrace?: {
     paymentPending: boolean;
+    canCompletePayment: boolean;
     paymentDueAt: string | null;
     daysRemaining: number | null;
     paymentOverdue: boolean;
@@ -208,13 +209,21 @@ export function BillingSettingsPanel() {
     }
   };
 
-  const paymentPendingForCurrentPlan =
-    subscription?.status === "pending_payment" && !subscription?.stripeManaged;
+  const canCompletePayment =
+    Boolean(overview?.paymentGrace?.canCompletePayment) &&
+    Boolean(overview?.stripeConfigured) &&
+    Boolean(currentPlan && currentPlan.amountCents > 0);
 
   const planNeedsPayment = (plan: PlanRow) =>
-    plan.isCurrent && paymentPendingForCurrentPlan && plan.amountCents > 0;
+    plan.isCurrent && canCompletePayment && plan.amountCents > 0;
 
   const planShowsSubscribeAction = (plan: PlanRow) => !plan.isCurrent || planNeedsPayment(plan);
+
+  const completeCurrentPlanPayment = () => {
+    if (!currentPlan) return;
+    const planRow = plans.find((p) => p.id === currentPlan.id);
+    if (planRow) void subscribeToPlan(planRow);
+  };
 
   const subscribeToPlan = async (plan: PlanRow) => {
     if (plan.isFree || plan.amountCents <= 0) {
@@ -252,13 +261,56 @@ export function BillingSettingsPanel() {
 
       {checkoutBanner}
       {setupBanner}
+
+      {!overview?.entitlements?.hasAccess ? (
+        <div
+          className={clsx(
+            settingsCard,
+            "flex gap-3 border-red-200 bg-red-50 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100",
+          )}
+        >
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="space-y-2">
+            <p className="font-semibold">{t("settings.billingAccessSuspended")}</p>
+            {checkoutNotice === "cancel" ? (
+              <p className="text-sm opacity-90">{t("settings.billingCheckoutCancel")}</p>
+            ) : null}
+            {overview?.paymentGrace?.paymentPending ? (
+              <p className="text-sm opacity-90">
+                {overview.paymentGrace.paymentOverdue
+                  ? t("settings.billingPaymentOverdue")
+                  : t("settings.billingPaymentPendingHint").replace(
+                      "{days}",
+                      String(overview.paymentGrace.daysRemaining ?? 0),
+                    )}
+              </p>
+            ) : null}
+            {canCompletePayment ? (
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={completeCurrentPlanPayment}
+                className="mt-1 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                {busy?.startsWith("checkout-") || busy?.startsWith("change-") ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CreditCard className="h-4 w-4" />
+                )}
+                {t("settings.billingCompletePayment")}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100">
           {error}
         </div>
       ) : null}
 
-      {overview?.paymentGrace?.paymentPending ? (
+      {overview?.entitlements?.hasAccess && overview?.paymentGrace?.paymentPending ? (
         <div
           className={clsx(
             settingsCard,
@@ -287,14 +339,11 @@ export function BillingSettingsPanel() {
                 )}
               </p>
             ) : null}
-            {overview.stripeConfigured && currentPlan && currentPlan.amountCents > 0 ? (
+            {canCompletePayment ? (
               <button
                 type="button"
                 disabled={Boolean(busy)}
-                onClick={() => {
-                  const planRow = plans.find((p) => p.id === currentPlan.id);
-                  if (planRow) void subscribeToPlan(planRow);
-                }}
+                onClick={completeCurrentPlanPayment}
                 className="mt-3 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
               >
                 {busy?.startsWith("checkout-") || busy?.startsWith("change-") ? (
@@ -352,9 +401,6 @@ export function BillingSettingsPanel() {
               renewLabel={messagesRenewLabel}
             />
           </div>
-          {!overview.entitlements?.hasAccess ? (
-            <p className="text-sm font-medium text-red-700 dark:text-red-300">{t("settings.billingAccessSuspended")}</p>
-          ) : null}
         </section>
       ) : null}
 
