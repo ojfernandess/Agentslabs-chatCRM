@@ -1,3 +1,6 @@
+/** Metadado JSON em `plan.limits` — chaves com `false` ficam ocultas e sem enforcement. */
+export const PLAN_LIMITS_ENABLED_KEY = "__enabled";
+
 /** Limites reconhecidos pelo enforcement de billing (PlanEntitlementService / planEnforcement). */
 export const KNOWN_PLAN_LIMIT_KEYS = ["agents", "automations", "contacts", "messages"] as const;
 
@@ -55,6 +58,7 @@ export function parseLimitsObject(raw: unknown): Record<string, number | null> {
   if (!raw || typeof raw !== "object") return {};
   const out: Record<string, number | null> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (key === PLAN_LIMITS_ENABLED_KEY) continue;
     if (value === null) {
       out[key] = null;
     } else if (typeof value === "number" && Number.isFinite(value)) {
@@ -62,6 +66,31 @@ export function parseLimitsObject(raw: unknown): Record<string, number | null> {
     }
   }
   return out;
+}
+
+export function parseLimitEnabledFlags(raw: unknown): Record<string, boolean> {
+  if (!raw || typeof raw !== "object") return {};
+  const enabledRaw = (raw as Record<string, unknown>)[PLAN_LIMITS_ENABLED_KEY];
+  if (!enabledRaw || typeof enabledRaw !== "object") return {};
+  const out: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(enabledRaw as Record<string, unknown>)) {
+    if (typeof value === "boolean") out[key] = value;
+  }
+  return out;
+}
+
+export function isPlanLimitEnabled(key: string, flags: Record<string, boolean>): boolean {
+  return flags[key] !== false;
+}
+
+export function parseLimitsDocument(raw: unknown): {
+  limits: Record<string, number | null>;
+  enabled: Record<string, boolean>;
+} {
+  return {
+    limits: parseLimitsObject(raw),
+    enabled: parseLimitEnabledFlags(raw),
+  };
 }
 
 export function parseFeaturesObject(raw: unknown): Record<string, boolean> {
@@ -93,6 +122,21 @@ export function serializeFeatures(features: Record<string, boolean>): Record<str
 
 export function limitsToJson(limits: Record<string, number | null>): string {
   return JSON.stringify(serializeLimits(limits), null, 2);
+}
+
+export function limitsDocumentToJson(
+  limits: Record<string, number | null>,
+  enabled: Record<string, boolean> = {},
+): string {
+  const doc: Record<string, unknown> = { ...serializeLimits(limits) };
+  const disabled: Record<string, boolean> = {};
+  for (const key of new Set([...Object.keys(limits), ...Object.keys(enabled)])) {
+    if (enabled[key] === false) disabled[key] = false;
+  }
+  if (Object.keys(disabled).length > 0) {
+    doc[PLAN_LIMITS_ENABLED_KEY] = disabled;
+  }
+  return JSON.stringify(doc, null, 2);
 }
 
 export function featuresToJson(features: Record<string, boolean>): string {

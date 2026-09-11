@@ -16,12 +16,13 @@ import {
   isKnownFeatureKey,
   isKnownLimitKey,
   isSuggestedExtraKey,
+  isPlanLimitEnabled,
   isSuggestedFeatureKey,
   isSuggestedLimitKey,
-  limitsToJson,
+  limitsDocumentToJson,
   parseExtrasObject,
   parseFeaturesObject,
-  parseLimitsObject,
+  parseLimitsDocument,
 } from "@/lib/planCatalog";
 
 type PlanLimitsFeaturesEditorProps = {
@@ -65,13 +66,16 @@ export function PlanLimitsFeaturesEditor({
   const [customFeatureKey, setCustomFeatureKey] = useState("");
   const [customExtraKey, setCustomExtraKey] = useState("");
 
-  const limits = useMemo(() => {
+  const limitsDoc = useMemo(() => {
     try {
-      return parseLimitsObject(JSON.parse(limitsJson));
+      return parseLimitsDocument(JSON.parse(limitsJson));
     } catch {
-      return {};
+      return { limits: {}, enabled: {} };
     }
   }, [limitsJson]);
+
+  const limits = limitsDoc.limits;
+  const limitEnabled = limitsDoc.enabled;
 
   const features = useMemo(() => {
     try {
@@ -144,9 +148,9 @@ export function PlanLimitsFeaturesEditor({
     [extras],
   );
 
-  const updateLimits = useCallback(
-    (next: Record<string, number | null>) => {
-      onLimitsJsonChange(limitsToJson(next));
+  const updateLimitsDocument = useCallback(
+    (nextLimits: Record<string, number | null>, nextEnabled: Record<string, boolean>) => {
+      onLimitsJsonChange(limitsDocumentToJson(nextLimits, nextEnabled));
     },
     [onLimitsJsonChange],
   );
@@ -169,7 +173,14 @@ export function PlanLimitsFeaturesEditor({
     const next = { ...limits };
     if (value === undefined) delete next[key];
     else next[key] = value;
-    updateLimits(next);
+    updateLimitsDocument(next, limitEnabled);
+  };
+
+  const setLimitEnabledFlag = (key: string, active: boolean) => {
+    const nextEnabled = { ...limitEnabled };
+    if (active) delete nextEnabled[key];
+    else nextEnabled[key] = false;
+    updateLimitsDocument(limits, nextEnabled);
   };
 
   const setFeatureValue = (key: string, enabled: boolean) => {
@@ -187,7 +198,9 @@ export function PlanLimitsFeaturesEditor({
   const removeLimit = (key: string) => {
     const next = { ...limits };
     delete next[key];
-    updateLimits(next);
+    const nextEnabled = { ...limitEnabled };
+    delete nextEnabled[key];
+    updateLimitsDocument(next, nextEnabled);
   };
 
   const removeFeature = (key: string) => {
@@ -205,7 +218,9 @@ export function PlanLimitsFeaturesEditor({
   const addLimit = (key: string) => {
     const trimmed = key.trim();
     if (!trimmed || trimmed in limits) return;
-    updateLimits({ ...limits, [trimmed]: 0 });
+    const nextEnabled = { ...limitEnabled };
+    delete nextEnabled[trimmed];
+    updateLimitsDocument({ ...limits, [trimmed]: 0 }, nextEnabled);
     setPickLimitKey("");
     setCustomLimitKey("");
   };
@@ -241,21 +256,43 @@ export function PlanLimitsFeaturesEditor({
 
   const renderLimitRow = (key: string, removable: boolean) => {
     const inLimits = key in limits;
+    const active = isPlanLimitEnabled(key, limitEnabled);
     const unlimited = inLimits && limits[key] === null;
     const value = inLimits ? limits[key] : undefined;
 
     return (
       <div
         key={key}
-        className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30"
+        className={clsx(
+          "flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30",
+          !active && "opacity-60",
+        )}
       >
+        <button
+          type="button"
+          role="switch"
+          aria-checked={active}
+          onClick={() => setLimitEnabledFlag(key, !active)}
+          className={clsx(
+            "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors",
+            active ? "bg-brand-600" : "bg-ink-200 dark:bg-ink-700",
+          )}
+          title={active ? t("superAdmin.billingFeatureOn") : t("superAdmin.billingFeatureOff")}
+        >
+          <span
+            className={clsx(
+              "pointer-events-none inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform",
+              active ? "translate-x-5" : "translate-x-0.5",
+            )}
+          />
+        </button>
         <span className="min-w-[8rem] flex-1 text-sm font-medium text-ink-800 dark:text-ink-100">
           {limitLabel(key)}
         </span>
         <input
           type="number"
           min={0}
-          disabled={unlimited}
+          disabled={!active || unlimited}
           value={unlimited || value == null ? "" : String(value)}
           onChange={(e) => {
             const n = e.target.value.trim();
@@ -265,17 +302,26 @@ export function PlanLimitsFeaturesEditor({
             }
             setLimitValue(key, Math.max(0, Number(n)));
           }}
-          className="input-field w-28 py-1.5 text-sm"
+          className="input-field w-28 py-1.5 text-sm disabled:cursor-not-allowed"
           placeholder={inLimits ? "0" : "—"}
         />
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-600 dark:text-ink-400">
+        <label
+          className={clsx(
+            "flex items-center gap-1.5 text-xs text-ink-600 dark:text-ink-400",
+            active ? "cursor-pointer" : "cursor-not-allowed opacity-60",
+          )}
+        >
           <input
             type="checkbox"
             checked={unlimited}
+            disabled={!active}
             onChange={(e) => setLimitValue(key, e.target.checked ? null : 0)}
           />
           {t("superAdmin.billingLimitUnlimited")}
         </label>
+        <span className="w-14 text-xs text-ink-500">
+          {active ? t("superAdmin.billingFeatureOn") : t("superAdmin.billingFeatureOff")}
+        </span>
         {removable ? (
           <button
             type="button"

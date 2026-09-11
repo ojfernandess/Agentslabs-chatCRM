@@ -16,6 +16,7 @@ import {
   listOrganizationInvoices,
   parsePlanExtras,
   parsePlanFeatures,
+  parsePlanLimitEnabledFlags,
   parsePlanLimits,
   resumeScheduledCancellation,
   getOrganizationUsage,
@@ -75,6 +76,7 @@ function serializePlanForClient(plan: {
     trialDays: plan.trialDays,
     displayOrder: plan.displayOrder ?? 0,
     limits: parsePlanLimits(plan.limits),
+    limitEnabled: parsePlanLimitEnabledFlags(plan.limits),
     features: parsePlanFeatures(plan.features),
     planExtras: parsePlanExtras(plan.planExtras ?? {}),
   };

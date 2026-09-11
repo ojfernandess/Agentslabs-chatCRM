@@ -26,6 +26,7 @@ import {
   catalogFeatureLabelKey,
   catalogLimitLabelKey,
   formatPlanLimitLabel,
+  isPlanLimitEnabled,
   orderPlanLimitKeys,
 } from "@/lib/planCatalog";
 
@@ -39,6 +40,7 @@ type PlanRow = {
   interval: string;
   trialDays: number | null;
   limits: Record<string, number | null | undefined>;
+  limitEnabled?: Record<string, boolean>;
   features: Record<string, boolean | undefined>;
   planExtras?: Record<string, string | undefined>;
   isCurrent: boolean;
@@ -586,6 +588,7 @@ export function BillingSettingsPanel() {
               </p>
               <ul className="mt-3 space-y-1 text-xs text-ink-600 dark:text-ink-300">
                 {orderPlanLimitKeys(Object.keys(plan.limits)).map((key) => {
+                  if (!isPlanLimitEnabled(key, plan.limitEnabled ?? {})) return null;
                   const text = formatPlanLimitLabel(t, key, plan.limits[key]);
                   return text ? <li key={key}>{text}</li> : null;
                 })}

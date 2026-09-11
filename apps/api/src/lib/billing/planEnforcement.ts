@@ -1,13 +1,14 @@
 import type { FastifyReply } from "fastify";
 import { startOfMonth } from "date-fns";
 import { prisma } from "../../db.js";
+import { organizationMembersWhere } from "../organizationMemberships.js";
 import {
   getEffectivePlanForOrganization,
   resolveLimitValue,
   type EffectivePlanSnapshot,
 } from "./PlanEntitlementService.js";
 import type { LimitEnforcementMode, PlanFeatures } from "./billingTypes.js";
-import { orderPlanLimitKeys } from "./billingTypes.js";
+import { isPlanLimitEnabled, orderPlanLimitKeys } from "./billingTypes.js";
 import { getBillingPlatformSettings } from "./billingSettings.js";
 import { computeOverLimitAmount, enforceUsageLimit } from "./limitEnforcementPolicy.js";
 
@@ -92,11 +93,18 @@ async function countContacts(organizationId: string): Promise<number> {
 }
 
 async function countOrganizationMembers(organizationId: string): Promise<number> {
-  const membershipCount = await prisma.organizationMembership.count({
-    where: { organizationId },
+  return prisma.user.count({
+    where: organizationMembersWhere(organizationId),
   });
-  if (membershipCount > 0) return membershipCount;
-  return prisma.user.count({ where: { organizationId } });
+}
+
+const LIMIT_USAGE_ALIASES: Record<string, string> = {
+  utilizadores: "users",
+  utilizador: "users",
+};
+
+function resolveUsageCountKey(key: string): string {
+  return LIMIT_USAGE_ALIASES[key] ?? key;
 }
 
 async function buildUsageCounts(organizationId: string): Promise<Record<string, number>> {
@@ -116,6 +124,8 @@ async function buildUsageCounts(organizationId: string): Promise<Record<string, 
     messages: messageStats.used,
     seats: humanSeats,
     users: members,
+    utilizadores: members,
+    utilizador: members,
   };
 }
 
@@ -173,13 +183,14 @@ export async function getOrganizationUsage(organizationId: string): Promise<Orga
 
   for (const [key, limitRaw] of Object.entries(snap.limits)) {
     if (limitRaw === undefined) continue;
+    if (!isPlanLimitEnabled(key, snap.limitEnabled)) continue;
 
     let limit = resolveLimitValue(limitRaw);
     if (key === "messages") {
       limit = await resolveMessageLimit(organizationId, snap);
     }
 
-    const used = usageCounts[key] ?? 0;
+    const used = usageCounts[resolveUsageCountKey(key)] ?? 0;
     dimensions[key] = {
       used,
       limit,
@@ -225,6 +236,10 @@ export async function assertPlanFeature(
 }
 
 /** Novo agente IA (AutomationAgentProfile) — respeita limits.agents. */
+function isEnforcedLimit(snap: EffectivePlanSnapshot, key: string): boolean {
+  return isPlanLimitEnabled(key, snap.limitEnabled);
+}
+
 export async function assertCanAddAiAgents(
   organizationId: string,
   additional = 1,
@@ -232,6 +247,7 @@ export async function assertCanAddAiAgents(
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
+  if (!isEnforcedLimit(snap, "agents")) return;
   const limit = resolveLimitValue(snap.limits.agents);
   const used = await countAiAgents(organizationId);
   await enforceUsageLimit({
@@ -253,6 +269,7 @@ export async function assertCanAddAgents(
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
+  if (!isEnforcedLimit(snap, "agents")) return;
   const limit = resolveLimitValue(snap.limits.agents);
   const used = await countAgentLimitUsage(organizationId);
   await enforceUsageLimit({
@@ -273,6 +290,7 @@ export async function assertCanAddAutomations(
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
+  if (!isEnforcedLimit(snap, "automations")) return;
   const limit = resolveLimitValue(snap.limits.automations);
   const used = await countAutomations(organizationId);
   await enforceUsageLimit({
@@ -293,6 +311,7 @@ export async function assertCanAddContacts(
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
+  if (!isEnforcedLimit(snap, "contacts")) return;
   const limit = resolveLimitValue(snap.limits.contacts);
   const used = await countContacts(organizationId);
   await enforceUsageLimit({
@@ -313,6 +332,7 @@ export async function assertCanSendOutboundMessage(
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
+  if (!isEnforcedLimit(snap, "messages")) return;
   const limit = await resolveMessageLimit(organizationId, snap);
   const { used } = await countMonthlyMessages(organizationId);
   await enforceUsageLimit({

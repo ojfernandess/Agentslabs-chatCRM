@@ -24,6 +24,22 @@ export const ACCESS_GRANTING_STATUSES = new Set<SubscriptionStatus>([
 
 export const CORE_PLAN_LIMIT_KEYS = ["agents", "automations", "contacts", "messages"] as const;
 
+export const SUGGESTED_PLAN_LIMIT_KEYS = [
+  "seats",
+  "users",
+  "storage_gb",
+  "channels",
+  "workspaces",
+] as const;
+
+export const ALL_CATALOG_LIMIT_KEYS = [
+  ...CORE_PLAN_LIMIT_KEYS,
+  ...SUGGESTED_PLAN_LIMIT_KEYS,
+] as const;
+
+/** Metadado JSON em `plan.limits` — chaves com `false` ficam ocultas e sem enforcement. */
+export const PLAN_LIMITS_ENABLED_KEY = "__enabled";
+
 export type CorePlanLimitKey = (typeof CORE_PLAN_LIMIT_KEYS)[number];
 
 export type PlanLimits = {
@@ -57,7 +73,12 @@ export type PlanFeatures = {
 
 export type LimitEnforcementMode = "block" | "overage";
 
-export type UsageDimensionKey = "agents" | "automations" | "contacts" | "messages";
+export type UsageDimensionKey = (typeof CORE_PLAN_LIMIT_KEYS)[number];
+
+export function defaultOverageMeterEventName(key: string): string {
+  const safe = key.replace(/[^a-z0-9_]/gi, "_").replace(/_+/g, "_");
+  return `openconduit_${safe}_overage`;
+}
 
 export type DimensionOverageConfig = {
   /** Quando true, excedentes desta dimensão são reportados ao Stripe Meter (modo overage). */
@@ -73,14 +94,31 @@ export type BillingPlatformSettings = {
   gracePeriodDays: number;
   /** block = impede criação acima do limite; overage = permite e reporta meter events ao Stripe. */
   limitEnforcementMode: LimitEnforcementMode;
-  overage: Record<UsageDimensionKey, DimensionOverageConfig>;
+  /** Medidores Stripe por dimensão (catálogo + limites personalizados dos planos). */
+  overage: Record<string, DimensionOverageConfig>;
 };
+
+export function parsePlanLimitEnabledFlags(raw: unknown): Record<string, boolean> {
+  if (!raw || typeof raw !== "object") return {};
+  const enabledRaw = (raw as Record<string, unknown>)[PLAN_LIMITS_ENABLED_KEY];
+  if (!enabledRaw || typeof enabledRaw !== "object") return {};
+  const out: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(enabledRaw as Record<string, unknown>)) {
+    if (typeof value === "boolean") out[key] = value;
+  }
+  return out;
+}
+
+export function isPlanLimitEnabled(key: string, flags: Record<string, boolean>): boolean {
+  return flags[key] !== false;
+}
 
 export function parsePlanLimits(raw: unknown): PlanLimits {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
   const out: PlanLimits = {};
   for (const [key, value] of Object.entries(o)) {
+    if (key === PLAN_LIMITS_ENABLED_KEY) continue;
     if (value === null) {
       out[key] = null;
     } else if (typeof value === "number" && Number.isFinite(value)) {

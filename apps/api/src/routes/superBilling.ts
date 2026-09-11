@@ -14,7 +14,12 @@ import {
   clearPlanStripeIds,
 } from "../lib/billing/clearStripeBindings.js";
 import { getStripeKeyMode } from "../lib/billing/stripeErrors.js";
-import { parsePlanExtras, parsePlanFeatures, parsePlanLimits } from "../lib/billing/billingTypes.js";
+import {
+  parsePlanExtras,
+  parsePlanFeatures,
+  parsePlanLimitEnabledFlags,
+  parsePlanLimits,
+} from "../lib/billing/billingTypes.js";
 import { BillingError } from "../lib/billing/StripeCustomerService.js";
 import {
   createCustomPlanForOrganization,
@@ -60,14 +65,7 @@ const billingSettingsPatchSchema = z
   .object({
     gracePeriodDays: z.number().int().min(0).max(90).optional(),
     limitEnforcementMode: z.enum(["block", "overage"]).optional(),
-    overage: z
-      .object({
-        agents: overageDimensionPatchSchema.optional(),
-        automations: overageDimensionPatchSchema.optional(),
-        contacts: overageDimensionPatchSchema.optional(),
-        messages: overageDimensionPatchSchema.optional(),
-      })
-      .optional(),
+    overage: z.record(z.string().min(1).max(64), overageDimensionPatchSchema).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: "At least one setting field is required" });
 
@@ -146,6 +144,7 @@ function serializePlan(plan: {
     paymentGraceDays: plan.paymentGraceDays ?? null,
     organization: plan.organization ?? null,
     limits: parsePlanLimits(plan.limits),
+    limitEnabled: parsePlanLimitEnabledFlags(plan.limits),
     features: parsePlanFeatures(plan.features),
     planExtras: parsePlanExtras(plan.planExtras ?? {}),
     subscriptionCount: plan._count?.subscriptions ?? 0,

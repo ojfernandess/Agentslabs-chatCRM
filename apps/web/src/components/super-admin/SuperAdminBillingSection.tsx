@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { CreditCard, Loader2, Pencil, Plus } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
@@ -7,6 +7,12 @@ import { SuperAdminPageHeader, SuperAdminPanel } from "@/components/super-admin/
 import { SuperAdminCustomPlansPanel } from "@/components/super-admin/SuperAdminCustomPlansPanel";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
+import {
+  ALL_CATALOG_LIMIT_KEYS,
+  PLAN_LIMITS_ENABLED_KEY,
+  catalogLimitLabelKey,
+  orderPlanLimitKeys,
+} from "@/lib/planCatalog";
 
 type PlanRow = {
   id: string;
@@ -57,8 +63,6 @@ type SubscriptionRow = {
 
 type BillingTab = "plans" | "customPlans" | "subscriptions" | "settings";
 
-type UsageDimensionKey = "agents" | "automations" | "contacts" | "messages";
-
 type DimensionOverageForm = {
   enabled: boolean;
   stripeMeterEventName: string;
@@ -68,44 +72,73 @@ type DimensionOverageForm = {
 type BillingPlatformSettings = {
   gracePeriodDays: number;
   limitEnforcementMode: "block" | "overage";
-  overage: Record<UsageDimensionKey, DimensionOverageForm>;
+  overage: Record<string, DimensionOverageForm>;
 };
 
-const USAGE_DIMENSIONS: UsageDimensionKey[] = ["agents", "automations", "contacts", "messages"];
+function defaultMeterEventName(key: string): string {
+  const safe = key.replace(/[^a-z0-9_]/gi, "_").replace(/_+/g, "_");
+  return `openconduit_${safe}_overage`;
+}
 
-const DEFAULT_METER_NAMES: Record<UsageDimensionKey, string> = {
-  agents: "openconduit_agents_overage",
-  automations: "openconduit_automations_overage",
-  contacts: "openconduit_contacts_overage",
-  messages: "openconduit_messages_overage",
-};
-
-function emptyOverageForm(): Record<UsageDimensionKey, DimensionOverageForm> {
+function emptyOverageDimension(key: string): DimensionOverageForm {
   return {
-    agents: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.agents, unitAmountCents: "" },
-    automations: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.automations, unitAmountCents: "" },
-    contacts: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.contacts, unitAmountCents: "" },
-    messages: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.messages, unitAmountCents: "" },
+    enabled: false,
+    stripeMeterEventName: defaultMeterEventName(key),
+    unitAmountCents: "",
   };
 }
 
-function settingsFromApi(raw: {
-  gracePeriodDays: number;
-  limitEnforcementMode?: "block" | "overage";
-  overage?: Partial<
-    Record<
-      UsageDimensionKey,
-      { enabled?: boolean; stripeMeterEventName?: string | null; unitAmountCents?: number | null }
-    >
-  >;
-}): BillingPlatformSettings {
-  const overage = emptyOverageForm();
-  for (const key of USAGE_DIMENSIONS) {
+function emptyOverageForm(keys: Iterable<string> = ALL_CATALOG_LIMIT_KEYS): Record<string, DimensionOverageForm> {
+  const out: Record<string, DimensionOverageForm> = {};
+  for (const key of keys) {
+    out[key] = emptyOverageDimension(key);
+  }
+  return out;
+}
+
+function collectLimitKeysFromPlans(planRows: PlanRow[]): string[] {
+  const keys = new Set<string>();
+  for (const plan of planRows) {
+    for (const key of Object.keys(plan.limits ?? {})) {
+      if (key !== PLAN_LIMITS_ENABLED_KEY) keys.add(key);
+    }
+  }
+  return [...keys];
+}
+
+function buildOverageLimitKeys(standardPlans: PlanRow[], customPlanRows: PlanRow[]): string[] {
+  return orderPlanLimitKeys([
+    ...ALL_CATALOG_LIMIT_KEYS,
+    ...collectLimitKeysFromPlans(standardPlans),
+    ...collectLimitKeysFromPlans(customPlanRows),
+  ]);
+}
+
+function settingsFromApi(
+  raw: {
+    gracePeriodDays: number;
+    limitEnforcementMode?: "block" | "overage";
+    overage?: Partial<
+      Record<string, { enabled?: boolean; stripeMeterEventName?: string | null; unitAmountCents?: number | null }>
+    >;
+  },
+  limitKeys: string[],
+): BillingPlatformSettings {
+  const overage = emptyOverageForm(limitKeys);
+  for (const key of limitKeys) {
     const dim = raw.overage?.[key];
     if (!dim) continue;
     overage[key] = {
       enabled: dim.enabled === true,
-      stripeMeterEventName: dim.stripeMeterEventName?.trim() || DEFAULT_METER_NAMES[key],
+      stripeMeterEventName: dim.stripeMeterEventName?.trim() || defaultMeterEventName(key),
+      unitAmountCents: dim.unitAmountCents != null ? String(dim.unitAmountCents) : "",
+    };
+  }
+  for (const [key, dim] of Object.entries(raw.overage ?? {})) {
+    if (key in overage || !dim) continue;
+    overage[key] = {
+      enabled: dim.enabled === true,
+      stripeMeterEventName: dim.stripeMeterEventName?.trim() || defaultMeterEventName(key),
       unitAmountCents: dim.unitAmountCents != null ? String(dim.unitAmountCents) : "",
     };
   }
@@ -114,6 +147,15 @@ function settingsFromApi(raw: {
     limitEnforcementMode: raw.limitEnforcementMode === "overage" ? "overage" : "block",
     overage,
   };
+}
+
+function overageLimitLabel(t: (key: string) => string, key: string): string {
+  const labelKey = catalogLimitLabelKey(key);
+  if (labelKey) {
+    const translated = t(labelKey);
+    if (translated !== labelKey) return translated;
+  }
+  return key.replace(/_/g, " ");
 }
 
 const EMPTY_PLAN_FORM = {
@@ -158,11 +200,20 @@ export function SuperAdminBillingSection() {
   const [subTotal, setSubTotal] = useState(0);
   const [subQuery, setSubQuery] = useState("");
   const [subStatus, setSubStatus] = useState("");
+  const [customPlans, setCustomPlans] = useState<PlanRow[]>([]);
   const [billingSettings, setBillingSettings] = useState<BillingPlatformSettings>(() => ({
     gracePeriodDays: 7,
     limitEnforcementMode: "block",
     overage: emptyOverageForm(),
   }));
+
+  const overageLimitKeys = useMemo(() => {
+    const keys = new Set<string>(ALL_CATALOG_LIMIT_KEYS);
+    for (const key of collectLimitKeysFromPlans(plans)) keys.add(key);
+    for (const key of collectLimitKeysFromPlans(customPlans)) keys.add(key);
+    for (const key of Object.keys(billingSettings.overage)) keys.add(key);
+    return orderPlanLimitKeys(keys);
+  }, [plans, customPlans, billingSettings.overage]);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [stripeKeyMode, setStripeKeyMode] = useState<"test" | "live" | "unknown">("unknown");
   const [resetClearPlanIds, setResetClearPlanIds] = useState(true);
@@ -175,6 +226,7 @@ export function SuperAdminBillingSection() {
   const loadPlans = useCallback(async () => {
     const res = await api.get<{ plans: PlanRow[] }>("/super/billing/plans");
     setPlans(res.plans);
+    return res.plans;
   }, []);
 
   const loadSubscriptions = useCallback(async () => {
@@ -189,26 +241,37 @@ export function SuperAdminBillingSection() {
     setSubTotal(res.total);
   }, [subQuery, subStatus]);
 
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (limitKeys: string[]) => {
     const res = await api.get<{
       settings: Parameters<typeof settingsFromApi>[0];
       stripeKeyMode?: "test" | "live" | "unknown";
     }>("/super/billing/settings");
-    setBillingSettings(settingsFromApi(res.settings));
+    setBillingSettings(settingsFromApi(res.settings, limitKeys));
     setStripeKeyMode(res.stripeKeyMode ?? "unknown");
+  }, []);
+
+  const loadCustomPlans = useCallback(async () => {
+    const res = await api.get<{ plans: PlanRow[] }>("/super/billing/custom-plans");
+    setCustomPlans(res.plans);
+    return res.plans;
   }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      await Promise.all([loadPlans(), loadSubscriptions(), loadSettings()]);
+      const [standardPlans, loadedCustomPlans] = await Promise.all([
+        loadPlans(),
+        loadCustomPlans(),
+        loadSubscriptions(),
+      ]);
+      await loadSettings(buildOverageLimitKeys(standardPlans, loadedCustomPlans));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("superAdmin.billingLoadError"));
     } finally {
       setLoading(false);
     }
-  }, [loadPlans, loadSubscriptions, loadSettings, t]);
+  }, [loadPlans, loadCustomPlans, loadSubscriptions, loadSettings, t]);
 
   useEffect(() => {
     void loadAll();
@@ -218,6 +281,20 @@ export function SuperAdminBillingSection() {
     if (tab !== "subscriptions") return;
     void loadSubscriptions().catch(() => {});
   }, [tab, loadSubscriptions]);
+
+  useEffect(() => {
+    setBillingSettings((s) => {
+      let changed = false;
+      const nextOverage = { ...s.overage };
+      for (const key of overageLimitKeys) {
+        if (!(key in nextOverage)) {
+          nextOverage[key] = emptyOverageDimension(key);
+          changed = true;
+        }
+      }
+      return changed ? { ...s, overage: nextOverage } : s;
+    });
+  }, [overageLimitKeys]);
 
   const openCreatePlan = () => {
     setEditingPlan(null);
@@ -315,7 +392,7 @@ export function SuperAdminBillingSection() {
         subscriptionsCleared: number;
         plansCleared: number;
       }>("/super/billing/reset-stripe-bindings", { clearPlanStripeIds: resetClearPlanIds });
-      await loadSettings();
+      await loadSettings(buildOverageLimitKeys(plans, customPlans));
       window.alert(
         t("superAdmin.billingResetStripeDone")
           .replace("{orgs}", String(res.organizationsCleared))
@@ -335,13 +412,10 @@ export function SuperAdminBillingSection() {
     setError("");
     try {
       const overagePayload: Partial<
-        Record<
-          UsageDimensionKey,
-          { enabled: boolean; stripeMeterEventName: string | null; unitAmountCents: number | null }
-        >
+        Record<string, { enabled: boolean; stripeMeterEventName: string | null; unitAmountCents: number | null }>
       > = {};
-      for (const key of USAGE_DIMENSIONS) {
-        const dim = billingSettings.overage[key];
+      for (const key of overageLimitKeys) {
+        const dim = billingSettings.overage[key] ?? emptyOverageDimension(key);
         overagePayload[key] = {
           enabled: dim.enabled,
           stripeMeterEventName: dim.stripeMeterEventName.trim() || null,
@@ -353,7 +427,7 @@ export function SuperAdminBillingSection() {
         limitEnforcementMode: billingSettings.limitEnforcementMode,
         overage: overagePayload,
       });
-      await loadSettings();
+      await loadSettings(overageLimitKeys);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
     } finally {
@@ -584,8 +658,8 @@ export function SuperAdminBillingSection() {
                   <p className="mt-1 text-sm text-slate-600">{t("superAdmin.billingOverageMetersHint")}</p>
                 </div>
                 <div className="space-y-3">
-                  {USAGE_DIMENSIONS.map((key) => {
-                    const dim = billingSettings.overage[key];
+                  {overageLimitKeys.map((key) => {
+                    const dim = billingSettings.overage[key] ?? emptyOverageDimension(key);
                     return (
                       <div key={key} className="rounded-lg border border-slate-200 p-3">
                         <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
@@ -597,12 +671,15 @@ export function SuperAdminBillingSection() {
                                 ...s,
                                 overage: {
                                   ...s.overage,
-                                  [key]: { ...s.overage[key], enabled: e.target.checked },
+                                  [key]: {
+                                    ...(s.overage[key] ?? emptyOverageDimension(key)),
+                                    enabled: e.target.checked,
+                                  },
                                 },
                               }))
                             }
                           />
-                          {t(`superAdmin.billingLimitKey_${key}`)}
+                          {overageLimitLabel(t, key)}
                         </label>
                         {dim.enabled ? (
                           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -617,12 +694,15 @@ export function SuperAdminBillingSection() {
                                     ...s,
                                     overage: {
                                       ...s.overage,
-                                      [key]: { ...s.overage[key], stripeMeterEventName: e.target.value },
+                                      [key]: {
+                                        ...(s.overage[key] ?? emptyOverageDimension(key)),
+                                        stripeMeterEventName: e.target.value,
+                                      },
                                     },
                                   }))
                                 }
                                 className="input-field mt-1 font-mono text-xs"
-                                placeholder={DEFAULT_METER_NAMES[key]}
+                                placeholder={defaultMeterEventName(key)}
                               />
                             </div>
                             <div>
@@ -638,7 +718,10 @@ export function SuperAdminBillingSection() {
                                     ...s,
                                     overage: {
                                       ...s.overage,
-                                      [key]: { ...s.overage[key], unitAmountCents },
+                                      [key]: {
+                                        ...(s.overage[key] ?? emptyOverageDimension(key)),
+                                        unitAmountCents,
+                                      },
                                     },
                                   }))
                                 }

@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import {
   isAccessGrantingStatus,
   mapStripeSubscriptionStatus,
+  isPlanLimitEnabled,
   parsePlanExtras,
   parsePlanFeatures,
+  parsePlanLimitEnabledFlags,
   parsePlanLimits,
   subscriptionHasStripeBilling,
 } from "./billingTypes.js";
@@ -31,6 +33,18 @@ describe("billingTypes", () => {
       rag: true,
       api: false,
     });
+  });
+
+  it("parsePlanLimits ignores __enabled metadata", () => {
+    assert.deepEqual(
+      parsePlanLimits({ agents: 5, __enabled: { users: false } }),
+      { agents: 5 },
+    );
+    assert.deepEqual(parsePlanLimitEnabledFlags({ __enabled: { users: false } }), {
+      users: false,
+    });
+    assert.equal(isPlanLimitEnabled("users", { users: false }), false);
+    assert.equal(isPlanLimitEnabled("agents", { users: false }), true);
   });
 
   it("parsePlanLimits and parsePlanFeatures preserve custom keys", () => {

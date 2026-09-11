@@ -3,6 +3,7 @@ import { getBillingPlatformSettings } from "./billingSettings.js";
 import {
   isAccessGrantingStatus,
   parsePlanFeatures,
+  parsePlanLimitEnabledFlags,
   parsePlanLimits,
   subscriptionHasStripeBilling,
   type PlanFeatures,
@@ -19,6 +20,8 @@ export type EffectivePlanSnapshot = {
   hasAccess: boolean;
   inGracePeriod: boolean;
   limits: PlanLimits;
+  /** false = limite desativado (oculto na UI, sem enforcement). */
+  limitEnabled: Record<string, boolean>;
   features: PlanFeatures;
   stripeManaged: boolean;
   currentPeriodEnd: Date | null;
@@ -71,6 +74,7 @@ function buildSnapshotFromOrg(input: {
     (status !== "pending_payment" || pendingPaymentGrace);
 
   const limits = plan ? parsePlanLimits(plan.limits) : fallbackLimitsForTier(input.planTier);
+  const limitEnabled = plan ? parsePlanLimitEnabledFlags(plan.limits) : {};
   const features = plan ? parsePlanFeatures(plan.features) : fallbackFeaturesForTier(input.planTier);
 
   return {
@@ -83,6 +87,7 @@ function buildSnapshotFromOrg(input: {
     hasAccess,
     inGracePeriod,
     limits,
+    limitEnabled,
     features,
     stripeManaged: sub
       ? subscriptionHasStripeBilling({
