@@ -14,6 +14,8 @@ import {
   Crown,
   Pencil,
   Trash2,
+  Plus,
+  X,
 } from "lucide-react";
 import clsx from "clsx";
 import {
@@ -216,6 +218,16 @@ interface OrgUserRow {
   createdAt: string;
 }
 
+type PlatformUserMembershipRow = {
+  role: string;
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+    isActive: boolean;
+  };
+};
+
 interface PlatformUserRow {
   id: string;
   name: string;
@@ -223,13 +235,23 @@ interface PlatformUserRow {
   role: string;
   createdAt: string;
   organizationId: string | null;
+  termsAcceptedAt: string | null;
+  termsVersion: string | null;
+  privacyAcceptedAt: string | null;
+  privacyVersion: string | null;
   organization: {
     id: string;
     name: string;
     slug: string;
     isActive: boolean;
   } | null;
+  memberships: PlatformUserMembershipRow[];
 }
+
+type EditUserMembership = {
+  organizationId: string;
+  role: "ADMIN" | "AGENT";
+};
 
 interface PlatformUsersPage {
   data: PlatformUserRow[];
@@ -376,6 +398,7 @@ export function SuperAdminPage() {
   const [editUserEmail, setEditUserEmail] = useState("");
   const [editUserRole, setEditUserRole] = useState<"SUPER_ADMIN" | "ADMIN" | "AGENT">("AGENT");
   const [editUserOrgId, setEditUserOrgId] = useState("");
+  const [editUserMemberships, setEditUserMemberships] = useState<EditUserMembership[]>([]);
   const [editUserCurrentPassword, setEditUserCurrentPassword] = useState("");
   const [editUserNewPassword, setEditUserNewPassword] = useState("");
   const [editUserConfirmPassword, setEditUserConfirmPassword] = useState("");
@@ -1259,7 +1282,17 @@ export function SuperAdminPage() {
     setEditUserName(u.name);
     setEditUserEmail(u.email);
     setEditUserRole(u.role as "SUPER_ADMIN" | "ADMIN" | "AGENT");
-    setEditUserOrgId(u.organizationId ?? "");
+    const membershipsFromApi =
+      u.memberships?.length > 0
+        ? u.memberships.map((m) => ({
+            organizationId: m.organization.id,
+            role: (m.role === "ADMIN" ? "ADMIN" : "AGENT") as "ADMIN" | "AGENT",
+          }))
+        : u.organizationId
+          ? [{ organizationId: u.organizationId, role: (u.role === "ADMIN" ? "ADMIN" : "AGENT") as "ADMIN" | "AGENT" }]
+          : [];
+    setEditUserMemberships(membershipsFromApi);
+    setEditUserOrgId(u.organizationId ?? membershipsFromApi[0]?.organizationId ?? "");
     setEditUserCurrentPassword("");
     setEditUserNewPassword("");
     setEditUserConfirmPassword("");
@@ -1300,6 +1333,7 @@ export function SuperAdminPage() {
         email: string;
         role: "SUPER_ADMIN" | "ADMIN" | "AGENT";
         organizationId?: string | null;
+        memberships?: EditUserMembership[];
         password?: string;
         currentPassword?: string;
       } = {
@@ -1310,11 +1344,18 @@ export function SuperAdminPage() {
       if (editUserRole === "SUPER_ADMIN") {
         body.organizationId = null;
       } else {
-        if (!editUserOrgId.trim()) {
-          setError("Selecione uma organização para administradores e agentes.");
+        const validMemberships = editUserMemberships.filter((m) => m.organizationId.trim());
+        if (validMemberships.length === 0) {
+          setError(t("superAdmin.platformUsersMembershipRequired"));
           return;
         }
-        body.organizationId = editUserOrgId.trim();
+        const activeOrgId = editUserOrgId.trim() || validMemberships[0]!.organizationId;
+        if (!validMemberships.some((m) => m.organizationId === activeOrgId)) {
+          setError(t("superAdmin.platformUsersActiveOrgRequired"));
+          return;
+        }
+        body.organizationId = activeOrgId;
+        body.memberships = validMemberships;
       }
       if (newPassword) {
         body.password = newPassword;
@@ -1785,6 +1826,7 @@ export function SuperAdminPage() {
                         <th className="px-4 py-3">{t("superAdmin.platformUsersColUser")}</th>
                         <th className="px-4 py-3">{t("superAdmin.platformUsersColRole")}</th>
                         <th className="px-4 py-3">{t("superAdmin.platformUsersColOrg")}</th>
+                        <th className="px-4 py-3">{t("superAdmin.platformUsersColTerms")}</th>
                         <th className="px-4 py-3 text-right">{t("superAdmin.platformUsersColActions")}</th>
                       </tr>
                     </thead>
@@ -1808,7 +1850,33 @@ export function SuperAdminPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-ink-700">
-                            {u.organization?.name ?? t("superAdmin.platformUsersUnassigned")}
+                            {u.role === "SUPER_ADMIN" ? (
+                              t("superAdmin.platformUsersUnassigned")
+                            ) : u.memberships?.length > 1 ? (
+                              <div className="flex flex-col gap-0.5">
+                                {u.memberships.map((m) => (
+                                  <span key={m.organization.id} className="text-xs">
+                                    {m.organization.name}
+                                    {m.organization.id === u.organizationId ? (
+                                      <span className="ml-1 text-[10px] text-violet-600">
+                                        ({t("superAdmin.platformUsersActiveOrgBadge")})
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              u.organization?.name ?? u.memberships?.[0]?.organization.name ?? t("superAdmin.platformUsersUnassigned")
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-ink-600">
+                            {u.termsAcceptedAt ? (
+                              <span title={u.termsVersion ?? undefined}>
+                                {new Date(u.termsAcceptedAt).toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-amber-700">{t("superAdmin.platformUsersTermsPending")}</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-2">
@@ -3228,7 +3296,7 @@ export function SuperAdminPage() {
             onClick={(e) => e.target === e.currentTarget && setEditPlatformUser(null)}
           >
             <div
-              className="card-surface w-full max-w-md overflow-auto p-6 shadow-xl"
+              className="card-surface w-full max-w-lg overflow-auto p-6 shadow-xl max-h-[90vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-lg font-semibold text-slate-900">
@@ -3312,8 +3380,10 @@ export function SuperAdminPage() {
                         if (e.target.checked) {
                           setEditUserRole("SUPER_ADMIN");
                           setEditUserOrgId("");
+                          setEditUserMemberships([]);
                         } else {
                           setEditUserRole("ADMIN");
+                          setEditUserMemberships([{ organizationId: "", role: "AGENT" }]);
                         }
                       }}
                       className="mt-1 rounded border-ink-300"
@@ -3329,24 +3399,113 @@ export function SuperAdminPage() {
                     </span>
                   </label>
                 </div>
+                {editPlatformUser.termsAcceptedAt ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-900">
+                    <p className="font-medium">{t("superAdmin.platformUsersTermsAccepted")}</p>
+                    <p className="mt-0.5">
+                      {new Date(editPlatformUser.termsAcceptedAt).toLocaleString()}
+                      {editPlatformUser.termsVersion ? ` · v${editPlatformUser.termsVersion}` : ""}
+                    </p>
+                    {editPlatformUser.privacyAcceptedAt ? (
+                      <p className="mt-1 text-emerald-800/80">
+                        {t("superAdmin.platformUsersPrivacyAccepted")}:{" "}
+                        {new Date(editPlatformUser.privacyAcceptedAt).toLocaleString()}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+                    {t("superAdmin.platformUsersTermsPending")}
+                  </p>
+                )}
                 {editUserRole !== "SUPER_ADMIN" ? (
-                  <>
-                    <div>
-                      <label className="block text-xs font-medium text-ink-600">
-                        {t("superAdmin.platformUsersFilterRole")}
-                      </label>
-                      <select
-                        value={editUserRole}
-                        onChange={(e) => setEditUserRole(e.target.value as "ADMIN" | "AGENT")}
-                        className="input-field mt-1 w-full"
+                  <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        {t("superAdmin.platformUsersMembershipsTitle")}
+                      </p>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        onClick={() =>
+                          setEditUserMemberships((rows) => [
+                            ...rows,
+                            { organizationId: "", role: "AGENT" },
+                          ])
+                        }
                       >
-                        <option value="ADMIN">{t("superAdmin.roleAdmin")}</option>
-                        <option value="AGENT">{t("superAdmin.roleAgent")}</option>
-                      </select>
+                        <Plus className="h-3.5 w-3.5" />
+                        {t("superAdmin.platformUsersAddOrg")}
+                      </button>
                     </div>
+                    {editUserMemberships.map((row, idx) => (
+                      <div key={`${row.organizationId}-${idx}`} className="flex flex-wrap items-end gap-2">
+                        <label className="min-w-0 flex-1">
+                          <span className="mb-1 block text-[11px] font-medium text-ink-600">
+                            {t("superAdmin.platformUsersAssignOrg")}
+                          </span>
+                          <select
+                            value={row.organizationId}
+                            onChange={(e) => {
+                              const organizationId = e.target.value;
+                              setEditUserMemberships((rows) =>
+                                rows.map((r, i) => (i === idx ? { ...r, organizationId } : r)),
+                              );
+                              if (!editUserOrgId || editUserOrgId === row.organizationId) {
+                                setEditUserOrgId(organizationId);
+                              }
+                            }}
+                            className="input-field w-full"
+                            required
+                          >
+                            <option value="">{t("superAdmin.platformUsersNoOrg")}</option>
+                            {orgs.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="w-28">
+                          <span className="mb-1 block text-[11px] font-medium text-ink-600">
+                            {t("superAdmin.platformUsersFilterRole")}
+                          </span>
+                          <select
+                            value={row.role}
+                            onChange={(e) =>
+                              setEditUserMemberships((rows) =>
+                                rows.map((r, i) =>
+                                  i === idx ? { ...r, role: e.target.value as "ADMIN" | "AGENT" } : r,
+                                ),
+                              )
+                            }
+                            className="input-field w-full"
+                          >
+                            <option value="ADMIN">{t("superAdmin.roleAdmin")}</option>
+                            <option value="AGENT">{t("superAdmin.roleAgent")}</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          disabled={editUserMemberships.length <= 1}
+                          onClick={() => {
+                            const removed = editUserMemberships[idx];
+                            setEditUserMemberships((rows) => rows.filter((_, i) => i !== idx));
+                            if (removed && editUserOrgId === removed.organizationId) {
+                              const next = editUserMemberships.filter((_, i) => i !== idx)[0];
+                              setEditUserOrgId(next?.organizationId ?? "");
+                            }
+                          }}
+                          className="mb-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40"
+                          aria-label={t("superAdmin.platformUsersRemoveOrg")}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
                     <div>
-                      <label className="block text-xs font-medium text-ink-600">
-                        {t("superAdmin.platformUsersAssignOrg")}
+                      <label className="block text-[11px] font-medium text-ink-600">
+                        {t("superAdmin.platformUsersActiveOrg")}
                       </label>
                       <select
                         value={editUserOrgId}
@@ -3355,14 +3514,22 @@ export function SuperAdminPage() {
                         required
                       >
                         <option value="">{t("superAdmin.platformUsersNoOrg")}</option>
-                        {orgs.map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.name}
-                          </option>
-                        ))}
+                        {editUserMemberships
+                          .filter((m) => m.organizationId)
+                          .map((m) => {
+                            const org = orgs.find((o) => o.id === m.organizationId);
+                            return org ? (
+                              <option key={m.organizationId} value={m.organizationId}>
+                                {org.name}
+                              </option>
+                            ) : null;
+                          })}
                       </select>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {t("superAdmin.platformUsersActiveOrgHint")}
+                      </p>
                     </div>
-                  </>
+                  </div>
                 ) : null}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4">
                   <button

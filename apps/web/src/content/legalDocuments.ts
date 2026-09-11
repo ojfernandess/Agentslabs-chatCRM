@@ -12,7 +12,7 @@ export type LegalDocument = {
   sections: LegalSection[];
 };
 
-const UPDATED = "2026-09-05";
+const UPDATED = "2026-09-11";
 
 const documentsPt: Record<LegalSlug, LegalDocument> = {
   about: {
@@ -128,30 +128,47 @@ const documentsPt: Record<LegalSlug, LegalDocument> = {
           "Permitido: utilizar a Plataforma para atendimento, vendas e operações legítimas da Organização, em conformidade com a lei aplicável.",
           "Proibido: uso fraudulento, spam, violação de direitos de terceiros, engenharia reversa, sobrecarga intencional, scraping não autorizado, ou qualquer actividade que comprometa a segurança ou disponibilidade do serviço.",
           "Conteúdos processados por funcionalidades de IA devem ser revistos por humanos quando relevante para decisões com impacto legal ou comercial.",
+          "É proibido utilizar a Plataforma para enviar mensagens em massa não solicitadas, práticas abusivas de prospecção ou violação das políticas dos canais integrados (ex.: WhatsApp Business, Meta Cloud API).",
         ],
       },
       {
-        heading: "4. Dados e responsabilidades",
+        heading: "4. Serviço SaaS, disponibilidade e suporte",
         bullets: [
-          "A Organização é responsável pelos dados de contactos e conversas que introduz ou recebe na Plataforma, incluindo obter bases legais adequadas (ex.: LGPD/GDPR).",
-          "A AgentsLabs actua como fornecedora de tecnologia; o tratamento de dados pessoais de clientes finais é co-responsabilizado conforme contrato com a Organização e a Política de Privacidade.",
+          "A Plataforma é disponibilizada no modelo software-as-a-service (SaaS), sujeita ao plano contratado pela Organização.",
+          "Metas de disponibilidade, janelas de manutenção e níveis de suporte seguem o acordo comercial ou SLA acordado com a AgentsLabs, quando aplicável.",
+          "Funcionalidades beta ou experimentais podem ser alteradas ou descontinuadas com aviso razoável.",
         ],
       },
       {
-        heading: "5. Disponibilidade e alterações",
+        heading: "5. Dados, CRM e responsabilidades",
+        bullets: [
+          "A Organização é responsável pelos dados de contactos, leads, conversas e negócios (CRM) que introduz ou recebe na Plataforma, incluindo obter bases legais adequadas (ex.: LGPD/GDPR) e respeitar opt-out do titular.",
+          "A AgentsLabs actua como operadora/fornecedora de tecnologia; o tratamento de dados pessoais de clientes finais é regulado pelo contrato com a Organização e pela Política de Privacidade.",
+          "Exportações, campanhas, automações e integrações activadas pela Organização são da sua exclusiva responsabilidade quanto à licitude e conformidade.",
+        ],
+      },
+      {
+        heading: "6. Suspensão e rescisão",
+        bullets: [
+          "A AgentsLabs pode suspender ou encerrar o acesso em caso de violação destes Termos, risco de segurança, inadimplência contratual ou ordem legal.",
+          "A Organização pode solicitar exportação de dados conforme acordo comercial antes da rescisão definitiva.",
+        ],
+      },
+      {
+        heading: "7. Disponibilidade e alterações",
         bullets: [
           "O Fornecedor procura manter a Plataforma disponível, podendo ocorrer manutenções programadas ou interrupções por motivos de força maior.",
           "Funcionalidades podem evoluir; alterações materiais a estes Termos serão comunicadas por meios razoáveis.",
         ],
       },
       {
-        heading: "6. Limitação de responsabilidade",
+        heading: "8. Limitação de responsabilidade",
         paragraphs: [
           "Na máxima extensão permitida por lei, a AgentsLabs não se responsabiliza por danos indirectos, lucros cessantes ou perda de dados resultantes de uso indevido, integrações de terceiros ou indisponibilidade temporária, salvo disposição legal imperativa ou acordo escrito em contrário.",
         ],
       },
       {
-        heading: "7. Lei aplicável",
+        heading: "9. Lei aplicável",
         paragraphs: [
           "Estes Termos regem-se pela legislação brasileira, salvo acordo diverso entre a Organização e a AgentsLabs. Foro competente: comarca da sede da AgentsLabs, com renúncia a qualquer outro, salvo direitos do consumidor quando aplicável.",
         ],
@@ -209,15 +226,35 @@ const documentsPt: Record<LegalSlug, LegalDocument> = {
         ],
       },
       {
-        heading: "6. Direitos dos titulares",
+        heading: "6. Direitos dos titulares (LGPD art. 18)",
         bullets: [
-          "Contactos e clientes finais devem exercer direitos (acesso, rectificação, eliminação, portabilidade, oposição) junto da Organização controladora.",
+          "Contactos e clientes finais devem exercer direitos (confirmação, acesso, rectificação, anonimização, portabilidade, eliminação, informação sobre partilha, revogação de consentimento) junto da Organização controladora.",
           "Utilizadores da plataforma podem solicitar actualização ou eliminação da conta ao administrador da Organização.",
-          "Pedidos à AgentsLabs relacionados com operação da plataforma podem ser enviados para privacidade@agentslabs.cloud, indicando a Organização associada.",
+          "Pedidos à AgentsLabs como operadora podem ser enviados para privacidade@agentslabs.cloud, indicando a Organização associada.",
+          "Responderemos a pedidos legítimos no prazo legal aplicável, com possível solicitação de informação adicional para confirmar identidade.",
         ],
       },
       {
-        heading: "7. Transferências internacionais",
+        heading: "7. Encarregado de protecção de dados (DPO)",
+        paragraphs: [
+          "A AgentsLabs designou canal dedicado para questões de privacidade e LGPD: privacidade@agentslabs.cloud. A Organização cliente deve indicar o seu encarregado interno quando exigido pela lei.",
+        ],
+      },
+      {
+        heading: "8. Cookies, sessão e registos",
+        bullets: [
+          "Utilizamos cookies estritamente necessários para autenticação, preferências de sessão e segurança (ex.: protecção anti-bot no login).",
+          "Registos técnicos (IP, user-agent, auditoria de acções administrativas) são conservados pelo tempo necessário à segurança e cumprimento legal.",
+        ],
+      },
+      {
+        heading: "9. Incidentes de segurança",
+        paragraphs: [
+          "Em caso de incidente de segurança com impacto em dados pessoais, a AgentsLabs notificará a Organização controladora dentro de prazo compatível com a LGPD, para permitir comunicação aos titulares e à ANPD quando aplicável.",
+        ],
+      },
+      {
+        heading: "10. Transferências internacionais",
         paragraphs: [
           "Quando serviços de subprocessadores estiverem localizados fora do Brasil/EEE, serão adoptadas salvaguardas contratuais adequadas (cláusulas padrão ou mecanismos equivalentes).",
         ],
@@ -419,30 +456,47 @@ const documentsEn: Record<LegalSlug, LegalDocument> = {
           "Permitted: use the Platform for legitimate Organization operations in compliance with applicable law.",
           "Prohibited: fraud, spam, violation of third-party rights, reverse engineering, intentional overload, unauthorized scraping, or any activity compromising security or availability.",
           "AI-processed content should be reviewed by humans when relevant for legal or commercial decisions.",
+          "Unsolicited bulk messaging, abusive prospecting, or violation of integrated channel policies (e.g., WhatsApp Business, Meta Cloud API) is prohibited.",
         ],
       },
       {
-        heading: "4. Data and responsibilities",
+        heading: "4. SaaS service, availability and support",
         bullets: [
-          "The Organization is responsible for contact and conversation data it introduces or receives, including obtaining adequate legal bases (e.g., LGPD/GDPR).",
-          "AgentsLabs acts as a technology provider; processing of end-customer personal data is shared per contract with the Organization and the Privacy Policy.",
+          "The Platform is provided as software-as-a-service (SaaS), subject to the plan contracted by the Organization.",
+          "Availability targets, maintenance windows, and support levels follow the commercial agreement or SLA with AgentsLabs, when applicable.",
+          "Beta or experimental features may change or be discontinued with reasonable notice.",
         ],
       },
       {
-        heading: "5. Availability and changes",
+        heading: "5. Data, CRM and responsibilities",
+        bullets: [
+          "The Organization is responsible for contacts, leads, conversations, and deal (CRM) data it introduces or receives, including adequate legal bases (e.g., LGPD/GDPR) and honoring opt-out requests.",
+          "AgentsLabs acts as a technology processor; end-customer personal data processing is governed by contract with the Organization and the Privacy Policy.",
+          "Exports, campaigns, automations, and integrations enabled by the Organization are its sole responsibility regarding lawfulness and compliance.",
+        ],
+      },
+      {
+        heading: "6. Suspension and termination",
+        bullets: [
+          "AgentsLabs may suspend or terminate access for Terms violations, security risk, contractual default, or legal order.",
+          "The Organization may request data export per commercial agreement before final termination.",
+        ],
+      },
+      {
+        heading: "7. Availability and changes",
         bullets: [
           "The Provider aims to keep the Platform available; scheduled maintenance or force majeure interruptions may occur.",
           "Features may evolve; material changes to these Terms will be communicated by reasonable means.",
         ],
       },
       {
-        heading: "6. Limitation of liability",
+        heading: "8. Limitation of liability",
         paragraphs: [
           "To the maximum extent permitted by law, AgentsLabs is not liable for indirect damages, lost profits, or data loss resulting from misuse, third-party integrations, or temporary unavailability, except where mandatory law or written agreement provides otherwise.",
         ],
       },
       {
-        heading: "7. Governing law",
+        heading: "9. Governing law",
         paragraphs: [
           "These Terms are governed by Brazilian law, unless otherwise agreed between the Organization and AgentsLabs.",
         ],
@@ -500,15 +554,35 @@ const documentsEn: Record<LegalSlug, LegalDocument> = {
         ],
       },
       {
-        heading: "6. Data subject rights",
+        heading: "6. Data subject rights (LGPD art. 18)",
         bullets: [
-          "End contacts should exercise rights (access, rectification, deletion, portability, objection) with the controlling Organization.",
+          "End contacts should exercise rights (confirmation, access, rectification, anonymization, portability, deletion, sharing information, consent withdrawal) with the controlling Organization.",
           "Platform users may request account updates or deletion from their Organization administrator.",
-          "AgentsLabs platform operation requests: privacidade@agentslabs.cloud, indicating the associated Organization.",
+          "AgentsLabs processor requests: privacidade@agentslabs.cloud, indicating the associated Organization.",
+          "We respond to legitimate requests within applicable legal timeframes, possibly requesting additional information to verify identity.",
         ],
       },
       {
-        heading: "7. International transfers",
+        heading: "7. Data Protection Officer (DPO)",
+        paragraphs: [
+          "AgentsLabs maintains a dedicated privacy and LGPD channel: privacidade@agentslabs.cloud. Customer Organizations must appoint their internal DPO when required by law.",
+        ],
+      },
+      {
+        heading: "8. Cookies, session and logs",
+        bullets: [
+          "We use strictly necessary cookies for authentication, session preferences, and security (e.g., anti-bot protection on login).",
+          "Technical logs (IP, user-agent, administrative audit actions) are retained as needed for security and legal compliance.",
+        ],
+      },
+      {
+        heading: "9. Security incidents",
+        paragraphs: [
+          "In case of a security incident affecting personal data, AgentsLabs will notify the controlling Organization within an LGPD-compatible timeframe to enable communication with data subjects and ANPD when applicable.",
+        ],
+      },
+      {
+        heading: "10. International transfers",
         paragraphs: [
           "When subprocessor services are located outside Brazil/EEA, appropriate contractual safeguards will be adopted.",
         ],

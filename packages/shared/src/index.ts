@@ -10,3 +10,4 @@ export * from "./emailBodySanitize.js";
 export * from "./emailRecipients.js";
 export * from "./systemLogoUrl.js";
 export * from "./contactWebsiteDisplay.js";
+export * from "./legalVersions.js";

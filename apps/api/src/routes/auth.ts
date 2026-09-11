@@ -33,6 +33,10 @@ import {
   resolveEffectiveRole,
 } from "../lib/organizationMemberships.js";
 import { resolveUserOrganizationId } from "../lib/tenantContext.js";
+import {
+  legalAcceptanceData,
+  userRequiresLegalAcceptance,
+} from "../lib/legalAcceptance.js";
 
 const turnstileTokenField = z.string().min(1).max(2048).optional();
 
@@ -76,6 +80,10 @@ const acceptInviteSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   /** Obrigatório excepto quando a sessão JWT já é do email convidado. */
   password: z.string().min(8).max(128).optional(),
+  /** Aceite dos Termos de Uso (obrigatório na criação de conta ou se ainda não aceite). */
+  acceptTerms: z.literal(true).optional(),
+  /** Aceite da Política de Privacidade / LGPD. */
+  acceptPrivacy: z.literal(true).optional(),
   turnstileToken: turnstileTokenField,
 });
 
@@ -181,14 +189,24 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
     const existingAccount = await prisma.user.findUnique({
       where: { email: row.email },
-      select: { id: true },
+      select: {
+        id: true,
+        termsAcceptedAt: true,
+        termsVersion: true,
+        privacyAcceptedAt: true,
+        privacyVersion: true,
+      },
     });
+    const requiresLegalAcceptance = existingAccount
+      ? userRequiresLegalAcceptance(existingAccount)
+      : true;
     return {
       email: row.email,
       role: row.role,
       organizationId: row.organizationId,
       organizationName: row.organization.name,
       existingAccount: Boolean(existingAccount),
+      requiresLegalAcceptance,
     };
   });
 
@@ -241,7 +259,31 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const existing = await prisma.user.findUnique({ where: { email: row.email } });
+    const existing = await prisma.user.findUnique({
+      where: { email: row.email },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        passwordHash: true,
+        termsAcceptedAt: true,
+        termsVersion: true,
+        privacyAcceptedAt: true,
+        privacyVersion: true,
+      },
+    });
+
+    const needsLegalAcceptance = existing ? userRequiresLegalAcceptance(existing) : true;
+    if (needsLegalAcceptance) {
+      if (!parsed.data.acceptTerms || !parsed.data.acceptPrivacy) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Terms of use and privacy policy acceptance are required",
+          statusCode: 400,
+        });
+      }
+    }
+    const legalFields = needsLegalAcceptance ? legalAcceptanceData() : {};
 
     if (existing) {
       if (existing.role === "SUPER_ADMIN") {
@@ -319,6 +361,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           data: {
             organizationId: row.organizationId,
             role: inviteRole,
+            ...legalFields,
           },
         });
         await tx.userInvitation.update({
@@ -366,6 +409,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           email: row.email,
           passwordHash,
           role: inviteRole,
+          ...legalFields,
         },
         select: { id: true, email: true, role: true, organizationId: true },
       });

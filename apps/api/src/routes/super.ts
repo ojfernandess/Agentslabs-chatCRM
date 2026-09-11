@@ -11,7 +11,12 @@ import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
 import { applyCatalogPlanToOrganization } from "../lib/billing/planAssignment.js";
 import { BillingError } from "../lib/billing/StripeCustomerService.js";
-import { ensureMembership } from "../lib/organizationMemberships.js";
+import {
+  ensureMembership,
+  organizationMembersWhere,
+  syncUserMemberships,
+  type OrgMemberRole,
+} from "../lib/organizationMemberships.js";
 import { getRedisHealth } from "../lib/redisHealth.js";
 import {
   FEATURE_FLAG_DEFINITIONS,
@@ -113,14 +118,47 @@ const superUsersQuerySchema = z.object({
     .transform((v) => v === "true" || v === "1"),
 });
 
+const superPlatformMembershipSchema = z.object({
+  organizationId: z.string().uuid(),
+  role: z.enum(["ADMIN", "AGENT"]),
+});
+
 const superPlatformUserPatchSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   email: z.string().email().max(255).optional(),
   role: z.enum(["SUPER_ADMIN", "ADMIN", "AGENT"]).optional(),
+  /** Workspace activo (deve existir em `memberships` quando multi-org). */
   organizationId: z.union([z.string().uuid(), z.null()]).optional(),
+  /** Atribuição a várias organizações (substitui a lista completa de memberships). */
+  memberships: z.array(superPlatformMembershipSchema).min(1).max(50).optional(),
   password: z.string().min(8).max(128).optional(),
   currentPassword: z.string().min(1).max(128).optional(),
 });
+
+const platformUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  createdAt: true,
+  organizationId: true,
+  termsAcceptedAt: true,
+  termsVersion: true,
+  privacyAcceptedAt: true,
+  privacyVersion: true,
+  organization: {
+    select: { id: true, name: true, slug: true, isActive: true },
+  },
+  memberships: {
+    select: {
+      role: true,
+      organization: {
+        select: { id: true, name: true, slug: true, isActive: true },
+      },
+    },
+    orderBy: { createdAt: "asc" as const },
+  },
+} satisfies Prisma.UserSelect;
 
 const platformSettingUpsertSchema = z.object({
   key: z.string().min(1).max(120),
@@ -763,38 +801,44 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
     const { page, limit, q, organizationId, role, unassigned } = parsed.data;
-    const where: Prisma.UserWhereInput = {};
-    if (role) where.role = role;
-    if (organizationId) where.organizationId = organizationId;
-    if (unassigned) where.organizationId = null;
+    const and: Prisma.UserWhereInput[] = [];
+    if (role) and.push({ role });
+    if (unassigned) {
+      and.push({
+        organizationId: null,
+        role: { in: ["ADMIN", "AGENT"] },
+        memberships: { none: {} },
+      });
+    } else if (organizationId) {
+      and.push(organizationMembersWhere(organizationId));
+    }
     const qTrim = q?.trim();
     if (qTrim) {
-      where.OR = [
-        { email: { contains: qTrim, mode: "insensitive" } },
-        { name: { contains: qTrim, mode: "insensitive" } },
-      ];
+      and.push({
+        OR: [
+          { email: { contains: qTrim, mode: "insensitive" } },
+          { name: { contains: qTrim, mode: "insensitive" } },
+        ],
+      });
     }
+    const where: Prisma.UserWhereInput = and.length ? { AND: and } : {};
     const skip = (page - 1) * limit;
     const [total, superAdminTotal, unassignedTotal, data] = await Promise.all([
       prisma.user.count({ where }),
       prisma.user.count({ where: { role: "SUPER_ADMIN" } }),
-      prisma.user.count({ where: { organizationId: null, role: { in: ["ADMIN", "AGENT"] } } }),
+      prisma.user.count({
+        where: {
+          organizationId: null,
+          role: { in: ["ADMIN", "AGENT"] },
+          memberships: { none: {} },
+        },
+      }),
       prisma.user.findMany({
         where,
         skip,
         take: limit,
         orderBy: [{ role: "asc" }, { createdAt: "desc" }],
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          createdAt: true,
-          organizationId: true,
-          organization: {
-            select: { id: true, name: true, slug: true, isActive: true },
-          },
-        },
+        select: platformUserSelect,
       }),
     ]);
     return {
@@ -820,26 +864,35 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const nextRole = parsed.data.role ?? target.role;
     let nextOrgId =
       parsed.data.organizationId !== undefined ? parsed.data.organizationId : target.organizationId;
+    const membershipPatch = parsed.data.memberships;
 
     if (nextRole === "SUPER_ADMIN") {
       nextOrgId = null;
+    } else if (membershipPatch?.length) {
+      nextOrgId =
+        parsed.data.organizationId !== undefined
+          ? parsed.data.organizationId
+          : nextOrgId ?? membershipPatch[0]!.organizationId;
     } else if (!nextOrgId) {
       return reply.status(400).send({
         error: "Bad Request",
-        message: "organizationId is required for ADMIN and AGENT users",
+        message: "organizationId or memberships is required for ADMIN and AGENT users",
         statusCode: 400,
       });
     }
 
-    if (nextOrgId) {
-      const org = await prisma.organization.findUnique({
-        where: { id: nextOrgId },
-        select: { id: true, isActive: true },
+    const orgIdsToValidate = new Set<string>();
+    if (nextOrgId) orgIdsToValidate.add(nextOrgId);
+    membershipPatch?.forEach((m) => orgIdsToValidate.add(m.organizationId));
+    if (orgIdsToValidate.size > 0) {
+      const found = await prisma.organization.findMany({
+        where: { id: { in: [...orgIdsToValidate] } },
+        select: { id: true },
       });
-      if (!org) {
+      if (found.length !== orgIdsToValidate.size) {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Organization not found",
+          message: "One or more organizations not found",
           statusCode: 400,
         });
       }
@@ -903,34 +956,74 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     } = {};
     if (parsed.data.name !== undefined) data.name = parsed.data.name;
     if (parsed.data.email !== undefined) data.email = parsed.data.email.trim().toLowerCase();
-    if (parsed.data.role !== undefined) data.role = parsed.data.role;
-    if (parsed.data.role !== undefined || parsed.data.organizationId !== undefined || nextRole === "SUPER_ADMIN") {
+    if (parsed.data.role !== undefined && !membershipPatch?.length) data.role = parsed.data.role;
+    if (
+      (parsed.data.role !== undefined ||
+        parsed.data.organizationId !== undefined ||
+        nextRole === "SUPER_ADMIN") &&
+      !membershipPatch?.length
+    ) {
       data.organizationId = nextOrgId;
+    }
+    if (nextRole === "SUPER_ADMIN") {
+      data.role = "SUPER_ADMIN";
+      data.organizationId = null;
     }
     if (parsed.data.password) {
       data.passwordHash = await bcrypt.hash(parsed.data.password, config.bcryptCostFactor);
     }
-    if (Object.keys(data).length === 0) {
+    const hasProfileUpdate = Object.keys(data).length > 0;
+    if (!hasProfileUpdate && !membershipPatch?.length) {
       return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });
     }
 
-    const updated = await prisma.user.update({
-      where: { id: target.id },
-      data,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        organizationId: true,
-        organization: {
-          select: { id: true, name: true, slug: true, isActive: true },
-        },
-      },
-    });
+    if (nextRole === "SUPER_ADMIN") {
+      await prisma.organizationMembership.deleteMany({ where: { userId: target.id } });
+    }
 
-    if (updated.role === "AGENT" && updated.organizationId) {
+    if (membershipPatch?.length && nextRole !== "SUPER_ADMIN") {
+      const activeOrgId = nextOrgId ?? membershipPatch[0]!.organizationId;
+      if (!membershipPatch.some((m) => m.organizationId === activeOrgId)) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Active organization must be included in memberships",
+          statusCode: 400,
+        });
+      }
+      await syncUserMemberships(
+        target.id,
+        membershipPatch.map((m) => ({
+          organizationId: m.organizationId,
+          role: m.role as OrgMemberRole,
+        })),
+        activeOrgId,
+      );
+      for (const m of membershipPatch) {
+        if (m.role === "AGENT") {
+          await addAgentToAllOrganizationTeams(m.organizationId, target.id);
+        }
+      }
+    } else if (nextRole !== "SUPER_ADMIN" && nextOrgId && parsed.data.organizationId !== undefined) {
+      const memberRole: OrgMemberRole = nextRole === "ADMIN" ? "ADMIN" : "AGENT";
+      await ensureMembership({
+        organizationId: nextOrgId,
+        userId: target.id,
+        role: memberRole,
+      });
+    }
+
+    const updated = hasProfileUpdate
+      ? await prisma.user.update({
+          where: { id: target.id },
+          data,
+          select: platformUserSelect,
+        })
+      : await prisma.user.findUniqueOrThrow({
+          where: { id: target.id },
+          select: platformUserSelect,
+        });
+
+    if (updated.role === "AGENT" && updated.organizationId && !membershipPatch?.length) {
       await addAgentToAllOrganizationTeams(updated.organizationId, updated.id);
     }
 
@@ -1005,7 +1098,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
     }
     return prisma.user.findMany({
-      where: { organizationId: org.id },
+      where: organizationMembersWhere(org.id),
       select: { id: true, name: true, email: true, role: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     });

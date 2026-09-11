@@ -105,6 +105,54 @@ export async function resolveEffectiveRole(params: {
  * Define workspace activo (`users.organization_id` + `users.role`) a partir da membership.
  * Mantém JWT/sessão compatíveis com o modelo single-org anterior.
  */
+/**
+ * Sincroniza memberships de um utilizador (super admin / multi-org).
+ * Define workspace activo e papel a partir de `activeOrganizationId`.
+ */
+export async function syncUserMemberships(
+  userId: string,
+  memberships: { organizationId: string; role: OrgMemberRole }[],
+  activeOrganizationId: string | null,
+  tx?: Prisma.TransactionClient,
+): Promise<{ organizationId: string; role: OrgMemberRole }> {
+  const unique = new Map<string, OrgMemberRole>();
+  for (const m of memberships) {
+    unique.set(m.organizationId, m.role);
+  }
+  const list = [...unique.entries()].map(([organizationId, role]) => ({ organizationId, role }));
+  if (list.length === 0) {
+    throw new Error("NO_MEMBERSHIPS");
+  }
+
+  const activeId =
+    activeOrganizationId && unique.has(activeOrganizationId)
+      ? activeOrganizationId
+      : list[0]!.organizationId;
+  const activeRole = unique.get(activeId)!;
+
+  const run = async (db: Prisma.TransactionClient) => {
+    const keepIds = list.map((m) => m.organizationId);
+    await db.organizationMembership.deleteMany({
+      where: { userId, organizationId: { notIn: keepIds } },
+    });
+    for (const m of list) {
+      await ensureMembership({ organizationId: m.organizationId, userId, role: m.role }, db);
+    }
+    await db.user.update({
+      where: { id: userId },
+      data: { organizationId: activeId, role: activeRole },
+    });
+  };
+
+  if (tx) {
+    await run(tx);
+  } else {
+    await prisma.$transaction(run);
+  }
+
+  return { organizationId: activeId, role: activeRole };
+}
+
 export async function activateOrganizationForUser(params: {
   userId: string;
   organizationId: string;

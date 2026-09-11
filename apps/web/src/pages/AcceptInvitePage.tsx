@@ -16,6 +16,7 @@ type InviteInfo = {
   organizationId: string;
   organizationName: string;
   existingAccount: boolean;
+  requiresLegalAcceptance: boolean;
 };
 
 export function AcceptInvitePage() {
@@ -38,6 +39,8 @@ export function AcceptInvitePage() {
   const [done, setDone] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileReset, setTurnstileReset] = useState(0);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const { isBlocked: turnstileBlocksSubmit } = useAuthTurnstileGate();
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export function AcceptInvitePage() {
           organizationId: res.organizationId,
           organizationName: res.organizationName,
           existingAccount: Boolean(res.existingAccount),
+          requiresLegalAcceptance: Boolean(res.requiresLegalAcceptance),
         });
       })
       .catch(() => {
@@ -119,6 +123,11 @@ export function AcceptInvitePage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+    const requiresLegal = invite?.requiresLegalAcceptance ?? true;
+    if (requiresLegal && (!acceptTerms || !acceptPrivacy)) {
+      setError(t("login.inviteLegalRequired"));
+      return;
+    }
     if (!existingAccount && !sessionMatchesInvite) {
       if (password !== confirm) {
         setError(t("login.resetMismatch"));
@@ -131,6 +140,10 @@ export function AcceptInvitePage() {
         token,
         turnstileToken: turnstileToken ?? undefined,
       };
+      if (requiresLegal) {
+        body.acceptTerms = true;
+        body.acceptPrivacy = true;
+      }
       if (!existingAccount && !sessionMatchesInvite) {
         body.name = name.trim();
         body.password = password;
@@ -168,6 +181,7 @@ export function AcceptInvitePage() {
   const email = invite?.email ?? "";
   const organizationName = invite?.organizationName ?? "";
   const joinMode = existingAccount || sessionMatchesInvite;
+  const showLegalAcceptance = invite?.requiresLegalAcceptance ?? true;
 
   return (
     <AuthSplitShell>
@@ -257,8 +271,50 @@ export function AcceptInvitePage() {
                   ) : null}
                 </>
               ) : null}
+              {showLegalAcceptance ? (
+                <div className="space-y-2 rounded-lg border border-ink-200 bg-ink-50/80 px-3 py-3 text-sm dark:border-ink-600 dark:bg-ink-800/40">
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600"
+                      checked={acceptTerms}
+                      onChange={(e) => setAcceptTerms(e.target.checked)}
+                      required
+                    />
+                    <span className="text-ink-700 dark:text-ink-200">
+                      {t("login.inviteAcceptTermsPrefix")}{" "}
+                      <Link to="/legal/terms" target="_blank" className="font-medium text-brand-600 hover:underline">
+                        {t("login.inviteAcceptTermsLink")}
+                      </Link>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600"
+                      checked={acceptPrivacy}
+                      onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                      required
+                    />
+                    <span className="text-ink-700 dark:text-ink-200">
+                      {t("login.inviteAcceptPrivacyPrefix")}{" "}
+                      <Link to="/legal/privacy" target="_blank" className="font-medium text-brand-600 hover:underline">
+                        {t("login.inviteAcceptPrivacyLink")}
+                      </Link>
+                    </span>
+                  </label>
+                </div>
+              ) : null}
               <AuthTurnstileField onToken={setTurnstileToken} resetSignal={turnstileReset} />
-              <button type="submit" className="btn-primary w-full" disabled={loading || turnstileBlocksSubmit(turnstileToken)}>
+              <button
+                type="submit"
+                className="btn-primary w-full"
+                disabled={
+                  loading ||
+                  turnstileBlocksSubmit(turnstileToken) ||
+                  (showLegalAcceptance && (!acceptTerms || !acceptPrivacy))
+                }
+              >
                 {loading ? t("common.saving") : joinMode ? t("login.inviteJoinSubmit") : t("login.inviteSubmit")}
               </button>
             </form>
