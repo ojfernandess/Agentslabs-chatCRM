@@ -85,6 +85,9 @@ export async function syncSubscriptionFromStripe(
     trialStart: stripeUnixToDate(subscription.trial_start),
     trialEnd: stripeUnixToDate(subscription.trial_end),
     checkoutSessionId: null,
+    ...(status === "active" || status === "trialing"
+      ? { paymentDueAt: null }
+      : {}),
   };
 
   await prisma.organizationSubscription.upsert({

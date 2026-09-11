@@ -13,3 +13,5 @@ export * from "./PlanEntitlementService.js";
 export * from "./StripeInvoiceService.js";
 export * from "./planEnforcement.js";
 export * from "./planAssignment.js";
+export * from "./customPlanService.js";
+export * from "./StripeSetupService.js";

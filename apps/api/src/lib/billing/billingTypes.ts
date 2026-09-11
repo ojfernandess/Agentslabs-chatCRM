@@ -1,6 +1,7 @@
 /** Estados internos alinhados ao ciclo Stripe (OrganizationSubscription.status). */
 export const SUBSCRIPTION_STATUSES = [
   "inactive",
+  "pending_payment",
   "trialing",
   "active",
   "past_due",
@@ -18,6 +19,7 @@ export const ACCESS_GRANTING_STATUSES = new Set<SubscriptionStatus>([
   "trialing",
   "active",
   "past_due",
+  "pending_payment",
 ]);
 
 export type PlanLimits = {

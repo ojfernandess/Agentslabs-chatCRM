@@ -176,6 +176,7 @@ model Organization {
 
   users              User[]
   subscription       OrganizationSubscription?
+  customPlans        Plan[]
   userInvitations    UserInvitation[]
   contacts           Contact[]
   conversations      Conversation[]
@@ -1565,11 +1566,18 @@ model Plan {
   features        Json     @default("{}")
   /// Mapeia plan_tier legado (free | growth | enterprise) para migração.
   legacyPlanTier  String?  @map("legacy_plan_tier") @db.VarChar(32)
+  /// Plano exclusivo de uma organização (null = catálogo global).
+  organizationId  String?  @map("organization_id") @db.Uuid
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isCustom        Boolean  @default(false) @map("is_custom")
+  /// Dias para pagamento após atribuição (planos personalizados).
+  paymentGraceDays Int?    @map("payment_grace_days")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   subscriptions OrganizationSubscription[]
 
+  @@index([organizationId])
   @@map("plans")
 }
 
@@ -1591,6 +1599,9 @@ model OrganizationSubscription {
   trialStart           DateTime?    @map("trial_start")
   trialEnd             DateTime?    @map("trial_end")
   checkoutSessionId    String?      @map("checkout_session_id") @db.VarChar(255)
+  /// Prazo para pagamento de plano personalizado (grace).
+  paymentDueAt         DateTime?    @map("payment_due_at")
+  customPlanAssignedAt DateTime?    @map("custom_plan_assigned_at")
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
 

@@ -19,6 +19,10 @@ import {
   resumeScheduledCancellation,
   getOrganizationUsage,
   applyCatalogPlanToOrganization,
+  listPlansForOrganization,
+  computePaymentGraceInfo,
+  createPaymentMethodSetupSession,
+  createPaymentMethodPortalSession,
 } from "../lib/billing/index.js";
 
 const planIdBodySchema = z.object({
@@ -110,6 +114,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
                   trialDays: true,
                   limits: true,
                   features: true,
+                  isCustom: true,
                 },
               },
             },
@@ -120,12 +125,23 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
 
     const sub = org?.subscription;
     const plan = sub?.plan;
+    const paymentGrace = computePaymentGraceInfo({
+      status: sub?.status ?? "inactive",
+      paymentDueAt: sub?.paymentDueAt ?? null,
+      stripeSubscriptionId: sub?.stripeSubscriptionId ?? null,
+      planIsCustom: plan?.isCustom ?? false,
+    });
 
     return {
       stripeConfigured: isStripeBillingConfigured(),
       publishableKey: getStripePublishableKeyForClient(),
       billingEmail: org?.billingEmail ?? null,
       legacyPlanTier: org?.planTier ?? "free",
+      hasCustomPlanCatalog: Boolean(
+        plan?.isCustom ||
+          (await prisma.plan.count({ where: { organizationId, isCustom: true, isActive: true } })),
+      ),
+      paymentGrace,
       subscription: sub
         ? {
             status: sub.status,
@@ -135,7 +151,8 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
             cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
             canceledAt: sub.canceledAt?.toISOString() ?? null,
             trialEnd: sub.trialEnd?.toISOString() ?? null,
-            plan: plan ? serializePlanForClient(plan) : null,
+            paymentDueAt: sub.paymentDueAt?.toISOString() ?? null,
+            plan: plan ? { ...serializePlanForClient(plan), isCustom: plan.isCustom } : null,
           }
         : null,
       entitlements: entitlements
@@ -161,10 +178,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
 
     const [plans, sub] = await Promise.all([
-      prisma.plan.findMany({
-        where: { isActive: true },
-        orderBy: [{ displayOrder: "asc" }, { amountCents: "asc" }],
-      }),
+      listPlansForOrganization(organizationId),
       prisma.organizationSubscription.findUnique({
         where: { organizationId },
         select: { planId: true },
@@ -175,10 +189,12 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
       plans: plans.map((p) => ({
         ...serializePlanForClient(p),
         isCurrent: sub?.planId === p.id,
+        isCustom: p.isCustom,
         requiresCheckout: p.amountCents > 0 && Boolean(p.stripePriceId),
         isFree: p.amountCents <= 0,
         stripeReady: p.amountCents <= 0 || Boolean(p.stripePriceId?.trim()),
       })),
+      catalogMode: plans.some((p) => p.isCustom) ? "custom" as const : "global" as const,
     };
   });
 
@@ -345,6 +361,62 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         ip: clientIp(request),
       });
       return { ok: true };
+    } catch (err) {
+      sendBillingError(reply, err);
+      return;
+    }
+  });
+
+  app.post("/setup-payment-method", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    if (!isStripeBillingConfigured()) {
+      return reply.status(503).send({
+        error: "stripe_not_configured",
+        message: "Stripe billing is not configured on this server",
+        statusCode: 503,
+      });
+    }
+
+    const body = portalBodySchema.parse(request.body ?? {});
+    const actorUserId = request.user!.id;
+
+    try {
+      return await createPaymentMethodSetupSession({
+        organizationId,
+        actorUserId,
+        returnUrl: body.returnUrl,
+        ip: clientIp(request),
+      });
+    } catch (err) {
+      sendBillingError(reply, err);
+      return;
+    }
+  });
+
+  app.post("/update-payment-method", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    if (!isStripeBillingConfigured()) {
+      return reply.status(503).send({
+        error: "stripe_not_configured",
+        message: "Stripe billing is not configured on this server",
+        statusCode: 503,
+      });
+    }
+
+    const body = portalBodySchema.parse(request.body ?? {});
+    const actorUserId = request.user!.id;
+
+    try {
+      return await createPaymentMethodPortalSession({
+        organizationId,
+        actorUserId,
+        returnUrl: body.returnUrl,
+        ip: clientIp(request),
+      });
     } catch (err) {
       sendBillingError(reply, err);
       return;

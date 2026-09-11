@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CreditCard, ExternalLink, Loader2, AlertTriangle } from "lucide-react";
+import { CreditCard, ExternalLink, Loader2, AlertTriangle, MessageSquare, Users, Workflow } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -10,6 +10,7 @@ import {
   settingsSubtitle,
   settingsTitle,
 } from "@/components/settings/settingsUi";
+import { UsageMeter } from "@/components/settings/UsageMeter";
 
 type PlanRow = {
   id: string;
@@ -60,6 +61,13 @@ type BillingOverview = {
     limits: Record<string, number | null | undefined>;
     features: Record<string, boolean | undefined>;
   } | null;
+  hasCustomPlanCatalog?: boolean;
+  paymentGrace?: {
+    paymentPending: boolean;
+    paymentDueAt: string | null;
+    daysRemaining: number | null;
+    paymentOverdue: boolean;
+  };
 };
 
 type InvoiceRow = {
@@ -87,17 +95,6 @@ function formatDate(iso: string | null, locale: string): string {
   return new Date(iso).toLocaleDateString(locale);
 }
 
-function formatUsageLabel(
-  t: (key: string) => string,
-  labelKey: string,
-  used: number,
-  limit: number | null,
-): string {
-  const base = t(labelKey).replace("{used}", String(used));
-  if (limit === null) return base.replace("{limit}", "∞");
-  return base.replace("{limit}", String(limit));
-}
-
 function statusLabelKey(status: string): string {
   return `settings.billingStatus_${status}`;
 }
@@ -106,6 +103,7 @@ export function BillingSettingsPanel() {
   const { t, locale } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const checkoutNotice = searchParams.get("checkout");
+  const setupNotice = searchParams.get("setup");
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -144,11 +142,12 @@ export function BillingSettingsPanel() {
   }, [load]);
 
   useEffect(() => {
-    if (!checkoutNotice) return;
+    if (!checkoutNotice && !setupNotice) return;
     const next = new URLSearchParams(searchParams);
     next.delete("checkout");
+    next.delete("setup");
     setSearchParams(next, { replace: true });
-  }, [checkoutNotice, searchParams, setSearchParams]);
+  }, [checkoutNotice, setupNotice, searchParams, setSearchParams]);
 
   const currentPlan = overview?.subscription?.plan;
   const subscription = overview?.subscription;
@@ -171,6 +170,30 @@ export function BillingSettingsPanel() {
     }
     return null;
   }, [checkoutNotice, t]);
+
+  const setupBanner = useMemo(() => {
+    if (setupNotice === "success") {
+      return (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100">
+          {t("settings.billingSetupSuccess")}
+        </div>
+      );
+    }
+    if (setupNotice === "cancel") {
+      return (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+          {t("settings.billingSetupCancel")}
+        </div>
+      );
+    }
+    return null;
+  }, [setupNotice, t]);
+
+  const messagesRenewLabel = useMemo(() => {
+    const end = subscription?.currentPeriodEnd;
+    if (!end) return null;
+    return t("settings.billingUsageRenews").replace("{date}", formatDate(end, localeTag));
+  }, [subscription?.currentPeriodEnd, localeTag, t]);
 
   const runAction = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -220,9 +243,43 @@ export function BillingSettingsPanel() {
       </div>
 
       {checkoutBanner}
+      {setupBanner}
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100">
           {error}
+        </div>
+      ) : null}
+
+      {overview?.paymentGrace?.paymentPending ? (
+        <div
+          className={clsx(
+            settingsCard,
+            "flex gap-3 text-sm",
+            overview.paymentGrace.paymentOverdue
+              ? "border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100",
+          )}
+        >
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="space-y-1">
+            <p className="font-semibold">{t("settings.billingPaymentPendingTitle")}</p>
+            <p>
+              {overview.paymentGrace.paymentOverdue
+                ? t("settings.billingPaymentOverdue")
+                : t("settings.billingPaymentPendingHint").replace(
+                    "{days}",
+                    String(overview.paymentGrace.daysRemaining ?? 0),
+                  )}
+            </p>
+            {overview.paymentGrace.paymentDueAt ? (
+              <p className="text-xs opacity-80">
+                {t("settings.billingPaymentDueDate").replace(
+                  "{date}",
+                  formatDate(overview.paymentGrace.paymentDueAt, localeTag),
+                )}
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -237,16 +294,40 @@ export function BillingSettingsPanel() {
       ) : null}
 
       {overview?.usage ? (
-        <section className={settingsCard}>
-          <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("settings.billingUsageTitle")}</h3>
-          <ul className="mt-3 space-y-2 text-sm text-ink-700 dark:text-ink-200">
-            <li>{formatUsageLabel(t, "settings.billingUsageAgents", overview.usage.agents.used, overview.usage.agents.limit)}</li>
-            <li>{formatUsageLabel(t, "settings.billingUsageAutomations", overview.usage.automations.used, overview.usage.automations.limit)}</li>
-            <li>{formatUsageLabel(t, "settings.billingUsageContacts", overview.usage.contacts.used, overview.usage.contacts.limit)}</li>
-            <li>{formatUsageLabel(t, "settings.billingUsageMessages", overview.usage.messages.used, overview.usage.messages.limit)}</li>
-          </ul>
+        <section className="space-y-4">
+          <div>
+            <h3 className={settingsTitle}>{t("settings.billingUsageTitle")}</h3>
+            <p className={settingsSubtitle}>{t("settings.billingUsageIntro")}</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <UsageMeter
+              label={t("settings.billingUsageMeterAgents")}
+              icon={Users}
+              used={overview.usage.agents.used}
+              limit={overview.usage.agents.limit}
+            />
+            <UsageMeter
+              label={t("settings.billingUsageMeterAutomations")}
+              icon={Workflow}
+              used={overview.usage.automations.used}
+              limit={overview.usage.automations.limit}
+            />
+            <UsageMeter
+              label={t("settings.billingUsageMeterContacts")}
+              icon={Users}
+              used={overview.usage.contacts.used}
+              limit={overview.usage.contacts.limit}
+            />
+            <UsageMeter
+              label={t("settings.billingUsageMeterMessages")}
+              icon={MessageSquare}
+              used={overview.usage.messages.used}
+              limit={overview.usage.messages.limit}
+              renewLabel={messagesRenewLabel}
+            />
+          </div>
           {!overview.entitlements?.hasAccess ? (
-            <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">{t("settings.billingAccessSuspended")}</p>
+            <p className="text-sm font-medium text-red-700 dark:text-red-300">{t("settings.billingAccessSuspended")}</p>
           ) : null}
         </section>
       ) : null}
@@ -287,49 +368,71 @@ export function BillingSettingsPanel() {
           <p className={clsx(settingsMuted, "mt-3")}>{t("settings.billingNoPlan")}</p>
         )}
 
-        {overview?.stripeConfigured && subscription?.stripeManaged ? (
+        {overview?.stripeConfigured ? (
           <div className="mt-5 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={Boolean(busy)}
               onClick={() =>
-                void runAction("portal", async () => {
-                  const res = await api.post<{ url: string }>("/billing/portal", {});
+                void runAction("setup-pm", async () => {
+                  const res = await api.post<{ url: string }>("/billing/setup-payment-method", {});
                   window.location.href = res.url;
                 })
               }
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-800 dark:bg-transparent dark:text-brand-300 dark:hover:bg-brand-950/30 disabled:opacity-60"
             >
-              {busy === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-              {t("settings.billingManage")}
+              {busy === "setup-pm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+              {t("settings.billingAddPaymentMethod")}
             </button>
-            {subscription.cancelAtPeriodEnd ? (
-              <button
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() => void runAction("resume", () => api.post("/billing/resume", {}))}
-                className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium text-ink-800 hover:bg-ink-50 dark:border-soft-border dark:text-ink-100 dark:hover:bg-white/5 disabled:opacity-60"
-              >
-                {t("settings.billingResume")}
-              </button>
-            ) : subscription.status === "active" || subscription.status === "trialing" ? (
-              <button
-                type="button"
-                disabled={Boolean(busy)}
-                onClick={() =>
-                  void runAction("cancel", () => api.post("/billing/cancel", { cancelAtPeriodEnd: true }))
-                }
-                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30 disabled:opacity-60"
-              >
-                {t("settings.billingCancel")}
-              </button>
+            {subscription?.stripeManaged ? (
+              <>
+                <button
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() =>
+                    void runAction("portal", async () => {
+                      const res = await api.post<{ url: string }>("/billing/portal", {});
+                      window.location.href = res.url;
+                    })
+                  }
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                >
+                  {busy === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                  {t("settings.billingManage")}
+                </button>
+                {subscription.cancelAtPeriodEnd ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => void runAction("resume", () => api.post("/billing/resume", {}))}
+                    className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-medium text-ink-800 hover:bg-ink-50 dark:border-soft-border dark:text-ink-100 dark:hover:bg-white/5 disabled:opacity-60"
+                  >
+                    {t("settings.billingResume")}
+                  </button>
+                ) : subscription.status === "active" || subscription.status === "trialing" ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() =>
+                      void runAction("cancel", () => api.post("/billing/cancel", { cancelAtPeriodEnd: true }))
+                    }
+                    className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30 disabled:opacity-60"
+                  >
+                    {t("settings.billingCancel")}
+                  </button>
+                ) : null}
+              </>
             ) : null}
+            <p className="w-full text-xs text-ink-500 dark:text-ink-400">{t("settings.billingPaymentMethodHint")}</p>
           </div>
         ) : null}
       </section>
 
       <section className={settingsCard}>
         <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("settings.billingAvailablePlans")}</h3>
+        {overview?.hasCustomPlanCatalog ? (
+          <p className={clsx(settingsMuted, "mt-1 text-sm")}>{t("settings.billingCustomPlanCatalogHint")}</p>
+        ) : null}
         <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {plans.map((plan) => (
             <div

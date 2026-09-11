@@ -4,6 +4,8 @@ import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPageHeader, SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
+import { SuperAdminCustomPlansPanel } from "@/components/super-admin/SuperAdminCustomPlansPanel";
+import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
 
 type PlanRow = {
   id: string;
@@ -51,7 +53,7 @@ type SubscriptionRow = {
   updatedAt: string;
 };
 
-type BillingTab = "plans" | "subscriptions" | "settings";
+type BillingTab = "plans" | "customPlans" | "subscriptions" | "settings";
 
 const EMPTY_PLAN_FORM = {
   slug: "",
@@ -246,7 +248,7 @@ export function SuperAdminBillingSection() {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {(["plans", "subscriptions", "settings"] as const).map((id) => (
+        {(["plans", "customPlans", "subscriptions", "settings"] as const).map((id) => (
           <button
             key={id}
             type="button"
@@ -337,6 +339,8 @@ export function SuperAdminBillingSection() {
         </SuperAdminPanel>
       ) : null}
 
+      {tab === "customPlans" && !loading ? <SuperAdminCustomPlansPanel /> : null}
+
       {tab === "subscriptions" && !loading ? (
         <SuperAdminPanel className="overflow-hidden p-0">
           <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 px-4 py-3">
@@ -426,7 +430,7 @@ export function SuperAdminBillingSection() {
 
       {planModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
-          <div className="card-surface max-h-[90vh] w-full max-w-2xl overflow-auto p-6 shadow-xl">
+          <div className="card-surface max-h-[90vh] w-full max-w-3xl overflow-auto p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-ink-900">
               {editingPlan ? t("superAdmin.billingEditPlan") : t("superAdmin.billingPlanCreate")}
             </h3>
@@ -515,22 +519,12 @@ export function SuperAdminBillingSection() {
                   {t("superAdmin.billingActive")}
                 </label>
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-ink-600">limits (JSON)</label>
-                <textarea
-                  value={planForm.limitsJson}
-                  onChange={(e) => setPlanForm((f) => ({ ...f, limitsJson: e.target.value }))}
-                  className="input-field mt-1 min-h-[120px] font-mono text-xs"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-ink-600">features (JSON)</label>
-                <textarea
-                  value={planForm.featuresJson}
-                  onChange={(e) => setPlanForm((f) => ({ ...f, featuresJson: e.target.value }))}
-                  className="input-field mt-1 min-h-[100px] font-mono text-xs"
-                />
-              </div>
+              <PlanLimitsFeaturesEditor
+                limitsJson={planForm.limitsJson}
+                featuresJson={planForm.featuresJson}
+                onLimitsJsonChange={(limitsJson) => setPlanForm((f) => ({ ...f, limitsJson }))}
+                onFeaturesJsonChange={(featuresJson) => setPlanForm((f) => ({ ...f, featuresJson }))}
+              />
               <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <button type="button" className="btn-secondary" onClick={() => setPlanModalOpen(false)}>
                   {t("common.cancel")}

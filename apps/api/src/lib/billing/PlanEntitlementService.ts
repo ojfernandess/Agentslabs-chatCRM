@@ -37,12 +37,14 @@ function buildSnapshotFromOrg(input: {
       limits: unknown;
       features: unknown;
       legacyPlanTier: string | null;
+      isCustom?: boolean;
     } | null;
     stripeCustomerId: string | null;
     stripeSubscriptionId: string | null;
     currentPeriodEnd: Date | null;
     cancelAtPeriodEnd: boolean;
     updatedAt: Date;
+    paymentDueAt: Date | null;
   } | null;
   gracePeriodDays: number;
 }): EffectivePlanSnapshot {
@@ -57,7 +59,16 @@ function buildSnapshotFromOrg(input: {
     inGracePeriod = graceEnds.getTime() > Date.now();
   }
 
-  const hasAccess = granting && (status !== "past_due" || inGracePeriod);
+  let pendingPaymentGrace = false;
+  if (status === "pending_payment" && sub?.paymentDueAt) {
+    pendingPaymentGrace = sub.paymentDueAt.getTime() > Date.now();
+    inGracePeriod = pendingPaymentGrace;
+  }
+
+  const hasAccess =
+    granting &&
+    (status !== "past_due" || inGracePeriod) &&
+    (status !== "pending_payment" || pendingPaymentGrace);
 
   const limits = plan ? parsePlanLimits(plan.limits) : fallbackLimitsForTier(input.planTier);
   const features = plan ? parsePlanFeatures(plan.features) : fallbackFeaturesForTier(input.planTier);
@@ -126,6 +137,7 @@ export async function getEffectivePlanForOrganization(
                 limits: true,
                 features: true,
                 legacyPlanTier: true,
+                isCustom: true,
               },
             },
           },

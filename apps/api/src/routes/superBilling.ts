@@ -10,6 +10,8 @@ import {
   saveBillingPlatformSettings,
 } from "../lib/billing/billingSettings.js";
 import { parsePlanFeatures, parsePlanLimits } from "../lib/billing/billingTypes.js";
+import { BillingError } from "../lib/billing/StripeCustomerService.js";
+import { createCustomPlanForOrganization, listCustomPlans } from "../lib/billing/customPlanService.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
@@ -38,6 +40,22 @@ const billingSettingsPatchSchema = z.object({
   gracePeriodDays: z.number().int().min(0).max(90),
 });
 
+const createCustomPlanSchema = z.object({
+  organizationId: z.string().uuid(),
+  name: z.string().min(1).max(120),
+  description: z.string().max(4000).nullable().optional(),
+  currency: z.string().min(3).max(8).default("BRL"),
+  amountCents: z.number().int().min(0),
+  interval: z.enum(["month", "year"]).default("month"),
+  paymentGraceDays: z.number().int().min(1).max(90),
+  stripeProductId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
+  stripePriceId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
+  legacyPlanTier: z.enum(["free", "growth", "enterprise"]).nullable().optional(),
+  limits: jsonLimitsSchema,
+  features: jsonLimitsSchema,
+  trialDays: z.union([z.number().int().min(0).max(365), z.null()]).optional(),
+});
+
 const subscriptionsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
@@ -59,11 +77,15 @@ function serializePlan(plan: {
   stripeProductId: string | null;
   stripePriceId: string | null;
   legacyPlanTier: string | null;
+  isCustom?: boolean;
+  organizationId?: string | null;
+  paymentGraceDays?: number | null;
   limits: unknown;
   features: unknown;
   createdAt: Date;
   updatedAt: Date;
   _count?: { subscriptions: number };
+  organization?: { id: string; name: string; slug: string } | null;
 }) {
   return {
     id: plan.id,
@@ -79,6 +101,10 @@ function serializePlan(plan: {
     stripeProductId: plan.stripeProductId,
     stripePriceId: plan.stripePriceId,
     legacyPlanTier: plan.legacyPlanTier,
+    isCustom: plan.isCustom ?? false,
+    organizationId: plan.organizationId ?? null,
+    paymentGraceDays: plan.paymentGraceDays ?? null,
+    organization: plan.organization ?? null,
     limits: parsePlanLimits(plan.limits),
     features: parsePlanFeatures(plan.features),
     subscriptionCount: plan._count?.subscriptions ?? 0,
@@ -119,10 +145,73 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/plans", async () => {
     const plans = await prisma.plan.findMany({
+      where: { isCustom: false, organizationId: null },
       orderBy: [{ displayOrder: "asc" }, { amountCents: "asc" }],
       include: { _count: { select: { subscriptions: true } } },
     });
     return { plans: plans.map(serializePlan) };
+  });
+
+  app.get("/custom-plans", async (request) => {
+    const q = request.query as { organizationId?: string };
+    const orgId = q.organizationId?.trim();
+    const plans = await listCustomPlans(orgId || undefined);
+    return {
+      plans: plans.map((p) =>
+        serializePlan({
+          ...p,
+          organization: p.organization,
+        }),
+      ),
+    };
+  });
+
+  app.post("/custom-plans", async (request, reply) => {
+    const parsed = createCustomPlanSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const p = parsed.data;
+    try {
+      const plan = await createCustomPlanForOrganization({
+        organizationId: p.organizationId,
+        name: p.name,
+        description: p.description,
+        currency: p.currency,
+        amountCents: p.amountCents,
+        interval: p.interval,
+        paymentGraceDays: p.paymentGraceDays,
+        stripeProductId: normalizeStripeId(p.stripeProductId),
+        stripePriceId: normalizeStripeId(p.stripePriceId),
+        legacyPlanTier: p.legacyPlanTier ?? null,
+        limits: p.limits,
+        features: p.features,
+        trialDays: p.trialDays,
+      });
+
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        organizationId: p.organizationId,
+        action: "super.billing.custom_plan.create",
+        resourceType: "plan",
+        resourceId: plan.id,
+        metadata: { name: plan.name, organizationId: p.organizationId },
+        ip: clientIp(request),
+      });
+
+      return reply.status(201).send({
+        plan: serializePlan({ ...plan, _count: { subscriptions: 1 } }),
+      });
+    } catch (err) {
+      if (err instanceof BillingError) {
+        return reply.status(400).send({
+          error: err.code,
+          message: err.message,
+          statusCode: 400,
+        });
+      }
+      throw err;
+    }
   });
 
   app.post("/plans", async (request, reply) => {
