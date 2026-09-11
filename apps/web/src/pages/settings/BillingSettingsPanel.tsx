@@ -11,6 +11,7 @@ import {
   settingsTitle,
 } from "@/components/settings/settingsUi";
 import { UsageMeter } from "@/components/settings/UsageMeter";
+import { catalogExtraLabelKey, catalogFeatureLabelKey } from "@/lib/planCatalog";
 
 type PlanRow = {
   id: string;
@@ -23,6 +24,7 @@ type PlanRow = {
   trialDays: number | null;
   limits: Record<string, number | null | undefined>;
   features: Record<string, boolean | undefined>;
+  planExtras?: Record<string, string | undefined>;
   isCurrent: boolean;
   requiresCheckout: boolean;
   isFree?: boolean;
@@ -557,9 +559,24 @@ export function BillingSettingsPanel() {
                 {plan.limits.contacts != null ? (
                   <li>{t("settings.billingLimitContacts").replace("{count}", String(plan.limits.contacts))}</li>
                 ) : null}
-                {plan.features.rag ? <li>{t("settings.billingFeatureRag")}</li> : null}
-                {plan.features.api ? <li>{t("settings.billingFeatureApi")}</li> : null}
-                {plan.features.mcp ? <li>{t("settings.billingFeatureMcp")}</li> : null}
+                {Object.entries(plan.features)
+                  .filter(([, enabled]) => enabled === true)
+                  .map(([key]) => {
+                    const labelKey = catalogFeatureLabelKey(key);
+                    const label = labelKey ? t(labelKey) : key.replace(/_/g, " ");
+                    return <li key={key}>{label}</li>;
+                  })}
+                {Object.entries(plan.planExtras ?? {})
+                  .filter(([, value]) => Boolean(value?.trim()))
+                  .map(([key, value]) => {
+                    const labelKey = catalogExtraLabelKey(key);
+                    const label = labelKey ? t(labelKey) : key.replace(/_/g, " ");
+                    return (
+                      <li key={`extra-${key}`}>
+                        <span className="font-medium text-ink-700 dark:text-ink-200">{label}:</span> {value}
+                      </li>
+                    );
+                  })}
               </ul>
               {planShowsSubscribeAction(plan) ? (
                 plan.isFree || plan.amountCents <= 0 ? (

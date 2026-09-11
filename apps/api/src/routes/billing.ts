@@ -14,6 +14,7 @@ import {
   getEffectivePlanForOrganization,
   getStripePublishableKeyForClient,
   listOrganizationInvoices,
+  parsePlanExtras,
   parsePlanFeatures,
   parsePlanLimits,
   resumeScheduledCancellation,
@@ -61,6 +62,7 @@ function serializePlanForClient(plan: {
   displayOrder?: number;
   limits: unknown;
   features: unknown;
+  planExtras?: unknown;
 }) {
   return {
     id: plan.id,
@@ -74,6 +76,7 @@ function serializePlanForClient(plan: {
     displayOrder: plan.displayOrder ?? 0,
     limits: parsePlanLimits(plan.limits),
     features: parsePlanFeatures(plan.features),
+    planExtras: parsePlanExtras(plan.planExtras ?? {}),
   };
 }
 
@@ -114,6 +117,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
                   trialDays: true,
                   limits: true,
                   features: true,
+                  planExtras: true,
                   isCustom: true,
                 },
               },

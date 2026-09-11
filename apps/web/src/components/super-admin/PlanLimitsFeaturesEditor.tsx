@@ -3,12 +3,23 @@ import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
+  ALL_CATALOG_FEATURE_KEYS,
+  ALL_CATALOG_LIMIT_KEYS,
   KNOWN_PLAN_FEATURE_KEYS,
   KNOWN_PLAN_LIMIT_KEYS,
+  SUGGESTED_PLAN_EXTRA_KEYS,
+  catalogExtraLabelKey,
+  catalogFeatureLabelKey,
+  catalogLimitLabelKey,
+  extrasToJson,
   featuresToJson,
   isKnownFeatureKey,
   isKnownLimitKey,
+  isSuggestedExtraKey,
+  isSuggestedFeatureKey,
+  isSuggestedLimitKey,
   limitsToJson,
+  parseExtrasObject,
   parseFeaturesObject,
   parseLimitsObject,
 } from "@/lib/planCatalog";
@@ -16,37 +27,43 @@ import {
 type PlanLimitsFeaturesEditorProps = {
   limitsJson: string;
   featuresJson: string;
+  extrasJson?: string;
   onLimitsJsonChange: (value: string) => void;
   onFeaturesJsonChange: (value: string) => void;
+  onExtrasJsonChange?: (value: string) => void;
   limitsError?: string | null;
   featuresError?: string | null;
+  extrasError?: string | null;
 };
 
-function limitLabelKey(key: string): string {
-  if (isKnownLimitKey(key)) return `superAdmin.billingLimitKey_${key}`;
-  return key;
-}
-
-function featureLabelKey(key: string): string {
-  if (isKnownFeatureKey(key)) return `superAdmin.billingFeatureKey_${key}`;
-  return key;
+function resolveLabel(t: (key: string) => string, catalogKey: string | null, fallback: string): string {
+  if (catalogKey) {
+    const translated = t(catalogKey);
+    if (translated !== catalogKey) return translated;
+  }
+  return fallback.replace(/_/g, " ");
 }
 
 export function PlanLimitsFeaturesEditor({
   limitsJson,
   featuresJson,
+  extrasJson = "{}",
   onLimitsJsonChange,
   onFeaturesJsonChange,
+  onExtrasJsonChange,
   limitsError,
   featuresError,
+  extrasError,
 }: PlanLimitsFeaturesEditorProps) {
   const { t } = useI18n();
   const [jsonMode, setJsonMode] = useState(false);
   const [jsonExpanded, setJsonExpanded] = useState(false);
-  const [addLimitKey, setAddLimitKey] = useState("");
-  const [addFeatureKey, setAddFeatureKey] = useState("");
+  const [pickLimitKey, setPickLimitKey] = useState("");
+  const [pickFeatureKey, setPickFeatureKey] = useState("");
+  const [pickExtraKey, setPickExtraKey] = useState("");
   const [customLimitKey, setCustomLimitKey] = useState("");
   const [customFeatureKey, setCustomFeatureKey] = useState("");
+  const [customExtraKey, setCustomExtraKey] = useState("");
 
   const limits = useMemo(() => {
     try {
@@ -64,26 +81,67 @@ export function PlanLimitsFeaturesEditor({
     }
   }, [featuresJson]);
 
+  const extras = useMemo(() => {
+    try {
+      return parseExtrasObject(JSON.parse(extrasJson));
+    } catch {
+      return {};
+    }
+  }, [extrasJson]);
+
   const customLimitKeys = useMemo(
-    () => Object.keys(limits).filter((k) => !isKnownLimitKey(k)).sort(),
+    () =>
+      Object.keys(limits)
+        .filter((k) => !isKnownLimitKey(k) && !isSuggestedLimitKey(k))
+        .sort(),
+    [limits],
+  );
+
+  const suggestedLimitKeys = useMemo(
+    () =>
+      Object.keys(limits)
+        .filter((k) => isSuggestedLimitKey(k))
+        .sort(),
     [limits],
   );
 
   const customFeatureKeys = useMemo(
-    () => Object.keys(features).filter((k) => !isKnownFeatureKey(k)).sort(),
+    () =>
+      Object.keys(features)
+        .filter((k) => !isKnownFeatureKey(k) && !isSuggestedFeatureKey(k))
+        .sort(),
     [features],
   );
 
-  const availableLimitKeys = useMemo(
+  const suggestedFeatureKeys = useMemo(
     () =>
-      KNOWN_PLAN_LIMIT_KEYS.filter((k) => !(k in limits) && !customLimitKeys.includes(k)),
-    [limits, customLimitKeys],
+      Object.keys(features)
+        .filter((k) => isSuggestedFeatureKey(k))
+        .sort(),
+    [features],
   );
 
-  const availableFeatureKeys = useMemo(
+  const customExtraKeys = useMemo(
     () =>
-      KNOWN_PLAN_FEATURE_KEYS.filter((k) => !(k in features) && !customFeatureKeys.includes(k)),
-    [features, customFeatureKeys],
+      Object.keys(extras)
+        .filter((k) => !isSuggestedExtraKey(k))
+        .sort(),
+    [extras],
+  );
+
+  const availableCatalogLimitKeys = useMemo(
+    () => ALL_CATALOG_LIMIT_KEYS.filter((k) => !(k in limits)),
+    [limits],
+  );
+
+  const availableCatalogFeatureKeys = useMemo(
+    () => ALL_CATALOG_FEATURE_KEYS.filter((k) => !(k in features)),
+    [features],
+  );
+
+  const availableSuggestedExtraKeys = useMemo(
+    () => SUGGESTED_PLAN_EXTRA_KEYS.filter((k) => !(k in extras)),
+    [extras],
   );
 
   const updateLimits = useCallback(
@@ -100,19 +158,30 @@ export function PlanLimitsFeaturesEditor({
     [onFeaturesJsonChange],
   );
 
+  const updateExtras = useCallback(
+    (next: Record<string, string>) => {
+      onExtrasJsonChange?.(extrasToJson(next));
+    },
+    [onExtrasJsonChange],
+  );
+
   const setLimitValue = (key: string, value: number | null | undefined) => {
     const next = { ...limits };
-    if (value === undefined) {
-      delete next[key];
-    } else {
-      next[key] = value;
-    }
+    if (value === undefined) delete next[key];
+    else next[key] = value;
     updateLimits(next);
   };
 
   const setFeatureValue = (key: string, enabled: boolean) => {
-    const next = { ...features, [key]: enabled };
-    updateFeatures(next);
+    updateFeatures({ ...features, [key]: enabled });
+  };
+
+  const setExtraValue = (key: string, value: string) => {
+    const next = { ...extras };
+    const trimmed = value.trim();
+    if (!trimmed) delete next[key];
+    else next[key] = trimmed;
+    updateExtras(next);
   };
 
   const removeLimit = (key: string) => {
@@ -127,11 +196,17 @@ export function PlanLimitsFeaturesEditor({
     updateFeatures(next);
   };
 
+  const removeExtra = (key: string) => {
+    const next = { ...extras };
+    delete next[key];
+    updateExtras(next);
+  };
+
   const addLimit = (key: string) => {
     const trimmed = key.trim();
     if (!trimmed || trimmed in limits) return;
     updateLimits({ ...limits, [trimmed]: 0 });
-    setAddLimitKey("");
+    setPickLimitKey("");
     setCustomLimitKey("");
   };
 
@@ -139,25 +214,44 @@ export function PlanLimitsFeaturesEditor({
     const trimmed = key.trim();
     if (!trimmed || trimmed in features) return;
     updateFeatures({ ...features, [trimmed]: false });
-    setAddFeatureKey("");
+    setPickFeatureKey("");
+    setCustomFeatureKey("");
+  };
+
+  const addExtra = (key: string) => {
+    const trimmed = key.trim();
+    if (!trimmed || trimmed in extras) return;
+    updateExtras({ ...extras, [trimmed]: "" });
+    setPickExtraKey("");
+    setCustomExtraKey("");
   };
 
   useEffect(() => {
     if (jsonMode) setJsonExpanded(true);
   }, [jsonMode]);
 
+  const limitLabel = (key: string) =>
+    resolveLabel(t, catalogLimitLabelKey(key), key);
+
+  const featureLabel = (key: string) =>
+    resolveLabel(t, catalogFeatureLabelKey(key), key);
+
+  const extraLabel = (key: string) =>
+    resolveLabel(t, catalogExtraLabelKey(key), key);
+
   const renderLimitRow = (key: string, removable: boolean) => {
     const inLimits = key in limits;
     const unlimited = inLimits && limits[key] === null;
     const value = inLimits ? limits[key] : undefined;
-    const label = isKnownLimitKey(key) ? t(limitLabelKey(key)) : key;
 
     return (
       <div
         key={key}
         className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30"
       >
-        <span className="min-w-[8rem] flex-1 text-sm font-medium text-ink-800 dark:text-ink-100">{label}</span>
+        <span className="min-w-[8rem] flex-1 text-sm font-medium text-ink-800 dark:text-ink-100">
+          {limitLabel(key)}
+        </span>
         <input
           type="number"
           min={0}
@@ -198,14 +292,15 @@ export function PlanLimitsFeaturesEditor({
 
   const renderFeatureRow = (key: string, removable: boolean) => {
     const enabled = key in features ? features[key] === true : false;
-    const label = isKnownFeatureKey(key) ? t(featureLabelKey(key)) : key;
 
     return (
       <div
         key={key}
         className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30"
       >
-        <span className="flex-1 text-sm font-medium text-ink-800 dark:text-ink-100">{label}</span>
+        <span className="flex-1 text-sm font-medium text-ink-800 dark:text-ink-100">
+          {featureLabel(key)}
+        </span>
         <button
           type="button"
           role="switch"
@@ -240,6 +335,33 @@ export function PlanLimitsFeaturesEditor({
     );
   };
 
+  const renderExtraRow = (key: string, removable: boolean) => (
+    <div
+      key={key}
+      className="space-y-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-ink-800 dark:text-ink-100">{extraLabel(key)}</span>
+        {removable ? (
+          <button
+            type="button"
+            onClick={() => removeExtra(key)}
+            className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+            title={t("common.delete")}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        ) : null}
+      </div>
+      <textarea
+        value={extras[key] ?? ""}
+        onChange={(e) => setExtraValue(key, e.target.value)}
+        className="input-field min-h-[64px] w-full text-sm"
+        placeholder={t("superAdmin.billingExtraValuePlaceholder")}
+      />
+    </div>
+  );
+
   if (jsonMode) {
     return (
       <div className="sm:col-span-2 space-y-4">
@@ -271,6 +393,17 @@ export function PlanLimitsFeaturesEditor({
           />
           {featuresError ? <p className="mt-1 text-xs text-red-600">{featuresError}</p> : null}
         </div>
+        {onExtrasJsonChange ? (
+          <div>
+            <label className="block text-xs font-medium text-ink-600">extras (JSON)</label>
+            <textarea
+              value={extrasJson}
+              onChange={(e) => onExtrasJsonChange(e.target.value)}
+              className="input-field mt-1 min-h-[100px] font-mono text-xs"
+            />
+            {extrasError ? <p className="mt-1 text-xs text-red-600">{extrasError}</p> : null}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -292,35 +425,42 @@ export function PlanLimitsFeaturesEditor({
         </div>
         <div className="space-y-2">
           {KNOWN_PLAN_LIMIT_KEYS.map((key) => renderLimitRow(key, false))}
+          {suggestedLimitKeys.map((key) => renderLimitRow(key, true))}
           {customLimitKeys.map((key) => renderLimitRow(key, true))}
         </div>
 
         <div className="flex flex-wrap items-end gap-2 pt-1">
-          {availableLimitKeys.length > 0 ? (
+          {availableCatalogLimitKeys.length > 0 ? (
             <select
-              value={addLimitKey}
-              onChange={(e) => setAddLimitKey(e.target.value)}
-              className="input-field w-44 py-1.5 text-sm"
+              value={pickLimitKey}
+              onChange={(e) => setPickLimitKey(e.target.value)}
+              className="input-field w-52 py-1.5 text-sm"
             >
-              <option value="">{t("superAdmin.billingAddKnownLimit")}</option>
-              {availableLimitKeys.map((k) => (
+              <option value="">{t("superAdmin.billingPickCatalogLimit")}</option>
+              {availableCatalogLimitKeys.map((k) => (
                 <option key={k} value={k}>
-                  {t(`superAdmin.billingLimitKey_${k}`)}
+                  {limitLabel(k)}
                 </option>
               ))}
             </select>
           ) : null}
-          {addLimitKey ? (
-            <button type="button" className="btn-secondary text-xs" onClick={() => addLimit(addLimitKey)}>
+          {pickLimitKey ? (
+            <button type="button" className="btn-secondary text-xs" onClick={() => addLimit(pickLimitKey)}>
               {t("common.add")}
             </button>
           ) : null}
           <input
             value={customLimitKey}
             onChange={(e) => setCustomLimitKey(e.target.value)}
+            list="plan-custom-limit-suggestions"
             placeholder={t("superAdmin.billingCustomLimitKey")}
             className="input-field min-w-[10rem] flex-1 py-1.5 text-sm"
           />
+          <datalist id="plan-custom-limit-suggestions">
+            {availableCatalogLimitKeys.map((k) => (
+              <option key={k} value={k} label={limitLabel(k)} />
+            ))}
+          </datalist>
           <button
             type="button"
             className="btn-secondary inline-flex items-center gap-1 text-xs"
@@ -339,49 +479,111 @@ export function PlanLimitsFeaturesEditor({
         </h4>
         <div className="space-y-2">
           {KNOWN_PLAN_FEATURE_KEYS.map((key) => renderFeatureRow(key, false))}
+          {suggestedFeatureKeys.map((key) => renderFeatureRow(key, true))}
           {customFeatureKeys.map((key) => renderFeatureRow(key, true))}
         </div>
 
         <div className="flex flex-wrap items-end gap-2 pt-1">
-          {availableFeatureKeys.length > 0 ? (
+          {availableCatalogFeatureKeys.length > 0 ? (
             <select
-              value={addFeatureKey}
-              onChange={(e) => setAddFeatureKey(e.target.value)}
-              className="input-field w-52 py-1.5 text-sm"
+              value={pickFeatureKey}
+              onChange={(e) => setPickFeatureKey(e.target.value)}
+              className="input-field w-56 py-1.5 text-sm"
             >
-              <option value="">{t("superAdmin.billingAddKnownFeature")}</option>
-              {availableFeatureKeys.map((k) => (
+              <option value="">{t("superAdmin.billingPickCatalogFeature")}</option>
+              {availableCatalogFeatureKeys.map((k) => (
                 <option key={k} value={k}>
-                  {t(`superAdmin.billingFeatureKey_${k}`)}
+                  {featureLabel(k)}
                 </option>
               ))}
             </select>
           ) : null}
-          {addFeatureKey ? (
-            <button type="button" className="btn-secondary text-xs" onClick={() => addFeature(addFeatureKey)}>
+          {pickFeatureKey ? (
+            <button type="button" className="btn-secondary text-xs" onClick={() => addFeature(pickFeatureKey)}>
               {t("common.add")}
             </button>
           ) : null}
           <input
             value={customFeatureKey}
             onChange={(e) => setCustomFeatureKey(e.target.value)}
+            list="plan-custom-feature-suggestions"
             placeholder={t("superAdmin.billingCustomFeatureKey")}
             className="input-field min-w-[10rem] flex-1 py-1.5 text-sm"
           />
+          <datalist id="plan-custom-feature-suggestions">
+            {availableCatalogFeatureKeys.map((k) => (
+              <option key={k} value={k} label={featureLabel(k)} />
+            ))}
+          </datalist>
           <button
             type="button"
             className="btn-secondary inline-flex items-center gap-1 text-xs"
             disabled={!customFeatureKey.trim()}
-            onClick={() => {
-              addFeature(customFeatureKey);
-              setCustomFeatureKey("");
-            }}
+            onClick={() => addFeature(customFeatureKey)}
           >
             <Plus className="h-3.5 w-3.5" />
             {t("superAdmin.billingAddCustomFeature")}
           </button>
         </div>
       </div>
+
+      {onExtrasJsonChange ? (
+        <div className="space-y-3">
+          <div>
+            <h4 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+              {t("superAdmin.billingExtrasSection")}
+            </h4>
+            <p className="mt-1 text-xs text-ink-500">{t("superAdmin.billingExtrasSectionHint")}</p>
+          </div>
+          <div className="space-y-2">
+            {SUGGESTED_PLAN_EXTRA_KEYS.filter((k) => k in extras).map((key) => renderExtraRow(key, true))}
+            {customExtraKeys.map((key) => renderExtraRow(key, true))}
+          </div>
+          <div className="flex flex-wrap items-end gap-2 pt-1">
+            {availableSuggestedExtraKeys.length > 0 ? (
+              <select
+                value={pickExtraKey}
+                onChange={(e) => setPickExtraKey(e.target.value)}
+                className="input-field w-56 py-1.5 text-sm"
+              >
+                <option value="">{t("superAdmin.billingPickCatalogExtra")}</option>
+                {availableSuggestedExtraKeys.map((k) => (
+                  <option key={k} value={k}>
+                    {extraLabel(k)}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {pickExtraKey ? (
+              <button type="button" className="btn-secondary text-xs" onClick={() => addExtra(pickExtraKey)}>
+                {t("common.add")}
+              </button>
+            ) : null}
+            <input
+              value={customExtraKey}
+              onChange={(e) => setCustomExtraKey(e.target.value)}
+              list="plan-custom-extra-suggestions"
+              placeholder={t("superAdmin.billingCustomExtraKey")}
+              className="input-field min-w-[10rem] flex-1 py-1.5 text-sm"
+            />
+            <datalist id="plan-custom-extra-suggestions">
+              {availableSuggestedExtraKeys.map((k) => (
+                <option key={k} value={k} label={extraLabel(k)} />
+              ))}
+            </datalist>
+            <button
+              type="button"
+              className="btn-secondary inline-flex items-center gap-1 text-xs"
+              disabled={!customExtraKey.trim()}
+              onClick={() => addExtra(customExtraKey)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t("superAdmin.billingAddCustomExtra")}
+            </button>
+          </div>
+          {extrasError ? <p className="text-xs text-red-600">{extrasError}</p> : null}
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-dashed border-slate-200 dark:border-soft-border">
         <button
@@ -393,13 +595,23 @@ export function PlanLimitsFeaturesEditor({
           {jsonExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
         {jsonExpanded ? (
-          <div className="grid gap-3 border-t border-slate-200 px-3 pb-3 pt-2 dark:border-soft-border sm:grid-cols-2">
+          <div
+            className={clsx(
+              "grid gap-3 border-t border-slate-200 px-3 pb-3 pt-2 dark:border-soft-border",
+              onExtrasJsonChange ? "sm:grid-cols-3" : "sm:grid-cols-2",
+            )}
+          >
             <pre className="overflow-x-auto rounded bg-slate-50 p-2 font-mono text-[11px] text-ink-700 dark:bg-ink-900/40">
               {limitsJson}
             </pre>
             <pre className="overflow-x-auto rounded bg-slate-50 p-2 font-mono text-[11px] text-ink-700 dark:bg-ink-900/40">
               {featuresJson}
             </pre>
+            {onExtrasJsonChange ? (
+              <pre className="overflow-x-auto rounded bg-slate-50 p-2 font-mono text-[11px] text-ink-700 dark:bg-ink-900/40">
+                {extrasJson}
+              </pre>
+            ) : null}
           </div>
         ) : null}
       </div>

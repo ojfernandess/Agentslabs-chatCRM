@@ -84,6 +84,18 @@ export function parsePlanFeatures(raw: unknown): PlanFeatures {
   return out;
 }
 
+export type PlanExtras = Record<string, string>;
+
+export function parsePlanExtras(raw: unknown): PlanExtras {
+  if (!raw || typeof raw !== "object") return {};
+  const o = raw as Record<string, unknown>;
+  const out: PlanExtras = {};
+  for (const [key, value] of Object.entries(o)) {
+    if (typeof value === "string" && value.trim()) out[key] = value.trim();
+  }
+  return out;
+}
+
 /** Mapeia status Stripe → status interno (fallback seguro). */
 export function mapStripeSubscriptionStatus(stripeStatus: string): SubscriptionStatus {
   switch (stripeStatus) {

@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
+import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
 import { parseSuperAdminOrgList, type SuperAdminOrgOption } from "@/lib/superAdminOrganizations";
 
@@ -23,6 +24,7 @@ type CustomPlanRow = {
   organization: { id: string; name: string; slug: string } | null;
   limits: Record<string, number | null | undefined>;
   features: Record<string, boolean | undefined>;
+  planExtras?: Record<string, string | undefined>;
 };
 
 type CustomPlanForm = {
@@ -39,6 +41,7 @@ type CustomPlanForm = {
   isActive: boolean;
   limitsJson: string;
   featuresJson: string;
+  extrasJson: string;
 };
 
 const EMPTY_CUSTOM_FORM: CustomPlanForm = {
@@ -55,6 +58,7 @@ const EMPTY_CUSTOM_FORM: CustomPlanForm = {
   isActive: true,
   limitsJson: '{\n  "agents": 10,\n  "automations": 50,\n  "contacts": 10000,\n  "messages": 50000\n}',
   featuresJson: '{\n  "rag": true,\n  "api": true,\n  "mcp": false\n}',
+  extrasJson: "{}",
 };
 
 function formatMoney(cents: number, currency: string, locale: string): string {
@@ -80,6 +84,7 @@ function planToForm(plan: CustomPlanRow): CustomPlanForm {
     isActive: plan.isActive,
     limitsJson: JSON.stringify(plan.limits, null, 2),
     featuresJson: JSON.stringify(plan.features, null, 2),
+    extrasJson: JSON.stringify(plan.planExtras ?? {}, null, 2),
   };
 }
 
@@ -142,9 +147,11 @@ export function SuperAdminCustomPlansPanel() {
     try {
       let limits: Record<string, unknown> = {};
       let features: Record<string, unknown> = {};
+      let planExtras: Record<string, unknown> = {};
       try {
         limits = JSON.parse(form.limitsJson) as Record<string, unknown>;
         features = JSON.parse(form.featuresJson) as Record<string, unknown>;
+        planExtras = JSON.parse(form.extrasJson) as Record<string, unknown>;
       } catch {
         throw new ApiError(t("superAdmin.billingInvalidJson"), 400);
       }
@@ -163,6 +170,7 @@ export function SuperAdminCustomPlansPanel() {
           : null,
         limits,
         features,
+        planExtras,
         isActive: form.isActive,
       };
 
@@ -325,12 +333,11 @@ export function SuperAdminCustomPlansPanel() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingColPrice")}</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.amountCents}
-                  onChange={(e) => setForm((f) => ({ ...f, amountCents: e.target.value }))}
-                  className="input-field mt-1"
+                <MoneyCentsInput
+                  className="mt-1"
+                  currency={form.currency || "BRL"}
+                  valueCents={form.amountCents}
+                  onChangeCents={(amountCents) => setForm((f) => ({ ...f, amountCents }))}
                   required
                 />
               </div>
@@ -388,8 +395,10 @@ export function SuperAdminCustomPlansPanel() {
               <PlanLimitsFeaturesEditor
                 limitsJson={form.limitsJson}
                 featuresJson={form.featuresJson}
+                extrasJson={form.extrasJson}
                 onLimitsJsonChange={(limitsJson) => setForm((f) => ({ ...f, limitsJson }))}
                 onFeaturesJsonChange={(featuresJson) => setForm((f) => ({ ...f, featuresJson }))}
+                onExtrasJsonChange={(extrasJson) => setForm((f) => ({ ...f, extrasJson }))}
               />
               <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <button type="button" className="btn-secondary" onClick={closeModal}>

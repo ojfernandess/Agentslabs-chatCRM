@@ -1564,6 +1564,8 @@ model Plan {
   stripePriceId   String?  @map("stripe_price_id") @db.VarChar(255)
   limits          Json     @default("{}")
   features        Json     @default("{}")
+  /// Campos textuais do plano (suporte, SLA, pedidos de desenvolvimento, etc.).
+  planExtras      Json     @default("{}") @map("plan_extras")
   /// Mapeia plan_tier legado (free | growth | enterprise) para migração.
   legacyPlanTier  String?  @map("legacy_plan_tier") @db.VarChar(32)
   /// Plano exclusivo de uma organização (null = catálogo global).

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   isAccessGrantingStatus,
   mapStripeSubscriptionStatus,
+  parsePlanExtras,
   parsePlanFeatures,
   parsePlanLimits,
   subscriptionHasStripeBilling,
@@ -40,6 +41,12 @@ describe("billingTypes", () => {
     assert.deepEqual(parsePlanFeatures({ rag: true, voice: false, mcp: 1 }), {
       rag: true,
       voice: false,
+    });
+  });
+
+  it("parsePlanExtras keeps non-empty strings", () => {
+    assert.deepEqual(parsePlanExtras({ support: "24/7", empty: "  " }), {
+      support: "24/7",
     });
   });
 

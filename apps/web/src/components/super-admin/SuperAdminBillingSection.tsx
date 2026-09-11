@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPageHeader, SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
 import { SuperAdminCustomPlansPanel } from "@/components/super-admin/SuperAdminCustomPlansPanel";
+import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
 
 type PlanRow = {
@@ -23,6 +24,7 @@ type PlanRow = {
   legacyPlanTier: string | null;
   limits: Record<string, number | null | undefined>;
   features: Record<string, boolean | undefined>;
+  planExtras?: Record<string, string | undefined>;
   subscriptionCount: number;
 };
 
@@ -129,6 +131,7 @@ const EMPTY_PLAN_FORM = {
   legacyPlanTier: "",
   limitsJson: '{\n  "agents": 3,\n  "automations": 10,\n  "contacts": 1000,\n  "messages": null\n}',
   featuresJson: '{\n  "rag": false,\n  "api": false,\n  "mcp": false\n}',
+  extrasJson: "{}",
 };
 
 function formatMoney(cents: number, currency: string, locale: string): string {
@@ -239,6 +242,7 @@ export function SuperAdminBillingSection() {
       legacyPlanTier: plan.legacyPlanTier ?? "",
       limitsJson: JSON.stringify(plan.limits, null, 2),
       featuresJson: JSON.stringify(plan.features, null, 2),
+      extrasJson: JSON.stringify(plan.planExtras ?? {}, null, 2),
     });
     setPlanModalOpen(true);
   };
@@ -250,9 +254,11 @@ export function SuperAdminBillingSection() {
     try {
       let limits: Record<string, unknown> = {};
       let features: Record<string, unknown> = {};
+      let planExtras: Record<string, unknown> = {};
       try {
         limits = JSON.parse(planForm.limitsJson) as Record<string, unknown>;
         features = JSON.parse(planForm.featuresJson) as Record<string, unknown>;
+        planExtras = JSON.parse(planForm.extrasJson) as Record<string, unknown>;
       } catch {
         throw new ApiError(t("superAdmin.billingInvalidJson"), 400);
       }
@@ -274,6 +280,7 @@ export function SuperAdminBillingSection() {
           : null,
         limits,
         features,
+        planExtras,
       };
 
       if (editingPlan) {
@@ -620,23 +627,21 @@ export function SuperAdminBillingSection() {
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-slate-600">
-                                {t("superAdmin.billingOverageUnitCents")}
+                                {t("superAdmin.billingOverageUnitPrice")}
                               </label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={dim.unitAmountCents}
-                                onChange={(e) =>
+                              <MoneyCentsInput
+                                className="mt-1"
+                                currency="BRL"
+                                valueCents={dim.unitAmountCents}
+                                onChangeCents={(unitAmountCents) =>
                                   setBillingSettings((s) => ({
                                     ...s,
                                     overage: {
                                       ...s.overage,
-                                      [key]: { ...s.overage[key], unitAmountCents: e.target.value },
+                                      [key]: { ...s.overage[key], unitAmountCents },
                                     },
                                   }))
                                 }
-                                className="input-field mt-1"
-                                placeholder="0"
                               />
                             </div>
                           </div>
@@ -722,12 +727,11 @@ export function SuperAdminBillingSection() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingColPrice")}</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={planForm.amountCents}
-                  onChange={(e) => setPlanForm((f) => ({ ...f, amountCents: e.target.value }))}
-                  className="input-field mt-1"
+                <MoneyCentsInput
+                  className="mt-1"
+                  currency={planForm.currency || "BRL"}
+                  valueCents={planForm.amountCents}
+                  onChangeCents={(amountCents) => setPlanForm((f) => ({ ...f, amountCents }))}
                 />
               </div>
               <div>
@@ -780,8 +784,10 @@ export function SuperAdminBillingSection() {
               <PlanLimitsFeaturesEditor
                 limitsJson={planForm.limitsJson}
                 featuresJson={planForm.featuresJson}
+                extrasJson={planForm.extrasJson}
                 onLimitsJsonChange={(limitsJson) => setPlanForm((f) => ({ ...f, limitsJson }))}
                 onFeaturesJsonChange={(featuresJson) => setPlanForm((f) => ({ ...f, featuresJson }))}
+                onExtrasJsonChange={(extrasJson) => setPlanForm((f) => ({ ...f, extrasJson }))}
               />
               <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <button type="button" className="btn-secondary" onClick={() => setPlanModalOpen(false)}>

@@ -16,6 +16,7 @@ export type UpdateCustomPlanInput = {
   legacyPlanTier?: "free" | "growth" | "enterprise" | null;
   limits?: Record<string, unknown>;
   features?: Record<string, unknown>;
+  planExtras?: Record<string, unknown>;
   trialDays?: number | null;
   isActive?: boolean;
 };
@@ -33,6 +34,7 @@ export type CreateCustomPlanInput = {
   legacyPlanTier?: "free" | "growth" | "enterprise" | null;
   limits?: Record<string, unknown>;
   features?: Record<string, unknown>;
+  planExtras?: Record<string, unknown>;
   trialDays?: number | null;
 };
 
@@ -91,6 +93,7 @@ export async function createCustomPlanForOrganization(input: CreateCustomPlanInp
       legacyPlanTier: input.legacyPlanTier ?? null,
       limits: (input.limits ?? {}) as Prisma.InputJsonValue,
       features: (input.features ?? {}) as Prisma.InputJsonValue,
+      planExtras: (input.planExtras ?? {}) as Prisma.InputJsonValue,
     },
   });
 
@@ -147,6 +150,7 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
   if (input.legacyPlanTier !== undefined) data.legacyPlanTier = input.legacyPlanTier;
   if (input.limits !== undefined) data.limits = input.limits as Prisma.InputJsonValue;
   if (input.features !== undefined) data.features = input.features as Prisma.InputJsonValue;
+  if (input.planExtras !== undefined) data.planExtras = input.planExtras as Prisma.InputJsonValue;
   if (input.paymentGraceDays !== undefined) {
     data.paymentGraceDays = Math.max(1, Math.min(90, input.paymentGraceDays));
   }

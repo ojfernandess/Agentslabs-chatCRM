@@ -14,7 +14,7 @@ import {
   clearPlanStripeIds,
 } from "../lib/billing/clearStripeBindings.js";
 import { getStripeKeyMode } from "../lib/billing/stripeErrors.js";
-import { parsePlanFeatures, parsePlanLimits } from "../lib/billing/billingTypes.js";
+import { parsePlanExtras, parsePlanFeatures, parsePlanLimits } from "../lib/billing/billingTypes.js";
 import { BillingError } from "../lib/billing/StripeCustomerService.js";
 import {
   createCustomPlanForOrganization,
@@ -39,6 +39,7 @@ const createPlanSchema = z.object({
   legacyPlanTier: z.enum(["free", "growth", "enterprise"]).nullable().optional(),
   limits: jsonLimitsSchema,
   features: jsonLimitsSchema,
+  planExtras: jsonLimitsSchema,
 });
 
 const patchPlanSchema = createPlanSchema.partial().omit({ slug: true }).extend({
@@ -82,6 +83,7 @@ const customPlanFieldsSchema = {
   legacyPlanTier: z.enum(["free", "growth", "enterprise"]).nullable().optional(),
   limits: jsonLimitsSchema,
   features: jsonLimitsSchema,
+  planExtras: jsonLimitsSchema,
   trialDays: z.union([z.number().int().min(0).max(365), z.null()]).optional(),
   isActive: z.boolean().optional(),
 };
@@ -119,6 +121,7 @@ function serializePlan(plan: {
   paymentGraceDays?: number | null;
   limits: unknown;
   features: unknown;
+  planExtras?: unknown;
   createdAt: Date;
   updatedAt: Date;
   _count?: { subscriptions: number };
@@ -144,6 +147,7 @@ function serializePlan(plan: {
     organization: plan.organization ?? null,
     limits: parsePlanLimits(plan.limits),
     features: parsePlanFeatures(plan.features),
+    planExtras: parsePlanExtras(plan.planExtras ?? {}),
     subscriptionCount: plan._count?.subscriptions ?? 0,
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
@@ -258,6 +262,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         legacyPlanTier: p.legacyPlanTier ?? undefined,
         limits: p.limits,
         features: p.features,
+        planExtras: p.planExtras,
         trialDays: p.trialDays,
         isActive: p.isActive,
       });
@@ -305,6 +310,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         legacyPlanTier: p.legacyPlanTier ?? null,
         limits: p.limits,
         features: p.features,
+        planExtras: p.planExtras,
         trialDays: p.trialDays,
       });
 
@@ -360,6 +366,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         legacyPlanTier: p.legacyPlanTier ?? null,
         limits: (p.limits ?? {}) as Prisma.InputJsonValue,
         features: (p.features ?? {}) as Prisma.InputJsonValue,
+        planExtras: (p.planExtras ?? {}) as Prisma.InputJsonValue,
       },
       include: { _count: { select: { subscriptions: true } } },
     });
@@ -408,6 +415,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     if (p.legacyPlanTier !== undefined) data.legacyPlanTier = p.legacyPlanTier;
     if (p.limits !== undefined) data.limits = p.limits as Prisma.InputJsonValue;
     if (p.features !== undefined) data.features = p.features as Prisma.InputJsonValue;
+    if (p.planExtras !== undefined) data.planExtras = p.planExtras as Prisma.InputJsonValue;
 
     try {
       const plan = await prisma.plan.update({
