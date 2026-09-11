@@ -27,12 +27,16 @@ export type PlanLimits = {
   automations?: number | null;
   contacts?: number | null;
   messages?: number | null;
+  /** Limites personalizados definidos no catálogo (ex.: seats). */
+  [key: string]: number | null | undefined;
 };
 
 export type PlanFeatures = {
   rag?: boolean;
   api?: boolean;
   mcp?: boolean;
+  /** Feature flags personalizadas definidas no catálogo. */
+  [key: string]: boolean | undefined;
 };
 
 export type BillingPlatformSettings = {
@@ -43,27 +47,25 @@ export type BillingPlatformSettings = {
 export function parsePlanLimits(raw: unknown): PlanLimits {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
-  const num = (v: unknown): number | null | undefined => {
-    if (v === null) return null;
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-    return undefined;
-  };
-  return {
-    agents: num(o.agents),
-    automations: num(o.automations),
-    contacts: num(o.contacts),
-    messages: num(o.messages),
-  };
+  const out: PlanLimits = {};
+  for (const [key, value] of Object.entries(o)) {
+    if (value === null) {
+      out[key] = null;
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      out[key] = value;
+    }
+  }
+  return out;
 }
 
 export function parsePlanFeatures(raw: unknown): PlanFeatures {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
-  return {
-    rag: o.rag === true,
-    api: o.api === true,
-    mcp: o.mcp === true,
-  };
+  const out: PlanFeatures = {};
+  for (const [key, value] of Object.entries(o)) {
+    if (typeof value === "boolean") out[key] = value;
+  }
+  return out;
 }
 
 /** Mapeia status Stripe → status interno (fallback seguro). */

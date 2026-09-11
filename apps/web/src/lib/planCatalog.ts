@@ -43,7 +43,7 @@ export function serializeFeatures(features: Record<string, boolean>): Record<str
   const sorted = Object.keys(features).sort((a, b) => a.localeCompare(b));
   const out: Record<string, boolean> = {};
   for (const key of sorted) {
-    out[key] = features[key] === true;
+    if (key in features) out[key] = features[key] === true;
   }
   return out;
 }

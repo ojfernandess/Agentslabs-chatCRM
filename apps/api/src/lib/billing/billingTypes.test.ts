@@ -24,14 +24,22 @@ describe("billingTypes", () => {
   it("parsePlanLimits and parsePlanFeatures read JSON", () => {
     assert.deepEqual(parsePlanLimits({ agents: 10, messages: null }), {
       agents: 10,
-      automations: undefined,
-      contacts: undefined,
       messages: null,
     });
     assert.deepEqual(parsePlanFeatures({ rag: true, api: false }), {
       rag: true,
       api: false,
-      mcp: false,
+    });
+  });
+
+  it("parsePlanLimits and parsePlanFeatures preserve custom keys", () => {
+    assert.deepEqual(parsePlanLimits({ agents: 3, seats: 25, bad: "x" }), {
+      agents: 3,
+      seats: 25,
+    });
+    assert.deepEqual(parsePlanFeatures({ rag: true, voice: false, mcp: 1 }), {
+      rag: true,
+      voice: false,
     });
   });
 
