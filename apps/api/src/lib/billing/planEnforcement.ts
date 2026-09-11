@@ -39,7 +39,13 @@ function isOverLimit(used: number, limit: number | null, additional = 0): boolea
   return used + additional > limit;
 }
 
-async function countAgents(organizationId: string): Promise<number> {
+/** Agentes IA (AutomationAgentProfile) — recurso principal contabilizado em limits.agents. */
+async function countAiAgents(organizationId: string): Promise<number> {
+  return prisma.automationAgentProfile.count({ where: { organizationId } });
+}
+
+/** Membros humanos com papel AGENT na organização. */
+async function countHumanAgentSeats(organizationId: string): Promise<number> {
   const membershipCount = await prisma.organizationMembership.count({
     where: { organizationId, role: "AGENT" },
   });
@@ -48,6 +54,15 @@ async function countAgents(organizationId: string): Promise<number> {
   return prisma.user.count({
     where: { organizationId, role: "AGENT" },
   });
+}
+
+async function countAgentLimitUsage(organizationId: string): Promise<number> {
+  const [aiAgents, humanSeats, pendingInvites] = await Promise.all([
+    countAiAgents(organizationId),
+    countHumanAgentSeats(organizationId),
+    countPendingAgentInvites(organizationId),
+  ]);
+  return aiAgents + humanSeats + pendingInvites;
 }
 
 async function countPendingAgentInvites(organizationId: string): Promise<number> {
@@ -62,8 +77,11 @@ async function countPendingAgentInvites(organizationId: string): Promise<number>
   });
 }
 
+/** Bots legados / webhooks sem perfil de agente IA (limits.automations). */
 async function countAutomations(organizationId: string): Promise<number> {
-  return prisma.bot.count({ where: { organizationId } });
+  return prisma.bot.count({
+    where: { organizationId, automationProfile: null },
+  });
 }
 
 async function countContacts(organizationId: string): Promise<number> {
@@ -104,9 +122,8 @@ async function requireSnapshot(organizationId: string): Promise<EffectivePlanSna
 
 export async function getOrganizationUsage(organizationId: string): Promise<OrganizationUsageSnapshot> {
   const snap = await requireSnapshot(organizationId);
-  const [agentsUsed, pendingInvites, automationsUsed, contactsUsed, messageStats] = await Promise.all([
-    countAgents(organizationId),
-    countPendingAgentInvites(organizationId),
+  const [aiAgentsUsed, automationsUsed, contactsUsed, messageStats] = await Promise.all([
+    countAiAgents(organizationId),
     countAutomations(organizationId),
     countContacts(organizationId),
     countMonthlyMessages(organizationId),
@@ -116,7 +133,7 @@ export async function getOrganizationUsage(organizationId: string): Promise<Orga
 
   return {
     agents: {
-      used: agentsUsed + pendingInvites,
+      used: aiAgentsUsed,
       limit: resolveLimitValue(snap.limits.agents),
     },
     automations: {
@@ -171,16 +188,13 @@ export async function assertCanAddAgents(
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
   const limit = resolveLimitValue(snap.limits.agents);
-  const [used, pending] = await Promise.all([
-    countAgents(organizationId),
-    countPendingAgentInvites(organizationId),
-  ]);
-  if (isOverLimit(used + pending, limit, additional)) {
+  const used = await countAgentLimitUsage(organizationId);
+  if (isOverLimit(used, limit, additional)) {
     throw new PlanEnforcementError(
       "Agent limit reached for current plan",
       "plan_limit_agents",
       402,
-      { used: used + pending, limit, additional },
+      { used, limit, additional },
     );
   }
 }

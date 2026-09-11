@@ -61,6 +61,7 @@ import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
 import {
+  assertCanAddAgents,
   assertCanAddAutomations,
   assertPlanFeature,
   replyPlanEnforcementError,
@@ -2442,7 +2443,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
 
     if (parsed.data.createBot) {
       try {
-        await assertCanAddAutomations(organizationId);
+        await assertCanAddAgents(organizationId);
       } catch (err) {
         if (replyPlanEnforcementError(reply, err)) return;
         throw err;
