@@ -5137,6 +5137,9 @@ export const messages = {
       workflowAttendanceTabAutoOpen: "Abrir aba Atendimento por defeito",
       workflowAttendanceTabAutoOpenHint:
         "Ao entrar em Conversas, abre automaticamente a aba Atendimento quando existirem conversas aguardando atendimento.",
+      workflowListShowWhatsappIcon: "Ícone WhatsApp na lista (split view)",
+      workflowListShowWhatsappIconHint:
+        "Quando desactivado, oculta o badge WhatsApp no avatar da fila lateral em desktop. A vista em lista completa mantém o ícone.",
       workflowListShowTags: "Etiquetas na lista de conversas",
       workflowListShowTagsHint:
         "Quando activo, mostra as etiquetas do contacto em cada cartão da lista de conversas.",
@@ -11079,6 +11082,9 @@ export const messages = {
       workflowAttendanceTabAutoOpen: "Open Attendance tab by default",
       workflowAttendanceTabAutoOpenHint:
         "When entering Conversations, automatically opens the Attendance tab if conversations are waiting for an agent.",
+      workflowListShowWhatsappIcon: "WhatsApp icon on list (split view)",
+      workflowListShowWhatsappIconHint:
+        "When off, hides the WhatsApp badge on avatars in the desktop side queue. The full list view still shows the icon.",
       workflowListShowTags: "Tags on conversation list",
       workflowListShowTagsHint:
         "When enabled, shows the contact's tags on each card in the conversations list.",

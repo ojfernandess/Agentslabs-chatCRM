@@ -149,6 +149,7 @@ const settingsSchema = z.object({
   conversationsAttendanceTabEnabled: z.boolean().optional(),
   conversationsAttendanceTabAutoOpen: z.boolean().optional(),
   conversationsListShowContactTags: z.boolean().optional(),
+  conversationsListShowWhatsappIcon: z.boolean().optional(),
   conversationsQuickContactAddEnabled: z.boolean().optional(),
   conversationsSplitViewSize: z.enum(["default", "medium", "large"]).optional(),
   conversationBubbleClientColor: hexColorField,
@@ -406,6 +407,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationsAttendanceTabEnabled: true,
         conversationsAttendanceTabAutoOpen: true,
         conversationsListShowContactTags: true,
+        conversationsListShowWhatsappIcon: true,
         conversationsQuickContactAddEnabled: true,
         conversationsSplitViewSize: true,
       },
@@ -424,6 +426,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationsAttendanceTabEnabled: orgSettings?.conversationsAttendanceTabEnabled ?? false,
       conversationsAttendanceTabAutoOpen: orgSettings?.conversationsAttendanceTabAutoOpen ?? true,
       conversationsListShowContactTags: orgSettings?.conversationsListShowContactTags ?? false,
+      conversationsListShowWhatsappIcon: orgSettings?.conversationsListShowWhatsappIcon ?? false,
       conversationsQuickContactAddEnabled: orgSettings?.conversationsQuickContactAddEnabled ?? false,
       conversationsSplitViewSize:
         orgSettings?.conversationsSplitViewSize === "medium" ||

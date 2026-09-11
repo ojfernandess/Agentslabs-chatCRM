@@ -18,6 +18,8 @@ type Props = {
   compact?: boolean;
   /** Indicador de presença (cabeçalho do detalhe). */
   presenceOnline?: boolean;
+  /** Badge WhatsApp no avatar (lista split view pode ocultar via definições). */
+  showChannelIcon?: boolean;
   className?: string;
 };
 
@@ -33,9 +35,10 @@ export function ConversationListAvatar({
   size = "list",
   compact = false,
   presenceOnline,
+  showChannelIcon = true,
   className,
 }: Props) {
-  const isWhatsApp = channelType === "WHATSAPP";
+  const isWhatsApp = channelType === "WHATSAPP" && showChannelIcon;
   const resolvedSize = compact ? "listCompact" : size;
   const showPriority = resolvedSize !== "message" && isConversationPriority(priority);
   const avatarVariant =

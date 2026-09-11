@@ -146,6 +146,7 @@ export function ConversationsPage({
   const [orgAttendanceTabEnabled, setOrgAttendanceTabEnabled] = useState(false);
   const [orgAttendanceTabAutoOpen, setOrgAttendanceTabAutoOpen] = useState(true);
   const [orgListShowContactTags, setOrgListShowContactTags] = useState(false);
+  const [orgListShowWhatsappIcon, setOrgListShowWhatsappIcon] = useState(false);
   const [orgQuickContactAddEnabled, setOrgQuickContactAddEnabled] = useState(false);
   const [channelSettingsLoaded, setChannelSettingsLoaded] = useState(false);
   const [scopeCountsLoaded, setScopeCountsLoaded] = useState(false);
@@ -301,18 +302,21 @@ export function ConversationsPage({
           conversationsAttendanceTabEnabled?: boolean;
           conversationsAttendanceTabAutoOpen?: boolean;
           conversationsListShowContactTags?: boolean;
+          conversationsListShowWhatsappIcon?: boolean;
           conversationsQuickContactAddEnabled?: boolean;
         }>("/settings/channel");
         setOrgAgentBotTriageActive(res.agentBotTriageActive === true);
         setOrgAttendanceTabEnabled(res.conversationsAttendanceTabEnabled === true);
         setOrgAttendanceTabAutoOpen(res.conversationsAttendanceTabAutoOpen !== false);
         setOrgListShowContactTags(res.conversationsListShowContactTags === true);
+        setOrgListShowWhatsappIcon(res.conversationsListShowWhatsappIcon === true);
         setOrgQuickContactAddEnabled(res.conversationsQuickContactAddEnabled === true);
       } catch {
         setOrgAgentBotTriageActive(false);
         setOrgAttendanceTabEnabled(false);
         setOrgAttendanceTabAutoOpen(false);
         setOrgListShowContactTags(false);
+        setOrgListShowWhatsappIcon(false);
         setOrgQuickContactAddEnabled(false);
       } finally {
         setChannelSettingsLoaded(true);
@@ -1009,6 +1013,7 @@ export function ConversationsPage({
                       statusLabel={statusLabel}
                       fmtMoney={fmtMoney}
                       showContactTags={orgListShowContactTags}
+                      showWhatsappIcon={!splitView || orgListShowWhatsappIcon}
                       splitView={splitView}
                       agentTyping={agentTypingByConversation.get(conv.id) ?? null}
                       currentUserId={user?.id}

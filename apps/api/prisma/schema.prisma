@@ -1424,6 +1424,8 @@ model Settings {
   conversationsAttendanceTabAutoOpen Boolean @default(true) @map("conversations_attendance_tab_auto_open")
   /// Mostrar etiquetas do contacto nos cartões da lista de conversas.
   conversationsListShowContactTags Boolean @default(false) @map("conversations_list_show_contact_tags")
+  /// Mostrar ícone WhatsApp no avatar da lista em split view.
+  conversationsListShowWhatsappIcon Boolean @default(false) @map("conversations_list_show_whatsapp_icon")
 
   /// Etiquetagem inteligente por IA (opt-in). Requer assistantAiEnabled.
   intelligentTaggingEnabled       Boolean @default(false) @map("intelligent_tagging_enabled")

@@ -75,6 +75,7 @@ type Props = {
   statusLabel: (status: string) => string;
   fmtMoney: (n: number) => string;
   showContactTags: boolean;
+  showWhatsappIcon?: boolean;
   currentUserId?: string;
   splitView?: boolean;
   agentTyping?: ConversationAgentTypingState | null;
@@ -89,6 +90,7 @@ export function ConversationListItem({
   statusLabel,
   fmtMoney,
   showContactTags,
+  showWhatsappIcon = true,
   currentUserId,
   splitView = false,
   agentTyping = null,
@@ -142,6 +144,7 @@ export function ConversationListItem({
             thumbnail={conv.contact.thumbnail}
             channelType={conv.inbox?.channelType}
             priority={conv.priority}
+            showChannelIcon={showWhatsappIcon}
           />
 
           <div className="min-w-0 flex-1">
