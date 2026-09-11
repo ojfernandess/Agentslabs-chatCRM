@@ -10,7 +10,7 @@ import { config } from "../config.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
 import { applyCatalogPlanToOrganization } from "../lib/billing/planAssignment.js";
-import { BillingError } from "../lib/billing/StripeCustomerService.js";
+import { BillingError, updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
 import {
   ensureMembership,
   organizationMembersWhere,
@@ -100,6 +100,18 @@ const patchOrgSchema = z.object({
   planTier: z.enum(["free", "growth", "enterprise"]).optional(),
   planId: z.string().uuid().optional(),
   billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  contactEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  phone: z.union([z.string().max(32), z.literal("")]).optional(),
+  address: z.union([z.string().max(2000), z.literal("")]).optional(),
+  cnpj: z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .max(18)
+        .refine((v) => v.replace(/\D/g, "").length === 14, { message: "CNPJ must contain 14 digits" }),
+    ])
+    .optional(),
   monthlyMessageQuota: z.union([z.number().int().positive(), z.null()]).optional(),
 });
 
@@ -549,6 +561,15 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       orderBy: { createdAt: "asc" },
       include: {
         _count: { select: { users: true, contacts: true, conversations: true } },
+        subscription: {
+          select: {
+            planId: true,
+            status: true,
+            plan: {
+              select: { id: true, name: true, slug: true, legacyPlanTier: true, isCustom: true },
+            },
+          },
+        },
       },
     });
     const stats = await fetchPlatformStats();
@@ -686,11 +707,26 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       if (p.billingEmail !== undefined) {
         data.billingEmail = p.billingEmail === "" ? null : p.billingEmail;
       }
+      if (p.contactEmail !== undefined) {
+        data.contactEmail = p.contactEmail === "" ? null : p.contactEmail;
+      }
+      if (p.phone !== undefined) {
+        data.phone = p.phone === "" ? null : p.phone.trim();
+      }
+      if (p.address !== undefined) {
+        data.address = p.address === "" ? null : p.address.trim();
+      }
+      if (p.cnpj !== undefined) {
+        data.cnpj = p.cnpj === "" ? null : p.cnpj.trim();
+      }
       if (p.monthlyMessageQuota !== undefined) data.monthlyMessageQuota = p.monthlyMessageQuota;
       org = await prisma.organization.update({
         where: { id: request.params.id },
         data,
       });
+      if (p.billingEmail !== undefined) {
+        await updateStripeCustomerFromOrganization(request.params.id);
+      }
     } catch (err) {
       if (err instanceof BillingError && err.code === "plan_not_found") {
         return reply.status(400).send({

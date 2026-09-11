@@ -43,7 +43,22 @@ interface OrgRow {
   createdAt: string;
   planTier?: string;
   billingEmail?: string | null;
+  contactEmail?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  cnpj?: string | null;
   monthlyMessageQuota?: number | null;
+  subscription?: {
+    planId: string | null;
+    status: string;
+    plan: {
+      id: string;
+      name: string;
+      slug: string;
+      legacyPlanTier: string | null;
+      isCustom: boolean;
+    } | null;
+  } | null;
   _count: { users: number; contacts: number; conversations: number };
 }
 
@@ -52,6 +67,7 @@ type CatalogPlanRow = {
   slug: string;
   name: string;
   isActive: boolean;
+  legacyPlanTier?: string | null;
 };
 
 interface SuperStats {
@@ -376,6 +392,8 @@ export function SuperAdminPage() {
   const [billingPlanTier, setBillingPlanTier] = useState("free");
   const [billingEmailState, setBillingEmailState] = useState("");
   const [billingQuota, setBillingQuota] = useState("");
+  const [billingInitialPlanId, setBillingInitialPlanId] = useState<string | null>(null);
+  const [billingInitialPlanTier, setBillingInitialPlanTier] = useState("free");
   const [billingSaving, setBillingSaving] = useState(false);
   const [editOrg, setEditOrg] = useState<OrgRow | null>(null);
   const [editOrgName, setEditOrgName] = useState("");
@@ -383,6 +401,10 @@ export function SuperAdminPage() {
   const [editOrgActive, setEditOrgActive] = useState(true);
   const [editOrgPlanId, setEditOrgPlanId] = useState("");
   const [editOrgPlan, setEditOrgPlan] = useState("free");
+  const [editOrgContactEmail, setEditOrgContactEmail] = useState("");
+  const [editOrgPhone, setEditOrgPhone] = useState("");
+  const [editOrgAddress, setEditOrgAddress] = useState("");
+  const [editOrgCnpj, setEditOrgCnpj] = useState("");
   const [editOrgSaving, setEditOrgSaving] = useState(false);
   const [deleteOrgConfirm, setDeleteOrgConfirm] = useState<OrgRow | null>(null);
   const [deleteOrgBusy, setDeleteOrgBusy] = useState(false);
@@ -568,10 +590,24 @@ export function SuperAdminPage() {
 
   const resolvePlanIdForTier = useCallback(
     (planTier: string | undefined): string => {
-      const slug = planTier?.trim() || "free";
-      return catalogPlans.find((p) => p.slug === slug)?.id ?? catalogPlans[0]?.id ?? "";
+      const tier = planTier?.trim() || "free";
+      const byLegacy = catalogPlans.find((p) => p.legacyPlanTier === tier);
+      if (byLegacy) return byLegacy.id;
+      const bySlug = catalogPlans.find((p) => p.slug === tier);
+      if (bySlug) return bySlug.id;
+      return catalogPlans[0]?.id ?? "";
     },
     [catalogPlans],
+  );
+
+  const resolveInitialBillingPlanId = useCallback(
+    (o: OrgRow): string | null => {
+      const subPlanId = o.subscription?.planId ?? null;
+      if (subPlanId && catalogPlans.some((p) => p.id === subPlanId)) return subPlanId;
+      const resolved = resolvePlanIdForTier(o.planTier);
+      return resolved || null;
+    },
+    [catalogPlans, resolvePlanIdForTier],
   );
 
   useEffect(() => {
@@ -1057,8 +1093,11 @@ export function SuperAdminPage() {
   const openBillingModal = (o: OrgRow) => {
     setBillingOrg(o);
     const tier = o.planTier ?? "free";
+    const initialPlanId = resolveInitialBillingPlanId(o);
     setBillingPlanTier(tier);
-    setBillingPlanId(resolvePlanIdForTier(tier));
+    setBillingPlanId(initialPlanId ?? "");
+    setBillingInitialPlanId(initialPlanId);
+    setBillingInitialPlanTier(tier);
     setBillingEmailState(o.billingEmail ?? "");
     setBillingQuota(o.monthlyMessageQuota != null ? String(o.monthlyMessageQuota) : "");
   };
@@ -1071,6 +1110,10 @@ export function SuperAdminPage() {
     const tier = o.planTier ?? "free";
     setEditOrgPlan(tier);
     setEditOrgPlanId(resolvePlanIdForTier(tier));
+    setEditOrgContactEmail(o.contactEmail ?? "");
+    setEditOrgPhone(o.phone ?? "");
+    setEditOrgAddress(o.address ?? "");
+    setEditOrgCnpj(o.cnpj ?? "");
   };
 
   const saveEditOrg = async (e: FormEvent) => {
@@ -1079,11 +1122,20 @@ export function SuperAdminPage() {
     setEditOrgSaving(true);
     setError("");
     try {
+      const cnpjDigits = editOrgCnpj.replace(/\D/g, "");
+      if (editOrgCnpj.trim() && cnpjDigits.length !== 14) {
+        setError(t("superAdmin.orgCnpjInvalid"));
+        return;
+      }
       await api.patch(`/super/organizations/${editOrg.id}`, {
         name: editOrgName.trim(),
         slug: editOrgSlug.trim(),
         isActive: editOrgActive,
         ...(editOrgPlanId ? { planId: editOrgPlanId } : { planTier: editOrgPlan }),
+        contactEmail: editOrgContactEmail.trim(),
+        phone: editOrgPhone.trim(),
+        address: editOrgAddress.trim(),
+        cnpj: editOrgCnpj.trim(),
       });
       setEditOrg(null);
       await load();
@@ -1125,11 +1177,23 @@ export function SuperAdminPage() {
     setBillingSaving(true);
     setError("");
     try {
-      await api.patch(`/super/organizations/${billingOrg.id}`, {
-        ...(billingPlanId ? { planId: billingPlanId } : { planTier: billingPlanTier }),
+      const patch: {
+        planId?: string;
+        planTier?: string;
+        billingEmail: string;
+        monthlyMessageQuota: number | null;
+      } = {
         billingEmail: billingEmailState.trim() || "",
         monthlyMessageQuota,
-      });
+      };
+      if (catalogPlans.length > 0) {
+        if (billingPlanId && billingPlanId !== billingInitialPlanId) {
+          patch.planId = billingPlanId;
+        }
+      } else if (billingPlanTier !== billingInitialPlanTier) {
+        patch.planTier = billingPlanTier;
+      }
+      await api.patch(`/super/organizations/${billingOrg.id}`, patch);
       setBillingOrg(null);
       await load();
     } catch {
@@ -3093,7 +3157,12 @@ export function SuperAdminPage() {
                           <tr key={o.id}>
                             <td className="py-3 pr-4 font-medium text-gray-900">{o.name}</td>
                             <td className="py-3 pr-4 text-ink-600">{o.slug}</td>
-                            <td className="py-3 pr-3 tabular-nums text-ink-700">{o.planTier ?? "free"}</td>
+                            <td className="py-3 pr-3 text-ink-700">
+                              <div className="font-medium">{o.subscription?.plan?.name ?? o.planTier ?? "free"}</div>
+                              {o.subscription?.status ? (
+                                <div className="text-xs text-slate-500">{o.subscription.status}</div>
+                              ) : null}
+                            </td>
                             <td className="py-3 pr-3 text-right tabular-nums text-gray-600">
                               {o._count.users}
                             </td>
@@ -3208,6 +3277,19 @@ export function SuperAdminPage() {
             <div className="card-surface max-h-[90vh] w-full max-w-md overflow-auto p-6 shadow-xl">
               <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.billingPlan")}</h3>
               <p className="mt-1 text-sm text-ink-600">{billingOrg.name}</p>
+              {billingOrg.subscription?.plan?.isCustom ? (
+                <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  {t("superAdmin.billingCustomPlanAssigned").replace(
+                    "{plan}",
+                    billingOrg.subscription.plan.name,
+                  )}
+                </p>
+              ) : null}
+              {billingOrg.subscription?.status ? (
+                <p className="mt-1 text-xs text-ink-500">
+                  {t("superAdmin.billingSubscriptionStatus").replace("{status}", billingOrg.subscription.status)}
+                </p>
+              ) : null}
               <form onSubmit={(e) => void submitBilling(e)} className="mt-4 space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-ink-600">Plano</label>
@@ -3270,7 +3352,7 @@ export function SuperAdminPage() {
 
         {editOrg ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
-            <div className="card-surface w-full max-w-md p-6 shadow-xl">
+            <div className="card-surface max-h-[90vh] w-full max-w-lg overflow-auto p-6 shadow-xl">
               <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.orgEditTitle")}</h3>
               <form onSubmit={(e) => void saveEditOrg(e)} className="mt-4 space-y-4">
                 <div>
@@ -3307,6 +3389,54 @@ export function SuperAdminPage() {
                   <input type="checkbox" checked={editOrgActive} onChange={(e) => setEditOrgActive(e.target.checked)} />
                   Organização ativa
                 </label>
+
+                <div className="space-y-4 border-t border-ink-100 pt-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-ink-900">{t("superAdmin.orgExtraInfoTitle")}</h4>
+                    <p className="mt-1 text-xs text-ink-500">{t("superAdmin.orgExtraInfoHint")}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">{t("superAdmin.orgContactEmail")}</label>
+                    <input
+                      type="email"
+                      value={editOrgContactEmail}
+                      onChange={(e) => setEditOrgContactEmail(e.target.value)}
+                      className="input-field mt-1"
+                      placeholder={t("superAdmin.orgContactEmailPlaceholder")}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">{t("superAdmin.orgPhone")}</label>
+                    <input
+                      type="tel"
+                      value={editOrgPhone}
+                      onChange={(e) => setEditOrgPhone(e.target.value)}
+                      className="input-field mt-1"
+                      placeholder={t("superAdmin.orgPhonePlaceholder")}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">{t("superAdmin.orgAddress")}</label>
+                    <textarea
+                      value={editOrgAddress}
+                      onChange={(e) => setEditOrgAddress(e.target.value)}
+                      className="input-field mt-1 min-h-[72px]"
+                      placeholder={t("superAdmin.orgAddressPlaceholder")}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink-600">{t("superAdmin.orgCnpj")}</label>
+                    <input
+                      type="text"
+                      value={editOrgCnpj}
+                      onChange={(e) => setEditOrgCnpj(e.target.value)}
+                      className="input-field mt-1"
+                      placeholder="00.000.000/0000-00"
+                      maxLength={18}
+                    />
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-2">
                   <button type="button" className="btn-secondary" onClick={() => setEditOrg(null)}>{t("common.cancel")}</button>
                   <button type="submit" className="btn-primary" disabled={editOrgSaving}>

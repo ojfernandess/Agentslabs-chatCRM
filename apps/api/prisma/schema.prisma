@@ -169,6 +169,11 @@ model Organization {
   /// Plano comercial (free | growth | enterprise) — quotas e faturação são informativas até integração de pagamentos.
   planTier            String  @default("free") @map("plan_tier") @db.VarChar(32)
   billingEmail        String? @map("billing_email") @db.VarChar(255)
+  /// Email de contacto da organização (opcional; distinto do email de faturação).
+  contactEmail        String? @map("contact_email") @db.VarChar(255)
+  phone               String? @db.VarChar(32)
+  address             String? @db.Text
+  cnpj                String? @db.VarChar(18)
   /// Limite mensal opcional de mensagens enviadas+recebidas (null = ilimitado na app).
   monthlyMessageQuota Int?    @map("monthly_message_quota")
   /// Stripe Customer principal da organização (billing SaaS).
