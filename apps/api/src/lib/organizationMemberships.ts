@@ -79,7 +79,7 @@ export function organizationMembersWhere(organizationId: string): Prisma.UserWhe
 
 /**
  * Resolve papel efectivo no tenant activo.
- * Preferência: membership da org activa → role do user (legado) → AGENT.
+ * ADMIN se membership ou users.role legado indicarem ADMIN (corrige dessincronia).
  */
 export async function resolveEffectiveRole(params: {
   userId: string;
@@ -87,10 +87,17 @@ export async function resolveEffectiveRole(params: {
   fallbackRole: UserRole;
 }): Promise<UserRole> {
   if (params.fallbackRole === "SUPER_ADMIN") return "SUPER_ADMIN";
-  if (!params.organizationId) return params.fallbackRole;
+  if (!params.organizationId) {
+    return isOrgMemberRole(params.fallbackRole) ? params.fallbackRole : "AGENT";
+  }
+
   const m = await getMembership(params.organizationId, params.userId);
-  if (m && isOrgMemberRole(m.role)) return m.role;
-  if (isOrgMemberRole(params.fallbackRole)) return params.fallbackRole;
+  const membershipRole = m && isOrgMemberRole(m.role) ? m.role : null;
+  const legacyRole = isOrgMemberRole(params.fallbackRole) ? params.fallbackRole : null;
+
+  if (membershipRole === "ADMIN" || legacyRole === "ADMIN") return "ADMIN";
+  if (membershipRole) return membershipRole;
+  if (legacyRole) return legacyRole;
   return "AGENT";
 }
 

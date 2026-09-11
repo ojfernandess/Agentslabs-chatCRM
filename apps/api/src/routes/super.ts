@@ -9,6 +9,9 @@ import type { JwtPayload } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
+import { applyCatalogPlanToOrganization } from "../lib/billing/planAssignment.js";
+import { BillingError } from "../lib/billing/StripeCustomerService.js";
+import { ensureMembership } from "../lib/organizationMemberships.js";
 import { getRedisHealth } from "../lib/redisHealth.js";
 import {
   FEATURE_FLAG_DEFINITIONS,
@@ -92,46 +95,6 @@ const patchOrgSchema = z.object({
   billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
   monthlyMessageQuota: z.union([z.number().int().positive(), z.null()]).optional(),
 });
-
-async function applyCatalogPlanToOrganization(organizationId: string, planId: string): Promise<void> {
-  const plan = await prisma.plan.findFirst({
-    where: { id: planId, isActive: true },
-    select: { id: true, legacyPlanTier: true, limits: true },
-  });
-  if (!plan) {
-    throw new Error("PLAN_NOT_FOUND");
-  }
-
-  const limits = plan.limits as Record<string, unknown> | null;
-  const orgUpdate: Prisma.OrganizationUpdateInput = {};
-  if (plan.legacyPlanTier) orgUpdate.planTier = plan.legacyPlanTier;
-  if (limits && typeof limits.messages === "number") {
-    orgUpdate.monthlyMessageQuota = limits.messages;
-  }
-
-  await prisma.$transaction([
-    ...(Object.keys(orgUpdate).length > 0
-      ? [
-          prisma.organization.update({
-            where: { id: organizationId },
-            data: orgUpdate,
-          }),
-        ]
-      : []),
-    prisma.organizationSubscription.upsert({
-      where: { organizationId },
-      create: {
-        organizationId,
-        planId: plan.id,
-        status: "active",
-      },
-      update: {
-        planId: plan.id,
-        status: "active",
-      },
-    }),
-  ]);
-}
 
 const superUserPatchSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -685,7 +648,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         data,
       });
     } catch (err) {
-      if (err instanceof Error && err.message === "PLAN_NOT_FOUND") {
+      if (err instanceof BillingError && err.code === "plan_not_found") {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Plano não encontrado ou inactivo",
@@ -1078,6 +1041,14 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       if (Object.keys(data).length === 0) {
         return reply.status(400).send({ error: "Bad Request", message: "No fields to update", statusCode: 400 });
       }
+      if (parsed.data.role !== undefined) {
+        await ensureMembership({
+          organizationId: org.id,
+          userId: target.id,
+          role: parsed.data.role,
+        });
+      }
+
       const updated = await prisma.user.update({
         where: { id: target.id },
         data,

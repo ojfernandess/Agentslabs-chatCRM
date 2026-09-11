@@ -12,3 +12,4 @@ export * from "./stripeWebhookHandler.js";
 export * from "./PlanEntitlementService.js";
 export * from "./StripeInvoiceService.js";
 export * from "./planEnforcement.js";
+export * from "./planAssignment.js";

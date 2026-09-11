@@ -4911,6 +4911,11 @@ export const messages = {
       billingAvailablePlans: "Planos disponíveis",
       billingCurrentBadge: "Atual",
       billingSubscribe: "Assinar plano",
+      billingSelectPlan: "Selecionar plano",
+      billingPlanStripePriceMissing:
+        "Este plano pago ainda não tem preço Stripe configurado. Peça ao super administrador para associar stripe_price_id.",
+      billingPaidPlanRequiresStripe:
+        "Pagamentos online exigem Stripe configurado no servidor (STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET).",
       billingCheckoutSuccess: "Pagamento recebido. A assinatura será confirmada em instantes via webhook Stripe.",
       billingCheckoutCancel: "Checkout cancelado. Pode escolher um plano quando quiser.",
       billingHistory: "Histórico de pagamentos",
@@ -10669,6 +10674,11 @@ export const messages = {
       billingAvailablePlans: "Available plans",
       billingCurrentBadge: "Current",
       billingSubscribe: "Subscribe",
+      billingSelectPlan: "Select plan",
+      billingPlanStripePriceMissing:
+        "This paid plan has no Stripe price configured yet. Ask the super admin to set stripe_price_id.",
+      billingPaidPlanRequiresStripe:
+        "Online payments require Stripe configured on the server (STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET).",
       billingCheckoutSuccess: "Payment received. Your subscription will be confirmed shortly via Stripe webhook.",
       billingCheckoutCancel: "Checkout canceled. You can choose a plan anytime.",
       billingHistory: "Payment history",

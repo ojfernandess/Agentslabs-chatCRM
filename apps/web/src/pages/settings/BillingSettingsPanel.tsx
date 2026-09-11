@@ -24,6 +24,8 @@ type PlanRow = {
   features: Record<string, boolean | undefined>;
   isCurrent: boolean;
   requiresCheckout: boolean;
+  isFree?: boolean;
+  stripeReady?: boolean;
 };
 
 type UsageDimension = {
@@ -184,6 +186,12 @@ export function BillingSettingsPanel() {
   };
 
   const subscribeToPlan = async (plan: PlanRow) => {
+    if (plan.isFree || plan.amountCents <= 0) {
+      await runAction(`select-${plan.id}`, async () => {
+        await api.post("/billing/select-plan", { planId: plan.id });
+      });
+      return;
+    }
     if (subscription?.stripeManaged && subscription.status !== "canceled") {
       await runAction(`change-${plan.id}`, async () => {
         await api.post("/billing/change-plan", { planId: plan.id });
@@ -363,19 +371,42 @@ export function BillingSettingsPanel() {
                 {plan.features.api ? <li>{t("settings.billingFeatureApi")}</li> : null}
                 {plan.features.mcp ? <li>{t("settings.billingFeatureMcp")}</li> : null}
               </ul>
-              {!plan.isCurrent && overview?.stripeConfigured && plan.requiresCheckout ? (
-                <button
-                  type="button"
-                  disabled={Boolean(busy)}
-                  onClick={() => void subscribeToPlan(plan)}
-                  className="mt-4 w-full rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-                >
-                  {busy === `checkout-${plan.id}` || busy === `change-${plan.id}` ? (
-                    <Loader2 className="mx-auto h-4 w-4 animate-spin" />
-                  ) : (
-                    t("settings.billingSubscribe")
-                  )}
-                </button>
+              {!plan.isCurrent ? (
+                plan.isFree || plan.amountCents <= 0 ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => void subscribeToPlan(plan)}
+                    className="mt-4 w-full rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    {busy === `select-${plan.id}` ? (
+                      <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                    ) : (
+                      t("settings.billingSelectPlan")
+                    )}
+                  </button>
+                ) : overview?.stripeConfigured && plan.requiresCheckout ? (
+                  <button
+                    type="button"
+                    disabled={Boolean(busy)}
+                    onClick={() => void subscribeToPlan(plan)}
+                    className="mt-4 w-full rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    {busy === `checkout-${plan.id}` || busy === `change-${plan.id}` ? (
+                      <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                    ) : (
+                      t("settings.billingSubscribe")
+                    )}
+                  </button>
+                ) : overview?.stripeConfigured && plan.stripeReady === false ? (
+                  <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
+                    {t("settings.billingPlanStripePriceMissing")}
+                  </p>
+                ) : !overview?.stripeConfigured ? (
+                  <p className="mt-4 text-xs text-ink-500 dark:text-ink-400">
+                    {t("settings.billingPaidPlanRequiresStripe")}
+                  </p>
+                ) : null
               ) : null}
             </div>
           ))}

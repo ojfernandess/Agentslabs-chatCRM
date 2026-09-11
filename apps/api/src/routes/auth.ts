@@ -32,6 +32,7 @@ import {
   listMembershipsForUser,
   resolveEffectiveRole,
 } from "../lib/organizationMemberships.js";
+import { resolveUserOrganizationId } from "../lib/tenantContext.js";
 
 const turnstileTokenField = z.string().min(1).max(2048).optional();
 
@@ -565,8 +566,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const activeOrganizationId = await resolveUserOrganizationId(request.user);
     const orgIdForFeatures =
-      user.role === "SUPER_ADMIN" ? actingId : user.organizationId;
+      user.role === "SUPER_ADMIN" ? actingId : activeOrganizationId;
     const organizationFeatures =
       orgIdForFeatures !== null && orgIdForFeatures !== undefined
         ? await getOrganizationFeatureMap(orgIdForFeatures)
@@ -586,7 +588,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     const effectiveRole = await resolveEffectiveRole({
       userId: user.id,
-      organizationId: user.organizationId,
+      organizationId: activeOrganizationId,
       fallbackRole: user.role,
     });
 

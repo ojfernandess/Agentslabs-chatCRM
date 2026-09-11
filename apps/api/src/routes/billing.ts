@@ -18,6 +18,7 @@ import {
   parsePlanLimits,
   resumeScheduledCancellation,
   getOrganizationUsage,
+  applyCatalogPlanToOrganization,
 } from "../lib/billing/index.js";
 
 const planIdBodySchema = z.object({
@@ -175,8 +176,43 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         ...serializePlanForClient(p),
         isCurrent: sub?.planId === p.id,
         requiresCheckout: p.amountCents > 0 && Boolean(p.stripePriceId),
+        isFree: p.amountCents <= 0,
+        stripeReady: p.amountCents <= 0 || Boolean(p.stripePriceId?.trim()),
       })),
     };
+  });
+
+  app.post("/select-plan", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const body = planIdBodySchema.parse(request.body);
+    const plan = await prisma.plan.findFirst({
+      where: { id: body.planId, isActive: true },
+      select: { id: true, amountCents: true },
+    });
+    if (!plan) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "Plan not found or inactive",
+        statusCode: 404,
+      });
+    }
+    if (plan.amountCents > 0) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Paid plans require Stripe checkout",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      await applyCatalogPlanToOrganization(organizationId, plan.id);
+      return { ok: true };
+    } catch (err) {
+      sendBillingError(reply, err);
+      return;
+    }
   });
 
   app.get("/invoices", async (request, reply) => {
