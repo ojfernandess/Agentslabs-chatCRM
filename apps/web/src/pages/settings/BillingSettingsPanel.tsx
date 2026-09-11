@@ -208,6 +208,14 @@ export function BillingSettingsPanel() {
     }
   };
 
+  const paymentPendingForCurrentPlan =
+    subscription?.status === "pending_payment" && !subscription?.stripeManaged;
+
+  const planNeedsPayment = (plan: PlanRow) =>
+    plan.isCurrent && paymentPendingForCurrentPlan && plan.amountCents > 0;
+
+  const planShowsSubscribeAction = (plan: PlanRow) => !plan.isCurrent || planNeedsPayment(plan);
+
   const subscribeToPlan = async (plan: PlanRow) => {
     if (plan.isFree || plan.amountCents <= 0) {
       await runAction(`select-${plan.id}`, async () => {
@@ -278,6 +286,24 @@ export function BillingSettingsPanel() {
                   formatDate(overview.paymentGrace.paymentDueAt, localeTag),
                 )}
               </p>
+            ) : null}
+            {overview.stripeConfigured && currentPlan && currentPlan.amountCents > 0 ? (
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => {
+                  const planRow = plans.find((p) => p.id === currentPlan.id);
+                  if (planRow) void subscribeToPlan(planRow);
+                }}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                {busy?.startsWith("checkout-") || busy?.startsWith("change-") ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CreditCard className="h-4 w-4" />
+                )}
+                {t("settings.billingCompletePayment")}
+              </button>
             ) : null}
           </div>
         </div>
@@ -474,7 +500,7 @@ export function BillingSettingsPanel() {
                 {plan.features.api ? <li>{t("settings.billingFeatureApi")}</li> : null}
                 {plan.features.mcp ? <li>{t("settings.billingFeatureMcp")}</li> : null}
               </ul>
-              {!plan.isCurrent ? (
+              {planShowsSubscribeAction(plan) ? (
                 plan.isFree || plan.amountCents <= 0 ? (
                   <button
                     type="button"
@@ -497,6 +523,8 @@ export function BillingSettingsPanel() {
                   >
                     {busy === `checkout-${plan.id}` || busy === `change-${plan.id}` ? (
                       <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                    ) : planNeedsPayment(plan) ? (
+                      t("settings.billingCompletePayment")
                     ) : (
                       t("settings.billingSubscribe")
                     )}

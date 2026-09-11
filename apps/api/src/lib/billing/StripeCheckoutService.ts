@@ -27,7 +27,14 @@ async function assertCheckoutAllowed(organizationId: string, targetPlanId: strin
 
   if (!sub) return;
 
-  if (sub.planId === targetPlanId && isAccessGrantingStatus(sub.status)) {
+  const awaitingStripePayment =
+    sub.status === "pending_payment" && !sub.stripeSubscriptionId?.trim();
+
+  if (
+    sub.planId === targetPlanId &&
+    isAccessGrantingStatus(sub.status) &&
+    !awaitingStripePayment
+  ) {
     throw new BillingError("Organization already has an active subscription for this plan", "already_subscribed");
   }
 
