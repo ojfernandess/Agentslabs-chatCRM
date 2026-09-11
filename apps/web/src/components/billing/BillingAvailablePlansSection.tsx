@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import clsx from "clsx";
 import { BillingPlanCard, type BillingPlanCardPlan } from "@/components/billing/BillingPlanCard";
+import { settingsCard } from "@/components/settings/settingsUi";
 
 type BillingAvailablePlansSectionProps = {
   plans: BillingPlanCardPlan[];
@@ -38,17 +39,8 @@ export function BillingAvailablePlansSection({
   const featuredPlanId = useMemo(() => resolveFeaturedPlanId(plans), [plans]);
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-b from-brand-50/40 via-white to-white px-4 py-10 sm:px-8 sm:py-12 dark:border-soft-border dark:from-brand-950/20 dark:via-ink-950 dark:to-ink-950">
-      <div
-        className="pointer-events-none absolute -left-24 -top-24 h-64 w-64 rounded-full bg-brand-200/30 blur-3xl dark:bg-brand-900/20"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-brand-200/25 blur-3xl dark:bg-brand-900/15"
-        aria-hidden
-      />
-
-      <div className="relative mx-auto max-w-6xl space-y-10">
+    <section className={settingsCard}>
+      <div className="mx-auto max-w-6xl space-y-10">
         <header className="mx-auto max-w-2xl text-center">
           <h3 className="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl dark:text-ink-50">
             {t("settings.billingAvailablePlans")}
