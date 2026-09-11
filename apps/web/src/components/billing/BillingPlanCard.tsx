@@ -1,11 +1,10 @@
 import {
   Bot,
   Box,
-  Calendar,
   Check,
+  Crown,
   Database,
   Gauge,
-  Infinity,
   Loader2,
   MessageSquare,
   Users,
@@ -23,6 +22,7 @@ import {
 
 export type BillingPlanCardPlan = {
   id: string;
+  slug: string;
   name: string;
   description: string | null;
   currency: string;
@@ -44,6 +44,7 @@ type BillingPlanCardProps = {
   localeTag: string;
   stripeConfigured: boolean;
   busy: string | null;
+  featured?: boolean;
   showSubscribeAction: boolean;
   needsPayment: boolean;
   onSubscribe: () => void;
@@ -95,6 +96,7 @@ export function BillingPlanCard({
   localeTag,
   stripeConfigured,
   busy,
+  featured = false,
   showSubscribeAction,
   needsPayment,
   onSubscribe,
@@ -107,100 +109,100 @@ export function BillingPlanCard({
   const enabledFeatures = Object.entries(plan.features).filter(([, enabled]) => enabled === true);
   const planExtras = Object.entries(plan.planExtras ?? {}).filter(([, value]) => Boolean(value?.trim()));
 
-  const intervalLabel =
-    plan.interval === "year" ? t("settings.billingYearlyBilling") : t("settings.billingMonthlyBilling");
-
-  const priceLabel =
-    plan.amountCents > 0
-      ? `${formatMoney(plan.amountCents, plan.currency, localeTag)} / ${
-          plan.interval === "month" ? t("settings.billingPerMonth") : plan.interval
-        }`
-      : t("settings.billingFreePlan");
-
+  const isPaid = plan.amountCents > 0;
   const isBusy =
     busy === `select-${plan.id}` ||
     busy === `checkout-${plan.id}` ||
     busy === `change-${plan.id}`;
 
+  const priceIntervalLabel =
+    plan.interval === "year" ? t("settings.billingYearlyBilling") : t("settings.billingMonthlyBilling");
+
   return (
     <article
       className={clsx(
-        "flex h-full w-full flex-col overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-ink-900/40",
-        plan.isCurrent
-          ? "border-brand-300 ring-1 ring-brand-200 dark:border-brand-800 dark:ring-brand-900/50"
-          : "border-slate-200/90 dark:border-soft-border",
+        "relative flex h-full w-full flex-col overflow-hidden rounded-2xl border bg-white shadow-[0_8px_30px_rgba(103,52,255,0.08)] transition-shadow dark:bg-ink-900/50",
+        featured
+          ? "border-brand-400 ring-2 ring-brand-500/20 dark:border-brand-600 dark:ring-brand-500/30"
+          : plan.isCurrent
+            ? "border-brand-200 dark:border-brand-800/60"
+            : "border-slate-200/90 dark:border-soft-border",
+        featured && "shadow-[0_12px_40px_rgba(103,52,255,0.18)]",
       )}
     >
-      <div className="h-1.5 shrink-0 bg-brand-600" aria-hidden />
+      {featured ? (
+        <div className="flex items-center justify-center gap-1.5 bg-brand-600 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
+          <Crown className="h-3.5 w-3.5" strokeWidth={2.25} />
+          {t("settings.billingPopularPlanBadge")}
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col p-6 sm:p-7">
         <div className="shrink-0">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-300">
-              <Box className="h-5 w-5" strokeWidth={1.75} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-300">
+                <Box className="h-5 w-5" strokeWidth={1.75} />
+              </div>
+              <div className="min-w-0">
                 <h4 className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">{plan.name}</h4>
-                {plan.isCurrent ? (
-                  <span className="rounded-md bg-brand-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                    {t("settings.billingCurrentPlanBadge")}
-                  </span>
+                {plan.description ? (
+                  <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+                    {plan.description}
+                  </p>
                 ) : null}
               </div>
-              {plan.description ? (
-                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-ink-500 dark:text-ink-400">
-                  {plan.description}
-                </p>
-              ) : null}
             </div>
+            {plan.isCurrent ? (
+              <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-700 dark:bg-brand-900/50 dark:text-brand-200">
+                {t("settings.billingCurrentPlanBadge")}
+              </span>
+            ) : null}
           </div>
 
-          <p className="mt-5 break-words text-xl font-bold text-brand-600 sm:text-2xl dark:text-brand-400">
-            {priceLabel}
-          </p>
-
-          <div className="mt-4 grid grid-cols-1 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 sm:grid-cols-2 sm:divide-x sm:divide-y-0 dark:divide-soft-border dark:border-soft-border dark:bg-ink-900/30">
-            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 text-xs text-ink-600 dark:text-ink-300">
-              <Calendar className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
-              <span className="min-w-0 break-words leading-snug">{intervalLabel}</span>
-            </div>
-            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 text-xs text-ink-600 dark:text-ink-300">
-              <Infinity className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
-              <span className="min-w-0 break-words leading-snug">{t("settings.billingNoSetupFee")}</span>
-            </div>
+          <div className="mt-6 border-b border-slate-100 pb-5 dark:border-soft-border">
+            {isPaid ? (
+              <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1">
+                <span className="text-3xl font-bold leading-none text-brand-600 sm:text-4xl dark:text-brand-400">
+                  {formatMoney(plan.amountCents, plan.currency, localeTag)}
+                </span>
+                <span className="pb-1 text-base font-medium text-brand-600/80 dark:text-brand-400/80">
+                  / {plan.interval === "month" ? t("settings.billingPerMonth") : plan.interval}
+                </span>
+              </div>
+            ) : (
+              <p className="text-3xl font-bold leading-none text-brand-600 sm:text-4xl dark:text-brand-400">
+                {t("settings.billingFreePlan")}
+              </p>
+            )}
+            <p className="mt-2 text-sm text-ink-500 dark:text-ink-400">
+              {isPaid ? priceIntervalLabel : t("settings.billingFreePlanSubtitle")}
+            </p>
           </div>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
           {limitKeys.length > 0 ? (
-            <div className="mt-6 border-t border-slate-100 pt-5 dark:border-soft-border">
+            <div className="mt-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
                 {t("settings.billingPlanCapacity")}
               </p>
-              <div className="mt-3 grid grid-cols-2 gap-3">
+              <ul className="mt-3 space-y-2.5">
                 {limitKeys.map((key) => {
                   const Icon = limitIcon(key);
                   return (
-                    <div
-                      key={key}
-                      className="flex min-h-[4.5rem] items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50/60 px-2.5 py-2.5 dark:border-soft-border dark:bg-ink-900/20"
-                    >
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 shadow-sm dark:bg-ink-900/60 dark:text-brand-300">
-                        <Icon className="h-4 w-4" strokeWidth={1.75} />
+                    <li key={key} className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Icon className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" strokeWidth={1.75} />
+                        <span className="text-sm text-ink-600 dark:text-ink-300">{limitLabel(t, key)}</span>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-base font-bold leading-none text-ink-900 dark:text-ink-50">
-                          {formatLimitValue(plan.limits[key], localeTag, t)}
-                        </p>
-                        <p className="mt-1 break-words text-[11px] leading-snug text-ink-500 dark:text-ink-400">
-                          {limitLabel(t, key)}
-                        </p>
-                      </div>
-                    </div>
+                      <span className="shrink-0 text-sm font-bold tabular-nums text-ink-900 dark:text-ink-50">
+                        {formatLimitValue(plan.limits[key], localeTag, t)}
+                      </span>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </div>
           ) : null}
 
@@ -209,9 +211,9 @@ export function BillingPlanCard({
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
                 {t("settings.billingIncludedResources")}
               </p>
-              <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <ul className="mt-3 space-y-2.5">
                 {enabledFeatures.map(([key]) => (
-                  <li key={key} className="flex items-start gap-2 text-sm text-ink-700 dark:text-ink-200">
+                  <li key={key} className="flex items-start gap-2.5 text-sm text-ink-700 dark:text-ink-200">
                     <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
                       <Check className="h-2.5 w-2.5" strokeWidth={3} />
                     </span>
@@ -219,7 +221,7 @@ export function BillingPlanCard({
                   </li>
                 ))}
                 {planExtras.map(([key, value]) => (
-                  <li key={`extra-${key}`} className="flex items-start gap-2 text-sm text-ink-700 dark:text-ink-200">
+                  <li key={`extra-${key}`} className="flex items-start gap-2.5 text-sm text-ink-700 dark:text-ink-200">
                     <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
                       <Check className="h-2.5 w-2.5" strokeWidth={3} />
                     </span>
@@ -240,7 +242,12 @@ export function BillingPlanCard({
                 type="button"
                 disabled={Boolean(busy)}
                 onClick={onSubscribe}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
+                className={clsx(
+                  "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60",
+                  featured
+                    ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
+                    : "border-2 border-brand-600 bg-white text-brand-600 hover:bg-brand-50 dark:bg-transparent dark:hover:bg-brand-950/30",
+                )}
               >
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {t("settings.billingSelectPlan")}
@@ -250,7 +257,12 @@ export function BillingPlanCard({
                 type="button"
                 disabled={Boolean(busy)}
                 onClick={onSubscribe}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-60"
+                className={clsx(
+                  "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60",
+                  featured
+                    ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
+                    : "border-2 border-brand-600 bg-white text-brand-600 hover:bg-brand-50 dark:bg-transparent dark:hover:bg-brand-950/30",
+                )}
               >
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {needsPayment ? t("settings.billingCompletePayment") : t("settings.billingSubscribe")}
@@ -265,7 +277,7 @@ export function BillingPlanCard({
               </p>
             ) : null
           ) : plan.isCurrent ? (
-            <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm">
+            <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200">
               <Check className="h-4 w-4" strokeWidth={2.5} />
               {t("settings.billingYourCurrentPlan")}
             </div>

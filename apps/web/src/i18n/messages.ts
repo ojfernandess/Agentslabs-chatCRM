@@ -4910,6 +4910,10 @@ export const messages = {
       billingResume: "Manter assinatura",
       billingAvailablePlans: "Planos disponíveis",
       billingAvailablePlansSubtitle: "Compare capacidades e recursos incluídos em cada plano.",
+      billingAvailablePlansHeroSubtitle:
+        "Escolha o plano ideal para o seu negócio e potencialize seu atendimento com IA.",
+      billingPopularPlanBadge: "Mais popular",
+      billingFreePlanSubtitle: "Sem cobrança mensal",
       billingCurrentPlanBadge: "Plano atual",
       billingPlanCapacity: "Capacidade do plano",
       billingIncludedResources: "Recursos incluídos",
@@ -10796,6 +10800,10 @@ export const messages = {
       billingResume: "Keep subscription",
       billingAvailablePlans: "Available plans",
       billingAvailablePlansSubtitle: "Compare capacity and included resources for each plan.",
+      billingAvailablePlansHeroSubtitle:
+        "Choose the ideal plan for your business and power your customer service with AI.",
+      billingPopularPlanBadge: "Most popular",
+      billingFreePlanSubtitle: "No monthly charge",
       billingCurrentPlanBadge: "Current plan",
       billingPlanCapacity: "Plan capacity",
       billingIncludedResources: "Included resources",

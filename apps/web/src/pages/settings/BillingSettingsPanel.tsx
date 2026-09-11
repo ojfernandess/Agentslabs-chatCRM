@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   Gauge,
   MessageSquare,
-  Shield,
   Users,
   Workflow,
   type LucideIcon,
@@ -21,7 +20,7 @@ import {
   settingsSubtitle,
   settingsTitle,
 } from "@/components/settings/settingsUi";
-import { BillingPlanCard } from "@/components/billing/BillingPlanCard";
+import { BillingAvailablePlansSection } from "@/components/billing/BillingAvailablePlansSection";
 import { UsageMeter } from "@/components/settings/UsageMeter";
 import { catalogLimitLabelKey, orderPlanLimitKeys } from "@/lib/planCatalog";
 
@@ -549,59 +548,18 @@ export function BillingSettingsPanel() {
         ) : null}
       </section>
 
-      <section className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="mt-1 h-9 w-1 shrink-0 rounded-full bg-brand-600" aria-hidden />
-            <div>
-              <h3 className="text-xl font-bold text-ink-900 dark:text-ink-50">{t("settings.billingAvailablePlans")}</h3>
-              <p className={clsx(settingsMuted, "mt-1 text-sm")}>
-                {overview?.hasCustomPlanCatalog
-                  ? t("settings.billingCustomPlanCatalogHint")
-                  : t("settings.billingAvailablePlansSubtitle")}
-              </p>
-            </div>
-          </div>
-          <div className="flex max-w-xs items-start gap-3 rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3 dark:border-brand-900/40 dark:bg-brand-950/20">
-            <Shield className="mt-0.5 h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
-            <div>
-              <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">
-                {t("settings.billingTrustSecureTitle")}
-              </p>
-              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
-                {t("settings.billingTrustSecureSubtitle")}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className={clsx(
-            "grid items-stretch gap-6",
-            plans.length === 1
-              ? "mx-auto max-w-xl grid-cols-1"
-              : plans.length === 2
-                ? "grid-cols-1 md:grid-cols-2"
-                : "grid-cols-1 md:grid-cols-2 2xl:grid-cols-3",
-          )}
-        >
-          {plans.map((plan) => (
-            <div key={plan.id} className="h-full min-h-0">
-              <BillingPlanCard
-                plan={plan}
-                localeTag={localeTag}
-                stripeConfigured={Boolean(overview?.stripeConfigured)}
-                busy={busy}
-                showSubscribeAction={planShowsSubscribeAction(plan)}
-                needsPayment={planNeedsPayment(plan)}
-                onSubscribe={() => void subscribeToPlan(plan)}
-                t={t}
-                formatMoney={formatMoney}
-              />
-            </div>
-          ))}
-        </div>
-      </section>
+      <BillingAvailablePlansSection
+        plans={plans}
+        hasCustomPlanCatalog={overview?.hasCustomPlanCatalog}
+        stripeConfigured={Boolean(overview?.stripeConfigured)}
+        busy={busy}
+        localeTag={localeTag}
+        t={t}
+        formatMoney={formatMoney}
+        planShowsSubscribeAction={planShowsSubscribeAction}
+        planNeedsPayment={planNeedsPayment}
+        onSubscribe={(plan) => void subscribeToPlan(plan)}
+      />
 
       {invoices.length > 0 ? (
         <section className={settingsCard}>
