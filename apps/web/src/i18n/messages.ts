@@ -5803,6 +5803,9 @@ export const messages = {
       billingSubscriptionStatus: "Estado da assinatura: {status}",
       billingCustomPlanAssigned:
         "Plano personalizado activo ({plan}). Alterar o plano aqui substitui-o por um plano do catálogo.",
+      billingKeepCustomPlan: "— Manter plano personalizado —",
+      billingReplaceCustomPlanHint: "Seleccione um plano do catálogo abaixo apenas se quiser substituir o plano personalizado.",
+      planCustomBadge: "Personalizado",
       messageQuota: "Quota mensal (mensagens; vazio = sem limite)",
       saveBilling: "Guardar",
       teamUsers: "Utilizadores",
@@ -11739,6 +11742,9 @@ export const messages = {
       billingSubscriptionStatus: "Subscription status: {status}",
       billingCustomPlanAssigned:
         "Custom plan active ({plan}). Changing the plan here replaces it with a catalog plan.",
+      billingKeepCustomPlan: "— Keep custom plan —",
+      billingReplaceCustomPlanHint: "Select a catalog plan below only if you want to replace the custom plan.",
+      planCustomBadge: "Custom",
       messageQuota: "Monthly message quota (empty = unlimited)",
       saveBilling: "Save",
       teamUsers: "Users",

@@ -118,6 +118,16 @@ function isWrappedOrganizations(x: unknown): x is SuperOrganizationsPayload {
   );
 }
 
+function orgHasCustomPlan(o: OrgRow): boolean {
+  return o.subscription?.plan?.isCustom === true;
+}
+
+function orgCatalogPlanId(o: OrgRow, catalogPlans: CatalogPlanRow[]): string | null {
+  const subPlanId = o.subscription?.planId ?? null;
+  if (!subPlanId || orgHasCustomPlan(o)) return null;
+  return catalogPlans.some((p) => p.id === subPlanId) ? subPlanId : null;
+}
+
 interface MonitoringPayload {
   database: { ok: boolean; latencyMs: number };
   redis: { ok: boolean; latencyMs: number; error?: string };
@@ -401,6 +411,8 @@ export function SuperAdminPage() {
   const [editOrgActive, setEditOrgActive] = useState(true);
   const [editOrgPlanId, setEditOrgPlanId] = useState("");
   const [editOrgPlan, setEditOrgPlan] = useState("free");
+  const [editOrgInitialPlanId, setEditOrgInitialPlanId] = useState<string | null>(null);
+  const [editOrgInitialPlanTier, setEditOrgInitialPlanTier] = useState("free");
   const [editOrgContactEmail, setEditOrgContactEmail] = useState("");
   const [editOrgPhone, setEditOrgPhone] = useState("");
   const [editOrgAddress, setEditOrgAddress] = useState("");
@@ -602,8 +614,9 @@ export function SuperAdminPage() {
 
   const resolveInitialBillingPlanId = useCallback(
     (o: OrgRow): string | null => {
-      const subPlanId = o.subscription?.planId ?? null;
-      if (subPlanId && catalogPlans.some((p) => p.id === subPlanId)) return subPlanId;
+      if (orgHasCustomPlan(o)) return null;
+      const catalogId = orgCatalogPlanId(o, catalogPlans);
+      if (catalogId) return catalogId;
       const resolved = resolvePlanIdForTier(o.planTier);
       return resolved || null;
     },
@@ -1108,8 +1121,13 @@ export function SuperAdminPage() {
     setEditOrgSlug(o.slug);
     setEditOrgActive(o.isActive);
     const tier = o.planTier ?? "free";
+    const initialPlanId = orgHasCustomPlan(o)
+      ? null
+      : (orgCatalogPlanId(o, catalogPlans) ?? resolvePlanIdForTier(tier)) || null;
     setEditOrgPlan(tier);
-    setEditOrgPlanId(resolvePlanIdForTier(tier));
+    setEditOrgPlanId(initialPlanId ?? "");
+    setEditOrgInitialPlanId(initialPlanId);
+    setEditOrgInitialPlanTier(tier);
     setEditOrgContactEmail(o.contactEmail ?? "");
     setEditOrgPhone(o.phone ?? "");
     setEditOrgAddress(o.address ?? "");
@@ -1127,16 +1145,33 @@ export function SuperAdminPage() {
         setError(t("superAdmin.orgCnpjInvalid"));
         return;
       }
-      await api.patch(`/super/organizations/${editOrg.id}`, {
+      const orgPatch: {
+        name: string;
+        slug: string;
+        isActive: boolean;
+        planId?: string;
+        planTier?: string;
+        contactEmail: string;
+        phone: string;
+        address: string;
+        cnpj: string;
+      } = {
         name: editOrgName.trim(),
         slug: editOrgSlug.trim(),
         isActive: editOrgActive,
-        ...(editOrgPlanId ? { planId: editOrgPlanId } : { planTier: editOrgPlan }),
         contactEmail: editOrgContactEmail.trim(),
         phone: editOrgPhone.trim(),
         address: editOrgAddress.trim(),
         cnpj: editOrgCnpj.trim(),
-      });
+      };
+      if (catalogPlans.length > 0) {
+        if (editOrgPlanId && editOrgPlanId !== editOrgInitialPlanId) {
+          orgPatch.planId = editOrgPlanId;
+        }
+      } else if (!orgHasCustomPlan(editOrg) && editOrgPlan !== editOrgInitialPlanTier) {
+        orgPatch.planTier = editOrgPlan;
+      }
+      await api.patch(`/super/organizations/${editOrg.id}`, orgPatch);
       setEditOrg(null);
       await load();
     } catch {
@@ -3158,7 +3193,14 @@ export function SuperAdminPage() {
                             <td className="py-3 pr-4 font-medium text-gray-900">{o.name}</td>
                             <td className="py-3 pr-4 text-ink-600">{o.slug}</td>
                             <td className="py-3 pr-3 text-ink-700">
-                              <div className="font-medium">{o.subscription?.plan?.name ?? o.planTier ?? "free"}</div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-medium">{o.subscription?.plan?.name ?? o.planTier ?? "free"}</span>
+                                {orgHasCustomPlan(o) ? (
+                                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800">
+                                    {t("superAdmin.planCustomBadge")}
+                                  </span>
+                                ) : null}
+                              </div>
                               {o.subscription?.status ? (
                                 <div className="text-xs text-slate-500">{o.subscription.status}</div>
                               ) : null}
@@ -3277,12 +3319,9 @@ export function SuperAdminPage() {
             <div className="card-surface max-h-[90vh] w-full max-w-md overflow-auto p-6 shadow-xl">
               <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.billingPlan")}</h3>
               <p className="mt-1 text-sm text-ink-600">{billingOrg.name}</p>
-              {billingOrg.subscription?.plan?.isCustom ? (
+              {orgHasCustomPlan(billingOrg) && billingOrg.subscription?.plan ? (
                 <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  {t("superAdmin.billingCustomPlanAssigned").replace(
-                    "{plan}",
-                    billingOrg.subscription.plan.name,
-                  )}
+                  {t("superAdmin.billingCustomPlanAssigned").replace("{plan}", billingOrg.subscription.plan.name)}
                 </p>
               ) : null}
               {billingOrg.subscription?.status ? (
@@ -3294,17 +3333,25 @@ export function SuperAdminPage() {
                 <div>
                   <label className="block text-xs font-medium text-ink-600">Plano</label>
                   {catalogPlans.length > 0 ? (
-                    <select
-                      value={billingPlanId}
-                      onChange={(e) => setBillingPlanId(e.target.value)}
-                      className="input-field mt-1"
-                    >
-                      {catalogPlans.map((plan) => (
-                        <option key={plan.id} value={plan.id}>
-                          {plan.name}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      {orgHasCustomPlan(billingOrg) ? (
+                        <p className="mt-1 text-xs text-ink-500">{t("superAdmin.billingReplaceCustomPlanHint")}</p>
+                      ) : null}
+                      <select
+                        value={billingPlanId}
+                        onChange={(e) => setBillingPlanId(e.target.value)}
+                        className="input-field mt-1"
+                      >
+                        {orgHasCustomPlan(billingOrg) ? (
+                          <option value="">{t("superAdmin.billingKeepCustomPlan")}</option>
+                        ) : null}
+                        {catalogPlans.map((plan) => (
+                          <option key={plan.id} value={plan.id}>
+                            {plan.name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
                   ) : (
                     <select
                       value={billingPlanTier}
@@ -3365,18 +3412,35 @@ export function SuperAdminPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink-600">{t("superAdmin.planColumn")}</label>
+                  {editOrg && orgHasCustomPlan(editOrg) && editOrg.subscription?.plan ? (
+                    <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      {t("superAdmin.billingCustomPlanAssigned").replace("{plan}", editOrg.subscription.plan.name)}
+                    </p>
+                  ) : null}
                   {catalogPlans.length > 0 ? (
-                    <select
-                      value={editOrgPlanId}
-                      onChange={(e) => setEditOrgPlanId(e.target.value)}
-                      className="input-field mt-1"
-                    >
-                      {catalogPlans.map((plan) => (
-                        <option key={plan.id} value={plan.id}>
-                          {plan.name}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      {editOrg && orgHasCustomPlan(editOrg) ? (
+                        <p className="mt-2 text-xs text-ink-500">{t("superAdmin.billingReplaceCustomPlanHint")}</p>
+                      ) : null}
+                      <select
+                        value={editOrgPlanId}
+                        onChange={(e) => setEditOrgPlanId(e.target.value)}
+                        className="input-field mt-1"
+                      >
+                        {editOrg && orgHasCustomPlan(editOrg) ? (
+                          <option value="">{t("superAdmin.billingKeepCustomPlan")}</option>
+                        ) : null}
+                        {catalogPlans.map((plan) => (
+                          <option key={plan.id} value={plan.id}>
+                            {plan.name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : editOrg && orgHasCustomPlan(editOrg) ? (
+                    <p className="input-field mt-1 bg-slate-50 text-sm text-slate-700">
+                      {editOrg.subscription?.plan?.name ?? t("superAdmin.planCustomBadge")}
+                    </p>
                   ) : (
                     <select value={editOrgPlan} onChange={(e) => setEditOrgPlan(e.target.value)} className="input-field mt-1">
                       <option value="free">{t("superAdmin.planFree")}</option>
