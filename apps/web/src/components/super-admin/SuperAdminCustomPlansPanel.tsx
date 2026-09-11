@@ -5,8 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
-
-type OrgOption = { id: string; name: string; slug: string };
+import { parseSuperAdminOrgList, type SuperAdminOrgOption } from "@/lib/superAdminOrganizations";
 
 type CustomPlanRow = {
   id: string;
@@ -51,7 +50,7 @@ export function SuperAdminCustomPlansPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [plans, setPlans] = useState<CustomPlanRow[]>([]);
-  const [orgs, setOrgs] = useState<OrgOption[]>([]);
+  const [orgs, setOrgs] = useState<SuperAdminOrgOption[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_CUSTOM_FORM);
@@ -60,12 +59,12 @@ export function SuperAdminCustomPlansPanel() {
     setLoading(true);
     setError("");
     try {
-      const [planRes, orgRes] = await Promise.all([
+      const [planRes, orgRaw] = await Promise.all([
         api.get<{ plans: CustomPlanRow[] }>("/super/billing/custom-plans"),
-        api.get<OrgOption[]>("/super/organizations"),
+        api.get<unknown>("/super/organizations"),
       ]);
-      setPlans(planRes.plans);
-      setOrgs(orgRes);
+      setPlans(Array.isArray(planRes.plans) ? planRes.plans : []);
+      setOrgs(parseSuperAdminOrgList(orgRaw));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("superAdmin.billingLoadError"));
     } finally {
@@ -209,7 +208,7 @@ export function SuperAdminCustomPlansPanel() {
                   <option value="">{t("superAdmin.billingSelectOrganization")}</option>
                   {orgs.map((o) => (
                     <option key={o.id} value={o.id}>
-                      {o.name} ({o.slug})
+                      {o.name}{o.slug ? ` (${o.slug})` : ""}
                     </option>
                   ))}
                 </select>
