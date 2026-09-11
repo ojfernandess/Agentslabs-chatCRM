@@ -125,107 +125,115 @@ export function BillingPlanCard({
   return (
     <article
       className={clsx(
-        "flex h-full flex-col overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-ink-900/40",
+        "flex h-full w-full flex-col overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-ink-900/40",
         plan.isCurrent
           ? "border-brand-300 ring-1 ring-brand-200 dark:border-brand-800 dark:ring-brand-900/50"
           : "border-slate-200/90 dark:border-soft-border",
       )}
     >
-      <div className="h-1.5 bg-brand-600" aria-hidden />
+      <div className="h-1.5 shrink-0 bg-brand-600" aria-hidden />
 
-      <div className="flex flex-1 flex-col p-6 sm:p-7">
-        <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-300">
-            <Box className="h-5 w-5" strokeWidth={1.75} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h4 className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">{plan.name}</h4>
-              {plan.isCurrent ? (
-                <span className="rounded-md bg-brand-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                  {t("settings.billingCurrentPlanBadge")}
-                </span>
+      <div className="flex min-h-0 flex-1 flex-col p-6 sm:p-7">
+        <div className="shrink-0">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-300">
+              <Box className="h-5 w-5" strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-lg font-bold tracking-tight text-ink-900 dark:text-ink-50">{plan.name}</h4>
+                {plan.isCurrent ? (
+                  <span className="rounded-md bg-brand-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                    {t("settings.billingCurrentPlanBadge")}
+                  </span>
+                ) : null}
+              </div>
+              {plan.description ? (
+                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-ink-500 dark:text-ink-400">
+                  {plan.description}
+                </p>
               ) : null}
             </div>
-            {plan.description ? (
-              <p className="mt-2 text-sm leading-relaxed text-ink-500 dark:text-ink-400">{plan.description}</p>
-            ) : null}
           </div>
-        </div>
 
-        <p className="mt-5 text-2xl font-bold text-brand-600 dark:text-brand-400">{priceLabel}</p>
+          <p className="mt-5 break-words text-xl font-bold text-brand-600 sm:text-2xl dark:text-brand-400">
+            {priceLabel}
+          </p>
 
-        <div className="mt-4 grid grid-cols-2 divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 dark:divide-soft-border dark:border-soft-border dark:bg-ink-900/30">
-          <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-ink-600 dark:text-ink-300">
-            <Calendar className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
-            <span>{intervalLabel}</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2.5 text-xs text-ink-600 dark:text-ink-300">
-            <Infinity className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
-            <span>{t("settings.billingNoSetupFee")}</span>
-          </div>
-        </div>
-
-        {limitKeys.length > 0 ? (
-          <div className="mt-6 border-t border-slate-100 pt-5 dark:border-soft-border">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
-              {t("settings.billingPlanCapacity")}
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              {limitKeys.map((key) => {
-                const Icon = limitIcon(key);
-                return (
-                  <div
-                    key={key}
-                    className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/20"
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 shadow-sm dark:bg-ink-900/60 dark:text-brand-300">
-                      <Icon className="h-4 w-4" strokeWidth={1.75} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-base font-bold leading-none text-ink-900 dark:text-ink-50">
-                        {formatLimitValue(plan.limits[key], localeTag, t)}
-                      </p>
-                      <p className="mt-1 truncate text-[11px] leading-tight text-ink-500 dark:text-ink-400">
-                        {limitLabel(t, key)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="mt-4 grid grid-cols-1 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 sm:grid-cols-2 sm:divide-x sm:divide-y-0 dark:divide-soft-border dark:border-soft-border dark:bg-ink-900/30">
+            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 text-xs text-ink-600 dark:text-ink-300">
+              <Calendar className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
+              <span className="min-w-0 break-words leading-snug">{intervalLabel}</span>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 text-xs text-ink-600 dark:text-ink-300">
+              <Infinity className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" />
+              <span className="min-w-0 break-words leading-snug">{t("settings.billingNoSetupFee")}</span>
             </div>
           </div>
-        ) : null}
+        </div>
 
-        {enabledFeatures.length > 0 || planExtras.length > 0 ? (
-          <div className="mt-6 border-t border-slate-100 pt-5 dark:border-soft-border">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
-              {t("settings.billingIncludedResources")}
-            </p>
-            <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {enabledFeatures.map(([key]) => (
-                <li key={key} className="flex items-start gap-2 text-sm text-ink-700 dark:text-ink-200">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                    <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                  </span>
-                  <span>{featureLabel(t, key)}</span>
-                </li>
-              ))}
-              {planExtras.map(([key, value]) => (
-                <li key={`extra-${key}`} className="flex items-start gap-2 text-sm text-ink-700 dark:text-ink-200">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                    <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                  </span>
-                  <span>
-                    <span className="font-medium">{extraLabel(t, key)}:</span> {value}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {limitKeys.length > 0 ? (
+            <div className="mt-6 border-t border-slate-100 pt-5 dark:border-soft-border">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                {t("settings.billingPlanCapacity")}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                {limitKeys.map((key) => {
+                  const Icon = limitIcon(key);
+                  return (
+                    <div
+                      key={key}
+                      className="flex min-h-[4.5rem] items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50/60 px-2.5 py-2.5 dark:border-soft-border dark:bg-ink-900/20"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 shadow-sm dark:bg-ink-900/60 dark:text-brand-300">
+                        <Icon className="h-4 w-4" strokeWidth={1.75} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-bold leading-none text-ink-900 dark:text-ink-50">
+                          {formatLimitValue(plan.limits[key], localeTag, t)}
+                        </p>
+                        <p className="mt-1 break-words text-[11px] leading-snug text-ink-500 dark:text-ink-400">
+                          {limitLabel(t, key)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
-        <div className="mt-auto pt-6">
+          {enabledFeatures.length > 0 || planExtras.length > 0 ? (
+            <div className="mt-6 border-t border-slate-100 pt-5 dark:border-soft-border">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                {t("settings.billingIncludedResources")}
+              </p>
+              <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {enabledFeatures.map(([key]) => (
+                  <li key={key} className="flex items-start gap-2 text-sm text-ink-700 dark:text-ink-200">
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                    </span>
+                    <span className="min-w-0 break-words leading-snug">{featureLabel(t, key)}</span>
+                  </li>
+                ))}
+                {planExtras.map(([key, value]) => (
+                  <li key={`extra-${key}`} className="flex items-start gap-2 text-sm text-ink-700 dark:text-ink-200">
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                      <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                    </span>
+                    <span className="min-w-0 break-words leading-snug">
+                      <span className="font-medium">{extraLabel(t, key)}:</span> {value}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-auto shrink-0 pt-6">
           {showSubscribeAction ? (
             plan.isFree || plan.amountCents <= 0 ? (
               <button

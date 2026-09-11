@@ -577,23 +577,28 @@ export function BillingSettingsPanel() {
 
         <div
           className={clsx(
-            "grid gap-6",
-            plans.length === 1 ? "mx-auto max-w-xl" : "lg:grid-cols-2 xl:grid-cols-3",
+            "grid items-stretch gap-6",
+            plans.length === 1
+              ? "mx-auto max-w-xl grid-cols-1"
+              : plans.length === 2
+                ? "grid-cols-1 md:grid-cols-2"
+                : "grid-cols-1 md:grid-cols-2 2xl:grid-cols-3",
           )}
         >
           {plans.map((plan) => (
-            <BillingPlanCard
-              key={plan.id}
-              plan={plan}
-              localeTag={localeTag}
-              stripeConfigured={Boolean(overview?.stripeConfigured)}
-              busy={busy}
-              showSubscribeAction={planShowsSubscribeAction(plan)}
-              needsPayment={planNeedsPayment(plan)}
-              onSubscribe={() => void subscribeToPlan(plan)}
-              t={t}
-              formatMoney={formatMoney}
-            />
+            <div key={plan.id} className="h-full min-h-0">
+              <BillingPlanCard
+                plan={plan}
+                localeTag={localeTag}
+                stripeConfigured={Boolean(overview?.stripeConfigured)}
+                busy={busy}
+                showSubscribeAction={planShowsSubscribeAction(plan)}
+                needsPayment={planNeedsPayment(plan)}
+                onSubscribe={() => void subscribeToPlan(plan)}
+                t={t}
+                formatMoney={formatMoney}
+              />
+            </div>
           ))}
         </div>
       </section>
