@@ -7,6 +7,7 @@ import {
   type EffectivePlanSnapshot,
 } from "./PlanEntitlementService.js";
 import type { LimitEnforcementMode, PlanFeatures } from "./billingTypes.js";
+import { orderPlanLimitKeys } from "./billingTypes.js";
 import { getBillingPlatformSettings } from "./billingSettings.js";
 import { computeOverLimitAmount, enforceUsageLimit } from "./limitEnforcementPolicy.js";
 
@@ -28,13 +29,13 @@ export type DimensionUsage = {
   used: number;
   limit: number | null;
   overLimit: number;
+  periodStart?: string;
 };
 
 export type OrganizationUsageSnapshot = {
-  agents: DimensionUsage;
-  automations: DimensionUsage;
-  contacts: DimensionUsage;
-  messages: DimensionUsage & { periodStart: string };
+  /** Todos os limites definidos no plano (core + personalizados). */
+  dimensions: Record<string, DimensionUsage>;
+  dimensionOrder: string[];
   enforcement: {
     mode: LimitEnforcementMode;
     overageConfigured: boolean;
@@ -90,6 +91,34 @@ async function countContacts(organizationId: string): Promise<number> {
   return prisma.contact.count({ where: { organizationId } });
 }
 
+async function countOrganizationMembers(organizationId: string): Promise<number> {
+  const membershipCount = await prisma.organizationMembership.count({
+    where: { organizationId },
+  });
+  if (membershipCount > 0) return membershipCount;
+  return prisma.user.count({ where: { organizationId } });
+}
+
+async function buildUsageCounts(organizationId: string): Promise<Record<string, number>> {
+  const [aiAgents, automations, contacts, messageStats, humanSeats, members] = await Promise.all([
+    countAiAgents(organizationId),
+    countAutomations(organizationId),
+    countContacts(organizationId),
+    countMonthlyMessages(organizationId),
+    countHumanAgentSeats(organizationId),
+    countOrganizationMembers(organizationId),
+  ]);
+
+  return {
+    agents: aiAgents,
+    automations,
+    contacts,
+    messages: messageStats.used,
+    seats: humanSeats,
+    users: members,
+  };
+}
+
 async function countMonthlyMessages(organizationId: string): Promise<{ used: number; periodStart: Date }> {
   const periodStart = startOfMonth(new Date());
   const used = await prisma.message.count({
@@ -133,42 +162,35 @@ function buildEnforcementMeta(settings: Awaited<ReturnType<typeof getBillingPlat
 }
 
 export async function getOrganizationUsage(organizationId: string): Promise<OrganizationUsageSnapshot> {
-  const [snap, settings, aiAgentsUsed, automationsUsed, contactsUsed, messageStats] = await Promise.all([
+  const [snap, settings, usageCounts, messageStats] = await Promise.all([
     requireSnapshot(organizationId),
     getBillingPlatformSettings(),
-    countAiAgents(organizationId),
-    countAutomations(organizationId),
-    countContacts(organizationId),
+    buildUsageCounts(organizationId),
     countMonthlyMessages(organizationId),
   ]);
 
-  const agentsLimit = resolveLimitValue(snap.limits.agents);
-  const automationsLimit = resolveLimitValue(snap.limits.automations);
-  const contactsLimit = resolveLimitValue(snap.limits.contacts);
-  const messageLimit = await resolveMessageLimit(organizationId, snap);
+  const dimensions: Record<string, DimensionUsage> = {};
+
+  for (const [key, limitRaw] of Object.entries(snap.limits)) {
+    if (limitRaw === undefined) continue;
+
+    let limit = resolveLimitValue(limitRaw);
+    if (key === "messages") {
+      limit = await resolveMessageLimit(organizationId, snap);
+    }
+
+    const used = usageCounts[key] ?? 0;
+    dimensions[key] = {
+      used,
+      limit,
+      overLimit: computeOverLimitAmount(used, limit),
+      ...(key === "messages" ? { periodStart: messageStats.periodStart.toISOString() } : {}),
+    };
+  }
 
   return {
-    agents: {
-      used: aiAgentsUsed,
-      limit: agentsLimit,
-      overLimit: computeOverLimitAmount(aiAgentsUsed, agentsLimit),
-    },
-    automations: {
-      used: automationsUsed,
-      limit: automationsLimit,
-      overLimit: computeOverLimitAmount(automationsUsed, automationsLimit),
-    },
-    contacts: {
-      used: contactsUsed,
-      limit: contactsLimit,
-      overLimit: computeOverLimitAmount(contactsUsed, contactsLimit),
-    },
-    messages: {
-      used: messageStats.used,
-      limit: messageLimit,
-      overLimit: computeOverLimitAmount(messageStats.used, messageLimit),
-      periodStart: messageStats.periodStart.toISOString(),
-    },
+    dimensions,
+    dimensionOrder: orderPlanLimitKeys(Object.keys(dimensions)),
     enforcement: buildEnforcementMeta(settings),
   };
 }

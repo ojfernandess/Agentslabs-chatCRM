@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CreditCard, ExternalLink, Loader2, AlertTriangle, MessageSquare, Users, Workflow } from "lucide-react";
+import {
+  CreditCard,
+  ExternalLink,
+  Loader2,
+  AlertTriangle,
+  Gauge,
+  MessageSquare,
+  Users,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -11,7 +21,13 @@ import {
   settingsTitle,
 } from "@/components/settings/settingsUi";
 import { UsageMeter } from "@/components/settings/UsageMeter";
-import { catalogExtraLabelKey, catalogFeatureLabelKey } from "@/lib/planCatalog";
+import {
+  catalogExtraLabelKey,
+  catalogFeatureLabelKey,
+  catalogLimitLabelKey,
+  formatPlanLimitLabel,
+  orderPlanLimitKeys,
+} from "@/lib/planCatalog";
 
 type PlanRow = {
   id: string;
@@ -43,10 +59,8 @@ type BillingOverview = {
   billingEmail: string | null;
   legacyPlanTier: string;
   usage?: {
-    agents: UsageDimension;
-    automations: UsageDimension;
-    contacts: UsageDimension;
-    messages: UsageDimension & { periodStart: string };
+    dimensions: Record<string, UsageDimension & { periodStart?: string }>;
+    dimensionOrder: string[];
     enforcement?: {
       mode: "block" | "overage";
       overageConfigured: boolean;
@@ -105,6 +119,29 @@ function formatDate(iso: string | null, locale: string): string {
 
 function statusLabelKey(status: string): string {
   return `settings.billingStatus_${status}`;
+}
+
+function limitMeterIcon(key: string): LucideIcon {
+  switch (key) {
+    case "agents":
+      return Users;
+    case "automations":
+      return Workflow;
+    case "contacts":
+      return Users;
+    case "messages":
+      return MessageSquare;
+    case "seats":
+    case "users":
+      return Users;
+    default:
+      return Gauge;
+  }
+}
+
+function limitMeterLabel(t: (key: string) => string, key: string): string {
+  const labelKey = catalogLimitLabelKey(key);
+  return labelKey ? t(labelKey) : key.replace(/_/g, " ");
 }
 
 export function BillingSettingsPanel() {
@@ -386,15 +423,12 @@ export function BillingSettingsPanel() {
             </p>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            {(
-              [
-                ["agents", Users, t("settings.billingUsageMeterAgents"), null],
-                ["automations", Workflow, t("settings.billingUsageMeterAutomations"), null],
-                ["contacts", Users, t("settings.billingUsageMeterContacts"), null],
-                ["messages", MessageSquare, t("settings.billingUsageMeterMessages"), messagesRenewLabel],
-              ] as const
-            ).map(([key, icon, label, renewLabel]) => {
-              const dim = overview.usage![key];
+            {(overview.usage.dimensionOrder.length > 0
+              ? overview.usage.dimensionOrder
+              : orderPlanLimitKeys(Object.keys(overview.usage.dimensions))
+            ).map((key) => {
+              const dim = overview.usage!.dimensions[key];
+              if (!dim) return null;
               const mode = overview.usage!.enforcement?.mode ?? "block";
               const over = dim.overLimit ?? Math.max(0, dim.used - (dim.limit ?? dim.used));
               const overLimitHint =
@@ -403,11 +437,12 @@ export function BillingSettingsPanel() {
                     ? t("settings.billingUsageOverLimitOverage").replace("{count}", String(over))
                     : t("settings.billingUsageOverLimitBlock")
                   : null;
+              const renewLabel = key === "messages" ? messagesRenewLabel : null;
               return (
                 <UsageMeter
                   key={key}
-                  label={label}
-                  icon={icon}
+                  label={limitMeterLabel(t, key)}
+                  icon={limitMeterIcon(key)}
                   used={dim.used}
                   limit={dim.limit}
                   overLimit={over}
@@ -550,15 +585,10 @@ export function BillingSettingsPanel() {
                   : t("settings.billingFreePlan")}
               </p>
               <ul className="mt-3 space-y-1 text-xs text-ink-600 dark:text-ink-300">
-                {plan.limits.agents != null ? (
-                  <li>{t("settings.billingLimitAgents").replace("{count}", String(plan.limits.agents))}</li>
-                ) : null}
-                {plan.limits.automations != null ? (
-                  <li>{t("settings.billingLimitAutomations").replace("{count}", String(plan.limits.automations))}</li>
-                ) : null}
-                {plan.limits.contacts != null ? (
-                  <li>{t("settings.billingLimitContacts").replace("{count}", String(plan.limits.contacts))}</li>
-                ) : null}
+                {orderPlanLimitKeys(Object.keys(plan.limits)).map((key) => {
+                  const text = formatPlanLimitLabel(t, key, plan.limits[key]);
+                  return text ? <li key={key}>{text}</li> : null;
+                })}
                 {Object.entries(plan.features)
                   .filter(([, enabled]) => enabled === true)
                   .map(([key]) => {

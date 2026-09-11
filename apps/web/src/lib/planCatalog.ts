@@ -158,3 +158,33 @@ export function catalogExtraLabelKey(key: string): string | null {
   if (isSuggestedExtraKey(key)) return `superAdmin.billingExtraKey_${key}`;
   return null;
 }
+
+/** Ordenação estável: limites core → sugeridos → personalizados. */
+export function orderPlanLimitKeys(keys: Iterable<string>): string[] {
+  const set = new Set(keys);
+  const ordered: string[] = [];
+  for (const key of KNOWN_PLAN_LIMIT_KEYS) {
+    if (set.has(key)) ordered.push(key);
+  }
+  for (const key of SUGGESTED_PLAN_LIMIT_KEYS) {
+    if (set.has(key)) ordered.push(key);
+  }
+  for (const key of [...set].sort((a, b) => a.localeCompare(b))) {
+    if (!ordered.includes(key)) ordered.push(key);
+  }
+  return ordered;
+}
+
+export function formatPlanLimitLabel(
+  t: (key: string) => string,
+  key: string,
+  limit: number | null | undefined,
+): string | null {
+  if (limit === undefined) return null;
+  const labelKey = catalogLimitLabelKey(key);
+  const label = labelKey ? t(labelKey) : key.replace(/_/g, " ");
+  if (limit === null) {
+    return t("settings.billingLimitUnlimitedNamed").replace("{label}", label);
+  }
+  return t("settings.billingLimitGeneric").replace("{count}", String(limit)).replace("{label}", label);
+}

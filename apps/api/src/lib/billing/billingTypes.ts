@@ -22,6 +22,10 @@ export const ACCESS_GRANTING_STATUSES = new Set<SubscriptionStatus>([
   "pending_payment",
 ]);
 
+export const CORE_PLAN_LIMIT_KEYS = ["agents", "automations", "contacts", "messages"] as const;
+
+export type CorePlanLimitKey = (typeof CORE_PLAN_LIMIT_KEYS)[number];
+
 export type PlanLimits = {
   agents?: number | null;
   automations?: number | null;
@@ -30,6 +34,18 @@ export type PlanLimits = {
   /** Limites personalizados definidos no catálogo (ex.: seats). */
   [key: string]: number | null | undefined;
 };
+
+export function orderPlanLimitKeys(keys: Iterable<string>): string[] {
+  const set = new Set(keys);
+  const ordered: string[] = [];
+  for (const key of CORE_PLAN_LIMIT_KEYS) {
+    if (set.has(key)) ordered.push(key);
+  }
+  for (const key of [...set].sort((a, b) => a.localeCompare(b))) {
+    if (!ordered.includes(key)) ordered.push(key);
+  }
+  return ordered;
+}
 
 export type PlanFeatures = {
   rag?: boolean;
