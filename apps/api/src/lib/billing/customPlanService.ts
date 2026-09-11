@@ -4,6 +4,22 @@ import { prisma } from "../../db.js";
 import { BillingError } from "./StripeCustomerService.js";
 import { assignCustomPlanToOrganization } from "./planAssignment.js";
 
+export type UpdateCustomPlanInput = {
+  name?: string;
+  description?: string | null;
+  currency?: string;
+  amountCents?: number;
+  interval?: "month" | "year";
+  paymentGraceDays?: number;
+  stripeProductId?: string | null;
+  stripePriceId?: string | null;
+  legacyPlanTier?: "free" | "growth" | "enterprise" | null;
+  limits?: Record<string, unknown>;
+  features?: Record<string, unknown>;
+  trialDays?: number | null;
+  isActive?: boolean;
+};
+
 export type CreateCustomPlanInput = {
   organizationId: string;
   name: string;
@@ -79,6 +95,127 @@ export async function createCustomPlanForOrganization(input: CreateCustomPlanInp
   });
 
   await assignCustomPlanToOrganization(input.organizationId, plan.id, graceDays);
+  return plan;
+}
+
+export async function updateCustomPlan(planId: string, input: UpdateCustomPlanInput) {
+  const existing = await prisma.plan.findFirst({
+    where: { id: planId, isCustom: true },
+    select: {
+      id: true,
+      organizationId: true,
+      amountCents: true,
+      legacyPlanTier: true,
+      limits: true,
+    },
+  });
+  if (!existing?.organizationId) {
+    throw new BillingError("Custom plan not found", "plan_not_found");
+  }
+
+  const nextAmountCents = input.amountCents ?? existing.amountCents;
+  const nextStripePriceId =
+    input.stripePriceId !== undefined
+      ? normalizeStripeId(input.stripePriceId)
+      : undefined;
+
+  if (nextAmountCents > 0) {
+    const priceId =
+      nextStripePriceId !== undefined
+        ? nextStripePriceId
+        : (
+            await prisma.plan.findUnique({
+              where: { id: planId },
+              select: { stripePriceId: true },
+            })
+          )?.stripePriceId;
+    if (!priceId) {
+      throw new BillingError("Paid custom plans require stripePriceId", "plan_not_stripe_ready");
+    }
+  }
+
+  const data: Prisma.PlanUpdateInput = {};
+  if (input.name !== undefined) data.name = input.name.trim();
+  if (input.description !== undefined) data.description = input.description?.trim() || null;
+  if (input.currency !== undefined) data.currency = input.currency.toUpperCase();
+  if (input.amountCents !== undefined) data.amountCents = input.amountCents;
+  if (input.interval !== undefined) data.interval = input.interval;
+  if (input.trialDays !== undefined) data.trialDays = input.trialDays;
+  if (input.isActive !== undefined) data.isActive = input.isActive;
+  if (input.stripeProductId !== undefined) data.stripeProductId = normalizeStripeId(input.stripeProductId);
+  if (input.stripePriceId !== undefined) data.stripePriceId = normalizeStripeId(input.stripePriceId);
+  if (input.legacyPlanTier !== undefined) data.legacyPlanTier = input.legacyPlanTier;
+  if (input.limits !== undefined) data.limits = input.limits as Prisma.InputJsonValue;
+  if (input.features !== undefined) data.features = input.features as Prisma.InputJsonValue;
+  if (input.paymentGraceDays !== undefined) {
+    data.paymentGraceDays = Math.max(1, Math.min(90, input.paymentGraceDays));
+  }
+
+  const plan = await prisma.plan.update({
+    where: { id: planId },
+    data,
+    include: {
+      organization: { select: { id: true, name: true, slug: true } },
+      _count: { select: { subscriptions: true } },
+    },
+  });
+
+  const orgUpdate: Prisma.OrganizationUpdateInput = {};
+  if (input.legacyPlanTier !== undefined && input.legacyPlanTier) {
+    orgUpdate.planTier = input.legacyPlanTier;
+  } else if (plan.legacyPlanTier) {
+    orgUpdate.planTier = plan.legacyPlanTier;
+  }
+
+  const limits = plan.limits as Record<string, unknown> | null;
+  if (limits && typeof limits.messages === "number") {
+    orgUpdate.monthlyMessageQuota = limits.messages;
+  }
+
+  const subscription = await prisma.organizationSubscription.findUnique({
+    where: { organizationId: existing.organizationId },
+    select: {
+      planId: true,
+      status: true,
+      stripeSubscriptionId: true,
+      customPlanAssignedAt: true,
+    },
+  });
+
+  const subscriptionUpdate: Prisma.OrganizationSubscriptionUpdateInput = {};
+  if (subscription?.planId === plan.id && input.paymentGraceDays !== undefined) {
+    const graceDays = Math.max(1, Math.min(90, input.paymentGraceDays));
+    if (
+      subscription.status === "pending_payment" &&
+      !subscription.stripeSubscriptionId?.trim() &&
+      plan.amountCents > 0
+    ) {
+      const base = subscription.customPlanAssignedAt ?? new Date();
+      subscriptionUpdate.paymentDueAt = new Date(base.getTime() + graceDays * 86_400_000);
+    }
+  }
+
+  if (Object.keys(orgUpdate).length > 0 || Object.keys(subscriptionUpdate).length > 0) {
+    await prisma.$transaction([
+      ...(Object.keys(orgUpdate).length > 0
+        ? [
+            prisma.organization.update({
+              where: { id: existing.organizationId },
+              data: orgUpdate,
+            }),
+          ]
+        : []),
+      ...(Object.keys(subscriptionUpdate).length > 0
+        ? [
+            prisma.organizationSubscription.update({
+              where: { organizationId: existing.organizationId },
+              data: subscriptionUpdate,
+            }),
+          ]
+        : []),
+    ]);
+  }
+
   return plan;
 }
 

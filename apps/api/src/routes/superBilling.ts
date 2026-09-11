@@ -11,7 +11,11 @@ import {
 } from "../lib/billing/billingSettings.js";
 import { parsePlanFeatures, parsePlanLimits } from "../lib/billing/billingTypes.js";
 import { BillingError } from "../lib/billing/StripeCustomerService.js";
-import { createCustomPlanForOrganization, listCustomPlans } from "../lib/billing/customPlanService.js";
+import {
+  createCustomPlanForOrganization,
+  listCustomPlans,
+  updateCustomPlan,
+} from "../lib/billing/customPlanService.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
@@ -40,8 +44,7 @@ const billingSettingsPatchSchema = z.object({
   gracePeriodDays: z.number().int().min(0).max(90),
 });
 
-const createCustomPlanSchema = z.object({
-  organizationId: z.string().uuid(),
+const customPlanFieldsSchema = {
   name: z.string().min(1).max(120),
   description: z.string().max(4000).nullable().optional(),
   currency: z.string().min(3).max(8).default("BRL"),
@@ -54,7 +57,15 @@ const createCustomPlanSchema = z.object({
   limits: jsonLimitsSchema,
   features: jsonLimitsSchema,
   trialDays: z.union([z.number().int().min(0).max(365), z.null()]).optional(),
+  isActive: z.boolean().optional(),
+};
+
+const createCustomPlanSchema = z.object({
+  organizationId: z.string().uuid(),
+  ...customPlanFieldsSchema,
 });
+
+const patchCustomPlanSchema = z.object(customPlanFieldsSchema).partial();
 
 const subscriptionsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -164,6 +175,52 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         }),
       ),
     };
+  });
+
+  app.patch<{ Params: { id: string } }>("/custom-plans/:id", async (request, reply) => {
+    const parsed = patchCustomPlanSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const p = parsed.data;
+    try {
+      const plan = await updateCustomPlan(request.params.id, {
+        name: p.name,
+        description: p.description,
+        currency: p.currency,
+        amountCents: p.amountCents,
+        interval: p.interval,
+        paymentGraceDays: p.paymentGraceDays,
+        stripeProductId: normalizeStripeId(p.stripeProductId),
+        stripePriceId: normalizeStripeId(p.stripePriceId),
+        legacyPlanTier: p.legacyPlanTier ?? undefined,
+        limits: p.limits,
+        features: p.features,
+        trialDays: p.trialDays,
+        isActive: p.isActive,
+      });
+
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        organizationId: plan.organizationId ?? undefined,
+        action: "super.billing.custom_plan.update",
+        resourceType: "plan",
+        resourceId: plan.id,
+        metadata: { patch: p },
+        ip: clientIp(request),
+      });
+
+      return { plan: serializePlan(plan) };
+    } catch (err) {
+      if (err instanceof BillingError) {
+        return reply.status(err.code === "plan_not_found" ? 404 : 400).send({
+          error: err.code,
+          message: err.message,
+          statusCode: err.code === "plan_not_found" ? 404 : 400,
+        });
+      }
+      throw err;
+    }
   });
 
   app.post("/custom-plans", async (request, reply) => {

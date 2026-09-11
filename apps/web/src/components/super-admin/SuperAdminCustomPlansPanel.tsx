@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Loader2, Plus, Sparkles } from "lucide-react";
+import { Loader2, Pencil, Plus, Sparkles } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -11,17 +11,37 @@ type CustomPlanRow = {
   id: string;
   slug: string;
   name: string;
+  description: string | null;
   amountCents: number;
   currency: string;
   interval: string;
   paymentGraceDays: number | null;
+  stripeProductId: string | null;
   stripePriceId: string | null;
+  legacyPlanTier: string | null;
   isActive: boolean;
   organization: { id: string; name: string; slug: string } | null;
   limits: Record<string, number | null | undefined>;
+  features: Record<string, boolean | undefined>;
 };
 
-const EMPTY_CUSTOM_FORM = {
+type CustomPlanForm = {
+  organizationId: string;
+  name: string;
+  description: string;
+  currency: string;
+  amountCents: string;
+  interval: string;
+  paymentGraceDays: string;
+  stripeProductId: string;
+  stripePriceId: string;
+  legacyPlanTier: string;
+  isActive: boolean;
+  limitsJson: string;
+  featuresJson: string;
+};
+
+const EMPTY_CUSTOM_FORM: CustomPlanForm = {
   organizationId: "",
   name: "",
   description: "",
@@ -32,6 +52,7 @@ const EMPTY_CUSTOM_FORM = {
   stripeProductId: "",
   stripePriceId: "",
   legacyPlanTier: "",
+  isActive: true,
   limitsJson: '{\n  "agents": 10,\n  "automations": 50,\n  "contacts": 10000,\n  "messages": 50000\n}',
   featuresJson: '{\n  "rag": true,\n  "api": true,\n  "mcp": false\n}',
 };
@@ -44,6 +65,24 @@ function formatMoney(cents: number, currency: string, locale: string): string {
   }
 }
 
+function planToForm(plan: CustomPlanRow): CustomPlanForm {
+  return {
+    organizationId: plan.organization?.id ?? "",
+    name: plan.name,
+    description: plan.description ?? "",
+    currency: plan.currency,
+    amountCents: String(plan.amountCents),
+    interval: plan.interval,
+    paymentGraceDays: plan.paymentGraceDays != null ? String(plan.paymentGraceDays) : "7",
+    stripeProductId: plan.stripeProductId ?? "",
+    stripePriceId: plan.stripePriceId ?? "",
+    legacyPlanTier: plan.legacyPlanTier ?? "",
+    isActive: plan.isActive,
+    limitsJson: JSON.stringify(plan.limits, null, 2),
+    featuresJson: JSON.stringify(plan.features, null, 2),
+  };
+}
+
 export function SuperAdminCustomPlansPanel() {
   const { t, locale } = useI18n();
   const localeTag = locale === "en" ? "en-US" : "pt-BR";
@@ -52,8 +91,9 @@ export function SuperAdminCustomPlansPanel() {
   const [plans, setPlans] = useState<CustomPlanRow[]>([]);
   const [orgs, setOrgs] = useState<SuperAdminOrgOption[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<CustomPlanRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(EMPTY_CUSTOM_FORM);
+  const [form, setForm] = useState<CustomPlanForm>(EMPTY_CUSTOM_FORM);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,9 +116,27 @@ export function SuperAdminCustomPlansPanel() {
     void load();
   }, [load]);
 
+  const openCreate = () => {
+    setEditingPlan(null);
+    setForm(EMPTY_CUSTOM_FORM);
+    setModalOpen(true);
+  };
+
+  const openEdit = (plan: CustomPlanRow) => {
+    setEditingPlan(plan);
+    setForm(planToForm(plan));
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingPlan(null);
+    setForm(EMPTY_CUSTOM_FORM);
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!form.organizationId) return;
+    if (!editingPlan && !form.organizationId) return;
     setSaving(true);
     setError("");
     try {
@@ -91,8 +149,7 @@ export function SuperAdminCustomPlansPanel() {
         throw new ApiError(t("superAdmin.billingInvalidJson"), 400);
       }
 
-      await api.post("/super/billing/custom-plans", {
-        organizationId: form.organizationId,
+      const payload = {
         name: form.name.trim(),
         description: form.description.trim() || null,
         currency: form.currency.trim(),
@@ -106,9 +163,19 @@ export function SuperAdminCustomPlansPanel() {
           : null,
         limits,
         features,
-      });
-      setModalOpen(false);
-      setForm(EMPTY_CUSTOM_FORM);
+        isActive: form.isActive,
+      };
+
+      if (editingPlan) {
+        await api.patch(`/super/billing/custom-plans/${editingPlan.id}`, payload);
+      } else {
+        await api.post("/super/billing/custom-plans", {
+          organizationId: form.organizationId,
+          ...payload,
+        });
+      }
+
+      closeModal();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
@@ -129,14 +196,7 @@ export function SuperAdminCustomPlansPanel() {
             <Sparkles className="h-4 w-4" />
             {t("superAdmin.billingCustomPlansTitle")}
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setForm(EMPTY_CUSTOM_FORM);
-              setModalOpen(true);
-            }}
-            className="btn-primary inline-flex items-center gap-1.5 text-sm"
-          >
+          <button type="button" onClick={openCreate} className="btn-primary inline-flex items-center gap-1.5 text-sm">
             <Plus className="h-4 w-4" />
             {t("superAdmin.billingCustomPlanCreate")}
           </button>
@@ -157,12 +217,14 @@ export function SuperAdminCustomPlansPanel() {
                   <th className="px-4 py-3">{t("superAdmin.billingColPrice")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColGraceDays")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColStripe")}</th>
+                  <th className="px-4 py-3">{t("superAdmin.billingColStatus")}</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
                 {plans.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                       {t("superAdmin.billingCustomPlansEmpty")}
                     </td>
                   </tr>
@@ -182,6 +244,26 @@ export function SuperAdminCustomPlansPanel() {
                       </td>
                       <td className="px-4 py-3">{plan.paymentGraceDays ?? "—"}</td>
                       <td className="px-4 py-3 text-xs text-slate-600">{plan.stripePriceId || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={clsx(
+                            "rounded-full px-2 py-0.5 text-xs font-medium",
+                            plan.isActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600",
+                          )}
+                        >
+                          {plan.isActive ? t("superAdmin.billingActive") : t("superAdmin.billingInactive")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(plan)}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          {t("superAdmin.billingEditPlan")}
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -194,24 +276,35 @@ export function SuperAdminCustomPlansPanel() {
       {modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
           <div className="card-surface max-h-[90vh] w-full max-w-3xl overflow-auto p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.billingCustomPlanCreate")}</h3>
-            <p className="mt-1 text-sm text-ink-500">{t("superAdmin.billingCustomPlanIntro")}</p>
+            <h3 className="text-lg font-semibold text-ink-900">
+              {editingPlan ? t("superAdmin.billingCustomPlanEdit") : t("superAdmin.billingCustomPlanCreate")}
+            </h3>
+            <p className="mt-1 text-sm text-ink-500">
+              {editingPlan ? t("superAdmin.billingCustomPlanEditIntro") : t("superAdmin.billingCustomPlanIntro")}
+            </p>
             <form onSubmit={(e) => void submit(e)} className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingColOrganization")}</label>
-                <select
-                  value={form.organizationId}
-                  onChange={(e) => setForm((f) => ({ ...f, organizationId: e.target.value }))}
-                  className="input-field mt-1"
-                  required
-                >
-                  <option value="">{t("superAdmin.billingSelectOrganization")}</option>
-                  {orgs.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}{o.slug ? ` (${o.slug})` : ""}
-                    </option>
-                  ))}
-                </select>
+                {editingPlan ? (
+                  <div className="input-field mt-1 bg-slate-50 text-sm text-ink-700">
+                    {editingPlan.organization?.name ?? "—"}
+                    {editingPlan.organization?.slug ? ` (${editingPlan.organization.slug})` : ""}
+                  </div>
+                ) : (
+                  <select
+                    value={form.organizationId}
+                    onChange={(e) => setForm((f) => ({ ...f, organizationId: e.target.value }))}
+                    className="input-field mt-1"
+                    required
+                  >
+                    <option value="">{t("superAdmin.billingSelectOrganization")}</option>
+                    {orgs.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}{o.slug ? ` (${o.slug})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingColPlan")}</label>
@@ -220,6 +313,14 @@ export function SuperAdminCustomPlansPanel() {
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   className="input-field mt-1"
                   required
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingDescription")}</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  className="input-field mt-1 min-h-[72px]"
                 />
               </div>
               <div>
@@ -261,6 +362,29 @@ export function SuperAdminCustomPlansPanel() {
                   className="input-field mt-1"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.planColumn")}</label>
+                <select
+                  value={form.legacyPlanTier}
+                  onChange={(e) => setForm((f) => ({ ...f, legacyPlanTier: e.target.value }))}
+                  className="input-field mt-1"
+                >
+                  <option value="">—</option>
+                  <option value="free">{t("superAdmin.planFree")}</option>
+                  <option value="growth">{t("superAdmin.planGrowth")}</option>
+                  <option value="enterprise">{t("superAdmin.planEnterprise")}</option>
+                </select>
+              </div>
+              <div>
+                <label className="flex cursor-pointer items-center gap-2 pt-6 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+                  />
+                  {t("superAdmin.billingActive")}
+                </label>
+              </div>
               <PlanLimitsFeaturesEditor
                 limitsJson={form.limitsJson}
                 featuresJson={form.featuresJson}
@@ -268,11 +392,15 @@ export function SuperAdminCustomPlansPanel() {
                 onFeaturesJsonChange={(featuresJson) => setForm((f) => ({ ...f, featuresJson }))}
               />
               <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>
+                <button type="button" className="btn-secondary" onClick={closeModal}>
                   {t("common.cancel")}
                 </button>
                 <button type="submit" className="btn-primary" disabled={saving}>
-                  {saving ? t("common.saving") : t("superAdmin.billingCustomPlanAssign")}
+                  {saving
+                    ? t("common.saving")
+                    : editingPlan
+                      ? t("common.save")
+                      : t("superAdmin.billingCustomPlanAssign")}
                 </button>
               </div>
             </form>
