@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Gauge,
   MessageSquare,
+  Shield,
   Users,
   Workflow,
   type LucideIcon,
@@ -20,15 +21,9 @@ import {
   settingsSubtitle,
   settingsTitle,
 } from "@/components/settings/settingsUi";
+import { BillingPlanCard } from "@/components/billing/BillingPlanCard";
 import { UsageMeter } from "@/components/settings/UsageMeter";
-import {
-  catalogExtraLabelKey,
-  catalogFeatureLabelKey,
-  catalogLimitLabelKey,
-  formatPlanLimitLabel,
-  isPlanLimitEnabled,
-  orderPlanLimitKeys,
-} from "@/lib/planCatalog";
+import { catalogLimitLabelKey, orderPlanLimitKeys } from "@/lib/planCatalog";
 
 type PlanRow = {
   id: string;
@@ -554,103 +549,51 @@ export function BillingSettingsPanel() {
         ) : null}
       </section>
 
-      <section className={settingsCard}>
-        <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("settings.billingAvailablePlans")}</h3>
-        {overview?.hasCustomPlanCatalog ? (
-          <p className={clsx(settingsMuted, "mt-1 text-sm")}>{t("settings.billingCustomPlanCatalogHint")}</p>
-        ) : null}
-        <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {plans.map((plan) => (
-            <div
-              key={plan.id}
-              className={clsx(
-                "rounded-xl border p-4",
-                plan.isCurrent
-                  ? "border-brand-300 bg-brand-50/50 dark:border-brand-800 dark:bg-brand-950/20"
-                  : "border-ink-200 dark:border-soft-border",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-ink-900 dark:text-ink-50">{plan.name}</p>
-                  {plan.description ? <p className={clsx(settingsMuted, "mt-1 text-xs")}>{plan.description}</p> : null}
-                </div>
-                {plan.isCurrent ? (
-                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-medium text-brand-800 dark:bg-brand-900/50 dark:text-brand-100">
-                    {t("settings.billingCurrentBadge")}
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-3 text-lg font-bold text-ink-900 dark:text-ink-50">
-                {plan.amountCents > 0
-                  ? `${formatMoney(plan.amountCents, plan.currency, localeTag)} / ${plan.interval === "month" ? t("settings.billingPerMonth") : plan.interval}`
-                  : t("settings.billingFreePlan")}
+      <section className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 h-9 w-1 shrink-0 rounded-full bg-brand-600" aria-hidden />
+            <div>
+              <h3 className="text-xl font-bold text-ink-900 dark:text-ink-50">{t("settings.billingAvailablePlans")}</h3>
+              <p className={clsx(settingsMuted, "mt-1 text-sm")}>
+                {overview?.hasCustomPlanCatalog
+                  ? t("settings.billingCustomPlanCatalogHint")
+                  : t("settings.billingAvailablePlansSubtitle")}
               </p>
-              <ul className="mt-3 space-y-1 text-xs text-ink-600 dark:text-ink-300">
-                {orderPlanLimitKeys(Object.keys(plan.limits)).map((key) => {
-                  if (!isPlanLimitEnabled(key, plan.limitEnabled ?? {})) return null;
-                  const text = formatPlanLimitLabel(t, key, plan.limits[key]);
-                  return text ? <li key={key}>{text}</li> : null;
-                })}
-                {Object.entries(plan.features)
-                  .filter(([, enabled]) => enabled === true)
-                  .map(([key]) => {
-                    const labelKey = catalogFeatureLabelKey(key);
-                    const label = labelKey ? t(labelKey) : key.replace(/_/g, " ");
-                    return <li key={key}>{label}</li>;
-                  })}
-                {Object.entries(plan.planExtras ?? {})
-                  .filter(([, value]) => Boolean(value?.trim()))
-                  .map(([key, value]) => {
-                    const labelKey = catalogExtraLabelKey(key);
-                    const label = labelKey ? t(labelKey) : key.replace(/_/g, " ");
-                    return (
-                      <li key={`extra-${key}`}>
-                        <span className="font-medium text-ink-700 dark:text-ink-200">{label}:</span> {value}
-                      </li>
-                    );
-                  })}
-              </ul>
-              {planShowsSubscribeAction(plan) ? (
-                plan.isFree || plan.amountCents <= 0 ? (
-                  <button
-                    type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => void subscribeToPlan(plan)}
-                    className="mt-4 w-full rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-                  >
-                    {busy === `select-${plan.id}` ? (
-                      <Loader2 className="mx-auto h-4 w-4 animate-spin" />
-                    ) : (
-                      t("settings.billingSelectPlan")
-                    )}
-                  </button>
-                ) : overview?.stripeConfigured && plan.requiresCheckout ? (
-                  <button
-                    type="button"
-                    disabled={Boolean(busy)}
-                    onClick={() => void subscribeToPlan(plan)}
-                    className="mt-4 w-full rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-                  >
-                    {busy === `checkout-${plan.id}` || busy === `change-${plan.id}` ? (
-                      <Loader2 className="mx-auto h-4 w-4 animate-spin" />
-                    ) : planNeedsPayment(plan) ? (
-                      t("settings.billingCompletePayment")
-                    ) : (
-                      t("settings.billingSubscribe")
-                    )}
-                  </button>
-                ) : overview?.stripeConfigured && plan.stripeReady === false ? (
-                  <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
-                    {t("settings.billingPlanStripePriceMissing")}
-                  </p>
-                ) : !overview?.stripeConfigured ? (
-                  <p className="mt-4 text-xs text-ink-500 dark:text-ink-400">
-                    {t("settings.billingPaidPlanRequiresStripe")}
-                  </p>
-                ) : null
-              ) : null}
             </div>
+          </div>
+          <div className="flex max-w-xs items-start gap-3 rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+            <Shield className="mt-0.5 h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
+            <div>
+              <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                {t("settings.billingTrustSecureTitle")}
+              </p>
+              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                {t("settings.billingTrustSecureSubtitle")}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={clsx(
+            "grid gap-6",
+            plans.length === 1 ? "mx-auto max-w-xl" : "lg:grid-cols-2 xl:grid-cols-3",
+          )}
+        >
+          {plans.map((plan) => (
+            <BillingPlanCard
+              key={plan.id}
+              plan={plan}
+              localeTag={localeTag}
+              stripeConfigured={Boolean(overview?.stripeConfigured)}
+              busy={busy}
+              showSubscribeAction={planShowsSubscribeAction(plan)}
+              needsPayment={planNeedsPayment(plan)}
+              onSubscribe={() => void subscribeToPlan(plan)}
+              t={t}
+              formatMoney={formatMoney}
+            />
           ))}
         </div>
       </section>
