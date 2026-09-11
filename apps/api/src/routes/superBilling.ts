@@ -6,8 +6,7 @@ import { requireSuperAdmin } from "../middleware/auth.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import {
   getBillingPlatformSettings,
-  readBillingPlatformSettings,
-  saveBillingPlatformSettings,
+  patchBillingPlatformSettings,
 } from "../lib/billing/billingSettings.js";
 import { parsePlanFeatures, parsePlanLimits } from "../lib/billing/billingTypes.js";
 import { BillingError } from "../lib/billing/StripeCustomerService.js";
@@ -40,9 +39,26 @@ const patchPlanSchema = createPlanSchema.partial().omit({ slug: true }).extend({
   slug: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/).optional(),
 });
 
-const billingSettingsPatchSchema = z.object({
-  gracePeriodDays: z.number().int().min(0).max(90),
+const overageDimensionPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  stripeMeterEventName: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
+  unitAmountCents: z.union([z.number().int().min(0), z.null()]).optional(),
 });
+
+const billingSettingsPatchSchema = z
+  .object({
+    gracePeriodDays: z.number().int().min(0).max(90).optional(),
+    limitEnforcementMode: z.enum(["block", "overage"]).optional(),
+    overage: z
+      .object({
+        agents: overageDimensionPatchSchema.optional(),
+        automations: overageDimensionPatchSchema.optional(),
+        contacts: overageDimensionPatchSchema.optional(),
+        messages: overageDimensionPatchSchema.optional(),
+      })
+      .optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: "At least one setting field is required" });
 
 const customPlanFieldsSchema = {
   name: z.string().min(1).max(120),
@@ -143,7 +159,11 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
-    await saveBillingPlatformSettings(readBillingPlatformSettings(parsed.data));
+    const settings = await patchBillingPlatformSettings({
+      gracePeriodDays: parsed.data.gracePeriodDays,
+      limitEnforcementMode: parsed.data.limitEnforcementMode,
+      overage: parsed.data.overage,
+    });
     await recordAuditLog({
       actorUserId: request.user!.id,
       action: "super.billing.settings.update",
@@ -151,7 +171,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       metadata: parsed.data,
       ip: clientIp(request),
     });
-    return { settings: await getBillingPlatformSettings() };
+    return { settings };
   });
 
   app.get("/plans", async () => {

@@ -32,6 +32,7 @@ type PlanRow = {
 type UsageDimension = {
   used: number;
   limit: number | null;
+  overLimit?: number;
 };
 
 type BillingOverview = {
@@ -44,6 +45,10 @@ type BillingOverview = {
     automations: UsageDimension;
     contacts: UsageDimension;
     messages: UsageDimension & { periodStart: string };
+    enforcement?: {
+      mode: "block" | "overage";
+      overageConfigured: boolean;
+    };
   };
   subscription: {
     status: string;
@@ -372,34 +377,44 @@ export function BillingSettingsPanel() {
         <section className="space-y-4">
           <div>
             <h3 className={settingsTitle}>{t("settings.billingUsageTitle")}</h3>
-            <p className={settingsSubtitle}>{t("settings.billingUsageIntro")}</p>
+            <p className={settingsSubtitle}>
+              {overview.usage.enforcement?.mode === "overage"
+                ? t("settings.billingUsageIntroOverage")
+                : t("settings.billingUsageIntro")}
+            </p>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <UsageMeter
-              label={t("settings.billingUsageMeterAgents")}
-              icon={Users}
-              used={overview.usage.agents.used}
-              limit={overview.usage.agents.limit}
-            />
-            <UsageMeter
-              label={t("settings.billingUsageMeterAutomations")}
-              icon={Workflow}
-              used={overview.usage.automations.used}
-              limit={overview.usage.automations.limit}
-            />
-            <UsageMeter
-              label={t("settings.billingUsageMeterContacts")}
-              icon={Users}
-              used={overview.usage.contacts.used}
-              limit={overview.usage.contacts.limit}
-            />
-            <UsageMeter
-              label={t("settings.billingUsageMeterMessages")}
-              icon={MessageSquare}
-              used={overview.usage.messages.used}
-              limit={overview.usage.messages.limit}
-              renewLabel={messagesRenewLabel}
-            />
+            {(
+              [
+                ["agents", Users, t("settings.billingUsageMeterAgents"), null],
+                ["automations", Workflow, t("settings.billingUsageMeterAutomations"), null],
+                ["contacts", Users, t("settings.billingUsageMeterContacts"), null],
+                ["messages", MessageSquare, t("settings.billingUsageMeterMessages"), messagesRenewLabel],
+              ] as const
+            ).map(([key, icon, label, renewLabel]) => {
+              const dim = overview.usage![key];
+              const mode = overview.usage!.enforcement?.mode ?? "block";
+              const over = dim.overLimit ?? Math.max(0, dim.used - (dim.limit ?? dim.used));
+              const overLimitHint =
+                dim.limit !== null && dim.used > dim.limit
+                  ? mode === "overage"
+                    ? t("settings.billingUsageOverLimitOverage").replace("{count}", String(over))
+                    : t("settings.billingUsageOverLimitBlock")
+                  : null;
+              return (
+                <UsageMeter
+                  key={key}
+                  label={label}
+                  icon={icon}
+                  used={dim.used}
+                  limit={dim.limit}
+                  overLimit={over}
+                  enforcementMode={mode}
+                  overLimitHint={overLimitHint}
+                  renewLabel={renewLabel}
+                />
+              );
+            })}
           </div>
         </section>
       ) : null}

@@ -39,9 +39,25 @@ export type PlanFeatures = {
   [key: string]: boolean | undefined;
 };
 
+export type LimitEnforcementMode = "block" | "overage";
+
+export type UsageDimensionKey = "agents" | "automations" | "contacts" | "messages";
+
+export type DimensionOverageConfig = {
+  /** Quando true, excedentes desta dimensão são reportados ao Stripe Meter (modo overage). */
+  enabled: boolean;
+  /** event_name do Billing Meter no Stripe (POST /v1/billing/meter_events). */
+  stripeMeterEventName: string | null;
+  /** Preço unitário de referência (centavos) — exibido na UI; cobrança real via preço metered Stripe. */
+  unitAmountCents: number | null;
+};
+
 export type BillingPlatformSettings = {
   /** Dias de tolerância após past_due antes de restringir acesso (Super Admin). */
   gracePeriodDays: number;
+  /** block = impede criação acima do limite; overage = permite e reporta meter events ao Stripe. */
+  limitEnforcementMode: LimitEnforcementMode;
+  overage: Record<UsageDimensionKey, DimensionOverageConfig>;
 };
 
 export function parsePlanLimits(raw: unknown): PlanLimits {

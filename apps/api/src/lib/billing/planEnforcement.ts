@@ -6,7 +6,9 @@ import {
   resolveLimitValue,
   type EffectivePlanSnapshot,
 } from "./PlanEntitlementService.js";
-import type { PlanFeatures } from "./billingTypes.js";
+import type { LimitEnforcementMode, PlanFeatures } from "./billingTypes.js";
+import { getBillingPlatformSettings } from "./billingSettings.js";
+import { computeOverLimitAmount, enforceUsageLimit } from "./limitEnforcementPolicy.js";
 
 export class PlanEnforcementError extends Error {
   constructor(
@@ -25,6 +27,7 @@ export type UsageDimension = "agents" | "automations" | "contacts" | "messages";
 export type DimensionUsage = {
   used: number;
   limit: number | null;
+  overLimit: number;
 };
 
 export type OrganizationUsageSnapshot = {
@@ -32,12 +35,11 @@ export type OrganizationUsageSnapshot = {
   automations: DimensionUsage;
   contacts: DimensionUsage;
   messages: DimensionUsage & { periodStart: string };
+  enforcement: {
+    mode: LimitEnforcementMode;
+    overageConfigured: boolean;
+  };
 };
-
-function isOverLimit(used: number, limit: number | null, additional = 0): boolean {
-  if (limit === null) return false;
-  return used + additional > limit;
-}
 
 /** Agentes IA (AutomationAgentProfile) — recurso principal contabilizado em limits.agents. */
 async function countAiAgents(organizationId: string): Promise<number> {
@@ -120,35 +122,54 @@ async function requireSnapshot(organizationId: string): Promise<EffectivePlanSna
   return snap;
 }
 
+function buildEnforcementMeta(settings: Awaited<ReturnType<typeof getBillingPlatformSettings>>) {
+  const overageConfigured = Object.values(settings.overage).some(
+    (d) => d.enabled && Boolean(d.stripeMeterEventName?.trim()),
+  );
+  return {
+    mode: settings.limitEnforcementMode,
+    overageConfigured,
+  };
+}
+
 export async function getOrganizationUsage(organizationId: string): Promise<OrganizationUsageSnapshot> {
-  const snap = await requireSnapshot(organizationId);
-  const [aiAgentsUsed, automationsUsed, contactsUsed, messageStats] = await Promise.all([
+  const [snap, settings, aiAgentsUsed, automationsUsed, contactsUsed, messageStats] = await Promise.all([
+    requireSnapshot(organizationId),
+    getBillingPlatformSettings(),
     countAiAgents(organizationId),
     countAutomations(organizationId),
     countContacts(organizationId),
     countMonthlyMessages(organizationId),
   ]);
 
+  const agentsLimit = resolveLimitValue(snap.limits.agents);
+  const automationsLimit = resolveLimitValue(snap.limits.automations);
+  const contactsLimit = resolveLimitValue(snap.limits.contacts);
   const messageLimit = await resolveMessageLimit(organizationId, snap);
 
   return {
     agents: {
       used: aiAgentsUsed,
-      limit: resolveLimitValue(snap.limits.agents),
+      limit: agentsLimit,
+      overLimit: computeOverLimitAmount(aiAgentsUsed, agentsLimit),
     },
     automations: {
       used: automationsUsed,
-      limit: resolveLimitValue(snap.limits.automations),
+      limit: automationsLimit,
+      overLimit: computeOverLimitAmount(automationsUsed, automationsLimit),
     },
     contacts: {
       used: contactsUsed,
-      limit: resolveLimitValue(snap.limits.contacts),
+      limit: contactsLimit,
+      overLimit: computeOverLimitAmount(contactsUsed, contactsLimit),
     },
     messages: {
       used: messageStats.used,
       limit: messageLimit,
+      overLimit: computeOverLimitAmount(messageStats.used, messageLimit),
       periodStart: messageStats.periodStart.toISOString(),
     },
+    enforcement: buildEnforcementMeta(settings),
   };
 }
 
@@ -181,74 +202,106 @@ export async function assertPlanFeature(
   }
 }
 
+/** Novo agente IA (AutomationAgentProfile) — respeita limits.agents. */
+export async function assertCanAddAiAgents(
+  organizationId: string,
+  additional = 1,
+  options?: { idempotencyKey?: string; actorUserId?: string | null },
+): Promise<void> {
+  await assertOrganizationBillingAccess(organizationId);
+  const snap = await requireSnapshot(organizationId);
+  const limit = resolveLimitValue(snap.limits.agents);
+  const used = await countAiAgents(organizationId);
+  await enforceUsageLimit({
+    organizationId,
+    dimension: "agents",
+    used,
+    limit,
+    additional,
+    idempotencyKey: options?.idempotencyKey,
+    actorUserId: options?.actorUserId,
+  });
+}
+
+/** Convites / lugares humanos AGENT — pool partilhado (IA + humanos + convites pendentes). */
 export async function assertCanAddAgents(
   organizationId: string,
   additional = 1,
+  options?: { idempotencyKey?: string; actorUserId?: string | null },
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
   const limit = resolveLimitValue(snap.limits.agents);
   const used = await countAgentLimitUsage(organizationId);
-  if (isOverLimit(used, limit, additional)) {
-    throw new PlanEnforcementError(
-      "Agent limit reached for current plan",
-      "plan_limit_agents",
-      402,
-      { used, limit, additional },
-    );
-  }
+  await enforceUsageLimit({
+    organizationId,
+    dimension: "agents",
+    used,
+    limit,
+    additional,
+    idempotencyKey: options?.idempotencyKey,
+    actorUserId: options?.actorUserId,
+  });
 }
 
 export async function assertCanAddAutomations(
   organizationId: string,
   additional = 1,
+  options?: { idempotencyKey?: string; actorUserId?: string | null },
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
   const limit = resolveLimitValue(snap.limits.automations);
   const used = await countAutomations(organizationId);
-  if (isOverLimit(used, limit, additional)) {
-    throw new PlanEnforcementError(
-      "Automation limit reached for current plan",
-      "plan_limit_automations",
-      402,
-      { used, limit, additional },
-    );
-  }
+  await enforceUsageLimit({
+    organizationId,
+    dimension: "automations",
+    used,
+    limit,
+    additional,
+    idempotencyKey: options?.idempotencyKey,
+    actorUserId: options?.actorUserId,
+  });
 }
 
 export async function assertCanAddContacts(
   organizationId: string,
   additional = 1,
+  options?: { idempotencyKey?: string; actorUserId?: string | null },
 ): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
   const limit = resolveLimitValue(snap.limits.contacts);
   const used = await countContacts(organizationId);
-  if (isOverLimit(used, limit, additional)) {
-    throw new PlanEnforcementError(
-      "Contact limit reached for current plan",
-      "plan_limit_contacts",
-      402,
-      { used, limit, additional },
-    );
-  }
+  await enforceUsageLimit({
+    organizationId,
+    dimension: "contacts",
+    used,
+    limit,
+    additional,
+    idempotencyKey: options?.idempotencyKey,
+    actorUserId: options?.actorUserId,
+  });
 }
 
 /** Quota mensal — aplica-se a envios outbound (notas privadas isentas). */
-export async function assertCanSendOutboundMessage(organizationId: string): Promise<void> {
+export async function assertCanSendOutboundMessage(
+  organizationId: string,
+  options?: { idempotencyKey?: string; actorUserId?: string | null },
+): Promise<void> {
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
   const limit = await resolveMessageLimit(organizationId, snap);
   const { used } = await countMonthlyMessages(organizationId);
-  if (isOverLimit(used, limit, 1)) {
-    throw new PlanEnforcementError(
-      "Monthly message quota reached for current plan",
-      "plan_limit_messages",
-      402,
-      { used, limit },
-    );
-  }
+  await enforceUsageLimit({
+    organizationId,
+    dimension: "messages",
+    used,
+    limit,
+    additional: 1,
+    idempotencyKey: options?.idempotencyKey,
+    actorUserId: options?.actorUserId,
+  });
 }
 
 export function replyPlanEnforcementError(reply: FastifyReply, err: unknown): boolean {

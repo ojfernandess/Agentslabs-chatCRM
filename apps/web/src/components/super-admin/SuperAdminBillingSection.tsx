@@ -55,6 +55,65 @@ type SubscriptionRow = {
 
 type BillingTab = "plans" | "customPlans" | "subscriptions" | "settings";
 
+type UsageDimensionKey = "agents" | "automations" | "contacts" | "messages";
+
+type DimensionOverageForm = {
+  enabled: boolean;
+  stripeMeterEventName: string;
+  unitAmountCents: string;
+};
+
+type BillingPlatformSettings = {
+  gracePeriodDays: number;
+  limitEnforcementMode: "block" | "overage";
+  overage: Record<UsageDimensionKey, DimensionOverageForm>;
+};
+
+const USAGE_DIMENSIONS: UsageDimensionKey[] = ["agents", "automations", "contacts", "messages"];
+
+const DEFAULT_METER_NAMES: Record<UsageDimensionKey, string> = {
+  agents: "openconduit_agents_overage",
+  automations: "openconduit_automations_overage",
+  contacts: "openconduit_contacts_overage",
+  messages: "openconduit_messages_overage",
+};
+
+function emptyOverageForm(): Record<UsageDimensionKey, DimensionOverageForm> {
+  return {
+    agents: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.agents, unitAmountCents: "" },
+    automations: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.automations, unitAmountCents: "" },
+    contacts: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.contacts, unitAmountCents: "" },
+    messages: { enabled: false, stripeMeterEventName: DEFAULT_METER_NAMES.messages, unitAmountCents: "" },
+  };
+}
+
+function settingsFromApi(raw: {
+  gracePeriodDays: number;
+  limitEnforcementMode?: "block" | "overage";
+  overage?: Partial<
+    Record<
+      UsageDimensionKey,
+      { enabled?: boolean; stripeMeterEventName?: string | null; unitAmountCents?: number | null }
+    >
+  >;
+}): BillingPlatformSettings {
+  const overage = emptyOverageForm();
+  for (const key of USAGE_DIMENSIONS) {
+    const dim = raw.overage?.[key];
+    if (!dim) continue;
+    overage[key] = {
+      enabled: dim.enabled === true,
+      stripeMeterEventName: dim.stripeMeterEventName?.trim() || DEFAULT_METER_NAMES[key],
+      unitAmountCents: dim.unitAmountCents != null ? String(dim.unitAmountCents) : "",
+    };
+  }
+  return {
+    gracePeriodDays: raw.gracePeriodDays,
+    limitEnforcementMode: raw.limitEnforcementMode === "overage" ? "overage" : "block",
+    overage,
+  };
+}
+
 const EMPTY_PLAN_FORM = {
   slug: "",
   name: "",
@@ -96,7 +155,11 @@ export function SuperAdminBillingSection() {
   const [subTotal, setSubTotal] = useState(0);
   const [subQuery, setSubQuery] = useState("");
   const [subStatus, setSubStatus] = useState("");
-  const [gracePeriodDays, setGracePeriodDays] = useState("7");
+  const [billingSettings, setBillingSettings] = useState<BillingPlatformSettings>(() => ({
+    gracePeriodDays: 7,
+    limitEnforcementMode: "block",
+    overage: emptyOverageForm(),
+  }));
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
@@ -121,8 +184,8 @@ export function SuperAdminBillingSection() {
   }, [subQuery, subStatus]);
 
   const loadSettings = useCallback(async () => {
-    const res = await api.get<{ settings: { gracePeriodDays: number } }>("/super/billing/settings");
-    setGracePeriodDays(String(res.settings.gracePeriodDays));
+    const res = await api.get<{ settings: Parameters<typeof settingsFromApi>[0] }>("/super/billing/settings");
+    setBillingSettings(settingsFromApi(res.settings));
   }, []);
 
   const loadAll = useCallback(async () => {
@@ -225,8 +288,24 @@ export function SuperAdminBillingSection() {
     setSettingsSaving(true);
     setError("");
     try {
+      const overagePayload: Partial<
+        Record<
+          UsageDimensionKey,
+          { enabled: boolean; stripeMeterEventName: string | null; unitAmountCents: number | null }
+        >
+      > = {};
+      for (const key of USAGE_DIMENSIONS) {
+        const dim = billingSettings.overage[key];
+        overagePayload[key] = {
+          enabled: dim.enabled,
+          stripeMeterEventName: dim.stripeMeterEventName.trim() || null,
+          unitAmountCents: dim.unitAmountCents.trim() ? Number(dim.unitAmountCents) : null,
+        };
+      }
       await api.patch("/super/billing/settings", {
-        gracePeriodDays: Number(gracePeriodDays),
+        gracePeriodDays: billingSettings.gracePeriodDays,
+        limitEnforcementMode: billingSettings.limitEnforcementMode,
+        overage: overagePayload,
       });
       await loadSettings();
     } catch (err) {
@@ -407,20 +486,129 @@ export function SuperAdminBillingSection() {
 
       {tab === "settings" && !loading ? (
         <SuperAdminPanel className="p-4">
-          <form onSubmit={(e) => void saveSettings(e)} className="max-w-md space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">{t("superAdmin.billingSettingsTitle")}</h3>
-            <p className="text-sm text-slate-600">{t("superAdmin.billingSettingsHint")}</p>
+          <form onSubmit={(e) => void saveSettings(e)} className="max-w-3xl space-y-6">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">{t("superAdmin.billingSettingsTitle")}</h3>
+              <p className="mt-1 text-sm text-slate-600">{t("superAdmin.billingSettingsHint")}</p>
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-600">{t("superAdmin.billingGraceDays")}</label>
               <input
                 type="number"
                 min={0}
                 max={90}
-                value={gracePeriodDays}
-                onChange={(e) => setGracePeriodDays(e.target.value)}
+                value={billingSettings.gracePeriodDays}
+                onChange={(e) =>
+                  setBillingSettings((s) => ({ ...s, gracePeriodDays: Number(e.target.value) || 0 }))
+                }
                 className="input-field mt-1 w-32"
               />
             </div>
+
+            <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+              <h4 className="text-sm font-semibold text-slate-900">{t("superAdmin.billingLimitEnforcementTitle")}</h4>
+              <p className="text-sm text-slate-600">{t("superAdmin.billingLimitEnforcementHint")}</p>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="limitEnforcementMode"
+                    checked={billingSettings.limitEnforcementMode === "block"}
+                    onChange={() => setBillingSettings((s) => ({ ...s, limitEnforcementMode: "block" }))}
+                  />
+                  {t("superAdmin.billingLimitModeBlock")}
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="limitEnforcementMode"
+                    checked={billingSettings.limitEnforcementMode === "overage"}
+                    onChange={() => setBillingSettings((s) => ({ ...s, limitEnforcementMode: "overage" }))}
+                  />
+                  {t("superAdmin.billingLimitModeOverage")}
+                </label>
+              </div>
+            </div>
+
+            {billingSettings.limitEnforcementMode === "overage" ? (
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-900">{t("superAdmin.billingOverageMetersTitle")}</h4>
+                  <p className="mt-1 text-sm text-slate-600">{t("superAdmin.billingOverageMetersHint")}</p>
+                </div>
+                <div className="space-y-3">
+                  {USAGE_DIMENSIONS.map((key) => {
+                    const dim = billingSettings.overage[key];
+                    return (
+                      <div key={key} className="rounded-lg border border-slate-200 p-3">
+                        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={dim.enabled}
+                            onChange={(e) =>
+                              setBillingSettings((s) => ({
+                                ...s,
+                                overage: {
+                                  ...s.overage,
+                                  [key]: { ...s.overage[key], enabled: e.target.checked },
+                                },
+                              }))
+                            }
+                          />
+                          {t(`superAdmin.billingLimitKey_${key}`)}
+                        </label>
+                        {dim.enabled ? (
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600">
+                                {t("superAdmin.billingOverageMeterEventName")}
+                              </label>
+                              <input
+                                value={dim.stripeMeterEventName}
+                                onChange={(e) =>
+                                  setBillingSettings((s) => ({
+                                    ...s,
+                                    overage: {
+                                      ...s.overage,
+                                      [key]: { ...s.overage[key], stripeMeterEventName: e.target.value },
+                                    },
+                                  }))
+                                }
+                                className="input-field mt-1 font-mono text-xs"
+                                placeholder={DEFAULT_METER_NAMES[key]}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600">
+                                {t("superAdmin.billingOverageUnitCents")}
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={dim.unitAmountCents}
+                                onChange={(e) =>
+                                  setBillingSettings((s) => ({
+                                    ...s,
+                                    overage: {
+                                      ...s.overage,
+                                      [key]: { ...s.overage[key], unitAmountCents: e.target.value },
+                                    },
+                                  }))
+                                }
+                                className="input-field mt-1"
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <button type="submit" className="btn-primary" disabled={settingsSaving}>
               {settingsSaving ? t("common.saving") : t("common.save")}
             </button>

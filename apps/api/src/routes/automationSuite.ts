@@ -61,8 +61,7 @@ import { registerChatbotFlowRoutes } from "./chatbotFlowRoutes.js";
 import { registerCrmFlowRoutes } from "./crmFlowRoutes.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
 import {
-  assertCanAddAgents,
-  assertCanAddAutomations,
+  assertCanAddAiAgents,
   assertPlanFeature,
   replyPlanEnforcementError,
 } from "../lib/billing/planEnforcement.js";
@@ -2441,15 +2440,6 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    if (parsed.data.createBot) {
-      try {
-        await assertCanAddAgents(organizationId);
-      } catch (err) {
-        if (replyPlanEnforcementError(reply, err)) return;
-        throw err;
-      }
-    }
-
     let botId: string;
     if (parsed.data.createBot) {
       const created = await prisma.bot.create({
@@ -2472,6 +2462,19 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         return reply.status(404).send({ error: "Not Found", message: "Bot not found", statusCode: 404 });
       }
       botId = bot.id;
+    }
+
+    const existingProfile = await prisma.automationAgentProfile.findFirst({
+      where: { organizationId, botId },
+      select: { id: true },
+    });
+    if (!existingProfile) {
+      try {
+        await assertCanAddAiAgents(organizationId, 1, { actorUserId: request.user.id });
+      } catch (err) {
+        if (replyPlanEnforcementError(reply, err)) return;
+        throw err;
+      }
     }
 
     const { row } = await upsertAgentProfileForBot({
@@ -2523,6 +2526,19 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           ...(bp.isActive !== undefined ? { isActive: bp.isActive } : {}),
         },
       });
+    }
+
+    const existingProfile = await prisma.automationAgentProfile.findFirst({
+      where: { organizationId, botId: bot.id },
+      select: { id: true },
+    });
+    if (!existingProfile) {
+      try {
+        await assertCanAddAiAgents(organizationId, 1, { actorUserId: request.user.id });
+      } catch (err) {
+        if (replyPlanEnforcementError(reply, err)) return;
+        throw err;
+      }
     }
 
     const { row } = await upsertAgentProfileForBot({
