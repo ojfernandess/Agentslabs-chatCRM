@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { CreditCard, Loader2, Pencil, Plus } from "lucide-react";
+import { CreditCard, Loader2, Mail, Pencil, Plus } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -57,8 +57,15 @@ type SubscriptionRow = {
   status: string;
   stripeSubscriptionId: string | null;
   currentPeriodEnd: string | null;
+  paymentDueAt: string | null;
   cancelAtPeriodEnd: boolean;
   updatedAt: string;
+};
+
+type ReminderModalState = {
+  organizationId: string;
+  organizationName: string;
+  billingEmail: string;
 };
 
 type BillingTab = "plans" | "customPlans" | "subscriptions" | "settings";
@@ -222,6 +229,11 @@ export function SuperAdminBillingSection() {
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
   const [planForm, setPlanForm] = useState(EMPTY_PLAN_FORM);
   const [planSaving, setPlanSaving] = useState(false);
+  const [billingEmailDrafts, setBillingEmailDrafts] = useState<Record<string, string>>({});
+  const [billingEmailSaving, setBillingEmailSaving] = useState<string | null>(null);
+  const [reminderModal, setReminderModal] = useState<ReminderModalState | null>(null);
+  const [reminderSending, setReminderSending] = useState(false);
+  const [billingSuccess, setBillingSuccess] = useState("");
 
   const loadPlans = useCallback(async () => {
     const res = await api.get<{ plans: PlanRow[] }>("/super/billing/plans");
@@ -406,6 +418,66 @@ export function SuperAdminBillingSection() {
     }
   };
 
+  const billingEmailValue = (sub: SubscriptionRow): string =>
+    billingEmailDrafts[sub.organizationId] ?? sub.organization.billingEmail ?? "";
+
+  const saveBillingEmail = async (organizationId: string) => {
+    const value = billingEmailDrafts[organizationId]?.trim() ?? "";
+    setBillingEmailSaving(organizationId);
+    setError("");
+    setBillingSuccess("");
+    try {
+      await api.patch(`/super/billing/organizations/${organizationId}/billing-email`, {
+        billingEmail: value,
+      });
+      setSubscriptions((rows) =>
+        rows.map((row) =>
+          row.organizationId === organizationId
+            ? {
+                ...row,
+                organization: { ...row.organization, billingEmail: value || null },
+              }
+            : row,
+        ),
+      );
+      setBillingSuccess(t("superAdmin.billingEmailSaved"));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
+    } finally {
+      setBillingEmailSaving(null);
+    }
+  };
+
+  const openReminderModal = (sub: SubscriptionRow) => {
+    setReminderModal({
+      organizationId: sub.organizationId,
+      organizationName: sub.organization.name,
+      billingEmail: billingEmailValue(sub),
+    });
+  };
+
+  const sendPaymentReminder = async () => {
+    if (!reminderModal) return;
+    setReminderSending(true);
+    setError("");
+    setBillingSuccess("");
+    try {
+      const body: { billingEmail?: string } = {};
+      const email = reminderModal.billingEmail.trim();
+      if (email) body.billingEmail = email;
+      const res = await api.post<{ ok: true; sentTo: string }>(
+        `/super/billing/subscriptions/${reminderModal.organizationId}/send-payment-reminder`,
+        body,
+      );
+      setBillingSuccess(t("superAdmin.billingReminderSent").replace("{email}", res.sentTo));
+      setReminderModal(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingReminderError"));
+    } finally {
+      setReminderSending(false);
+    }
+  };
+
   const saveSettings = async (e: FormEvent) => {
     e.preventDefault();
     setSettingsSaving(true);
@@ -444,6 +516,11 @@ export function SuperAdminBillingSection() {
 
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
+      ) : null}
+      {billingSuccess ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {billingSuccess}
+        </div>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
@@ -577,7 +654,10 @@ export function SuperAdminBillingSection() {
                   <th className="px-4 py-3">{t("superAdmin.billingColPlan")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColStatus")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColRenewal")}</th>
+                  <th className="px-4 py-3">{t("superAdmin.billingColDue")}</th>
+                  <th className="px-4 py-3">{t("superAdmin.billingEmail")}</th>
                   <th className="px-4 py-3">Stripe Sub</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -595,7 +675,42 @@ export function SuperAdminBillingSection() {
                       ) : null}
                     </td>
                     <td className="px-4 py-3">{formatDate(sub.currentPeriodEnd, localeTag)}</td>
+                    <td className="px-4 py-3">{formatDate(sub.paymentDueAt, localeTag)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex min-w-[220px] items-center gap-2">
+                        <input
+                          type="email"
+                          value={billingEmailValue(sub)}
+                          onChange={(e) =>
+                            setBillingEmailDrafts((drafts) => ({
+                              ...drafts,
+                              [sub.organizationId]: e.target.value,
+                            }))
+                          }
+                          placeholder={t("superAdmin.billingEmailPlaceholder")}
+                          className="input-field text-xs"
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary shrink-0 px-2 py-1 text-xs"
+                          disabled={billingEmailSaving === sub.organizationId}
+                          onClick={() => void saveBillingEmail(sub.organizationId)}
+                        >
+                          {billingEmailSaving === sub.organizationId ? t("common.saving") : t("common.save")}
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-xs text-slate-500">{sub.stripeSubscriptionId || "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                        onClick={() => openReminderModal(sub)}
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                        {t("superAdmin.billingSendReminder")}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -772,6 +887,36 @@ export function SuperAdminBillingSection() {
             </div>
           </form>
         </SuperAdminPanel>
+      ) : null}
+
+      {reminderModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+          <div className="card-surface w-full max-w-md p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.billingSendReminderTitle")}</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {t("superAdmin.billingSendReminderHint").replace("{org}", reminderModal.organizationName)}
+            </p>
+            <div className="mt-4">
+              <label className="block text-xs font-medium text-slate-600">{t("superAdmin.billingEmail")}</label>
+              <input
+                type="email"
+                value={reminderModal.billingEmail}
+                onChange={(e) => setReminderModal((m) => (m ? { ...m, billingEmail: e.target.value } : m))}
+                placeholder={t("superAdmin.billingEmailPlaceholder")}
+                className="input-field mt-1 w-full"
+              />
+              <p className="mt-1 text-xs text-slate-500">{t("superAdmin.billingSendReminderEmailHint")}</p>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setReminderModal(null)}>
+                {t("common.cancel")}
+              </button>
+              <button type="button" className="btn-primary" disabled={reminderSending} onClick={() => void sendPaymentReminder()}>
+                {reminderSending ? t("common.saving") : t("superAdmin.billingSendReminder")}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {planModalOpen ? (

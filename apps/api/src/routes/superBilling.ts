@@ -26,6 +26,8 @@ import {
   listCustomPlans,
   updateCustomPlan,
 } from "../lib/billing/customPlanService.js";
+import { sendOrganizationPaymentReminder } from "../lib/billing/billingEmailNotifications.js";
+import { updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
@@ -98,6 +100,14 @@ const subscriptionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   status: z.string().max(32).optional(),
   q: z.string().max(200).optional(),
+});
+
+const billingEmailPatchSchema = z.object({
+  billingEmail: z.union([z.string().email(), z.literal("")]),
+});
+
+const sendPaymentReminderSchema = z.object({
+  billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
 });
 
 function serializePlan(plan: {
@@ -499,6 +509,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         stripePriceId: s.stripePriceId,
         currentPeriodStart: s.currentPeriodStart?.toISOString() ?? null,
         currentPeriodEnd: s.currentPeriodEnd?.toISOString() ?? null,
+        paymentDueAt: s.paymentDueAt?.toISOString() ?? null,
         cancelAtPeriodEnd: s.cancelAtPeriodEnd,
         canceledAt: s.canceledAt?.toISOString() ?? null,
         trialEnd: s.trialEnd?.toISOString() ?? null,
@@ -506,4 +517,90 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       })),
     };
   });
+
+  app.patch<{ Params: { organizationId: string } }>(
+    "/organizations/:organizationId/billing-email",
+    async (request, reply) => {
+      const parsed = billingEmailPatchSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const billingEmail = parsed.data.billingEmail === "" ? null : parsed.data.billingEmail.trim();
+      try {
+        const org = await prisma.organization.update({
+          where: { id: request.params.organizationId },
+          data: { billingEmail },
+          select: { id: true, name: true, billingEmail: true },
+        });
+
+        await updateStripeCustomerFromOrganization(org.id);
+
+        await recordAuditLog({
+          actorUserId: request.user!.id,
+          organizationId: org.id,
+          action: "super.billing.billing_email.update",
+          resourceType: "organization",
+          resourceId: org.id,
+          metadata: { billingEmail: org.billingEmail },
+          ip: clientIp(request),
+        });
+
+        return { organizationId: org.id, billingEmail: org.billingEmail };
+      } catch {
+        return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+      }
+    },
+  );
+
+  app.post<{ Params: { organizationId: string } }>(
+    "/subscriptions/:organizationId/send-payment-reminder",
+    async (request, reply) => {
+      const parsed = sendPaymentReminderSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const billingEmailOverride =
+        parsed.data.billingEmail === "" ? null : parsed.data.billingEmail?.trim() || undefined;
+
+      const result = await sendOrganizationPaymentReminder({
+        organizationId: request.params.organizationId,
+        billingEmail: billingEmailOverride,
+        actorUserId: request.user!.id,
+        ip: clientIp(request),
+      });
+
+      if (!result.ok) {
+        const statusCode =
+          result.error === "organization_not_found"
+            ? 404
+            : result.error === "billing_email_missing" || result.error === "resend_not_configured"
+              ? 400
+              : 502;
+        const messages: Record<string, string> = {
+          organization_not_found: "Organization not found",
+          billing_email_missing: "Billing email is missing for this organization",
+          resend_not_configured: "Resend is not configured",
+        };
+        return reply.status(statusCode).send({
+          error: result.error,
+          message: messages[result.error] ?? "Failed to send reminder",
+          statusCode,
+        });
+      }
+
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        organizationId: request.params.organizationId,
+        action: "super.billing.payment_reminder.send",
+        resourceType: "organization_subscription",
+        resourceId: request.params.organizationId,
+        metadata: { sentTo: result.sentTo },
+        ip: clientIp(request),
+      });
+
+      return { ok: true, sentTo: result.sentTo };
+    },
+  );
 }

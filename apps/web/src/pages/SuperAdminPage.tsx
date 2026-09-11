@@ -28,6 +28,8 @@ import {
 import { PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY } from "@/lib/publicDocsSettings";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
+import { ResendBillingReminderTemplateEditor } from "@/components/ResendBillingReminderTemplateEditor";
+import { ResendPaymentConfirmationTemplateEditor } from "@/components/ResendPaymentConfirmationTemplateEditor";
 import { SuperAdminConversationMediaSection } from "@/components/super-admin/SuperAdminConversationMediaSection";
 import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSection";
 import { SuperAdminBillingSection } from "@/components/super-admin/SuperAdminBillingSection";
@@ -298,6 +300,10 @@ interface SuperResendPayload {
   passwordResetHtmlTemplate: string;
   userInviteSubject: string;
   userInviteHtmlTemplate: string;
+  billingReminderSubject: string;
+  billingReminderHtmlTemplate: string;
+  paymentConfirmationSubject: string;
+  paymentConfirmationHtmlTemplate: string;
 }
 
 interface SuperTurnstilePayload {
@@ -448,6 +454,10 @@ export function SuperAdminPage() {
     passwordResetHtmlTemplate: "",
     userInviteSubject: "",
     userInviteHtmlTemplate: "",
+    billingReminderSubject: "",
+    billingReminderHtmlTemplate: "",
+    paymentConfirmationSubject: "",
+    paymentConfirmationHtmlTemplate: "",
   });
   const [resendApiKey, setResendApiKey] = useState("");
   const [resendFromEmail, setResendFromEmail] = useState("");
@@ -459,6 +469,10 @@ export function SuperAdminPage() {
   const [resendPasswordResetHtml, setResendPasswordResetHtml] = useState("");
   const [resendUserInviteSubject, setResendUserInviteSubject] = useState("");
   const [resendUserInviteHtml, setResendUserInviteHtml] = useState("");
+  const [resendBillingReminderSubject, setResendBillingReminderSubject] = useState("");
+  const [resendBillingReminderHtml, setResendBillingReminderHtml] = useState("");
+  const [resendPaymentConfirmationSubject, setResendPaymentConfirmationSubject] = useState("");
+  const [resendPaymentConfirmationHtml, setResendPaymentConfirmationHtml] = useState("");
 
   const [turnstileLoad, setTurnstileLoad] = useState(false);
   const [turnstileSaving, setTurnstileSaving] = useState(false);
@@ -743,6 +757,10 @@ export function SuperAdminPage() {
         setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
         setResendUserInviteSubject(d.userInviteSubject);
         setResendUserInviteHtml(d.userInviteHtmlTemplate);
+        setResendBillingReminderSubject(d.billingReminderSubject);
+        setResendBillingReminderHtml(d.billingReminderHtmlTemplate);
+        setResendPaymentConfirmationSubject(d.paymentConfirmationSubject);
+        setResendPaymentConfirmationHtml(d.paymentConfirmationHtmlTemplate);
         setResendApiKey("");
       })
       .catch(() => {
@@ -757,6 +775,10 @@ export function SuperAdminPage() {
             passwordResetHtmlTemplate: "",
             userInviteSubject: "",
             userInviteHtmlTemplate: "",
+            billingReminderSubject: "",
+            billingReminderHtmlTemplate: "",
+            paymentConfirmationSubject: "",
+            paymentConfirmationHtmlTemplate: "",
           });
           setResendFromEmail("");
           setResendFromName("OpenNexo CRM");
@@ -1235,6 +1257,10 @@ export function SuperAdminPage() {
         passwordResetHtmlTemplate: string;
         userInviteSubject: string;
         userInviteHtmlTemplate: string;
+        billingReminderSubject: string;
+        billingReminderHtmlTemplate: string;
+        paymentConfirmationSubject: string;
+        paymentConfirmationHtmlTemplate: string;
       } = {
         fromEmail: resendFromEmail.trim(),
         fromName: (resendFromName.trim() || "OpenNexo CRM").slice(0, 120),
@@ -1243,6 +1269,10 @@ export function SuperAdminPage() {
         passwordResetHtmlTemplate: resendPasswordResetHtml,
         userInviteSubject: resendUserInviteSubject.trim(),
         userInviteHtmlTemplate: resendUserInviteHtml,
+        billingReminderSubject: resendBillingReminderSubject.trim(),
+        billingReminderHtmlTemplate: resendBillingReminderHtml,
+        paymentConfirmationSubject: resendPaymentConfirmationSubject.trim(),
+        paymentConfirmationHtmlTemplate: resendPaymentConfirmationHtml,
       };
       if (resendApiKey.trim()) body.apiKey = resendApiKey.trim();
       const d = await api.put<SuperResendPayload>("/super/resend-email", body);
@@ -1253,6 +1283,10 @@ export function SuperAdminPage() {
       setResendPasswordResetHtml(d.passwordResetHtmlTemplate);
       setResendUserInviteSubject(d.userInviteSubject);
       setResendUserInviteHtml(d.userInviteHtmlTemplate);
+      setResendBillingReminderSubject(d.billingReminderSubject);
+      setResendBillingReminderHtml(d.billingReminderHtmlTemplate);
+      setResendPaymentConfirmationSubject(d.paymentConfirmationSubject);
+      setResendPaymentConfirmationHtml(d.paymentConfirmationHtmlTemplate);
       setResendApiKey("");
     } catch {
       setError("Não foi possível guardar as definições Resend.");
@@ -2224,6 +2258,24 @@ export function SuperAdminPage() {
                       html={resendUserInviteHtml}
                       onSubjectChange={setResendUserInviteSubject}
                       onHtmlChange={setResendUserInviteHtml}
+                    />
+                    <ResendBillingReminderTemplateEditor
+                      fromName={resendFromName}
+                      logoUrl={resendSystemLogoUrl}
+                      resolvedLogoUrl={resendResolvedSystemLogoUrl}
+                      subject={resendBillingReminderSubject}
+                      html={resendBillingReminderHtml}
+                      onSubjectChange={setResendBillingReminderSubject}
+                      onHtmlChange={setResendBillingReminderHtml}
+                    />
+                    <ResendPaymentConfirmationTemplateEditor
+                      fromName={resendFromName}
+                      logoUrl={resendSystemLogoUrl}
+                      resolvedLogoUrl={resendResolvedSystemLogoUrl}
+                      subject={resendPaymentConfirmationSubject}
+                      html={resendPaymentConfirmationHtml}
+                      onSubjectChange={setResendPaymentConfirmationSubject}
+                      onHtmlChange={setResendPaymentConfirmationHtml}
                     />
                     <button type="submit" className="btn-primary" disabled={resendSaving}>
                       {resendSaving ? t("common.saving") : t("superAdmin.resendSave")}

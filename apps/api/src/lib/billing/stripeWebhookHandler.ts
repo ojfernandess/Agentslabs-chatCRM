@@ -6,6 +6,10 @@ import { recordBillingAudit } from "./billingAudit.js";
 import { getStripeClient } from "./stripeClient.js";
 import { syncSubscriptionFromStripe } from "./subscriptionSync.js";
 import { getEventOrganizationId, getInvoiceSubscriptionId } from "./stripeHelpers.js";
+import {
+  trySendStripeInvoicePaymentConfirmation,
+  trySendStripeInvoicePaymentReminder,
+} from "./billingEmailNotifications.js";
 
 export class StripeWebhookError extends Error {
   constructor(
@@ -102,6 +106,8 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
       subscriptionId: getInvoiceSubscriptionId(invoice),
     },
   });
+
+  await trySendStripeInvoicePaymentConfirmation(invoice, organizationId);
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
@@ -125,6 +131,8 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
       subscriptionId,
     },
   });
+
+  await trySendStripeInvoicePaymentReminder(invoice, organizationId);
 }
 
 async function resolveOrganizationIdFromInvoice(invoice: Stripe.Invoice): Promise<string | null> {

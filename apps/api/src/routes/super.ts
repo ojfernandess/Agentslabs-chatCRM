@@ -40,7 +40,9 @@ import {
 import { EVOLUTION_GO_PLATFORM_KEY, parseEvolutionGoPlatformValue } from "../lib/evolutionGoPlatform.js";
 import {
   RESEND_EMAIL_PLATFORM_KEY,
+  getBillingReminderTemplatesForEditor,
   getPasswordResetTemplatesForEditor,
+  getPaymentConfirmationTemplatesForEditor,
   getUserInviteTemplatesForEditor,
   isPlaceholderSystemLogoUrl,
   parseResendEmailValue,
@@ -195,6 +197,10 @@ const resendEmailPutSchema = z.object({
   passwordResetHtmlTemplate: z.string().max(100_000).optional(),
   userInviteSubject: z.string().max(200).optional(),
   userInviteHtmlTemplate: z.string().max(100_000).optional(),
+  billingReminderSubject: z.string().max(200).optional(),
+  billingReminderHtmlTemplate: z.string().max(100_000).optional(),
+  paymentConfirmationSubject: z.string().max(200).optional(),
+  paymentConfirmationHtmlTemplate: z.string().max(100_000).optional(),
 });
 
 const turnstilePutSchema = z.object({
@@ -1480,6 +1486,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     });
     const tpl = getPasswordResetTemplatesForEditor(row?.value);
     const inviteTpl = getUserInviteTemplatesForEditor(row?.value);
+    const billingReminderTpl = getBillingReminderTemplatesForEditor(row?.value);
+    const paymentConfirmationTpl = getPaymentConfirmationTemplatesForEditor(row?.value);
     const rawVal =
       row?.value && typeof row.value === "object" && row.value !== null
         ? (row.value as Record<string, unknown>)
@@ -1502,6 +1510,10 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         passwordResetHtmlTemplate: tpl.html,
         userInviteSubject: inviteTpl.subject,
         userInviteHtmlTemplate: inviteTpl.html,
+        billingReminderSubject: billingReminderTpl.subject,
+        billingReminderHtmlTemplate: billingReminderTpl.html,
+        paymentConfirmationSubject: paymentConfirmationTpl.subject,
+        paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
       };
     }
     return {
@@ -1515,6 +1527,10 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       passwordResetHtmlTemplate: tpl.html,
       userInviteSubject: inviteTpl.subject,
       userInviteHtmlTemplate: inviteTpl.html,
+      billingReminderSubject: billingReminderTpl.subject,
+      billingReminderHtmlTemplate: billingReminderTpl.html,
+      paymentConfirmationSubject: paymentConfirmationTpl.subject,
+      paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
     };
   });
 
@@ -1631,6 +1647,29 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         : (typeof existingVal.userInviteHtmlTemplate === "string"
             ? existingVal.userInviteHtmlTemplate
             : null) ?? null;
+    const billingReminderSubject =
+      parsed.data.billingReminderSubject !== undefined
+        ? parsed.data.billingReminderSubject.trim().slice(0, 200) || null
+        : (typeof existingVal.billingReminderSubject === "string" ? existingVal.billingReminderSubject : null) ??
+          null;
+    const billingReminderHtmlTemplate =
+      parsed.data.billingReminderHtmlTemplate !== undefined
+        ? parsed.data.billingReminderHtmlTemplate.trim().slice(0, 100_000) || null
+        : (typeof existingVal.billingReminderHtmlTemplate === "string"
+            ? existingVal.billingReminderHtmlTemplate
+            : null) ?? null;
+    const paymentConfirmationSubject =
+      parsed.data.paymentConfirmationSubject !== undefined
+        ? parsed.data.paymentConfirmationSubject.trim().slice(0, 200) || null
+        : (typeof existingVal.paymentConfirmationSubject === "string"
+            ? existingVal.paymentConfirmationSubject
+            : null) ?? null;
+    const paymentConfirmationHtmlTemplate =
+      parsed.data.paymentConfirmationHtmlTemplate !== undefined
+        ? parsed.data.paymentConfirmationHtmlTemplate.trim().slice(0, 100_000) || null
+        : (typeof existingVal.paymentConfirmationHtmlTemplate === "string"
+            ? existingVal.paymentConfirmationHtmlTemplate
+            : null) ?? null;
     const value = {
       apiKey,
       fromEmail: parsed.data.fromEmail.trim().toLowerCase(),
@@ -1640,6 +1679,10 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       passwordResetHtmlTemplate,
       userInviteSubject,
       userInviteHtmlTemplate,
+      billingReminderSubject,
+      billingReminderHtmlTemplate,
+      paymentConfirmationSubject,
+      paymentConfirmationHtmlTemplate,
     };
     await prisma.platformSetting.upsert({
       where: { key: RESEND_EMAIL_PLATFORM_KEY },
@@ -1656,6 +1699,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     });
     const tpl = getPasswordResetTemplatesForEditor(value);
     const inviteTpl = getUserInviteTemplatesForEditor(value);
+    const billingReminderTpl = getBillingReminderTemplatesForEditor(value);
+    const paymentConfirmationTpl = getPaymentConfirmationTemplatesForEditor(value);
     return {
       configured: true,
       fromEmail: value.fromEmail,
@@ -1667,6 +1712,10 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       passwordResetHtmlTemplate: tpl.html,
       userInviteSubject: inviteTpl.subject,
       userInviteHtmlTemplate: inviteTpl.html,
+      billingReminderSubject: billingReminderTpl.subject,
+      billingReminderHtmlTemplate: billingReminderTpl.html,
+      paymentConfirmationSubject: paymentConfirmationTpl.subject,
+      paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
     };
   });
 

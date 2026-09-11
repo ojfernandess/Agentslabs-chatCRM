@@ -5690,6 +5690,16 @@ export const messages = {
       billingAllStatuses: "Todos",
       billingSubTotal: "{count} assinaturas",
       billingCancelScheduled: "cancelamento agendado",
+      billingColDue: "Vencimento",
+      billingEmailPlaceholder: "responsavel@empresa.com",
+      billingEmailSaved: "Email de faturação guardado.",
+      billingSendReminder: "Enviar lembrete",
+      billingSendReminderTitle: "Lembrete de vencimento",
+      billingSendReminderHint: "Enviar lembrete de pagamento para a organização {org}.",
+      billingSendReminderEmailHint:
+        "Opcional: indique o email do responsável. Se vazio, usa o email de faturação da organização ou o primeiro administrador.",
+      billingReminderSent: "Lembrete enviado para {email}.",
+      billingReminderError: "Não foi possível enviar o lembrete.",
       billingSettingsTitle: "Política de billing",
       billingSettingsHint:
         "Configure tolerância por inadimplência e o comportamento quando os limites de uso do plano são atingidos.",
@@ -5907,6 +5917,14 @@ export const messages = {
       resendUserInviteHtml: "Modelo HTML (convite de utilizador)",
       resendUserInvitePlaceholders:
         "Variáveis: {{inviteUrl}}, {{inviteUrlText}}, {{organizationName}}, {{userName}}, {{appName}}, {{logoUrl}}, {{logoHtml}}.",
+      resendBillingReminderSubject: "Assunto (lembrete de vencimento)",
+      resendBillingReminderHtml: "Modelo HTML (lembrete de vencimento)",
+      resendBillingReminderPlaceholders:
+        "Variáveis: {{organizationName}}, {{planName}}, {{amountDue}}, {{currency}}, {{dueDate}}, {{daysRemaining}}, {{invoiceUrl}}, {{portalUrl}}, {{billingSettingsUrl}}, {{status}}, {{appName}}, {{logoUrl}}, {{logoHtml}}.",
+      resendPaymentConfirmationSubject: "Assunto (confirmação de pagamento)",
+      resendPaymentConfirmationHtml: "Modelo HTML (confirmação de pagamento)",
+      resendPaymentConfirmationPlaceholders:
+        "Variáveis: {{organizationName}}, {{planName}}, {{amountPaid}}, {{currency}}, {{paidAt}}, {{invoiceNumber}}, {{invoiceUrl}}, {{billingSettingsUrl}}, {{receiptNote}}, {{status}}, {{appName}}, {{logoUrl}}, {{logoHtml}}.",
       resendTemplateTabEdit: "Editar",
       resendTemplateTabPreview: "Pré-visualizar",
       resendTemplateRestoreDefaults: "Restaurar textos padrão",
@@ -11595,6 +11613,16 @@ export const messages = {
       billingAllStatuses: "All",
       billingSubTotal: "{count} subscriptions",
       billingCancelScheduled: "cancel scheduled",
+      billingColDue: "Due date",
+      billingEmailPlaceholder: "billing@company.com",
+      billingEmailSaved: "Billing email saved.",
+      billingSendReminder: "Send reminder",
+      billingSendReminderTitle: "Payment due reminder",
+      billingSendReminderHint: "Send a payment reminder to organization {org}.",
+      billingSendReminderEmailHint:
+        "Optional: enter the billing contact email. If empty, uses the organization billing email or the first admin.",
+      billingReminderSent: "Reminder sent to {email}.",
+      billingReminderError: "Could not send the reminder.",
       billingSettingsTitle: "Billing policy",
       billingSettingsHint:
         "Configure delinquency grace and behavior when plan usage limits are reached.",
@@ -11812,6 +11840,14 @@ export const messages = {
       resendUserInviteHtml: "HTML template (user invitation)",
       resendUserInvitePlaceholders:
         "Variables: {{inviteUrl}}, {{inviteUrlText}}, {{organizationName}}, {{userName}}, {{appName}}, {{logoUrl}}, {{logoHtml}}.",
+      resendBillingReminderSubject: "Subject (payment due reminder)",
+      resendBillingReminderHtml: "HTML template (payment due reminder)",
+      resendBillingReminderPlaceholders:
+        "Variables: {{organizationName}}, {{planName}}, {{amountDue}}, {{currency}}, {{dueDate}}, {{daysRemaining}}, {{invoiceUrl}}, {{portalUrl}}, {{billingSettingsUrl}}, {{status}}, {{appName}}, {{logoUrl}}, {{logoHtml}}.",
+      resendPaymentConfirmationSubject: "Subject (payment confirmation)",
+      resendPaymentConfirmationHtml: "HTML template (payment confirmation)",
+      resendPaymentConfirmationPlaceholders:
+        "Variables: {{organizationName}}, {{planName}}, {{amountPaid}}, {{currency}}, {{paidAt}}, {{invoiceNumber}}, {{invoiceUrl}}, {{billingSettingsUrl}}, {{receiptNote}}, {{status}}, {{appName}}, {{logoUrl}}, {{logoHtml}}.",
       resendTemplateTabEdit: "Edit",
       resendTemplateTabPreview: "Preview",
       resendTemplateRestoreDefaults: "Restore default copy",

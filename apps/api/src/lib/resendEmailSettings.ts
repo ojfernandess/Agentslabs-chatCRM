@@ -1,8 +1,12 @@
 import { prisma } from "../db.js";
 import {
   buildDefaultSystemLogoUrl,
+  DEFAULT_BILLING_REMINDER_HTML,
+  DEFAULT_BILLING_REMINDER_SUBJECT,
   DEFAULT_PASSWORD_RESET_HTML,
   DEFAULT_PASSWORD_RESET_SUBJECT,
+  DEFAULT_PAYMENT_CONFIRMATION_HTML,
+  DEFAULT_PAYMENT_CONFIRMATION_SUBJECT,
   DEFAULT_USER_INVITE_HTML,
   DEFAULT_USER_INVITE_SUBJECT,
   isPlaceholderSystemLogoUrl,
@@ -24,10 +28,16 @@ export type ResendEmailConfig = {
   passwordResetHtmlTemplate?: string | null;
   userInviteSubject?: string | null;
   userInviteHtmlTemplate?: string | null;
+  billingReminderSubject?: string | null;
+  billingReminderHtmlTemplate?: string | null;
+  paymentConfirmationSubject?: string | null;
+  paymentConfirmationHtmlTemplate?: string | null;
 };
 
 export { DEFAULT_PASSWORD_RESET_HTML, DEFAULT_PASSWORD_RESET_SUBJECT };
 export { DEFAULT_USER_INVITE_HTML, DEFAULT_USER_INVITE_SUBJECT };
+export { DEFAULT_BILLING_REMINDER_HTML, DEFAULT_BILLING_REMINDER_SUBJECT };
+export { DEFAULT_PAYMENT_CONFIRMATION_HTML, DEFAULT_PAYMENT_CONFIRMATION_SUBJECT };
 
 export const DEFAULT_SYSTEM_LOGO_PATH = SYSTEM_LOGO_PATH;
 
@@ -73,6 +83,22 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
     typeof o.userInviteHtmlTemplate === "string" && o.userInviteHtmlTemplate.trim()
       ? o.userInviteHtmlTemplate.trim().slice(0, 100_000)
       : null;
+  const billingReminderSubject =
+    typeof o.billingReminderSubject === "string" && o.billingReminderSubject.trim()
+      ? o.billingReminderSubject.trim().slice(0, 200)
+      : null;
+  const billingReminderHtmlTemplate =
+    typeof o.billingReminderHtmlTemplate === "string" && o.billingReminderHtmlTemplate.trim()
+      ? o.billingReminderHtmlTemplate.trim().slice(0, 100_000)
+      : null;
+  const paymentConfirmationSubject =
+    typeof o.paymentConfirmationSubject === "string" && o.paymentConfirmationSubject.trim()
+      ? o.paymentConfirmationSubject.trim().slice(0, 200)
+      : null;
+  const paymentConfirmationHtmlTemplate =
+    typeof o.paymentConfirmationHtmlTemplate === "string" && o.paymentConfirmationHtmlTemplate.trim()
+      ? o.paymentConfirmationHtmlTemplate.trim().slice(0, 100_000)
+      : null;
   return {
     apiKey,
     fromEmail,
@@ -82,6 +108,10 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
     passwordResetHtmlTemplate,
     userInviteSubject,
     userInviteHtmlTemplate,
+    billingReminderSubject,
+    billingReminderHtmlTemplate,
+    paymentConfirmationSubject,
+    paymentConfirmationHtmlTemplate,
   };
 }
 
@@ -123,6 +153,51 @@ export function getUserInviteTemplatesForEditor(raw: unknown): { subject: string
       ? o.userInviteHtmlTemplate.trim().slice(0, 100_000)
       : DEFAULT_USER_INVITE_HTML;
   return { subject, html };
+}
+
+export function resolveBillingReminderTemplates(cfg: ResendEmailConfig): { subjectTpl: string; htmlTpl: string } {
+  return {
+    subjectTpl: cfg.billingReminderSubject?.trim() || DEFAULT_BILLING_REMINDER_SUBJECT,
+    htmlTpl: cfg.billingReminderHtmlTemplate?.trim() || DEFAULT_BILLING_REMINDER_HTML,
+  };
+}
+
+export function resolvePaymentConfirmationTemplates(cfg: ResendEmailConfig): {
+  subjectTpl: string;
+  htmlTpl: string;
+} {
+  return {
+    subjectTpl: cfg.paymentConfirmationSubject?.trim() || DEFAULT_PAYMENT_CONFIRMATION_SUBJECT,
+    htmlTpl: cfg.paymentConfirmationHtmlTemplate?.trim() || DEFAULT_PAYMENT_CONFIRMATION_HTML,
+  };
+}
+
+export function getBillingReminderTemplatesForEditor(raw: unknown): { subject: string; html: string } {
+  const o = raw && typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    subject:
+      typeof o.billingReminderSubject === "string" && o.billingReminderSubject.trim()
+        ? o.billingReminderSubject.trim().slice(0, 200)
+        : DEFAULT_BILLING_REMINDER_SUBJECT,
+    html:
+      typeof o.billingReminderHtmlTemplate === "string" && o.billingReminderHtmlTemplate.trim()
+        ? o.billingReminderHtmlTemplate.trim().slice(0, 100_000)
+        : DEFAULT_BILLING_REMINDER_HTML,
+  };
+}
+
+export function getPaymentConfirmationTemplatesForEditor(raw: unknown): { subject: string; html: string } {
+  const o = raw && typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    subject:
+      typeof o.paymentConfirmationSubject === "string" && o.paymentConfirmationSubject.trim()
+        ? o.paymentConfirmationSubject.trim().slice(0, 200)
+        : DEFAULT_PAYMENT_CONFIRMATION_SUBJECT,
+    html:
+      typeof o.paymentConfirmationHtmlTemplate === "string" && o.paymentConfirmationHtmlTemplate.trim()
+        ? o.paymentConfirmationHtmlTemplate.trim().slice(0, 100_000)
+        : DEFAULT_PAYMENT_CONFIRMATION_HTML,
+  };
 }
 
 export async function getResendEmailConfigFromDb(): Promise<ResendEmailConfig | null> {

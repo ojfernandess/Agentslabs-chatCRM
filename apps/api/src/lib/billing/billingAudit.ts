@@ -12,7 +12,9 @@ export type BillingAuditAction =
   | "billing.payment_method_setup_started"
   | "billing.payment_method_portal_opened"
   | "billing.webhook_processed"
-  | "billing.overage_meter_reported";
+  | "billing.overage_meter_reported"
+  | "billing.reminder_sent"
+  | "billing.confirmation_email_sent";
 
 export async function recordBillingAudit(input: {
   action: BillingAuditAction;

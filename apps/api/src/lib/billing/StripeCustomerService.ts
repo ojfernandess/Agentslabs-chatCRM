@@ -3,6 +3,7 @@ import { prisma } from "../../db.js";
 import { clearOrganizationStripeBindings } from "./clearStripeBindings.js";
 import { getStripeClient } from "./stripeClient.js";
 import { isStaleStripeBindingError } from "./stripeErrors.js";
+import { resolveBillingEmail } from "./billingEmailRecipients.js";
 
 export class BillingError extends Error {
   constructor(
@@ -12,24 +13,6 @@ export class BillingError extends Error {
     super(message);
     this.name = "BillingError";
   }
-}
-
-async function resolveBillingEmail(organizationId: string): Promise<string | null> {
-  const org = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      billingEmail: true,
-      users: {
-        where: { role: "ADMIN" },
-        select: { email: true },
-        take: 1,
-        orderBy: { createdAt: "asc" },
-      },
-    },
-  });
-  if (!org) return null;
-  if (org.billingEmail?.trim()) return org.billingEmail.trim();
-  return org.users[0]?.email?.trim() ?? null;
 }
 
 async function createStripeCustomer(organizationId: string, orgName: string): Promise<string> {
