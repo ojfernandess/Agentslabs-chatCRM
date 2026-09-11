@@ -361,6 +361,8 @@ export function ConversationDetailPage() {
   const [whatsappProvider, setWhatsappProvider] = useState<string | null>(null);
   const [templateModalTemplate, setTemplateModalTemplate] = useState<MessageTemplateRow | null>(null);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [attachKind, setAttachKind] = useState<"IMAGE" | "DOCUMENT" | null>(null);
+  const [imageSentNotice, setImageSentNotice] = useState(false);
   const [privateNote, setPrivateNote] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferTeamId, setTransferTeamId] = useState("");
@@ -441,6 +443,12 @@ export function ConversationDetailPage() {
       setCrmMobileOpen(false);
     }
   }, [isEmailLayout]);
+
+  useEffect(() => {
+    if (!imageSentNotice) return;
+    const timer = window.setTimeout(() => setImageSentNotice(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [imageSentNotice]);
 
   const preserveScrollAndToggleCrm = useCallback((toggle: () => void) => {
     const main = document.querySelector("main");
@@ -1390,11 +1398,15 @@ export function ConversationDetailPage() {
   const sendAttachment = async (file: File) => {
     if (!conversation) return;
     const kind: "IMAGE" | "DOCUMENT" = file.type.startsWith("image/") ? "IMAGE" : "DOCUMENT";
+    setAttachKind(kind);
     setAttachBusy(true);
     setFlowError("");
+    setImageSentNotice(false);
+    const caption = outboundBodyWithSignature(newMessage, privateNote);
+    const savedCaption = newMessage.trim() ? newMessage : "";
+    if (savedCaption) setNewMessage("");
     try {
       const { mediaUrl, mimeType } = await api.uploadMessageMedia(file);
-      const caption = outboundBodyWithSignature(newMessage, privateNote);
       const emailExtra =
         !privateNote && (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
           ? {
@@ -1412,7 +1424,7 @@ export function ConversationDetailPage() {
         isPrivate: privateNote || undefined,
         ...emailExtra,
       });
-      setNewMessage("");
+      if (kind === "IMAGE") setImageSentNotice(true);
       if (!isEmailLayout) stickToBottomRef.current = true;
       try {
         await loadConversation();
@@ -1422,6 +1434,7 @@ export function ConversationDetailPage() {
         /* ignore refresh errors after successful send */
       }
     } catch {
+      if (savedCaption) setNewMessage(savedCaption);
       setFlowError(
         conversation.inbox?.channelType === "EMAIL" || isEmailLayout
           ? t("conversationDetail.emailSendFailed")
@@ -1429,6 +1442,7 @@ export function ConversationDetailPage() {
       );
     } finally {
       setAttachBusy(false);
+      setAttachKind(null);
     }
   };
 
@@ -1449,6 +1463,9 @@ export function ConversationDetailPage() {
     if (!newMessage.trim() || !conversation) return;
     if (contactIsBlocked && !privateNote) return;
 
+    const bodyToSend = outboundBodyWithSignature(newMessage, privateNote);
+    const savedMessage = newMessage;
+    setNewMessage("");
     setSending(true);
     setFlowError("");
     try {
@@ -1463,11 +1480,10 @@ export function ConversationDetailPage() {
         contactId: conversation.contact.id,
         conversationId: conversation.id,
         type: "TEXT",
-        body: outboundBodyWithSignature(newMessage, privateNote),
+        body: bodyToSend,
         isPrivate: privateNote || undefined,
         ...emailExtra,
       });
-      setNewMessage("");
       if (!isEmailLayout) stickToBottomRef.current = true;
       // Refresh após envio bem-sucedido: falha aqui não deve parecer falha de envio.
       try {
@@ -1478,6 +1494,7 @@ export function ConversationDetailPage() {
         /* realtime/WS costuma actualizar; evita toast "não foi possível enviar" falso */
       }
     } catch (err) {
+      setNewMessage(savedMessage);
       setFlowError(
         err instanceof ApiError
           ? err.message
@@ -3902,7 +3919,7 @@ export function ConversationDetailPage() {
                 {!emailWorkspaceMode ? <span className="block h-8 w-8 shrink-0" aria-hidden /> : null}
               </motion.div>
             ) : null}
-            {sending ? (
+            {sending || (attachBusy && attachKind === "IMAGE") ? (
               <motion.div
                 className="mb-2 mt-2 flex w-full justify-end gap-2"
                 initial={{ opacity: 0 }}
@@ -3914,7 +3931,9 @@ export function ConversationDetailPage() {
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500 [animation-delay:-0.1s]" />
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-500" />
                     <span className="ml-2 text-xs font-medium text-brand-800 dark:text-brand-200">
-                      {t("conversationDetail.sendingMessage")}
+                      {attachBusy
+                        ? t("conversationDetail.sendingImage")
+                        : t("conversationDetail.sendingMessage")}
                     </span>
                   </div>
                 </div>
@@ -3936,6 +3955,11 @@ export function ConversationDetailPage() {
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
           <form onSubmit={handleSend} className="w-full min-w-0">
+            {imageSentNotice ? (
+              <p className="mb-2 text-center text-xs text-ink-500 dark:text-ink-400">
+                {t("conversationDetail.imageSentToContact")}
+              </p>
+            ) : null}
             {showCannedPicker ? (
               <div
                 ref={cannedPanelRef}
