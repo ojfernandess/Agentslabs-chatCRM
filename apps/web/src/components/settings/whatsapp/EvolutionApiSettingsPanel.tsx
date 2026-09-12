@@ -152,18 +152,27 @@ export function EvolutionApiSettingsPanel({
     setFlowOpen(true);
     setBusy(true);
     try {
-      if (instanceName) {
-        const r = await api.get<{ pairingCode: string | null; qrDataUrl: string | null }>(
-          "/settings/evolution-qr/qr",
-        );
-        setPairingCode(r.pairingCode);
-        setQrDataUrl(r.qrDataUrl);
-        if (!r.qrDataUrl) await startConnection(instanceName);
-      } else {
-        await startConnection();
-      }
+      await startConnection(instanceName || undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("settings.evolutionQrError"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncWebhook = async () => {
+    setBusy(true);
+    setError("");
+    setWebhookWarn(false);
+    try {
+      const r = await api.post<{ ok: boolean; webhookUrl?: string }>(
+        "/settings/evolution-qr/sync-webhook",
+        {},
+      );
+      if (!r.ok) setWebhookWarn(true);
+    } catch (err) {
+      setWebhookWarn(true);
+      setError(err instanceof Error ? err.message : "Falha ao sincronizar webhook");
     } finally {
       setBusy(false);
     }
@@ -284,6 +293,17 @@ export function EvolutionApiSettingsPanel({
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
                       Atualizar estado
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-white/5"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void syncWebhook();
+                      }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Sincronizar webhook
                     </button>
                     <button
                       type="button"

@@ -6,14 +6,17 @@ import { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { decrypt, encrypt } from "../lib/encryption.js";
-import { metaEmbeddedWebhookUrl, webhookUrlForOrganization } from "../config.js";
+import { metaEmbeddedWebhookUrl, webhookUrlForInbox, webhookUrlForOrganization } from "../config.js";
 import {
   getWhatsAppProvider,
   getWhatsAppProviderForInbox,
   getWhatsAppProviderFromChannelConfig,
   getWhatsappProviderKindForInbox,
 } from "../providers/factory.js";
-import { prepareWhatsappChannelConfigForSave } from "../lib/inboxWhatsappConfig.js";
+import {
+  findWhatsappInboxByProvider,
+  prepareWhatsappChannelConfigForSave,
+} from "../lib/inboxWhatsappConfig.js";
 import {
   normalizeEmailInboxChannelConfig,
   resolveInboxEmailSmtpCredentials,
@@ -43,7 +46,11 @@ import {
   evolutionPlatformQrModeActive,
   getEvolutionPlatformConfig,
   isEvolutionQrModeActive,
+  patchEvolutionInboxAfterQrFlow,
   resolveEvolutionApiCredentials,
+  resolveEvolutionQrFlowContext,
+  resolveEvolutionQrPlatformCredentials,
+  syncEvolutionQrWebhooksForOrganization,
 } from "../lib/evolutionPlatform.js";
 import {
   ensureEvolutionGoProviderSelected,
@@ -1262,15 +1269,19 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         settings = await prisma.settings.create({ data: { organizationId } });
       }
 
-      const webhookUrl = webhookUrlForOrganization(organizationId);
-      const secret = settings.whatsappWebhookSecret?.trim();
-      const webhookHeaders = secret ? { "x-openconduit-token": secret } : undefined;
+      const requestedName = parsedStart.data.instanceName;
+      let instanceName = requestedName ?? evolutionInstanceNameForOrg(organizationId);
 
       const apiKey = platform.globalApiKey.trim();
       const baseUrl = platform.baseUrl.trim();
 
-      const requestedName = parsedStart.data.instanceName;
-      let instanceName = requestedName ?? evolutionInstanceNameForOrg(organizationId);
+      const evolutionInboxRow = await findWhatsappInboxByProvider(organizationId, "evolution");
+      const webhookUrl = evolutionInboxRow
+        ? webhookUrlForInbox(organizationId, evolutionInboxRow.id)
+        : webhookUrlForOrganization(organizationId);
+
+      const secret = settings.whatsappWebhookSecret?.trim();
+      const webhookHeaders = secret ? { "x-openconduit-token": secret } : undefined;
 
       let createRes = await evolutionApiCreateInstance({
         baseUrl,
@@ -1309,20 +1320,6 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
-      const setWh = await evolutionApiSetWebhook({
-        baseUrl,
-        apiKey,
-        instanceName,
-        webhookUrl,
-        webhookHeaders,
-      });
-      if (!setWh.ok) {
-        request.log.warn(
-          { status: setWh.status, instanceName, body: setWh.body.slice(0, 400) },
-          "Evolution POST /webhook/set failed after instance/create",
-        );
-      }
-
       await prisma.settings.update({
         where: { organizationId },
         data: {
@@ -1332,6 +1329,25 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           whatsappApiKey: null,
         },
       });
+
+      await patchEvolutionInboxAfterQrFlow(organizationId, instanceName);
+
+      const setWh = await syncEvolutionQrWebhooksForOrganization(
+        organizationId,
+        instanceName,
+        request.log,
+      );
+      if (!setWh.ok) {
+        request.log.warn(
+          {
+            status: setWh.status,
+            instanceName,
+            body: setWh.body.slice(0, 400),
+            webhookUrl: setWh.webhookUrl,
+          },
+          "Evolution webhook sync failed after instance/create",
+        );
+      }
 
       const conn = await evolutionApiFetchConnect(baseUrl, apiKey, instanceName);
       if (!conn.ok) {
@@ -1352,7 +1368,46 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         connectionState: st?.state ?? "",
         connected: (st?.state ?? "").toLowerCase() === "open",
         webhookConfigured: setWh.ok,
+        webhookUrl: setWh.ok ? setWh.webhookUrl : undefined,
       };
+    });
+
+    admin.post("/evolution-qr/sync-webhook", async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const platform = await getEvolutionPlatformConfig();
+      if (!isEvolutionQrModeActive(platform)) {
+        return reply.status(503).send({
+          error: "Service Unavailable",
+          message: "Evolution QR-managed mode is not enabled on this platform.",
+          statusCode: 503,
+        });
+      }
+
+      const ctx = await resolveEvolutionQrFlowContext(organizationId);
+      if (!ctx) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "No Evolution instance configured. Start the QR flow first.",
+          statusCode: 400,
+        });
+      }
+
+      await patchEvolutionInboxAfterQrFlow(organizationId, ctx.instanceName);
+      const setWh = await syncEvolutionQrWebhooksForOrganization(
+        organizationId,
+        ctx.instanceName,
+        request.log,
+      );
+      if (!setWh.ok) {
+        return reply.status(502).send({
+          error: "Bad Gateway",
+          message: `Evolution webhook/set: ${setWh.status} ${setWh.body.slice(0, 300)}`,
+          statusCode: 502,
+        });
+      }
+      return { ok: true, webhookUrl: setWh.webhookUrl, instanceName: ctx.instanceName };
     });
 
     admin.get("/evolution-qr/qr", async (request, reply) => {
@@ -1368,8 +1423,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution" || !settings.whatsappPhoneNumberId?.trim()) {
+      const ctx = await resolveEvolutionQrFlowContext(organizationId);
+      if (!ctx) {
         return reply.status(400).send({
           error: "Bad Request",
           message: "Start the Evolution QR flow first.",
@@ -1377,7 +1432,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const creds = await resolveEvolutionApiCredentials(settings);
+      const creds = await resolveEvolutionQrPlatformCredentials(ctx.instanceName);
       if (!creds) {
         return reply.status(400).send({
           error: "Bad Request",
@@ -1406,17 +1461,27 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
 
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      if (settings?.whatsappProvider !== "evolution") {
-        return { connected: false, state: "", instanceName: settings?.whatsappPhoneNumberId ?? "" };
+      const platform = await getEvolutionPlatformConfig();
+      if (!isEvolutionQrModeActive(platform)) {
+        const settings = await prisma.settings.findUnique({ where: { organizationId } });
+        return {
+          connected: false,
+          state: "",
+          instanceName: settings?.whatsappPhoneNumberId ?? "",
+        };
       }
 
-      const creds = await resolveEvolutionApiCredentials(settings);
+      const ctx = await resolveEvolutionQrFlowContext(organizationId);
+      if (!ctx) {
+        return { connected: false, state: "", instanceName: "" };
+      }
+
+      const creds = await resolveEvolutionQrPlatformCredentials(ctx.instanceName);
       if (!creds) {
         return {
           connected: false,
           state: "",
-          instanceName: settings.whatsappPhoneNumberId ?? "",
+          instanceName: ctx.instanceName,
         };
       }
 

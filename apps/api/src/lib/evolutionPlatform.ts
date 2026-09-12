@@ -1,9 +1,14 @@
-import { InboxChannelType, type Settings } from "@prisma/client";
-import { webhookUrlForInbox } from "../config.js";
+import { InboxChannelType, type Prisma, type Settings } from "@prisma/client";
+import { webhookUrlForInbox, webhookUrlForOrganization } from "../config.js";
 import { prisma } from "../db.js";
 import { decrypt } from "./encryption.js";
 import { evolutionApiSetWebhook } from "./evolutionInstanceApi.js";
-import { resolveInboxWhatsappCredentials } from "./inboxWhatsappConfig.js";
+import {
+  findWhatsappInboxByProvider,
+  parseInboxWhatsappFromChannelConfig,
+  resolveInboxWhatsappCredentials,
+} from "./inboxWhatsappConfig.js";
+import { syncWhatsappInboxCredentialsToSettings } from "./whatsappOrgSync.js";
 
 export const EVOLUTION_PLATFORM_KEY = "evolution_platform";
 
@@ -100,6 +105,151 @@ export async function resolveEvolutionApiCredentials(
 type EvolutionWebhookLogger = {
   warn: (obj: Record<string, unknown>, msg: string) => void;
 };
+
+export type EvolutionQrFlowContext = {
+  instanceName: string;
+  webhookUrl: string;
+  evolutionInboxId: string | null;
+};
+
+function channelConfigRecord(cfg: unknown): Record<string, unknown> {
+  return cfg && typeof cfg === "object" && !Array.isArray(cfg) ? { ...(cfg as Record<string, unknown>) } : {};
+}
+
+/** Resolve instância + URL de webhook para fluxo QR (Settings, caixa evolution ou nome automático). */
+export async function resolveEvolutionQrFlowContext(
+  organizationId: string,
+  opts?: { preferInstanceName?: string },
+): Promise<EvolutionQrFlowContext | null> {
+  const platform = await getEvolutionPlatformConfig();
+  if (!isEvolutionQrModeActive(platform)) return null;
+
+  const settings = await prisma.settings.findUnique({ where: { organizationId } });
+  const evolutionInbox = await findWhatsappInboxByProvider(organizationId, "evolution");
+
+  let inboxInstance = "";
+  if (evolutionInbox) {
+    const row = await prisma.inbox.findUnique({
+      where: { id: evolutionInbox.id },
+      select: { channelConfig: true },
+    });
+    inboxInstance =
+      parseInboxWhatsappFromChannelConfig(row?.channelConfig).whatsappPhoneNumberId?.trim() ?? "";
+  }
+
+  const prefer = opts?.preferInstanceName?.trim();
+  const instanceName =
+    prefer ||
+    settings?.whatsappPhoneNumberId?.trim() ||
+    inboxInstance ||
+    "";
+
+  if (!instanceName) return null;
+
+  const webhookUrl = evolutionInbox
+    ? webhookUrlForInbox(organizationId, evolutionInbox.id)
+    : webhookUrlForOrganization(organizationId);
+
+  return {
+    instanceName,
+    webhookUrl,
+    evolutionInboxId: evolutionInbox?.id ?? null,
+  };
+}
+
+/** Credenciais da plataforma Evolution (modo QR) para uma instância conhecida. */
+export async function resolveEvolutionQrPlatformCredentials(
+  instanceName: string,
+): Promise<{ baseUrl: string; apiKey: string; instanceName: string } | null> {
+  const platform = await getEvolutionPlatformConfig();
+  if (!isEvolutionQrModeActive(platform)) return null;
+  const name = instanceName.trim();
+  if (!name) return null;
+  return {
+    baseUrl: platform.baseUrl.replace(/\/+$/, ""),
+    apiKey: platform.globalApiKey.trim(),
+    instanceName: name,
+  };
+}
+
+/** Alinha caixa WhatsApp evolution com a instância ligada por QR e espelha em Settings. */
+export async function patchEvolutionInboxAfterQrFlow(
+  organizationId: string,
+  instanceName: string,
+): Promise<string | null> {
+  const evolutionInbox = await findWhatsappInboxByProvider(organizationId, "evolution");
+  if (!evolutionInbox) return null;
+
+  const row = await prisma.inbox.findUnique({
+    where: { id: evolutionInbox.id },
+    select: { channelConfig: true },
+  });
+  const base = channelConfigRecord(row?.channelConfig);
+  base.whatsappProvider = "evolution";
+  base.whatsappPhoneNumberId = instanceName.trim();
+  delete base.evolutionApiBaseUrl;
+
+  await prisma.inbox.update({
+    where: { id: evolutionInbox.id },
+    data: { channelConfig: base as Prisma.InputJsonValue },
+  });
+  await syncWhatsappInboxCredentialsToSettings(organizationId, evolutionInbox.id);
+  return evolutionInbox.id;
+}
+
+/**
+ * Regista webhook na Evolution com eventos MESSAGES_UPSERT (inbound).
+ * Usa URL da caixa evolution quando existir; senão URL da organização.
+ */
+export async function syncEvolutionQrWebhooksForOrganization(
+  organizationId: string,
+  instanceName: string,
+  log?: EvolutionWebhookLogger,
+): Promise<{ ok: true; webhookUrl: string } | { ok: false; status: number; body: string; webhookUrl: string }> {
+  const creds = await resolveEvolutionQrPlatformCredentials(instanceName);
+  if (!creds) {
+    return { ok: false, status: 400, body: "Evolution QR mode not active", webhookUrl: "" };
+  }
+
+  const evolutionInbox = await findWhatsappInboxByProvider(organizationId, "evolution");
+  const webhookUrl = evolutionInbox
+    ? webhookUrlForInbox(organizationId, evolutionInbox.id)
+    : webhookUrlForOrganization(organizationId);
+
+  const orgSettings = await prisma.settings.findUnique({
+    where: { organizationId },
+    select: { whatsappWebhookSecret: true },
+  });
+  const effectiveSecret = decrypt(orgSettings?.whatsappWebhookSecret ?? "")?.trim() ?? "";
+  const webhookHeaders = effectiveSecret ? { "x-openconduit-token": effectiveSecret } : undefined;
+
+  const setWh = await evolutionApiSetWebhook({
+    baseUrl: creds.baseUrl,
+    apiKey: creds.apiKey,
+    instanceName: creds.instanceName,
+    webhookUrl,
+    webhookHeaders,
+  });
+
+  if (!setWh.ok) {
+    log?.warn(
+      {
+        status: setWh.status,
+        body: setWh.body.slice(0, 400),
+        instanceName: creds.instanceName,
+        webhookUrl,
+      },
+      "Evolution POST /webhook/set failed (QR flow)",
+    );
+    return { ok: false, status: setWh.status, body: setWh.body, webhookUrl };
+  }
+
+  if (evolutionInbox) {
+    await syncEvolutionApiWebhookForInbox(organizationId, evolutionInbox.id, log);
+  }
+
+  return { ok: true, webhookUrl };
+}
 
 /**
  * Regista o webhook OpenConduit na instância Evolution (MESSAGES_UPSERT, etc.).
