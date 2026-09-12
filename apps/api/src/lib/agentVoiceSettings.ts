@@ -67,7 +67,7 @@ export function shouldSendVoiceReply(
 
   if (inboundMessage.type === "AUDIO") {
     if (settings.replyWithTextOnInboundAudio) return false;
-    if (settings.replyWithAudioOnInboundAudio) {
+    if (settings.replyWithAudioOnInboundAudio && !settings.nativeVoiceEnabled) {
       return rollVoicePercent(settings.inboundAudioResponsePercent);
     }
   }

@@ -686,14 +686,14 @@ export const messages = {
       agentNativeVoiceToggle: "Ativar respostas em áudio",
       agentNativeVoiceToggleHelpTitle: "O que faz «Ativar respostas em áudio»",
       agentNativeVoiceToggleHelp:
-        "Quando ativado, o agente pode enviar respostas em áudio usando a síntese de voz do servidor. O percentual de «Interação por voz» define quantas respostas em texto serão convertidas em áudio antes do envio ao cliente.",
+        "Quando ativado, o agente pode enviar respostas em áudio usando a síntese de voz do servidor — inclusive quando o cliente enviar áudio. O percentual de «Interação por voz» define quantas respostas em texto serão convertidas em áudio antes do envio.",
       agentNativeVoiceHelp:
         "Recurso nativo da plataforma: converte respostas do agente em áudio usando a síntese de voz do servidor.",
       agentVoiceHelp:
         "Substitui as configurações nativas acima. Instale e configure a ferramenta ElevenLabs TTS na aba Ferramentas.",
       agentElevenLabsToggle: "Usar ElevenLabs",
       agentElevenLabsOverrideWarning:
-        "A síntese de voz geral passa a usar o ElevenLabs. As opções «Quando o cliente enviar áudio» (responder em áudio ou comportamento normal) continuam válidas.",
+        "A síntese de voz geral passa a usar o ElevenLabs. A opção «Responder em áudio quando o cliente enviar áudio» continua disponível quando «Ativar respostas em áudio» estiver desligado.",
       agentElevenLabsConfig: "Configuração ElevenLabs",
       agentElevenLabsSelect: "Selecione…",
       agentElevenLabsToolsTabHint: "Abrir aba Ferramentas para instalar ou editar ElevenLabs.",
@@ -702,7 +702,7 @@ export const messages = {
       agentVoicePercentHelp:
         "Percentual de respostas enviadas em áudio (ex.: 20% ≈ 1 em cada 5 mensagens).",
       agentVoiceOnAudioInboundHelp:
-        "Quando o cliente enviar áudio, o agente pode responder em áudio conforme o percentual abaixo.",
+        "Alternativa quando «Ativar respostas em áudio» estiver desligado: responde em áudio apenas quando o cliente enviar áudio, conforme o percentual abaixo.",
       agentVoiceInboundAudioMode: "Quando o cliente enviar áudio",
       agentVoiceInboundAudioDefault: "Comportamento normal",
       agentVoiceInboundAudioDefaultHelp:
@@ -6682,14 +6682,14 @@ export const messages = {
       agentNativeVoiceToggle: "Enable audio responses",
       agentNativeVoiceToggleHelpTitle: "What «Enable audio responses» does",
       agentNativeVoiceToggleHelp:
-        "When enabled, the agent can send audio replies using the server voice synthesis. The «Voice interaction» percentage controls how many text replies are converted to audio before sending to the customer.",
+        "When enabled, the agent can send audio replies using the server voice synthesis — including when the customer sends audio. The «Voice interaction» percentage controls how many text replies are converted to audio before sending.",
       agentNativeVoiceHelp:
         "Built-in platform feature: converts agent replies to audio using the server voice synthesis.",
       agentVoiceHelp:
         "Replaces the native settings above. Install and configure the ElevenLabs TTS tool in the Tools tab.",
       agentElevenLabsToggle: "Use ElevenLabs",
       agentElevenLabsOverrideWarning:
-        "General voice synthesis will use ElevenLabs. «When the customer sends audio» options (reply with audio or default behavior) remain in effect.",
+        "General voice synthesis will use ElevenLabs. «Reply with audio when the customer sends audio» remains available when «Enable audio responses» is off.",
       agentElevenLabsConfig: "ElevenLabs configuration",
       agentElevenLabsSelect: "Select…",
       agentElevenLabsToolsTabHint: "Open the Tools tab to install or edit ElevenLabs.",
@@ -6698,7 +6698,7 @@ export const messages = {
       agentVoicePercentHelp: "Share of replies sent as audio (e.g. 20% ≈ 1 in 5).",
       agentVoiceOnAudioInbound: "Reply with audio when the customer sends audio",
       agentVoiceOnAudioInboundHelp:
-        "When the customer sends audio, the agent may reply with audio based on the percentage below.",
+        "Alternative when «Enable audio responses» is off: reply with audio only when the customer sends audio, based on the percentage below.",
       agentVoiceInboundAudioMode: "When the customer sends audio",
       agentVoiceInboundAudioDefault: "Default behavior",
       agentVoiceInboundAudioDefaultHelp:

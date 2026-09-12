@@ -804,6 +804,13 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
       typeof kbSkipRaw.instruction === "string" ? kbSkipRaw.instruction : "",
   };
 
+  const nativeVoiceEnabled =
+    voice.nativeVoiceEnabled === true ||
+    (voice.elevenLabsEnabled !== true &&
+      voice.nativeVoiceEnabled !== false &&
+      Number(voice.nativeVoiceResponsePercent ?? voice.voiceResponsePercent ?? 0) > 0 &&
+      !voice.replyWithAudioOnInboundAudio);
+
   return {
     mode: "edit",
     createBot: false,
@@ -823,12 +830,7 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     promptLinkedKnowledgeIds,
     temperature: Number(llm.temperature ?? 0.7),
     maxTokens: Number(llm.maxTokens ?? 1024),
-    nativeVoiceEnabled:
-      voice.nativeVoiceEnabled === true ||
-      (voice.elevenLabsEnabled !== true &&
-        voice.nativeVoiceEnabled !== false &&
-        Number(voice.nativeVoiceResponsePercent ?? voice.voiceResponsePercent ?? 0) > 0 &&
-        !voice.replyWithAudioOnInboundAudio),
+    nativeVoiceEnabled,
     nativeVoiceResponsePercent: Math.min(
       100,
       Math.max(0, Number(voice.nativeVoiceResponsePercent ?? voice.voiceResponsePercent ?? 100)),
@@ -843,7 +845,8 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
       100,
       Math.max(0, Number(voice.voiceResponsePercent ?? 100)),
     ),
-    replyWithAudioOnInboundAudio: Boolean(voice.replyWithAudioOnInboundAudio),
+    replyWithAudioOnInboundAudio:
+      Boolean(voice.replyWithAudioOnInboundAudio) && !nativeVoiceEnabled,
     replyWithTextOnInboundAudio: Boolean(voice.replyWithTextOnInboundAudio),
     inactivityEnabled: Boolean(inc.automationEnabled),
     inactivityTimeout: Number(inc.timeoutMinutes ?? 30),
@@ -1042,7 +1045,7 @@ function formToPayload(
       elevenLabsToolId: form.elevenLabsToolId.trim() || null,
       voiceResponsePercent: Math.min(100, Math.max(0, form.voiceResponsePercent)),
       voiceId: null,
-      replyWithAudioOnInboundAudio: form.replyWithAudioOnInboundAudio,
+      replyWithAudioOnInboundAudio: form.nativeVoiceEnabled ? false : form.replyWithAudioOnInboundAudio,
       replyWithTextOnInboundAudio: form.replyWithTextOnInboundAudio,
     },
     scheduling: {
@@ -3716,9 +3719,15 @@ function AgentsTab({
                     className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
                     checked={agentForm.nativeVoiceEnabled}
                     disabled={agentForm.voiceEnabled}
-                    onChange={(e) =>
-                      setAgentForm((f) => ({ ...f, nativeVoiceEnabled: e.target.checked }))
-                    }
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setAgentForm((f) => ({
+                        ...f,
+                        nativeVoiceEnabled: enabled,
+                        replyWithAudioOnInboundAudio: enabled ? false : f.replyWithAudioOnInboundAudio,
+                        replyWithTextOnInboundAudio: enabled ? false : f.replyWithTextOnInboundAudio,
+                      }));
+                    }}
                   />
                   <span className="inline-flex items-center gap-1.5">
                     {t("automationPage.agentNativeVoiceToggle")}
@@ -3735,56 +3744,43 @@ function AgentsTab({
                     t={t}
                     disabled={agentForm.voiceEnabled}
                   />
-                ) : null}
-                <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-500">
-                  {t("automationPage.agentVoiceInboundAudioMode")}
-                </p>
-                <div className="mt-2 space-y-2 text-sm">
-                  {(
-                    [
-                      {
-                        id: "default",
-                        checked: !agentForm.replyWithAudioOnInboundAudio,
-                        label: t("automationPage.agentVoiceInboundAudioDefault"),
-                        help: t("automationPage.agentVoiceInboundAudioDefaultHelp"),
-                      },
-                      {
-                        id: "audio",
-                        checked: agentForm.replyWithAudioOnInboundAudio,
-                        label: t("automationPage.agentVoiceOnAudioInbound"),
-                        help: t("automationPage.agentVoiceOnAudioInboundHelp"),
-                      },
-                    ] as const
-                  ).map((opt) => (
-                    <label key={opt.id} className="flex cursor-pointer items-start gap-3">
+                ) : (
+                  <>
+                    <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm">
                       <input
-                        type="radio"
-                        name="inbound-audio-reply-mode"
-                        className="mt-0.5 h-4 w-4 border-ink-300 text-brand-600 focus:ring-brand-500"
-                        checked={opt.checked}
-                        onChange={() =>
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                        checked={agentForm.replyWithAudioOnInboundAudio}
+                        onChange={(e) => {
+                          const enabled = e.target.checked;
                           setAgentForm((f) => ({
                             ...f,
-                            replyWithAudioOnInboundAudio: opt.id === "audio",
-                            replyWithTextOnInboundAudio:
-                              opt.id === "audio" ? false : f.replyWithTextOnInboundAudio,
-                          }))
-                        }
+                            replyWithAudioOnInboundAudio: enabled,
+                            nativeVoiceEnabled: enabled ? false : f.nativeVoiceEnabled,
+                            replyWithTextOnInboundAudio: enabled ? false : f.replyWithTextOnInboundAudio,
+                          }));
+                        }}
                       />
                       <span>
-                        <span className="font-medium text-ink-900 dark:text-ink-100">{opt.label}</span>
-                        <span className="mt-0.5 block text-[11px] text-ink-500">{opt.help}</span>
+                        <span className="font-medium text-ink-900 dark:text-ink-100">
+                          {t("automationPage.agentVoiceOnAudioInbound")}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-ink-500">
+                          {t("automationPage.agentVoiceOnAudioInboundHelp")}
+                        </span>
                       </span>
                     </label>
-                  ))}
-                </div>
-                {agentForm.replyWithAudioOnInboundAudio ? (
-                  <VoicePercentPicker
-                    value={agentForm.inboundAudioResponsePercent}
-                    onChange={(pct) => setAgentForm((f) => ({ ...f, inboundAudioResponsePercent: pct }))}
-                    t={t}
-                  />
-                ) : null}
+                    {agentForm.replyWithAudioOnInboundAudio ? (
+                      <VoicePercentPicker
+                        value={agentForm.inboundAudioResponsePercent}
+                        onChange={(pct) =>
+                          setAgentForm((f) => ({ ...f, inboundAudioResponsePercent: pct }))
+                        }
+                        t={t}
+                      />
+                    ) : null}
+                  </>
+                )}
                 {elevenLabsTools.length > 0 ? (
                   <>
                     <div className="mt-4 border-t border-ink-200/80 pt-3 dark:border-ink-700">

@@ -47,7 +47,12 @@ test("shouldSendVoiceReply respects native, inbound audio and ElevenLabs overrid
   );
   assert.equal(
     shouldSendVoiceReply(
-      { ...base, replyWithAudioOnInboundAudio: true, voiceResponsePercent: 0 },
+      {
+        ...base,
+        replyWithAudioOnInboundAudio: true,
+        elevenLabsEnabled: false,
+        voiceResponsePercent: 0,
+      },
       { type: "AUDIO" },
     ),
     true,
@@ -57,12 +62,12 @@ test("shouldSendVoiceReply respects native, inbound audio and ElevenLabs overrid
       {
         ...base,
         replyWithAudioOnInboundAudio: true,
-        voiceResponsePercent: 100,
         inboundAudioResponsePercent: 0,
+        nativeVoiceResponsePercent: 100,
       },
       { type: "AUDIO" },
     ),
-    false,
+    true,
   );
   assert.equal(
     shouldSendVoiceReply(
@@ -88,4 +93,23 @@ test("shouldSendVoiceReply respects native, inbound audio and ElevenLabs overrid
     false,
   );
   assert.equal(shouldSendVoiceReply({ ...base, voiceResponsePercent: 0 }, { type: "TEXT" }), false);
+});
+
+test("shouldSendVoiceReply ignores inbound-only mode when native voice is enabled", () => {
+  assert.equal(
+    shouldSendVoiceReply(
+      {
+        nativeVoiceEnabled: true,
+        nativeVoiceResponsePercent: 0,
+        inboundAudioResponsePercent: 100,
+        elevenLabsEnabled: false,
+        elevenLabsToolId: null,
+        voiceResponsePercent: 0,
+        replyWithAudioOnInboundAudio: true,
+        replyWithTextOnInboundAudio: false,
+      },
+      { type: "AUDIO" },
+    ),
+    false,
+  );
 });
