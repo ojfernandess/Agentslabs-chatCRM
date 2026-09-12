@@ -155,6 +155,7 @@ const defaultBehaviorConfig = () => ({
     voiceResponsePercent: 100,
     voiceId: null as string | null,
     replyWithAudioOnInboundAudio: false,
+    replyWithTextOnInboundAudio: false,
   },
   scheduling: { useOrgReminders: true, externalCalendar: "none" as string },
   connectedTools: [] as Array<Record<string, unknown>>,

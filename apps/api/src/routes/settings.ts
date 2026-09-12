@@ -66,6 +66,7 @@ import {
   evolutionApiCreateInstance,
   evolutionApiFetchConnect,
   evolutionApiFetchConnectionState,
+  evolutionApiResolveInstanceName,
   evolutionConnectJsonToQrPayload,
   evolutionInstanceNameForOrg,
   evolutionInstanceNameWithSuffix,
@@ -1492,12 +1493,27 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         };
       }
 
-      const st = await evolutionApiFetchConnectionState(creds.baseUrl, creds.apiKey, creds.instanceName);
+      const resolved = await evolutionApiResolveInstanceName(
+        creds.baseUrl,
+        creds.apiKey,
+        creds.instanceName,
+        organizationId,
+      );
+      const instanceForState = resolved.name || creds.instanceName;
+      const st = await evolutionApiFetchConnectionState(
+        creds.baseUrl,
+        creds.apiKey,
+        instanceForState,
+      );
       const state = st?.state ?? "";
+      const connected =
+        state.toLowerCase() === "open" ||
+        state.toLowerCase() === "connected" ||
+        state.toLowerCase() === "online";
       return {
-        connected: state.toLowerCase() === "open",
+        connected,
         state,
-        instanceName: creds.instanceName,
+        instanceName: instanceForState,
       };
     });
   });

@@ -6,6 +6,12 @@ export type WhatsappConnectionUiState =
   | "connected"
   | "error";
 
+export function isEvolutionApiSessionConnected(state: string, connected?: boolean): boolean {
+  if (connected) return true;
+  const s = state.trim().toLowerCase();
+  return s === "open" || s === "connected" || s === "online";
+}
+
 export function deriveEvolutionApiUiState(opts: {
   configured: boolean;
   connected: boolean;
@@ -14,11 +20,9 @@ export function deriveEvolutionApiUiState(opts: {
 }): WhatsappConnectionUiState {
   if (!opts.configured) return "not_configured";
   if (opts.hasError) return "error";
-  if (opts.connected) return "connected";
+  if (isEvolutionApiSessionConnected(opts.state, opts.connected)) return "connected";
   const s = opts.state.toLowerCase();
   if (s === "connecting" || s === "pairing" || s.includes("qr")) return "connecting";
-  if (opts.configured && opts.state) return "configured_disconnected";
-  if (opts.configured) return "connecting";
   return "configured_disconnected";
 }
 

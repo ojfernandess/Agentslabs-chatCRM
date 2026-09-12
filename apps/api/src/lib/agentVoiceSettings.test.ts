@@ -16,6 +16,7 @@ test("parseAgentVoiceSettings reads nested voice block", () => {
     elevenLabsToolId: "tool-1",
     voiceResponsePercent: 50,
     replyWithAudioOnInboundAudio: true,
+    replyWithTextOnInboundAudio: false,
   });
 });
 
@@ -25,6 +26,7 @@ test("shouldSendVoiceReply respects enable flag and inbound audio option", () =>
     elevenLabsToolId: "tool-1",
     voiceResponsePercent: 100,
     replyWithAudioOnInboundAudio: false,
+    replyWithTextOnInboundAudio: false,
   };
   assert.equal(shouldSendVoiceReply({ ...base, elevenLabsEnabled: false }, { type: "TEXT" }), false);
   assert.equal(
@@ -47,4 +49,15 @@ test("shouldSendVoiceReply respects enable flag and inbound audio option", () =>
     true,
   );
   assert.equal(shouldSendVoiceReply({ ...base, voiceResponsePercent: 0 }, { type: "TEXT" }), false);
+  assert.equal(
+    shouldSendVoiceReply(
+      { ...base, replyWithTextOnInboundAudio: true, replyWithAudioOnInboundAudio: true },
+      { type: "AUDIO" },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldSendVoiceReply({ ...base, replyWithTextOnInboundAudio: true, voiceResponsePercent: 100 }, { type: "AUDIO" }),
+    false,
+  );
 });

@@ -694,6 +694,13 @@ export const messages = {
         "Percentagem de respostas enviadas em áudio (ex.: 20% ≈ 1 em 5). O integrador deve respeitar este valor.",
       agentVoiceOnAudioInboundHelp:
         "Se ativo, o bot responde em áudio quando o cliente envia mensagem de voz. Usa ElevenLabs se configurado; caso contrário, síntese OpenAI do servidor (OPENAI_API_KEY).",
+      agentVoiceInboundAudioMode: "Quando o cliente enviar áudio",
+      agentVoiceInboundAudioDefault: "Comportamento normal",
+      agentVoiceInboundAudioDefaultHelp:
+        "Segue a percentagem de respostas em áudio (ElevenLabs) ou responde em texto, conforme a configuração abaixo.",
+      agentVoiceTextOnAudioInbound: "Responder em texto",
+      agentVoiceTextOnAudioInboundHelp:
+        "Força resposta em texto quando o cliente envia mensagem de voz, mesmo com respostas em áudio activadas.",
       agentFollowUpMessage: "Mensagem de follow-up",
       agentFollowUpMessagePh: "Texto enviado automaticamente se o cliente não responder no tempo configurado.",
       agentEscalationSection: "Regras de escalonamento",
@@ -6674,6 +6681,13 @@ export const messages = {
       agentVoiceOnAudioInbound: "Reply with audio when the customer sends audio",
       agentVoiceOnAudioInboundHelp:
         "When enabled, the bot replies with audio when the customer sends a voice message. Uses ElevenLabs if configured; otherwise OpenAI TTS on the server (OPENAI_API_KEY).",
+      agentVoiceInboundAudioMode: "When the customer sends audio",
+      agentVoiceInboundAudioDefault: "Default behavior",
+      agentVoiceInboundAudioDefaultHelp:
+        "Follows the audio reply percentage (ElevenLabs) or replies with text, depending on the settings below.",
+      agentVoiceTextOnAudioInbound: "Reply with text",
+      agentVoiceTextOnAudioInboundHelp:
+        "Forces a text reply when the customer sends a voice message, even if audio replies are enabled.",
       agentFollowUpMessage: "Follow-up message",
       agentFollowUpMessagePh: "Sent automatically if the customer does not reply within the configured time.",
       agentEscalationSection: "Escalation rules",
