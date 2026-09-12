@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Loader2, QrCode, RefreshCw, Wifi } from "lucide-react";
+import {
+  ExternalLink,
+  Loader2,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { deriveEvolutionGoUiState, type WhatsappConnectionUiState } from "@/lib/whatsappConnectionUiState";
+import { WhatsappConnectionStatusBadge } from "./whatsapp/WhatsappConnectionStatusBadge";
+import { WhatsappAdvancedSettingsPanel } from "./whatsapp/WhatsappAdvancedSettingsPanel";
+import {
+  WhatsappConnectionFlowModal,
+  type ConnectionFlowStep,
+} from "./whatsapp/WhatsappConnectionFlowModal";
 
 type EvoGoInstance = { id: string; name: string; connected: boolean; selected?: boolean };
 type EvoGoStatus = {
@@ -16,6 +29,16 @@ interface Props {
   platformMode: boolean;
   onInstanceIdChange: (id: string) => void;
   onProviderEnsureSaved: () => Promise<boolean>;
+  webhookSecret?: string;
+  onWebhookSecretChange?: (v: string) => void;
+  webhookSecretStored?: boolean;
+  evolutionBaseUrl?: string;
+  onEvolutionBaseUrlChange?: (v: string) => void;
+  apiKey?: string;
+  onApiKeyChange?: (v: string) => void;
+  apiKeyStored?: boolean;
+  onCopyWebhook?: () => void;
+  webhookCopied?: boolean;
 }
 
 export function EvolutionGoSettingsPanel({
@@ -24,20 +47,42 @@ export function EvolutionGoSettingsPanel({
   platformMode,
   onInstanceIdChange,
   onProviderEnsureSaved,
+  webhookSecret,
+  onWebhookSecretChange,
+  webhookSecretStored,
+  evolutionBaseUrl,
+  onEvolutionBaseUrlChange,
+  apiKey,
+  onApiKeyChange,
+  apiKeyStored,
+  onCopyWebhook,
+  webhookCopied,
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [newName, setNewName] = useState("");
   const [instances, setInstances] = useState<EvoGoInstance[]>([]);
   const [status, setStatus] = useState<EvoGoStatus | null>(null);
   const [webhookOk, setWebhookOk] = useState<boolean | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const [qrCode, setQrCode] = useState<string | null>(null);
   const [pairPhone, setPairPhone] = useState("");
   const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [flowOpen, setFlowOpen] = useState(false);
+  const [flowStep, setFlowStep] = useState<ConnectionFlowStep>("name");
+  const [flowName, setFlowName] = useState("");
+  const [reconnectMode, setReconnectMode] = useState(false);
+  const [connectionMethod, setConnectionMethod] = useState<"qr" | "pairing" | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const hasInstance = Boolean(savedInstanceId?.trim());
-  const isLinked = Boolean(status?.loggedIn);
+  const activeInstance = instances.find((i) => i.id === savedInstanceId) ?? instances[0];
+  const displayName = status?.name || activeInstance?.name || savedInstanceId;
+
+  const uiState: WhatsappConnectionUiState = deriveEvolutionGoUiState({
+    hasInstance,
+    status,
+    hasError: Boolean(error) && !flowOpen,
+  });
 
   const loadInstances = useCallback(async () => {
     try {
@@ -67,8 +112,11 @@ export function EvolutionGoSettingsPanel({
   }, [hasInstance]);
 
   useEffect(() => {
+    if (hasInstance) void loadInstances();
+  }, [hasInstance, loadInstances]);
+
+  useEffect(() => {
     if (!hasInstance) return;
-    void loadInstances();
     void refreshStatus();
     const poll = () => {
       if (document.visibilityState === "visible") void refreshStatus();
@@ -82,11 +130,17 @@ export function EvolutionGoSettingsPanel({
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [hasInstance, loadInstances, refreshStatus]);
+  }, [hasInstance, refreshStatus]);
 
-  const createInstance = async () => {
-    const label = newName.trim();
-    if (!label) return;
+  useEffect(() => {
+    if (flowOpen && flowStep === "connect" && status?.loggedIn) {
+      setFlowStep("done");
+    }
+  }, [flowOpen, flowStep, status?.loggedIn]);
+
+  const createInstance = async (label: string) => {
+    const name = label.trim();
+    if (!name) return;
     setBusy(true);
     setError("");
     setWebhookOk(null);
@@ -97,17 +151,15 @@ export function EvolutionGoSettingsPanel({
       }
       const r = await api.post<{ instance: { id: string; name: string; webhookConfigured?: boolean } }>(
         "/settings/evolution-go/create",
-        { name: label },
+        { name },
       );
       onInstanceIdChange(r.instance.id);
-      setNewName(r.instance.name);
       setWebhookOk(r.instance.webhookConfigured ? true : null);
       setQrDataUrl(null);
-      setQrCode(null);
       setPairingCode(null);
       setStatus(null);
       await loadInstances();
-      await refreshStatus();
+      setFlowStep("method");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Falha ao criar instância");
     } finally {
@@ -129,7 +181,6 @@ export function EvolutionGoSettingsPanel({
       try {
         const qr = await api.get<{ qrDataUrl: string; code: string }>("/settings/evolution-go/qr");
         setQrDataUrl(qr.qrDataUrl || null);
-        setQrCode(qr.code || null);
       } catch {
         /* QR may be unavailable when already logged in */
       }
@@ -148,7 +199,6 @@ export function EvolutionGoSettingsPanel({
     try {
       const qr = await api.get<{ qrDataUrl: string; code: string }>("/settings/evolution-go/qr");
       setQrDataUrl(qr.qrDataUrl || null);
-      setQrCode(qr.code || null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Falha ao obter QR");
     } finally {
@@ -175,226 +225,286 @@ export function EvolutionGoSettingsPanel({
     onInstanceIdChange(inst.id);
     setStatus(null);
     setQrDataUrl(null);
-    setQrCode(null);
     setPairingCode(null);
     setWebhookOk(null);
   };
 
-  return (
-    <div className="space-y-4 rounded-xl border border-brand-200/70 bg-gradient-to-br from-brand-50/50 to-white p-4 dark:border-brand-800/40 dark:from-brand-950/20 dark:to-[#202736]/55">
-      <div>
-        <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">Evolution Go</h3>
-        <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">
-          {platformMode
-            ? "Crie uma instância para esta organização, configure o webhook e ligue o WhatsApp com QR ou código de pareamento."
-            : "Configure a URL do servidor, crie a instância e ligue o WhatsApp."}
-        </p>
-      </div>
+  const openAddFlow = () => {
+    setReconnectMode(false);
+    setFlowName("");
+    setFlowStep("name");
+    setConnectionMethod(null);
+    setQrDataUrl(null);
+    setPairingCode(null);
+    setError("");
+    setFlowOpen(true);
+  };
 
-      {webhookUrl ? (
-        <p className="text-xs text-ink-600 dark:text-ink-400">
-          Webhook: <code className="rounded bg-white/80 px-1 py-0.5 font-mono text-[11px] dark:bg-black/20">{webhookUrl}</code>
-        </p>
-      ) : null}
+  const openReconnectFlow = async () => {
+    setReconnectMode(true);
+    setConnectionMethod(null);
+    setFlowStep("method");
+    setError("");
+    setFlowOpen(true);
+  };
 
-      {!hasInstance ? (
-        <div className="rounded-lg border border-dashed border-ink-200 bg-white/80 p-4 dark:border-soft-border dark:bg-black/10">
-          <p className="text-sm font-medium text-ink-900 dark:text-ink-50">1. Criar instância</p>
-          <p className="mt-1 text-xs text-ink-500">Escolha um nome curto (ex.: vendas, suporte).</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Nome da instância"
-              className="min-w-[200px] flex-1 input-field"
-              disabled={busy}
-            />
-            <button
-              type="button"
-              disabled={busy || !newName.trim()}
-              onClick={() => void createInstance()}
-              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-            >
-              {busy ? "A criar…" : "Criar instância"}
-            </button>
+  const beginConnection = async (method: "qr" | "pairing") => {
+    setConnectionMethod(method);
+    setFlowStep("connect");
+    setBusy(true);
+    setError("");
+    try {
+      await connectWebhook();
+      if (method === "qr") await refreshQr();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!platformMode) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">Evolution Go</h3>
+            <p className="mt-0.5 text-xs text-ink-500">Configure URL, token e instância manualmente.</p>
           </div>
+          <WhatsappConnectionStatusBadge state={hasInstance ? uiState : "not_configured"} />
         </div>
-      ) : (
-        <>
-          {instances.length > 0 ? (
-            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-soft-border dark:bg-black/10">
-              {isLinked && instances.length === 1 ? (
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">Instância da organização</p>
-                    <p className="mt-1 text-sm font-medium text-ink-900 dark:text-ink-50">{instances[0].name}</p>
-                  </div>
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Ligada
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">Instâncias desta organização</p>
-                  <ul className="mt-2 divide-y divide-ink-100 dark:divide-white/10">
-                    {instances.map((inst) => (
-                      <li key={inst.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                        {instances.length > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => selectInstance(inst)}
-                            className="font-medium text-ink-900 hover:underline dark:text-ink-50"
-                          >
-                            {inst.name}
-                          </button>
-                        ) : (
-                          <span className="font-medium text-ink-900 dark:text-ink-50">{inst.name}</span>
-                        )}
-                        <div className="flex items-center gap-2 text-xs">
-                          {inst.id === savedInstanceId ? (
-                            <span className="rounded-full bg-brand-100 px-2 py-0.5 font-medium text-brand-800 dark:bg-brand-900/40 dark:text-brand-200">
-                              ativa
-                            </span>
-                          ) : null}
-                          <span className={inst.connected ? "text-emerald-700" : "text-amber-700"}>
-                            {inst.connected ? "online" : "offline"}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          ) : null}
+        <WhatsappAdvancedSettingsPanel
+          webhookUrl={webhookUrl}
+          webhookActive={webhookOk}
+          webhookSecret={webhookSecret}
+          onWebhookSecretChange={onWebhookSecretChange}
+          webhookSecretStored={webhookSecretStored}
+          baseUrl={evolutionBaseUrl}
+          onBaseUrlChange={onEvolutionBaseUrlChange}
+          baseUrlLabel="Evolution Go base URL"
+          apiKey={apiKey}
+          onApiKeyChange={onApiKeyChange}
+          apiKeyStored={apiKeyStored}
+          instanceId={savedInstanceId}
+          onInstanceIdChange={onInstanceIdChange}
+          onCopyWebhook={onCopyWebhook}
+          webhookCopied={webhookCopied}
+        />
+      </div>
+    );
+  }
 
-          <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-soft-border dark:bg-black/10">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium text-ink-900 dark:text-ink-50">2. Webhook e ligação</p>
-              {status ? (
-                <span className="text-xs text-ink-600">
-                  {status.loggedIn ? (
-                    <span className="inline-flex items-center gap-1 text-emerald-700">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> WhatsApp ligado
-                    </span>
-                  ) : status.connected ? (
-                    <span className="text-amber-700">Aguardando QR / pareamento</span>
-                  ) : (
-                    <span className="text-ink-500">Desligado</span>
-                  )}
-                </span>
-              ) : null}
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-ink-200/70 bg-ink-50/30 p-4 dark:border-soft-border dark:bg-black/15">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <WhatsappConnectionStatusBadge state={hasInstance ? uiState : "not_configured"} size="md" />
+              {busy && !flowOpen ? <Loader2 className="h-4 w-4 animate-spin text-ink-400" /> : null}
             </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void connectWebhook()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
-                Configurar webhook
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void refreshStatus()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium text-ink-700 hover:bg-ink-50 dark:border-soft-border dark:text-ink-200"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Atualizar estado
-              </button>
-            </div>
-            {webhookOk === true ? (
-              <p className="mt-2 text-xs text-emerald-700">Webhook configurado no Evolution Go.</p>
-            ) : webhookOk === false ? (
-              <p className="mt-2 text-xs text-red-600">Falha ao configurar webhook.</p>
-            ) : null}
+            {hasInstance ? (
+              <>
+                <p className="mt-2 text-base font-semibold text-ink-900 dark:text-ink-50">{displayName}</p>
+                {instances.length > 1 ? (
+                  <p className="mt-0.5 text-xs text-ink-500">{instances.length} conexões nesta organização</p>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-ink-600 dark:text-ink-400">
+                Nenhuma instância criada. Adicione uma conexão para começar.
+              </p>
+            )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-soft-border dark:bg-black/10">
-              <p className="flex items-center gap-1.5 text-sm font-medium text-ink-900 dark:text-ink-50">
-                <QrCode className="h-4 w-4" /> QR Code
-              </p>
-              {qrDataUrl ? (
-                <div className="mt-2 flex justify-center">
-                  <img src={qrDataUrl} alt="QR WhatsApp" className="h-44 w-44 rounded-lg border bg-white p-2" />
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-ink-500">Configure o webhook e atualize o QR para ligar o telemóvel.</p>
-              )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void refreshQr()}
-                className="mt-2 text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300"
-              >
-                Atualizar QR
-              </button>
-              {qrCode ? (
-                <p className="mt-1 break-all font-mono text-[10px] text-ink-500">{qrCode}</p>
-              ) : null}
-            </div>
-
-            <div className="rounded-lg border border-ink-200/80 bg-white/90 p-3 dark:border-soft-border dark:bg-black/10">
-              <p className="text-sm font-medium text-ink-900 dark:text-ink-50">Código de pareamento</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <input
-                  type="text"
-                  value={pairPhone}
-                  onChange={(e) => setPairPhone(e.target.value)}
-                  placeholder="5511999999999"
-                  className="min-w-[160px] flex-1 input-field text-sm"
-                  disabled={busy}
-                />
+          <div className="flex flex-wrap items-center gap-2">
+            {uiState === "connected" ? (
+              <>
                 <button
                   type="button"
-                  disabled={busy || !pairPhone.trim()}
-                  onClick={() => void requestPairing()}
-                  className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium hover:bg-ink-50 dark:border-soft-border"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200/80 px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-white dark:border-soft-border dark:text-ink-200 dark:hover:bg-white/5"
                 >
-                  Gerar código
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Abrir WhatsApp
                 </button>
-              </div>
-              {pairingCode ? (
-                <p className="mt-2 font-mono text-lg font-bold tracking-widest text-ink-900 dark:text-ink-50">
-                  {pairingCode}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          {!isLinked ? (
-            <div className="flex flex-wrap gap-2">
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Nova instância (nome)"
-                className="min-w-[160px] flex-1 input-field text-sm"
-                disabled={busy}
-              />
+                <button
+                  type="button"
+                  onClick={() => void openReconnectFlow()}
+                  className="btn-secondary px-3 py-1.5 text-xs"
+                >
+                  Reconectar
+                </button>
+              </>
+            ) : hasInstance && (uiState === "configured_disconnected" || uiState === "connecting") ? (
               <button
                 type="button"
-                disabled={busy || !newName.trim()}
-                onClick={() => void createInstance()}
-                className="rounded-lg border border-ink-200 px-3 py-2 text-sm font-medium hover:bg-ink-50 dark:border-soft-border"
+                onClick={() => void openReconnectFlow()}
+                className="btn-primary px-3 py-1.5 text-xs"
               >
-                Criar outra instância
+                Conectar WhatsApp
               </button>
-            </div>
-          ) : null}
-        </>
-      )}
+            ) : !hasInstance ? (
+              <button type="button" onClick={openAddFlow} className="btn-primary px-3 py-1.5 text-xs">
+                Configurar
+              </button>
+            ) : null}
 
-      {error ? (
+            {hasInstance ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  className="rounded-lg border border-ink-200/80 p-1.5 text-ink-500 hover:bg-white dark:border-soft-border dark:hover:bg-white/5"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+                {menuOpen ? (
+                  <div className="absolute right-0 z-10 mt-1 min-w-[180px] rounded-lg border border-ink-200/80 bg-white py-1 shadow-lg dark:border-soft-border dark:bg-[#1a2030]">
+                    {instances.length > 1
+                      ? instances.map((inst) => (
+                          <button
+                            key={inst.id}
+                            type="button"
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-white/5"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              selectInstance(inst);
+                            }}
+                          >
+                            <span>{inst.name}</span>
+                            {inst.id === savedInstanceId ? (
+                              <span className="text-brand-600">ativa</span>
+                            ) : null}
+                          </button>
+                        ))
+                      : null}
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-white/5"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void refreshStatus();
+                      }}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Atualizar estado
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-white/5"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        openAddFlow();
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Adicionar conexão
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {uiState === "configured_disconnected" && hasInstance ? (
+          <div className="mt-3 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/20 dark:text-amber-200">
+            Sua conexão precisa ser autenticada novamente. Clique em <strong>Conectar WhatsApp</strong>.
+          </div>
+        ) : null}
+      </div>
+
+      {hasInstance ? (
+        <>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-2 text-ink-600 dark:text-ink-400">
+              <span
+                className={`inline-flex h-2 w-2 rounded-full ${webhookOk === false ? "bg-amber-500" : "bg-emerald-500"}`}
+              />
+              {webhookOk === false ? "Webhook pendente" : "Webhook ativo"}
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen(true)}
+              className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
+            >
+              Ver detalhes
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { label: "Instância", value: displayName },
+              { label: "Provider", value: "Evolution Go" },
+              {
+                label: "Estado",
+                value: status?.loggedIn ? "Operacional" : status?.connected ? "Aguardando QR" : "Desligado",
+              },
+            ].map((row) => (
+              <div key={row.label} className="min-w-0">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{row.label}</p>
+                <p className="mt-0.5 truncate text-sm font-medium text-ink-900 dark:text-ink-50">{row.value}</p>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {uiState === "connected" ? (
+        <button
+          type="button"
+          onClick={openAddFlow}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-500 hover:text-brand-700 dark:hover:text-brand-300"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Adicionar conexão
+        </button>
+      ) : null}
+
+      <WhatsappAdvancedSettingsPanel
+        open={advancedOpen}
+        onOpenChange={setAdvancedOpen}
+        webhookUrl={webhookUrl}
+        webhookActive={webhookOk !== false}
+        webhookSecret={webhookSecret}
+        onWebhookSecretChange={onWebhookSecretChange}
+        webhookSecretStored={webhookSecretStored}
+        webhookSecretHint="Opcional — token da instância ou header x-openconduit-token."
+        onCopyWebhook={onCopyWebhook}
+        webhookCopied={webhookCopied}
+      />
+
+      {error && !flowOpen ? (
         <p className="text-sm text-red-600" role="alert">
           {error}
         </p>
       ) : null}
+
+      <WhatsappConnectionFlowModal
+        open={flowOpen}
+        onClose={() => setFlowOpen(false)}
+        title={reconnectMode ? "Reconectar WhatsApp" : "Adicionar conexão"}
+        reconnectMode={reconnectMode}
+        instanceName={displayName || flowName}
+        connectionState={uiState}
+        busy={busy}
+        error={error}
+        nameValue={flowName}
+        onNameChange={setFlowName}
+        onCreateInstance={async () => {
+          await createInstance(flowName);
+        }}
+        showQrOption
+        showPairingOption
+        connectionMethod={connectionMethod}
+        onSelectQr={() => void beginConnection("qr")}
+        onSelectPairing={() => void beginConnection("pairing")}
+        qrDataUrl={qrDataUrl}
+        pairingCode={pairingCode}
+        pairPhone={pairPhone}
+        onPairPhoneChange={setPairPhone}
+        onRequestPairing={() => void requestPairing()}
+        onRefreshQr={() => void refreshQr()}
+        step={flowStep}
+      />
     </div>
   );
 }

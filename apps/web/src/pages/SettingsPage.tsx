@@ -31,9 +31,8 @@ import { WavoipIntegrationSettings } from "@/pages/settings/WavoipIntegrationSet
 import { ThreeCxIntegrationSettings } from "@/pages/settings/ThreeCxIntegrationSettings";
 import { NvoipIntegrationSettings } from "@/pages/settings/NvoipIntegrationSettings";
 import { NvoipAgent2faPanel } from "@/components/nvoip/NvoipAgent2faPanel";
-import { EvolutionGoSettingsPanel } from "@/components/settings/EvolutionGoSettingsPanel";
 import { WhatsAppMessageTemplatesSection } from "@/components/settings/WhatsAppMessageTemplatesSection";
-import { WhatsAppProvidersOverview } from "@/components/settings/WhatsAppProvidersOverview";
+import { WhatsAppProvidersSection } from "@/components/settings/whatsapp/WhatsAppProvidersSection";
 import { collectWhatsappProviderOverview } from "@/lib/whatsappProvidersOverview";
 import { SlaPoliciesSettings } from "@/components/settings/SlaPoliciesSettings";
 import { CannedResponsesSettings } from "@/components/settings/CannedResponsesSettings";
@@ -364,84 +363,6 @@ export function SettingsPage() {
 
   const [evolutionPlatformQrMode, setEvolutionPlatformQrMode] = useState(false);
   const [evolutionGoPlatformMode, setEvolutionGoPlatformMode] = useState(false);
-  const [evoQrBusy, setEvoQrBusy] = useState(false);
-  const [evoQrError, setEvoQrError] = useState("");
-  const [evoQrNewInstanceName, setEvoQrNewInstanceName] = useState("");
-  const [evoQrWebhookWarn, setEvoQrWebhookWarn] = useState(false);
-  const [evoQrDataUrl, setEvoQrDataUrl] = useState<string | null>(null);
-  const [evoPairingCode, setEvoPairingCode] = useState<string | null>(null);
-  const [evoConnPoll, setEvoConnPoll] = useState<{ connected: boolean; state: string } | null>(null);
-
-  useEffect(() => {
-    if (provider !== "evolution") {
-      setEvoQrDataUrl(null);
-      setEvoPairingCode(null);
-      setEvoQrError("");
-      setEvoQrNewInstanceName("");
-      setEvoQrWebhookWarn(false);
-    }
-  }, [provider]);
-
-  useEffect(() => {
-    if (!isAdmin || !evolutionPlatformQrMode || provider !== "evolution") {
-      setEvoConnPoll(null);
-      return;
-    }
-    const tick = () => {
-      void api
-        .get<{ connected: boolean; state: string }>("/settings/evolution-qr/status")
-        .then((s) => setEvoConnPoll({ connected: s.connected, state: s.state }))
-        .catch(() => {});
-    };
-    tick();
-    const id = window.setInterval(tick, 4000);
-    return () => clearInterval(id);
-  }, [isAdmin, evolutionPlatformQrMode, provider]);
-
-  const startEvolutionQr = async () => {
-    setEvoQrBusy(true);
-    setEvoQrError("");
-    try {
-      const r = await api.post<{
-        instanceName: string;
-        pairingCode: string | null;
-        qrDataUrl: string | null;
-        connectionState: string;
-        connected: boolean;
-      }>("/settings/evolution-qr/start", {});
-      setPhoneNumberId(r.instanceName);
-      setProvider("evolution");
-      setEvoPairingCode(r.pairingCode);
-      setEvoQrDataUrl(r.qrDataUrl);
-      setEvoConnPoll({ connected: r.connected, state: r.connectionState });
-      const data = await api.get<AppSettings>("/settings");
-      setSettings(data);
-      setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
-      setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
-    } catch (err) {
-      setEvoQrError(err instanceof Error ? err.message : t("settings.evolutionQrError"));
-    } finally {
-      setEvoQrBusy(false);
-    }
-  };
-
-  const refreshEvolutionQr = async () => {
-    setEvoQrBusy(true);
-    setEvoQrError("");
-    try {
-      const r = await api.get<{
-        instanceName: string;
-        pairingCode: string | null;
-        qrDataUrl: string | null;
-      }>("/settings/evolution-qr/qr");
-      setEvoPairingCode(r.pairingCode);
-      setEvoQrDataUrl(r.qrDataUrl);
-    } catch (err) {
-      setEvoQrError(err instanceof Error ? err.message : t("settings.evolutionQrError"));
-    } finally {
-      setEvoQrBusy(false);
-    }
-  };
 
   const ensureEvolutionGoProviderSaved = async (): Promise<boolean> => {
     if (settings?.whatsappProvider === "evolution_go") return true;
@@ -533,11 +454,6 @@ export function SettingsPage() {
         setWaWabaId(waFromInbox.whatsappBusinessAccountId ?? "");
         setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
         setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
-        if (data.whatsappProvider === "evolution" && (data.evolutionPlatformQrMode ?? false)) {
-          setEvoQrNewInstanceName(data.whatsappPhoneNumberId ?? "");
-        } else {
-          setEvoQrNewInstanceName("");
-        }
         setEvolutionBaseUrl(data.evolutionApiBaseUrl ?? "");
         setAutoOptIn(data.autoOptInOnFirstMessage);
         setLockSingleConversation(data.lockSingleConversation ?? false);
@@ -1291,6 +1207,8 @@ export function SettingsPage() {
   const effectiveWhatsAppProvider =
     provider || waInboxProvider || settings?.whatsappProvider || "";
   const isMetaCloudSettingsProvider = isWhatsAppCloudApiProvider(effectiveWhatsAppProvider);
+  const isEvolutionSettingsProvider =
+    effectiveWhatsAppProvider === "evolution" || effectiveWhatsAppProvider === "evolution_go";
   const whatsappProviderOverview = collectWhatsappProviderOverview(settings, waInboxes, provider);
   const evolutionGoInboxRow = waInboxes.find(
     (i) => parseInboxWhatsappFromChannelConfig(i.channelConfig).whatsappProvider === "evolution_go",
@@ -1478,6 +1396,48 @@ export function SettingsPage() {
                     />
                   </motion.div>
 
+                  <motion.div variants={staggerItem}>
+                    <WhatsAppProvidersSection
+                      items={whatsappProviderOverview}
+                      activeProvider={provider}
+                      onSelectProvider={setProvider}
+                      evolutionPlatformQrMode={evolutionPlatformQrMode}
+                      evolutionGoPlatformMode={evolutionGoPlatformMode}
+                      instanceName={phoneNumberId}
+                      onInstanceNameChange={(v) => {
+                        setPhoneNumberId(v);
+                        setProvider("evolution");
+                        void api.get<AppSettings>("/settings").then((data) => {
+                          setSettings(data);
+                          setEvolutionPlatformQrMode(data.evolutionPlatformQrMode ?? false);
+                          setEvolutionGoPlatformMode(data.evolutionGoPlatformMode ?? false);
+                        });
+                      }}
+                      webhookUrl={webhookDisplay}
+                      evolutionGoWebhookUrl={evolutionGoWebhookDisplay}
+                      webhookSecret={webhookSecret}
+                      onWebhookSecretChange={setWebhookSecret}
+                      webhookSecretStored={
+                        parseInboxWhatsappFromChannelConfig(defaultWaInbox?.channelConfig).whatsappWebhookSecret ===
+                          MASKED_WHATSAPP_SECRET || !!settings?.whatsappWebhookSecret
+                      }
+                      evolutionBaseUrl={evolutionBaseUrl}
+                      onEvolutionBaseUrlChange={setEvolutionBaseUrl}
+                      apiKey={apiKey}
+                      onApiKeyChange={setApiKey}
+                      apiKeyStored={
+                        parseInboxWhatsappFromChannelConfig(defaultWaInbox?.channelConfig).whatsappApiKey ===
+                          MASKED_WHATSAPP_SECRET || !!settings?.whatsappApiKey
+                      }
+                      onCopyWebhook={copyWebhookUrl}
+                      webhookCopied={copied}
+                      ensureEvolutionGoProviderSaved={ensureEvolutionGoProviderSaved}
+                      persistEvolutionGoInstanceId={(id) => void persistEvolutionGoInstanceId(id)}
+                      t={t}
+                    />
+                  </motion.div>
+
+                  {!isEvolutionSettingsProvider ? (
                   <motion.div
                     className="card-surface rounded-xl p-6"
                     variants={staggerItem}
@@ -1520,6 +1480,7 @@ export function SettingsPage() {
                       </>
                     )}
                   </motion.div>
+                  ) : null}
 
                   <motion.form
                     onSubmit={handleSave}
@@ -1542,15 +1503,14 @@ export function SettingsPage() {
                     </p>
 
                     <div className="space-y-6">
-                      <WhatsAppProvidersOverview
-                        items={whatsappProviderOverview}
-                        activeProvider={provider}
-                        onSelectProvider={setProvider}
-                      />
-
                       {!provider ? (
                         <p className="rounded-lg border border-dashed border-ink-200 bg-ink-50/50 px-4 py-3 text-sm text-ink-600 dark:border-soft-border dark:bg-black/10 dark:text-ink-400">
-                          Selecione um provider acima para ver e editar as credenciais.
+                          Selecione um provider na secção Provedores WhatsApp acima.
+                        </p>
+                      ) : provider === "evolution" || provider === "evolution_go" ? (
+                        <p className="rounded-lg border border-ink-200/80 bg-white/50 px-4 py-3 text-sm text-ink-600 dark:border-soft-border dark:bg-black/5 dark:text-ink-400">
+                          Evolution API e Evolution Go são configurados na secção{" "}
+                          <strong>Provedores WhatsApp</strong> acima — incluindo conexão, QR e webhook.
                         </p>
                       ) : (
                       <div className="rounded-xl border border-ink-200/80 bg-white/50 p-4 dark:border-soft-border dark:bg-black/5">
@@ -1558,128 +1518,6 @@ export function SettingsPage() {
                           Configuração: {whatsappProviderOverview.find((x) => x.id === provider)?.label ?? provider}
                         </p>
                       <div className="space-y-4">
-
-                      {provider === "evolution" && evolutionPlatformQrMode ? (
-                        <div className="space-y-4 rounded-lg border border-brand-200/80 bg-brand-50/60 p-4 dark:border-brand-800/50 dark:bg-brand-950/25">
-                          <div>
-                            <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("settings.evolutionQrTitle")}</h3>
-                            <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{t("settings.evolutionQrSubtitle")}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                              {t("settings.evolutionQrInstanceNameLabel")}
-                            </label>
-                            <input
-                              type="text"
-                              value={evoQrNewInstanceName}
-                              onChange={(e) => setEvoQrNewInstanceName(e.target.value)}
-                              disabled={evoQrBusy}
-                              placeholder={t("settings.evolutionQrInstanceNamePlaceholder")}
-                              autoComplete="off"
-                              className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:opacity-50"
-                            />
-                            <p className="mt-1 text-xs text-ink-600 dark:text-ink-400">{t("settings.evolutionQrInstanceNameHint")}</p>
-                          </div>
-                          {evoConnPoll ? (
-                            <p className="text-sm text-ink-800 dark:text-ink-200">
-                              <span className="font-medium">{t("settings.evolutionQrState")}:</span>{" "}
-                              {evoConnPoll.connected ? (
-                                <span className="text-green-700">{t("settings.evolutionQrConnected")}</span>
-                              ) : (
-                                <span className="text-amber-800">
-                                  {evoConnPoll.state || t("settings.evolutionQrNotConnected")}
-                                </span>
-                              )}
-                            </p>
-                          ) : null}
-                          {phoneNumberId ? (
-                            <p className="text-xs text-ink-600 dark:text-ink-400">
-                              <span className="font-medium text-ink-800 dark:text-ink-200">{t("settings.evolutionQrInstance")}:</span>{" "}
-                              <code className="rounded bg-white px-1.5 py-0.5">{phoneNumberId}</code>
-                            </p>
-                          ) : null}
-                          {evoPairingCode ? (
-                            <p className="text-xs text-ink-600 dark:text-ink-400">
-                              <span className="font-medium text-ink-800 dark:text-ink-200">{t("settings.evolutionQrPairing")}:</span>{" "}
-                              {evoPairingCode}
-                            </p>
-                          ) : null}
-                          {evoQrWebhookWarn ? (
-                            <p className="text-sm text-amber-800" role="status">
-                              {t("settings.evolutionQrWebhookWarn")}
-                            </p>
-                          ) : null}
-                          {evoQrError ? (
-                            <p className="text-sm text-red-600" role="alert">
-                              {evoQrError}
-                            </p>
-                          ) : null}
-                          {evoQrDataUrl ? (
-                            <div className="flex justify-center">
-                              <img
-                                src={evoQrDataUrl}
-                                alt="WhatsApp QR"
-                                className="h-56 w-56 rounded-lg border border-gray-200 bg-white p-2"
-                                loading="lazy"
-                                decoding="async"
-                              />
-                            </div>
-                          ) : null}
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={evoQrBusy}
-                              onClick={() => void startEvolutionQr()}
-                              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-                            >
-                              {evoQrBusy ? t("settings.evolutionQrBusy") : t("settings.evolutionQrCta")}
-                            </button>
-                            {phoneNumberId ? (
-                              <button
-                                type="button"
-                                disabled={evoQrBusy}
-                                onClick={() => void refreshEvolutionQr()}
-                                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-ink-800 dark:text-ink-200 hover:bg-gray-50 disabled:opacity-50"
-                              >
-                                {t("settings.evolutionQrRefresh")}
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {(provider === "evolution" && !evolutionPlatformQrMode) ||
-                      (provider === "evolution_go" && !evolutionGoPlatformMode) ? (
-                        <div>
-                          <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">
-                            {provider === "evolution_go" ? "Evolution Go base URL" : "Evolution API base URL"}
-                          </label>
-                          <input
-                            type="url"
-                            value={evolutionBaseUrl}
-                            onChange={(e) => setEvolutionBaseUrl(e.target.value)}
-                            placeholder={
-                              provider === "evolution_go"
-                                ? "https://evolution-go.example.com"
-                                : "https://evolution.example.com"
-                            }
-                            className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                          />
-                          <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
-                            {provider === "evolution_go" ? (
-                              <>
-                                Public URL of your Evolution Go server (no trailing path; uses routes such as{" "}
-                                <code className="rounded bg-gray-100 px-1">/send/text</code>).
-                              </>
-                            ) : (
-                              <>
-                                Public URL of your Evolution API v2 server (no trailing path; uses REST routes such as{" "}
-                                <code className="rounded bg-gray-100 px-1">/message/sendText/…</code>).
-                              </>
-                            )}
-                          </p>
-                        </div>
-                      ) : null}
 
                       {isMetaCloudSettingsProvider ? (
                         <WhatsAppProviderConfigFields
@@ -1765,17 +1603,7 @@ export function SettingsPage() {
                       </div>
                       )}
 
-                      {provider === "evolution_go" ? (
-                        <EvolutionGoSettingsPanel
-                          webhookUrl={evolutionGoWebhookDisplay}
-                          savedInstanceId={settings?.whatsappPhoneNumberId ?? phoneNumberId}
-                          platformMode={evolutionGoPlatformMode}
-                          onInstanceIdChange={(id) => void persistEvolutionGoInstanceId(id)}
-                          onProviderEnsureSaved={ensureEvolutionGoProviderSaved}
-                        />
-                      ) : null}
-
-                      {!isMetaCloudSettingsProvider ? (
+                      {!isMetaCloudSettingsProvider && provider !== "evolution" && provider !== "evolution_go" ? (
                         <div>
                           <label className="block text-sm font-medium text-ink-700 dark:text-ink-300">Webhook secret</label>
                           <input
@@ -1783,31 +1611,10 @@ export function SettingsPage() {
                             value={webhookSecret}
                             onChange={(e) => setWebhookSecret(e.target.value)}
                             placeholder={
-                              provider === "evolution"
-                                ? "Optional — leave empty unless you add a custom header on Evolution"
-                                : settings?.whatsappWebhookSecret
-                                  ? "••••••••"
-                                  : "Enter webhook secret"
+                              settings?.whatsappWebhookSecret ? "••••••••" : "Enter webhook secret"
                             }
                             className="mt-1 block w-full input-field focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                           />
-                          {provider === "evolution" ? (
-                            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
-                              <strong>Evolution does not supply this.</strong> Leave it empty for the usual setup —
-                              webhooks work without it. For extra verification, invent any long random string, save it
-                              here, then in Evolution configure the instance webhook <strong>headers</strong> (e.g. in
-                              the webhook JSON or manager UI) with name{" "}
-                              <code className="rounded bg-gray-100 px-1">x-openconduit-token</code> and value identical to
-                              this field. If this field is filled, requests without that header are rejected with 401.
-                            </p>
-                          ) : provider === "evolution_go" ? (
-                            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
-                              Opcional. Deixe vazio para aceitar o <code className="rounded bg-gray-100 px-1">instanceToken</code>{" "}
-                              enviado pelo Evolution Go (token da instância). Se preencher, o valor deve coincidir com o
-                              token da instância ou use o header{" "}
-                              <code className="rounded bg-gray-100 px-1">x-openconduit-token</code>.
-                            </p>
-                          ) : null}
                         </div>
                       ) : null}
 
