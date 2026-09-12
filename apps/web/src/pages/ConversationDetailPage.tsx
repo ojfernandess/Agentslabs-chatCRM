@@ -118,6 +118,7 @@ import {
   DocumentAttachmentCard,
   isLikelyDocumentCaption,
 } from "@/components/conversation/MessageAttachmentViews";
+import { ChatAudioPlayer } from "@/components/conversation/ChatAudioPlayer";
 import { ConversationDismissibleBanner } from "@/components/conversation/ConversationDismissibleBanner";
 import { VoicePreviewPanel, VoiceRecordingPanel } from "@/components/conversation/VoiceMessageComposer";
 import {
@@ -3847,16 +3848,11 @@ export function ConversationDetailPage() {
                     />
                   )}
                   {msg.type === "AUDIO" && msg.mediaUrl && (
-                    <audio
+                    <ChatAudioPlayer
                       key={`${msg.id}-${msg.mediaUrl}`}
-                      controls
                       src={msg.mediaUrl}
-                      className={clsx(
-                        "mt-2 w-full min-w-[200px] max-w-[280px]",
-                        msg.direction === "OUTBOUND" && !msg.isPrivate && "opacity-95",
-                      )}
-                      preload="auto"
-                      playsInline
+                      outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
+                      className={msg.body?.trim() ? "mt-2" : undefined}
                     />
                   )}
                   <div className="crm-bubble-meta mt-1.5 flex items-center justify-end gap-1 tabular-nums">
