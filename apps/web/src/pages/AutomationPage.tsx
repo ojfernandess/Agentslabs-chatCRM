@@ -2114,12 +2114,11 @@ function AgentsTab({
     if (!agentModalOpen) return;
     if (elevenLabsTools.length > 0) return;
     setAgentForm((f) => {
-      if (!f.voiceEnabled && !f.elevenLabsToolId && !f.replyWithAudioOnInboundAudio) return f;
+      if (!f.voiceEnabled && !f.elevenLabsToolId) return f;
       return {
         ...f,
         voiceEnabled: false,
         elevenLabsToolId: "",
-        replyWithAudioOnInboundAudio: false,
       };
     });
   }, [agentModalOpen, elevenLabsTools.length, setAgentForm]);
@@ -2500,7 +2499,7 @@ function AgentsTab({
                 >
                   {row.bot.isActive ? t("automationPage.agentStatusActive") : t("automationPage.agentStatusInactive")}
                 </span>
-                {voice.elevenLabsEnabled ? (
+                {voice.elevenLabsEnabled || voice.replyWithAudioOnInboundAudio ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-ink-600 dark:text-ink-400">
                     <Volume2 className="h-3 w-3" /> {t("automationPage.agentVoiceTag")}
                   </span>
@@ -3586,96 +3585,103 @@ function AgentsTab({
                 t={t}
               />
 
-              {elevenLabsTools.length > 0 ? (
-                <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
-                    <Volume2 className="h-4 w-4 text-brand-600" />
-                    {t("automationPage.agentVoiceSection")}
-                  </div>
-                  <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
-                      checked={agentForm.voiceEnabled}
-                      onChange={(e) => setAgentForm((f) => ({ ...f, voiceEnabled: e.target.checked }))}
-                    />
-                    <span>{t("automationPage.agentVoiceResponses")}</span>
-                  </label>
-                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceHelp")}</p>
-                  {agentForm.voiceEnabled ? (
-                    <>
-                      <label className="mt-3 block text-sm font-medium text-ink-800 dark:text-ink-200">
-                        {t("automationPage.agentElevenLabsConfig")}
-                        <select
-                          value={agentForm.elevenLabsToolId}
-                          onChange={(e) => setAgentForm((f) => ({ ...f, elevenLabsToolId: e.target.value }))}
-                          className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                        >
-                          <option value="">{t("automationPage.agentElevenLabsSelect")}</option>
-                          {elevenLabsTools.map((tl) => (
-                            <option key={tl.id} value={tl.id}>
-                              {tl.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <p className="mt-1 text-[11px] text-ink-500">
-                        <button
-                          type="button"
-                          className="text-left text-brand-600 hover:underline"
-                          onClick={onOpenToolsTab}
-                        >
-                          {t("automationPage.agentElevenLabsToolsTabHint")}
-                        </button>
-                      </p>
-                      <p className="mt-3 text-sm font-medium text-ink-800 dark:text-ink-200">
-                        {t("automationPage.agentVoicePercentLabel")}: {agentForm.voiceResponsePercent}%
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {VOICE_PERCENT_STEPS.map((pct) => (
-                          <button
-                            key={pct}
-                            type="button"
-                            onClick={() => setAgentForm((f) => ({ ...f, voiceResponsePercent: pct }))}
-                            className={clsx(
-                              "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                              agentForm.voiceResponsePercent === pct
-                                ? "bg-brand-600 text-white"
-                                : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
-                            )}
-                          >
-                            {pct === 0 ? t("automationPage.agentVoicePercent0") : `${pct}%`}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={agentForm.voiceResponsePercent}
-                        onChange={(e) =>
-                          setAgentForm((f) => ({ ...f, voiceResponsePercent: Number(e.target.value) }))
-                        }
-                        className="mt-3 w-full accent-brand-600"
-                      />
-                      <p className="text-[11px] text-ink-500">{t("automationPage.agentVoicePercentHelp")}</p>
-                    </>
-                  ) : null}
-                  <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
-                      checked={agentForm.replyWithAudioOnInboundAudio}
-                      onChange={(e) =>
-                        setAgentForm((f) => ({ ...f, replyWithAudioOnInboundAudio: e.target.checked }))
-                      }
-                    />
-                    <span>{t("automationPage.agentVoiceOnAudioInbound")}</span>
-                  </label>
-                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceOnAudioInboundHelp")}</p>
+              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  <Volume2 className="h-4 w-4 text-brand-600" />
+                  {t("automationPage.agentVoiceSectionGeneral")}
                 </div>
-              ) : null}
+                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                    checked={agentForm.replyWithAudioOnInboundAudio}
+                    onChange={(e) =>
+                      setAgentForm((f) => ({ ...f, replyWithAudioOnInboundAudio: e.target.checked }))
+                    }
+                  />
+                  <span>{t("automationPage.agentVoiceOnAudioInbound")}</span>
+                </label>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceOnAudioInboundHelp")}</p>
+                {elevenLabsTools.length > 0 ? (
+                  <>
+                    <div className="mt-4 border-t border-ink-200/80 pt-3 dark:border-ink-700">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+                        {t("automationPage.agentVoiceSection")}
+                      </p>
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                        checked={agentForm.voiceEnabled}
+                        onChange={(e) => setAgentForm((f) => ({ ...f, voiceEnabled: e.target.checked }))}
+                      />
+                      <span>{t("automationPage.agentVoiceResponses")}</span>
+                    </label>
+                    <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceHelp")}</p>
+                    {agentForm.voiceEnabled ? (
+                      <>
+                        <label className="mt-3 block text-sm font-medium text-ink-800 dark:text-ink-200">
+                          {t("automationPage.agentElevenLabsConfig")}
+                          <select
+                            value={agentForm.elevenLabsToolId}
+                            onChange={(e) => setAgentForm((f) => ({ ...f, elevenLabsToolId: e.target.value }))}
+                            className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                          >
+                            <option value="">{t("automationPage.agentElevenLabsSelect")}</option>
+                            {elevenLabsTools.map((tl) => (
+                              <option key={tl.id} value={tl.id}>
+                                {tl.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="mt-1 text-[11px] text-ink-500">
+                          <button
+                            type="button"
+                            className="text-left text-brand-600 hover:underline"
+                            onClick={onOpenToolsTab}
+                          >
+                            {t("automationPage.agentElevenLabsToolsTabHint")}
+                          </button>
+                        </p>
+                        <p className="mt-3 text-sm font-medium text-ink-800 dark:text-ink-200">
+                          {t("automationPage.agentVoicePercentLabel")}: {agentForm.voiceResponsePercent}%
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {VOICE_PERCENT_STEPS.map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => setAgentForm((f) => ({ ...f, voiceResponsePercent: pct }))}
+                              className={clsx(
+                                "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                                agentForm.voiceResponsePercent === pct
+                                  ? "bg-brand-600 text-white"
+                                  : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
+                              )}
+                            >
+                              {pct === 0 ? t("automationPage.agentVoicePercent0") : `${pct}%`}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={agentForm.voiceResponsePercent}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({ ...f, voiceResponsePercent: Number(e.target.value) }))
+                          }
+                          className="mt-3 w-full accent-brand-600"
+                        />
+                        <p className="text-[11px] text-ink-500">{t("automationPage.agentVoicePercentHelp")}</p>
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
 
               <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
                 <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">

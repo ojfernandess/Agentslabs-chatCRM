@@ -34,5 +34,17 @@ test("shouldSendVoiceReply respects enable flag and inbound audio option", () =>
     ),
     true,
   );
+  assert.equal(
+    shouldSendVoiceReply(
+      {
+        elevenLabsEnabled: false,
+        elevenLabsToolId: null,
+        voiceResponsePercent: 0,
+        replyWithAudioOnInboundAudio: true,
+      },
+      { type: "AUDIO" },
+    ),
+    true,
+  );
   assert.equal(shouldSendVoiceReply({ ...base, voiceResponsePercent: 0 }, { type: "TEXT" }), false);
 });

@@ -312,7 +312,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
         });
         exLog.info(
           { id: "outbound", name: "Entrega" },
-          deliveryKind === "audio" ? "Resposta em áudio enviada (ElevenLabs)" : "Mensagem outbound enviada",
+          deliveryKind === "audio" ? "Resposta em áudio enviada" : "Mensagem outbound enviada",
           { output: { chars: replyText.length, deliveryKind } },
         );
       } else {

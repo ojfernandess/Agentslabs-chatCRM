@@ -33,8 +33,8 @@ export function shouldSendVoiceReply(
   settings: AgentVoiceSettings,
   inboundMessage: Pick<Message, "type">,
 ): boolean {
-  if (!settings.elevenLabsEnabled || !settings.elevenLabsToolId) return false;
   if (settings.replyWithAudioOnInboundAudio && inboundMessage.type === "AUDIO") return true;
+  if (!settings.elevenLabsEnabled || !settings.elevenLabsToolId) return false;
   if (settings.voiceResponsePercent <= 0) return false;
   if (settings.voiceResponsePercent >= 100) return true;
   return Math.random() * 100 < settings.voiceResponsePercent;

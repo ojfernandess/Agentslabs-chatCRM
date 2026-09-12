@@ -680,6 +680,7 @@ export const messages = {
       agentApiKeyPlaceholder: "sk-… ou chave do provedor",
       agentApiKeyHelp:
         "Chave do mesmo provedor da URL. Se vazia, o integrador pode usar a variável de ambiente da plataforma (ex.: PLATFORM_API_KEY).",
+      agentVoiceSectionGeneral: "Respostas em áudio",
       agentVoiceSection: "Resposta por voz (ElevenLabs)",
       agentVoiceResponses: "Respostas em áudio",
       agentVoiceHelp:
@@ -692,7 +693,7 @@ export const messages = {
       agentVoicePercentHelp:
         "Percentagem de respostas enviadas em áudio (ex.: 20% ≈ 1 em 5). O integrador deve respeitar este valor.",
       agentVoiceOnAudioInboundHelp:
-        "Se ativo, o bot responde sempre em áudio quando o cliente envia mensagem de voz, independentemente da percentagem.",
+        "Se ativo, o bot responde em áudio quando o cliente envia mensagem de voz. Usa ElevenLabs se configurado; caso contrário, síntese OpenAI do servidor (OPENAI_API_KEY).",
       agentFollowUpMessage: "Mensagem de follow-up",
       agentFollowUpMessagePh: "Texto enviado automaticamente se o cliente não responder no tempo configurado.",
       agentEscalationSection: "Regras de escalonamento",
@@ -6659,6 +6660,7 @@ export const messages = {
       agentApiKeyPlaceholder: "sk-… or provider key",
       agentApiKeyHelp:
         "Key for the same provider as the URL. If empty, your integrator may use a platform env var (e.g. PLATFORM_API_KEY).",
+      agentVoiceSectionGeneral: "Audio responses",
       agentVoiceSection: "Voice responses (ElevenLabs)",
       agentVoiceResponses: "Audio responses",
       agentVoiceHelp:
@@ -6671,7 +6673,7 @@ export const messages = {
       agentVoicePercentHelp: "Share of replies sent as audio (e.g. 20% ≈ 1 in 5). The integrator should honor this.",
       agentVoiceOnAudioInbound: "Reply with audio when the customer sends audio",
       agentVoiceOnAudioInboundHelp:
-        "If enabled, the bot always replies in audio when the customer sends voice, regardless of the percentage.",
+        "When enabled, the bot replies with audio when the customer sends a voice message. Uses ElevenLabs if configured; otherwise OpenAI TTS on the server (OPENAI_API_KEY).",
       agentFollowUpMessage: "Follow-up message",
       agentFollowUpMessagePh: "Sent automatically if the customer does not reply within the configured time.",
       agentEscalationSection: "Escalation rules",
