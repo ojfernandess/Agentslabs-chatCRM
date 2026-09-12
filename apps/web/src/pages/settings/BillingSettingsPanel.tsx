@@ -22,6 +22,7 @@ import {
 } from "@/components/settings/settingsUi";
 import { BillingAvailablePlansSection } from "@/components/billing/BillingAvailablePlansSection";
 import { UsageMeter } from "@/components/settings/UsageMeter";
+import { translateBillingStatus } from "@/lib/billingStatusLabels";
 import { catalogLimitLabelKey, orderPlanLimitKeys } from "@/lib/planCatalog";
 
 type PlanRow = {
@@ -579,7 +580,7 @@ export function BillingSettingsPanel() {
                   <tr key={inv.id} className="border-b border-ink-100 dark:border-soft-border/60">
                     <td className="py-2 pr-4">{formatDate(inv.created, localeTag)}</td>
                     <td className="py-2 pr-4">{formatMoney(inv.amountPaid, inv.currency, localeTag)}</td>
-                    <td className="py-2 pr-4">{inv.status ?? "—"}</td>
+                    <td className="py-2 pr-4">{translateBillingStatus(t, inv.status, "invoice")}</td>
                     <td className="py-2">
                       {inv.hostedInvoiceUrl ? (
                         <a

@@ -7,6 +7,7 @@ import { SuperAdminPageHeader, SuperAdminPanel } from "@/components/super-admin/
 import { SuperAdminCustomPlansPanel } from "@/components/super-admin/SuperAdminCustomPlansPanel";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
+import { translateBillingStatus } from "@/lib/billingStatusLabels";
 import {
   ALL_CATALOG_LIMIT_KEYS,
   PLAN_LIMITS_ENABLED_KEY,
@@ -632,11 +633,11 @@ export function SuperAdminBillingSection() {
               <label className="block text-xs font-medium text-slate-600">{t("superAdmin.billingFilterStatus")}</label>
               <select value={subStatus} onChange={(e) => setSubStatus(e.target.value)} className="input-field mt-1">
                 <option value="">{t("superAdmin.billingAllStatuses")}</option>
-                <option value="active">active</option>
-                <option value="trialing">trialing</option>
-                <option value="past_due">past_due</option>
-                <option value="canceled">canceled</option>
-                <option value="inactive">inactive</option>
+                <option value="active">{translateBillingStatus(t, "active", "subscription")}</option>
+                <option value="trialing">{translateBillingStatus(t, "trialing", "subscription")}</option>
+                <option value="past_due">{translateBillingStatus(t, "past_due", "subscription")}</option>
+                <option value="canceled">{translateBillingStatus(t, "canceled", "subscription")}</option>
+                <option value="inactive">{translateBillingStatus(t, "inactive", "subscription")}</option>
               </select>
             </div>
             <button type="button" className="btn-secondary" onClick={() => void loadSubscriptions()}>
@@ -669,7 +670,7 @@ export function SuperAdminBillingSection() {
                     </td>
                     <td className="px-4 py-3">{sub.plan?.name ?? sub.organization.planTier}</td>
                     <td className="px-4 py-3">
-                      <span className="font-medium">{sub.status}</span>
+                      <span className="font-medium">{translateBillingStatus(t, sub.status, "subscription")}</span>
                       {sub.cancelAtPeriodEnd ? (
                         <span className="ml-2 text-xs text-amber-700">{t("superAdmin.billingCancelScheduled")}</span>
                       ) : null}

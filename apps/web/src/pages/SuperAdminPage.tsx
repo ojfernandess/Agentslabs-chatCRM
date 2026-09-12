@@ -34,6 +34,7 @@ import { SuperAdminConversationMediaSection } from "@/components/super-admin/Sup
 import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSection";
 import { SuperAdminBillingSection } from "@/components/super-admin/SuperAdminBillingSection";
 import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
+import { translateBillingStatus } from "@/lib/billingStatusLabels";
 
 interface OrgRow {
   id: string;
@@ -3326,7 +3327,10 @@ export function SuperAdminPage() {
               ) : null}
               {billingOrg.subscription?.status ? (
                 <p className="mt-1 text-xs text-ink-500">
-                  {t("superAdmin.billingSubscriptionStatus").replace("{status}", billingOrg.subscription.status)}
+                  {t("superAdmin.billingSubscriptionStatus").replace(
+                    "{status}",
+                    translateBillingStatus(t, billingOrg.subscription.status, "subscription"),
+                  )}
                 </p>
               ) : null}
               <form onSubmit={(e) => void submitBilling(e)} className="mt-4 space-y-4">
