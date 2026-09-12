@@ -108,6 +108,39 @@ export async function evolutionApiSetWebhook(options: {
   return { ok: true };
 }
 
+/** GET /webhook/find/{instance} — estado remoto do webhook na Evolution API v2. */
+export async function evolutionApiFindWebhook(options: {
+  baseUrl: string;
+  apiKey: string;
+  instanceName: string;
+}): Promise<{ url: string | null; enabled: boolean; events: string[] } | null> {
+  const base = normalizeEvolutionBaseUrl(options.baseUrl);
+  const enc = encodeURIComponent(options.instanceName);
+  try {
+    const res = await fetch(`${base}/webhook/find/${enc}`, {
+      headers: { apikey: options.apiKey },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    const root = asRecord(data) ?? {};
+    const nested = asRecord(root.webhook) ?? asRecord(root.data) ?? root;
+    const url =
+      typeof nested.url === "string" && nested.url.trim()
+        ? nested.url.trim()
+        : typeof nested.webhook === "string" && nested.webhook.trim()
+          ? nested.webhook.trim()
+          : null;
+    const enabled = nested.enabled === true || nested.webhookEnabled === true;
+    const eventsRaw = nested.events;
+    const events = Array.isArray(eventsRaw)
+      ? eventsRaw.filter((e): e is string => typeof e === "string")
+      : [];
+    return { url, enabled, events };
+  } catch {
+    return null;
+  }
+}
+
 export async function evolutionApiFetchConnect(
   baseUrl: string,
   apiKey: string,

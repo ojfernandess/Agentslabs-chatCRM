@@ -3,6 +3,7 @@ import formbody from "@fastify/formbody";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { processChannelInboxInbound } from "../lib/channelInboxIngest.js";
+import { recordWhatsappWebhookAttempt } from "../lib/whatsappWebhookRouting.js";
 import type { MessageType } from "@prisma/client";
 
 function setCorsPublic(reply: FastifyReply) {
@@ -202,8 +203,11 @@ export async function channelInboxPublicRoutes(app: FastifyInstance): Promise<vo
     const sid = typeof body?.MessageSid === "string" ? body.MessageSid : typeof body?.SmsSid === "string" ? body.SmsSid : null;
 
     if (!from.trim()) {
+      void recordWhatsappWebhookAttempt(inbox.id, "rejected", "missing_from").catch(() => {});
       return reply.status(400).send({ error: "Bad Request", message: "From is required", statusCode: 400 });
     }
+
+    void recordWhatsappWebhookAttempt(inbox.id, "received").catch(() => {});
 
     try {
       const result = await processChannelInboxInbound({
@@ -217,8 +221,10 @@ export async function channelInboxPublicRoutes(app: FastifyInstance): Promise<vo
         externalMessageId: sid,
         log: app.log,
       });
+      void recordWhatsappWebhookAttempt(inbox.id, "processed").catch(() => {});
       return reply.status(201).send(result);
     } catch (err) {
+      void recordWhatsappWebhookAttempt(inbox.id, "rejected", "ingest_failed").catch(() => {});
       app.log.error(err, "twilio inbox ingest failed");
       return reply.status(500).send({ error: "Internal Server Error", statusCode: 500 });
     }

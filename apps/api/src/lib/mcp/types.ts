@@ -26,7 +26,8 @@ export type McpResourceDomain =
   | "turn"
   | "contract"
   | "config"
-  | "architecture";
+  | "architecture"
+  | "webhook";
 
 /** Permissões granulares por recurso. */
 export type McpPermission =
@@ -57,7 +58,8 @@ export type McpPermission =
   | "contract:read"
   | "config:read"
   | "architecture:read"
-  | "audit:read";
+  | "audit:read"
+  | "webhook:read";
 
 /** Contexto autenticado de um pedido MCP. */
 export type McpAuthContext = {
@@ -98,6 +100,9 @@ export type McpProviderSearchParams = {
   to?: string;
   limit?: number;
   offset?: number;
+  inboxId?: string;
+  provider?: string;
+  resyncEvolutionWebhook?: boolean;
 };
 
 export type McpToolResult = {

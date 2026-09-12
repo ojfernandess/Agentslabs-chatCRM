@@ -31,6 +31,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "config:read",
     "architecture:read",
     "audit:read",
+    "webhook:read",
   ],
   developer: [
     "agents:read",
@@ -60,6 +61,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "contract:read",
     "config:read",
     "architecture:read",
+    "webhook:read",
   ],
   support: [
     "agents:read",
@@ -77,6 +79,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "eil:read",
     "turn:read",
     "contract:read",
+    "webhook:read",
   ],
   audit: [
     "agents:read",
@@ -92,6 +95,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "turn:read",
     "contract:read",
     "audit:read",
+    "webhook:read",
   ],
   read_only: [
     "agents:read",
@@ -106,6 +110,7 @@ export const MCP_ROLE_PERMISSIONS: Record<Exclude<McpRole, "custom">, McpPermiss
     "turn:read",
     "contract:read",
     "config:read",
+    "webhook:read",
   ],
 };
 

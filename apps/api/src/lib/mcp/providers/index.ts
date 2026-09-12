@@ -19,6 +19,7 @@ import { memoryProvider } from "./memoryProvider.js";
 import { eilProvider } from "./eilProvider.js";
 import { turnProvider, contractProvider } from "./turnContractProvider.js";
 import { architectureGovernanceProvider } from "./architectureGovernanceProvider.js";
+import { webhookProvider } from "./webhookProvider.js";
 
 let initialized = false;
 
@@ -43,5 +44,6 @@ export function initMcpProviders(): void {
   registerMcpProvider(contractProvider);
   registerMcpProvider(configProvider);
   registerMcpProvider(architectureGovernanceProvider);
+  registerMcpProvider(webhookProvider);
   initialized = true;
 }

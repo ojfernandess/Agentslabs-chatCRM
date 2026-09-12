@@ -76,6 +76,15 @@ describe("MCP provider registry URI", () => {
   });
 });
 
+describe("MCP webhook permissions", () => {
+  it("admin and support can read webhooks", () => {
+    const admin = new Set(MCP_ROLE_PERMISSIONS.admin);
+    const support = new Set(MCP_ROLE_PERMISSIONS.support);
+    assert.ok(hasPermission({ permissions: admin }, "webhook:read"));
+    assert.ok(hasPermission({ permissions: support }, "webhook:read"));
+  });
+});
+
 describe("MCP turn/contract permissions", () => {
   it("admin and read_only can read turn/contract", () => {
     const admin = new Set(MCP_ROLE_PERMISSIONS.admin);

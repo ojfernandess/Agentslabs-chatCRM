@@ -65,7 +65,7 @@ export function createOpenNexoMcpServer(ctx: McpAuthContext): McpServer {
     },
     {
       instructions: `OpenNexo MCP Server — plataforma de agentes (SUPER ADMIN ONLY).
-Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor, snapshots EIL, contratos de turno (opennexo://turn|contract) e governança arquitetural (opennexo://architecture/adr/* — ADR, RCA, impact analysis).
+Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor, snapshots EIL, contratos de turno (opennexo://turn|contract), webhooks WhatsApp (Meta, 360dialog, Evolution API, Evolution Go, Twilio via search_webhook) e governança arquitetural (opennexo://architecture/adr/* — ADR, RCA, impact analysis).
 Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMode ? "ativado" : "desativado"}.`,
       capabilities: {
         resources: { subscribe: false, listChanged: false },
@@ -364,6 +364,29 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
           getMcpProvider("config")!.readResource(ctx, `opennexo://config/${ctx.organizationId}`),
         ),
       ),
+  );
+
+  server.registerTool(
+    "search_webhook",
+    {
+      description:
+        "Monitor WhatsApp inbound webhooks for Meta Cloud API, 360dialog, Evolution API, Evolution Go and Twilio — URLs, last attempt, inbound health, Evolution remote webhook state, hints",
+      inputSchema: {
+        inboxId: z.string().uuid().optional().describe("Filter by inbox ID"),
+        provider: z
+          .enum(["meta", "360dialog", "evolution", "evolution_go", "twilio"])
+          .optional()
+          .describe("Filter by WhatsApp provider"),
+        errorOnly: z.boolean().optional().describe("Only inboxes with webhook errors or no recent inbound"),
+        resyncEvolutionWebhook: z
+          .boolean()
+          .optional()
+          .describe("When inboxId is set and provider is evolution, re-register webhook on Evolution instance"),
+        limit: z.number().int().min(1).max(50).optional().describe("Max inboxes"),
+      },
+    },
+    async (args) =>
+      textResult(await withAudit(ctx, "tool:search_webhook", () => getMcpProvider("webhook")!.search!(ctx, args))),
   );
 
   server.registerTool(
