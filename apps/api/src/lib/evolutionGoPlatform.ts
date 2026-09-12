@@ -1,4 +1,4 @@
-import type { Settings } from "@prisma/client";
+import type { Prisma, Settings } from "@prisma/client";
 import { prisma } from "../db.js";
 import { webhookUrlForInbox, webhookUrlForOrganization } from "../config.js";
 import { decrypt, encrypt } from "./encryption.js";
@@ -143,8 +143,52 @@ export type EvolutionGoStatusResult = {
   connected: boolean;
   loggedIn: boolean;
   name: string;
+  /** Evolution Go server could not be reached (network / 5xx). */
   unreachable?: boolean;
+  /** Selected instance was removed remotely — local settings were cleared. */
+  instanceMissing?: boolean;
 };
+
+function channelConfigRecord(cfg: unknown): Record<string, unknown> {
+  return cfg && typeof cfg === "object" && !Array.isArray(cfg) ? { ...(cfg as Record<string, unknown>) } : {};
+}
+
+/** Clears stale Evolution Go instance id/token from Settings and the evolution_go inbox. */
+export async function clearEvolutionGoInstanceFromSettings(organizationId: string): Promise<void> {
+  await prisma.settings.update({
+    where: { organizationId },
+    data: {
+      whatsappPhoneNumberId: "",
+      whatsappApiKey: null,
+    },
+  });
+
+  const inboxId = await findEvolutionGoWhatsappInboxId(organizationId);
+  if (!inboxId) return;
+
+  const row = await prisma.inbox.findUnique({
+    where: { id: inboxId },
+    select: { channelConfig: true },
+  });
+  if (!row) return;
+
+  const base = channelConfigRecord(row.channelConfig);
+  delete base.whatsappPhoneNumberId;
+  delete base.whatsappApiKey;
+  await prisma.inbox.update({
+    where: { id: inboxId },
+    data: { channelConfig: base as Prisma.InputJsonValue },
+  });
+}
+
+function evolutionGoInstanceExistsInList(
+  instances: EvolutionGoInstanceInfo[],
+  instanceRef: string,
+): boolean {
+  const ref = instanceRef.trim();
+  if (!ref) return false;
+  return instances.some((x) => x.id === ref || x.name === ref);
+}
 
 /** Prefix for instance names created by this organization (multi-tenant isolation on shared Evolution Go). */
 export function evolutionGoOrgInstancePrefix(organizationId: string): string {
@@ -379,19 +423,58 @@ export async function fetchEvolutionGoInstanceStatus(
     connected: false,
     loggedIn: false,
     name: "",
-    unreachable: true,
   };
 
-  const auth = await resolveEvolutionGoOperationAuth(settings, organizationId);
+  const instanceRef = settings.whatsappPhoneNumberId?.trim() ?? "";
+  if (!instanceRef) return disconnected;
+
+  if (organizationId) {
+    const orgInstances = await listEvolutionGoInstancesForOrg(organizationId, instanceRef);
+    if (orgInstances === null) {
+      return { ...disconnected, unreachable: true };
+    }
+    if (!evolutionGoInstanceExistsInList(orgInstances, instanceRef)) {
+      await clearEvolutionGoInstanceFromSettings(organizationId);
+      return { ...disconnected, instanceMissing: true };
+    }
+  }
+
+  let auth = await resolveEvolutionGoOperationAuth(settings, organizationId);
+  if (!auth && organizationId) {
+    const platform = await getEvolutionGoPlatformConfig();
+    if (isEvolutionGoPlatformModeActive(platform)) {
+      const found = await evolutionGoLookupInstanceByRef({
+        baseUrl: platform.baseUrl,
+        apiKey: platform.globalApiKey,
+        instanceRef,
+      });
+      if (found?.token) {
+        await prisma.settings.update({
+          where: { organizationId },
+          data: {
+            whatsappApiKey: encrypt(found.token),
+            whatsappPhoneNumberId: found.id,
+          },
+        });
+        const refreshed = await prisma.settings.findUnique({ where: { organizationId } });
+        if (refreshed) {
+          auth = await resolveEvolutionGoOperationAuth(refreshed, organizationId);
+        }
+      } else if (!found) {
+        await clearEvolutionGoInstanceFromSettings(organizationId);
+        return { ...disconnected, instanceMissing: true };
+      }
+    }
+  }
+
   if (!auth) return disconnected;
 
   const st = await evolutionGoGetStatus({
     baseUrl: auth.baseUrl,
     apiKey: auth.apiKey,
+    instanceRef,
   });
-  if (st) {
-    return { ...st, unreachable: false };
-  }
+  if (st) return { ...st, unreachable: false };
   return disconnected;
 }
 

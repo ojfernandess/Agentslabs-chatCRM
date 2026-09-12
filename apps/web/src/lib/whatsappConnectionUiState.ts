@@ -28,13 +28,18 @@ export function deriveEvolutionApiUiState(opts: {
 
 export function deriveEvolutionGoUiState(opts: {
   hasInstance: boolean;
-  status: { connected: boolean; loggedIn: boolean; unreachable?: boolean } | null;
+  status: {
+    connected: boolean;
+    loggedIn: boolean;
+    unreachable?: boolean;
+    instanceMissing?: boolean;
+  } | null;
   hasError?: boolean;
 }): WhatsappConnectionUiState {
-  if (!opts.hasInstance) return "not_configured";
+  if (!opts.hasInstance || opts.status?.instanceMissing) return "not_configured";
   if (opts.hasError) return "error";
   if (!opts.status) return "configured_disconnected";
-  if (opts.status.unreachable) return "error";
+  if (opts.status.unreachable) return "configured_disconnected";
   if (opts.status.loggedIn) return "connected";
   if (opts.status.connected) return "connecting";
   return "configured_disconnected";

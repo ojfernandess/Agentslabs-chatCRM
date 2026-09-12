@@ -53,6 +53,7 @@ import {
   syncEvolutionQrWebhooksForOrganization,
 } from "../lib/evolutionPlatform.js";
 import {
+  clearEvolutionGoInstanceFromSettings,
   ensureEvolutionGoProviderSelected,
   evolutionGoPlatformModeActive,
   evolutionGoScopedInstanceName,
@@ -910,7 +911,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       }
-      const selected = settings.whatsappPhoneNumberId?.trim() ?? "";
+      let selected = settings.whatsappPhoneNumberId?.trim() ?? "";
       const orgInstances = await listEvolutionGoInstancesForOrg(organizationId, selected || undefined);
       if (!orgInstances) {
         return reply.status(502).send({
@@ -919,8 +920,18 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 502,
         });
       }
+      let instanceCleared = false;
+      if (
+        selected &&
+        !orgInstances.some((x) => x.id === selected || x.name === selected)
+      ) {
+        await clearEvolutionGoInstanceFromSettings(organizationId);
+        selected = "";
+        instanceCleared = true;
+      }
       return {
         selectedInstance: selected || null,
+        instanceCleared,
         instances: orgInstances.map((x) => ({
           ...x,
           selected: !!selected && (x.name === selected || x.id === selected),
@@ -1109,11 +1120,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       }
       const instanceRef = settings.whatsappPhoneNumberId?.trim() ?? "";
       if (!instanceRef) {
-        return reply.status(400).send({
-          error: "Bad Request",
-          message: "Evolution Go instance not configured",
-          statusCode: 400,
-        });
+        return { connected: false, loggedIn: false, name: "" };
       }
       return fetchEvolutionGoInstanceStatus(settings, organizationId);
     });

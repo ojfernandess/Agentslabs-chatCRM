@@ -21,6 +21,7 @@ type EvoGoStatus = {
   loggedIn: boolean;
   name: string;
   unreachable?: boolean;
+  instanceMissing?: boolean;
 };
 
 interface Props {
@@ -75,21 +76,40 @@ export function EvolutionGoSettingsPanel({
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const hasInstance = Boolean(savedInstanceId?.trim());
+  const hasLiveInstance = hasInstance && !status?.instanceMissing;
   const activeInstance = instances.find((i) => i.id === savedInstanceId) ?? instances[0];
   const displayName = status?.name || activeInstance?.name || savedInstanceId;
 
   const uiState: WhatsappConnectionUiState = deriveEvolutionGoUiState({
-    hasInstance,
+    hasInstance: hasLiveInstance,
     status,
     hasError: Boolean(error) && !flowOpen,
   });
 
   const loadInstances = useCallback(async () => {
     try {
-      const r = await api.get<{ instances: EvoGoInstance[]; selectedInstance?: string | null }>(
-        "/settings/evolution-go/instances",
-      );
-      setInstances(r.instances ?? []);
+      const r = await api.get<{
+        instances: EvoGoInstance[];
+        selectedInstance?: string | null;
+        instanceCleared?: boolean;
+      }>("/settings/evolution-go/instances");
+      const list = r.instances ?? [];
+      setInstances(list);
+      if (r.instanceCleared || (savedInstanceId && list.length === 0)) {
+        onInstanceIdChange("");
+        setStatus(null);
+        setError("");
+        return;
+      }
+      if (
+        savedInstanceId &&
+        list.length > 0 &&
+        !list.some((i) => i.id === savedInstanceId)
+      ) {
+        onInstanceIdChange(r.selectedInstance ?? list[0]?.id ?? "");
+        setStatus(null);
+        return;
+      }
       if (!savedInstanceId && r.selectedInstance) {
         onInstanceIdChange(r.selectedInstance);
       }
@@ -105,18 +125,27 @@ export function EvolutionGoSettingsPanel({
     }
     try {
       const st = await api.get<EvoGoStatus>("/settings/evolution-go/status");
+      if (st.instanceMissing) {
+        onInstanceIdChange("");
+        setStatus(null);
+        setError("");
+        await loadInstances();
+        return;
+      }
       setStatus(st);
+      setError("");
     } catch {
-      setStatus({ connected: false, loggedIn: false, name: "", unreachable: true });
+      setStatus({ connected: false, loggedIn: false, name: "" });
     }
-  }, [hasInstance]);
+  }, [hasInstance, loadInstances, onInstanceIdChange]);
 
   useEffect(() => {
-    if (hasInstance) void loadInstances();
-  }, [hasInstance, loadInstances]);
+    if (!platformMode) return;
+    void loadInstances();
+  }, [platformMode, loadInstances]);
 
   useEffect(() => {
-    if (!hasInstance) return;
+    if (!hasLiveInstance) return;
     void refreshStatus();
     const poll = () => {
       if (document.visibilityState === "visible") void refreshStatus();
@@ -130,7 +159,7 @@ export function EvolutionGoSettingsPanel({
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [hasInstance, refreshStatus]);
+  }, [hasLiveInstance, refreshStatus]);
 
   useEffect(() => {
     if (flowOpen && flowStep === "connect" && status?.loggedIn) {
@@ -269,7 +298,7 @@ export function EvolutionGoSettingsPanel({
             <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">Evolution Go</h3>
             <p className="mt-0.5 text-xs text-ink-500">Configure URL, token e instância manualmente.</p>
           </div>
-          <WhatsappConnectionStatusBadge state={hasInstance ? uiState : "not_configured"} />
+          <WhatsappConnectionStatusBadge state={hasLiveInstance ? uiState : "not_configured"} />
         </div>
         <WhatsappAdvancedSettingsPanel
           webhookUrl={webhookUrl}
@@ -298,10 +327,10 @@ export function EvolutionGoSettingsPanel({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <WhatsappConnectionStatusBadge state={hasInstance ? uiState : "not_configured"} size="md" />
+              <WhatsappConnectionStatusBadge state={hasLiveInstance ? uiState : "not_configured"} size="md" />
               {busy && !flowOpen ? <Loader2 className="h-4 w-4 animate-spin text-ink-400" /> : null}
             </div>
-            {hasInstance ? (
+            {hasLiveInstance ? (
               <>
                 <p className="mt-2 text-base font-semibold text-ink-900 dark:text-ink-50">{displayName}</p>
                 {instances.length > 1 ? (
@@ -333,7 +362,7 @@ export function EvolutionGoSettingsPanel({
                   Reconectar
                 </button>
               </>
-            ) : hasInstance && (uiState === "configured_disconnected" || uiState === "connecting") ? (
+            ) : hasLiveInstance && (uiState === "configured_disconnected" || uiState === "connecting") ? (
               <button
                 type="button"
                 onClick={() => void openReconnectFlow()}
@@ -347,7 +376,7 @@ export function EvolutionGoSettingsPanel({
               </button>
             ) : null}
 
-            {hasInstance ? (
+            {hasLiveInstance ? (
               <div className="relative">
                 <button
                   type="button"
@@ -405,14 +434,14 @@ export function EvolutionGoSettingsPanel({
           </div>
         </div>
 
-        {uiState === "configured_disconnected" && hasInstance ? (
+        {uiState === "configured_disconnected" && hasLiveInstance ? (
           <div className="mt-3 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/20 dark:text-amber-200">
             Sua conexão precisa ser autenticada novamente. Clique em <strong>Conectar WhatsApp</strong>.
           </div>
         ) : null}
       </div>
 
-      {hasInstance ? (
+      {hasLiveInstance ? (
         <>
           <div className="flex items-center justify-between gap-3 text-sm">
             <div className="flex items-center gap-2 text-ink-600 dark:text-ink-400">

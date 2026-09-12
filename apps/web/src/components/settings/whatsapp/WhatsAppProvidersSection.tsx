@@ -89,20 +89,25 @@ export function WhatsAppProvidersSection({
     }
 
     const evoGoItem = items.find((i) => i.id === "evolution_go");
-    if (evoGoItem?.configured && instanceName?.trim()) {
+    const evoGoInstanceRef = instanceName?.trim() ?? "";
+    if (evoGoItem?.configured && evoGoInstanceRef) {
       try {
-        const st = await api.get<{ connected: boolean; loggedIn: boolean; unreachable?: boolean }>(
-          "/settings/evolution-go/status",
-        );
+        const st = await api.get<{
+          connected: boolean;
+          loggedIn: boolean;
+          unreachable?: boolean;
+          instanceMissing?: boolean;
+        }>("/settings/evolution-go/status");
+        if (st.instanceMissing) {
+          persistEvolutionGoInstanceId("");
+        }
         next.evolution_go = deriveEvolutionGoUiState({
-          hasInstance: true,
+          hasInstance: !st.instanceMissing,
           status: st,
         });
       } catch {
-        next.evolution_go = "error";
+        next.evolution_go = "configured_disconnected";
       }
-    } else if (evoGoItem?.configured) {
-      next.evolution_go = "configured_disconnected";
     } else {
       next.evolution_go = "not_configured";
     }
@@ -113,7 +118,7 @@ export function WhatsAppProvidersSection({
     }
 
     setStatusByProvider(next);
-  }, [items, evolutionPlatformQrMode, instanceName]);
+  }, [items, evolutionPlatformQrMode, instanceName, persistEvolutionGoInstanceId]);
 
   useEffect(() => {
     void refreshProviderStatuses();
