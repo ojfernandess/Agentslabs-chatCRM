@@ -69,6 +69,7 @@ function providerHints(
   row: {
     configured: boolean;
     receivingOk: boolean;
+    lastWebhookAttemptAt: string | null;
     lastWebhookAttemptStatus: string | null;
     lastWebhookAttemptError: string | null;
     evolutionRemoteWebhook: WhatsappWebhookDiagnosticsRow["evolutionRemoteWebhook"];
@@ -176,6 +177,7 @@ export async function buildWhatsappWebhookDiagnosticsForInbox(input: {
   const rowBase = {
     configured,
     receivingOk,
+    lastWebhookAttemptAt: attempt.lastWebhookAttemptAt,
     lastWebhookAttemptStatus: attempt.lastWebhookAttemptStatus,
     lastWebhookAttemptError: attempt.lastWebhookAttemptError,
     evolutionRemoteWebhook,
