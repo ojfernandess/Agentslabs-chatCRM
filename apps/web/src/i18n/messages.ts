@@ -693,7 +693,7 @@ export const messages = {
         "Substitui as configurações nativas acima. Instale e configure a ferramenta ElevenLabs TTS na aba Ferramentas.",
       agentElevenLabsToggle: "Usar ElevenLabs",
       agentElevenLabsOverrideWarning:
-        "A síntese de voz geral passa a usar o ElevenLabs. As opções «Quando o cliente enviar áudio» (responder em texto, em áudio ou comportamento normal) continuam válidas.",
+        "A síntese de voz geral passa a usar o ElevenLabs. As opções «Quando o cliente enviar áudio» (responder em áudio ou comportamento normal) continuam válidas.",
       agentElevenLabsConfig: "Configuração ElevenLabs",
       agentElevenLabsSelect: "Selecione…",
       agentElevenLabsToolsTabHint: "Abrir aba Ferramentas para instalar ou editar ElevenLabs.",
@@ -6689,7 +6689,7 @@ export const messages = {
         "Replaces the native settings above. Install and configure the ElevenLabs TTS tool in the Tools tab.",
       agentElevenLabsToggle: "Use ElevenLabs",
       agentElevenLabsOverrideWarning:
-        "General voice synthesis will use ElevenLabs. «When the customer sends audio» options (reply with text, audio, or default behavior) remain in effect.",
+        "General voice synthesis will use ElevenLabs. «When the customer sends audio» options (reply with audio or default behavior) remain in effect.",
       agentElevenLabsConfig: "ElevenLabs configuration",
       agentElevenLabsSelect: "Select…",
       agentElevenLabsToolsTabHint: "Open the Tools tab to install or edit ElevenLabs.",

@@ -3744,8 +3744,7 @@ function AgentsTab({
                     [
                       {
                         id: "default",
-                        checked:
-                          !agentForm.replyWithAudioOnInboundAudio && !agentForm.replyWithTextOnInboundAudio,
+                        checked: !agentForm.replyWithAudioOnInboundAudio,
                         label: t("automationPage.agentVoiceInboundAudioDefault"),
                         help: t("automationPage.agentVoiceInboundAudioDefaultHelp"),
                       },
@@ -3754,12 +3753,6 @@ function AgentsTab({
                         checked: agentForm.replyWithAudioOnInboundAudio,
                         label: t("automationPage.agentVoiceOnAudioInbound"),
                         help: t("automationPage.agentVoiceOnAudioInboundHelp"),
-                      },
-                      {
-                        id: "text",
-                        checked: agentForm.replyWithTextOnInboundAudio,
-                        label: t("automationPage.agentVoiceTextOnAudioInbound"),
-                        help: t("automationPage.agentVoiceTextOnAudioInboundHelp"),
                       },
                     ] as const
                   ).map((opt) => (
@@ -3773,7 +3766,8 @@ function AgentsTab({
                           setAgentForm((f) => ({
                             ...f,
                             replyWithAudioOnInboundAudio: opt.id === "audio",
-                            replyWithTextOnInboundAudio: opt.id === "text",
+                            replyWithTextOnInboundAudio:
+                              opt.id === "audio" ? false : f.replyWithTextOnInboundAudio,
                           }))
                         }
                       />
