@@ -15,6 +15,7 @@ import {
   whatsappWebhookMetaFromConfig,
 } from "../lib/inboxWhatsappConfig.js";
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
+import { syncEvolutionApiWebhookForInbox } from "../lib/evolutionPlatform.js";
 import { syncWhatsappInboxCredentialsToSettings } from "../lib/whatsappOrgSync.js";
 import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
 import { fetchMetaWhatsappAccountHealth } from "../lib/metaWhatsappAccountHealth.js";
@@ -343,6 +344,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
     if (inbox.channelType === InboxChannelType.WHATSAPP && channelConfig) {
       await syncWhatsappInboxCredentialsToSettings(organizationId, inbox.id);
+      await syncEvolutionApiWebhookForInbox(organizationId, inbox.id, request.log);
     }
 
     return reply.status(201).send(enrichWhatsappInboxResponse(organizationId, inbox));
@@ -476,7 +478,18 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       try {
         const connected = await provider.healthCheck();
         let wabaSubscribed: boolean | undefined;
+        let evolutionWebhookSynced: boolean | undefined;
         if (connected) {
+          const parsedCfg = parseInboxWhatsappFromChannelConfig(draftConfig ?? inbox.channelConfig);
+          if (parsedCfg.whatsappProvider === "evolution") {
+            const wh = await syncEvolutionApiWebhookForInbox(
+              organizationId,
+              inbox.id,
+              request.log,
+              draftConfig ?? inbox.channelConfig,
+            );
+            evolutionWebhookSynced = wh?.ok === true;
+          }
           const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
           if (isMetaCloudWhatsappProvider(parsed.whatsappProvider)) {
             const base =
@@ -497,7 +510,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             wabaSubscribed = sub.wabaSubscribed;
           }
         }
-        return { connected, wabaSubscribed };
+        return { connected, wabaSubscribed, evolutionWebhookSynced };
       } catch {
         return { connected: false };
       }
@@ -1023,6 +1036,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       const effectiveTypeDefault = p.channelType ?? inbox.channelType;
       if (effectiveTypeDefault === InboxChannelType.WHATSAPP && p.channelConfig !== undefined) {
         await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
+        await syncEvolutionApiWebhookForInbox(organizationId, updated.id, request.log);
       }
       return enrichWhatsappInboxResponse(organizationId, updated);
     }
@@ -1048,6 +1062,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     const effectiveType = p.channelType ?? inbox.channelType;
     if (effectiveType === InboxChannelType.WHATSAPP && p.channelConfig !== undefined) {
       await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
+      await syncEvolutionApiWebhookForInbox(organizationId, updated.id, request.log);
     }
     return enrichWhatsappInboxResponse(organizationId, updated);
   });

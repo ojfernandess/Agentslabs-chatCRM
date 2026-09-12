@@ -197,7 +197,10 @@ function parseUpsertToIncoming(
     }
     participantPushName = pushFromEnvelope;
   } else {
-    phone = jidOrAltToE164(remoteJid, remoteJidAlt);
+    phone =
+      jidOrAltToE164(remoteJid, remoteJidAlt) ??
+      (participantJid ? jidOrAltToE164(participantJid, participantAlt) : null) ??
+      (remoteJid.includes("@lid") && participantJid ? jidToE164(participantJid) : null);
     if (!phone && fallbackDigits) {
       const d = digitsOnly(fallbackDigits);
       if (d.length >= 7 && d.length <= 15) {
