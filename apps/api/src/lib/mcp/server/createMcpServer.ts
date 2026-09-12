@@ -301,11 +301,11 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
     "apply_eil_policy",
     {
       description:
-        "Apply declarative EIL policies to an agent (behaviorConfig.eil) and reservation-lookup tool produces metadata (tool.config.eil). Preserves existing config keys.",
+        "Apply declarative EIL policies to an agent (behaviorConfig.eil) and matching HTTP tool metadata (tool.config.eil). Preserves existing config keys.",
       inputSchema: {
         botId: z.string().uuid().describe("Agent/bot ID"),
         eil: z.record(z.unknown()).optional().describe("Optional EIL bundle override"),
-        toolEil: z.record(z.unknown()).optional().describe("Optional tool.config.eil override for reservation tools"),
+        toolEil: z.record(z.unknown()).optional().describe("Optional tool.config.eil override merged into matched tools"),
       },
     },
     async ({ botId, eil, toolEil }) =>

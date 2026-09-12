@@ -150,6 +150,9 @@ const defaultBehaviorConfig = () => ({
     clearContextAfterFollowUpMinutes: null as number | null,
   },
   voice: {
+    nativeVoiceEnabled: false,
+    nativeVoiceResponsePercent: 100,
+    inboundAudioResponsePercent: 100,
     elevenLabsEnabled: false,
     elevenLabsToolId: null as string | null,
     voiceResponsePercent: 100,

@@ -7,7 +7,7 @@ import {
   DEFAULT_AGENT_EIL_JSON,
 } from "./AgentEilConfigSection.js";
 
-test("parseAgentEilJson accepts default Auda policy bundle", () => {
+test("parseAgentEilJson accepts default EIL policy bundle", () => {
   const parsed = parseAgentEilJson(DEFAULT_AGENT_EIL_JSON);
   assert.equal(parsed.ok, true);
   if (parsed.ok) {

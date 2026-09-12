@@ -340,6 +340,9 @@ const defaultBehavior = {
     clearContextAfterFollowUpMinutes: null as number | null,
   },
   voice: {
+    nativeVoiceEnabled: false,
+    nativeVoiceResponsePercent: 100,
+    inboundAudioResponsePercent: 100,
     elevenLabsEnabled: false,
     elevenLabsToolId: null as string | null,
     voiceResponsePercent: 100,
@@ -405,6 +408,9 @@ type AgentFormFields = {
   promptLinkedKnowledgeIds: string[];
   temperature: number;
   maxTokens: number;
+  nativeVoiceEnabled: boolean;
+  nativeVoiceResponsePercent: number;
+  inboundAudioResponsePercent: number;
   voiceEnabled: boolean;
   elevenLabsToolId: string;
   voiceResponsePercent: number;
@@ -476,6 +482,9 @@ function emptyAgentForm(): AgentFormFields {
     promptLinkedKnowledgeIds: [],
     temperature: 0.7,
     maxTokens: 1024,
+    nativeVoiceEnabled: false,
+    nativeVoiceResponsePercent: 100,
+    inboundAudioResponsePercent: 100,
     voiceEnabled: false,
     elevenLabsToolId: "",
     voiceResponsePercent: 100,
@@ -813,6 +822,20 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     promptLinkedKnowledgeIds,
     temperature: Number(llm.temperature ?? 0.7),
     maxTokens: Number(llm.maxTokens ?? 1024),
+    nativeVoiceEnabled:
+      voice.nativeVoiceEnabled === true ||
+      (voice.elevenLabsEnabled !== true &&
+        voice.nativeVoiceEnabled !== false &&
+        Number(voice.nativeVoiceResponsePercent ?? voice.voiceResponsePercent ?? 0) > 0 &&
+        !voice.replyWithAudioOnInboundAudio),
+    nativeVoiceResponsePercent: Math.min(
+      100,
+      Math.max(0, Number(voice.nativeVoiceResponsePercent ?? voice.voiceResponsePercent ?? 100)),
+    ),
+    inboundAudioResponsePercent: Math.min(
+      100,
+      Math.max(0, Number(voice.inboundAudioResponsePercent ?? 100)),
+    ),
     voiceEnabled: Boolean(voice.elevenLabsEnabled),
     elevenLabsToolId: voice.elevenLabsToolId != null ? String(voice.elevenLabsToolId) : "",
     voiceResponsePercent: Math.min(
@@ -1011,6 +1034,9 @@ function formToPayload(
       followUpMessages: fu ? [fu] : [],
     },
     voice: {
+      nativeVoiceEnabled: form.nativeVoiceEnabled,
+      nativeVoiceResponsePercent: Math.min(100, Math.max(0, form.nativeVoiceResponsePercent)),
+      inboundAudioResponsePercent: Math.min(100, Math.max(0, form.inboundAudioResponsePercent)),
       elevenLabsEnabled: form.voiceEnabled,
       elevenLabsToolId: form.elevenLabsToolId.trim() || null,
       voiceResponsePercent: Math.min(100, Math.max(0, form.voiceResponsePercent)),
@@ -1967,6 +1993,55 @@ type Translate = (key: string) => string;
 
 const VOICE_PERCENT_STEPS = [0, 10, 20, 30, 50, 75, 100] as const;
 
+function VoicePercentPicker({
+  value,
+  onChange,
+  t,
+  disabled,
+}: {
+  value: number;
+  onChange: (pct: number) => void;
+  t: Translate;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={clsx(disabled && "pointer-events-none opacity-50")}>
+      <p className="mt-3 text-sm font-medium text-ink-800 dark:text-ink-200">
+        {t("automationPage.agentVoicePercentLabel")}: {value}%
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {VOICE_PERCENT_STEPS.map((pct) => (
+          <button
+            key={pct}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(pct)}
+            className={clsx(
+              "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+              value === pct
+                ? "bg-brand-600 text-white"
+                : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
+            )}
+          >
+            {pct === 0 ? t("automationPage.agentVoicePercent0") : `${pct}%`}
+          </button>
+        ))}
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-3 w-full accent-brand-600"
+      />
+      <p className="text-[11px] text-ink-500">{t("automationPage.agentVoicePercentHelp")}</p>
+    </div>
+  );
+}
+
 type AgentTestChatTurn = { role: "user" | "assistant"; content: string };
 
 function AgentsTab({
@@ -2504,7 +2579,9 @@ function AgentsTab({
                 >
                   {row.bot.isActive ? t("automationPage.agentStatusActive") : t("automationPage.agentStatusInactive")}
                 </span>
-                {voice.elevenLabsEnabled || voice.replyWithAudioOnInboundAudio ? (
+                {voice.nativeVoiceEnabled ||
+                voice.elevenLabsEnabled ||
+                voice.replyWithAudioOnInboundAudio ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-ink-600 dark:text-ink-400">
                     <Volume2 className="h-3 w-3" /> {t("automationPage.agentVoiceTag")}
                   </span>
@@ -3595,10 +3672,46 @@ function AgentsTab({
                   <Volume2 className="h-4 w-4 text-brand-600" />
                   {t("automationPage.agentVoiceSectionGeneral")}
                 </div>
-                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-ink-500">
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentNativeVoiceHelp")}</p>
+                <label
+                  className={clsx(
+                    "mt-3 flex cursor-pointer items-center gap-3 text-sm",
+                    agentForm.voiceEnabled && "pointer-events-none opacity-50",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500"
+                    checked={agentForm.nativeVoiceEnabled}
+                    disabled={agentForm.voiceEnabled}
+                    onChange={(e) =>
+                      setAgentForm((f) => ({ ...f, nativeVoiceEnabled: e.target.checked }))
+                    }
+                  />
+                  <span>{t("automationPage.agentNativeVoiceToggle")}</span>
+                </label>
+                {agentForm.nativeVoiceEnabled ? (
+                  <VoicePercentPicker
+                    value={agentForm.nativeVoiceResponsePercent}
+                    onChange={(pct) => setAgentForm((f) => ({ ...f, nativeVoiceResponsePercent: pct }))}
+                    t={t}
+                    disabled={agentForm.voiceEnabled}
+                  />
+                ) : null}
+                <p
+                  className={clsx(
+                    "mt-4 text-xs font-semibold uppercase tracking-wide text-ink-500",
+                    agentForm.voiceEnabled && "opacity-50",
+                  )}
+                >
                   {t("automationPage.agentVoiceInboundAudioMode")}
                 </p>
-                <div className="mt-2 space-y-2 text-sm">
+                <div
+                  className={clsx(
+                    "mt-2 space-y-2 text-sm",
+                    agentForm.voiceEnabled && "pointer-events-none opacity-50",
+                  )}
+                >
                   {(
                     [
                       {
@@ -3628,6 +3741,7 @@ function AgentsTab({
                         name="inbound-audio-reply-mode"
                         className="mt-0.5 h-4 w-4 border-ink-300 text-brand-600 focus:ring-brand-500"
                         checked={opt.checked}
+                        disabled={agentForm.voiceEnabled}
                         onChange={() =>
                           setAgentForm((f) => ({
                             ...f,
@@ -3643,6 +3757,14 @@ function AgentsTab({
                     </label>
                   ))}
                 </div>
+                {agentForm.replyWithAudioOnInboundAudio ? (
+                  <VoicePercentPicker
+                    value={agentForm.inboundAudioResponsePercent}
+                    onChange={(pct) => setAgentForm((f) => ({ ...f, inboundAudioResponsePercent: pct }))}
+                    t={t}
+                    disabled={agentForm.voiceEnabled}
+                  />
+                ) : null}
                 {elevenLabsTools.length > 0 ? (
                   <>
                     <div className="mt-4 border-t border-ink-200/80 pt-3 dark:border-ink-700">
@@ -3657,8 +3779,13 @@ function AgentsTab({
                         checked={agentForm.voiceEnabled}
                         onChange={(e) => setAgentForm((f) => ({ ...f, voiceEnabled: e.target.checked }))}
                       />
-                      <span>{t("automationPage.agentVoiceResponses")}</span>
+                      <span>{t("automationPage.agentElevenLabsToggle")}</span>
                     </label>
+                    {agentForm.voiceEnabled ? (
+                      <p className="mt-2 rounded-lg border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-[11px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                        {t("automationPage.agentElevenLabsOverrideWarning")}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentVoiceHelp")}</p>
                     {agentForm.voiceEnabled ? (
                       <>
@@ -3686,38 +3813,11 @@ function AgentsTab({
                             {t("automationPage.agentElevenLabsToolsTabHint")}
                           </button>
                         </p>
-                        <p className="mt-3 text-sm font-medium text-ink-800 dark:text-ink-200">
-                          {t("automationPage.agentVoicePercentLabel")}: {agentForm.voiceResponsePercent}%
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {VOICE_PERCENT_STEPS.map((pct) => (
-                            <button
-                              key={pct}
-                              type="button"
-                              onClick={() => setAgentForm((f) => ({ ...f, voiceResponsePercent: pct }))}
-                              className={clsx(
-                                "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                                agentForm.voiceResponsePercent === pct
-                                  ? "bg-brand-600 text-white"
-                                  : "border border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
-                              )}
-                            >
-                              {pct === 0 ? t("automationPage.agentVoicePercent0") : `${pct}%`}
-                            </button>
-                          ))}
-                        </div>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          step={5}
+                        <VoicePercentPicker
                           value={agentForm.voiceResponsePercent}
-                          onChange={(e) =>
-                            setAgentForm((f) => ({ ...f, voiceResponsePercent: Number(e.target.value) }))
-                          }
-                          className="mt-3 w-full accent-brand-600"
+                          onChange={(pct) => setAgentForm((f) => ({ ...f, voiceResponsePercent: pct }))}
+                          t={t}
                         />
-                        <p className="text-[11px] text-ink-500">{t("automationPage.agentVoicePercentHelp")}</p>
                       </>
                     ) : null}
                   </>
