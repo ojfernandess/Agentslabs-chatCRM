@@ -66,7 +66,6 @@ import {
   evolutionApiCreateInstance,
   evolutionApiFetchConnect,
   evolutionApiFetchConnectionState,
-  evolutionApiSetWebhook,
   evolutionConnectJsonToQrPayload,
   evolutionInstanceNameForOrg,
   evolutionInstanceNameWithSuffix,
@@ -1403,11 +1402,19 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (!setWh.ok) {
         return reply.status(502).send({
           error: "Bad Gateway",
-          message: `Evolution webhook/set: ${setWh.status} ${setWh.body.slice(0, 300)}`,
+          message: `Evolution webhook/set failed for instance "${setWh.instanceName}": ${setWh.body.slice(0, 400)}`,
           statusCode: 502,
+          instanceName: setWh.instanceName,
+          webhookUrl: setWh.webhookUrl,
+          evolutionAttempts: setWh.attempts ?? [],
         });
       }
-      return { ok: true, webhookUrl: setWh.webhookUrl, instanceName: ctx.instanceName };
+      return {
+        ok: true,
+        webhookUrl: setWh.webhookUrl,
+        instanceName: setWh.instanceName,
+        attempt: setWh.attempt,
+      };
     });
 
     admin.get("/evolution-qr/qr", async (request, reply) => {

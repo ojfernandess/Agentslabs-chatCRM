@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, MoreHorizontal, Plus, RefreshCw, ExternalLink } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { deriveEvolutionApiUiState, type WhatsappConnectionUiState } from "@/lib/whatsappConnectionUiState";
 import { WhatsappConnectionStatusBadge } from "./WhatsappConnectionStatusBadge";
 import { WhatsappAdvancedSettingsPanel } from "./WhatsappAdvancedSettingsPanel";
@@ -165,14 +165,17 @@ export function EvolutionApiSettingsPanel({
     setError("");
     setWebhookWarn(false);
     try {
-      const r = await api.post<{ ok: boolean; webhookUrl?: string }>(
+      const r = await api.post<{ ok: boolean; webhookUrl?: string; instanceName?: string }>(
         "/settings/evolution-qr/sync-webhook",
         {},
       );
+      if (r.instanceName && r.instanceName !== instanceName) {
+        onInstanceNameChange(r.instanceName);
+      }
       if (!r.ok) setWebhookWarn(true);
     } catch (err) {
       setWebhookWarn(true);
-      setError(err instanceof Error ? err.message : "Falha ao sincronizar webhook");
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Falha ao sincronizar webhook");
     } finally {
       setBusy(false);
     }

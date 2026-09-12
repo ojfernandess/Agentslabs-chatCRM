@@ -2,7 +2,10 @@ import { InboxChannelType, type Prisma, type Settings } from "@prisma/client";
 import { webhookUrlForInbox, webhookUrlForOrganization } from "../config.js";
 import { prisma } from "../db.js";
 import { decrypt } from "./encryption.js";
-import { evolutionApiSetWebhook } from "./evolutionInstanceApi.js";
+import {
+  evolutionApiResolveInstanceName,
+  evolutionApiSetWebhook,
+} from "./evolutionInstanceApi.js";
 import {
   findWhatsappInboxByProvider,
   parseInboxWhatsappFromChannelConfig,
@@ -205,10 +208,38 @@ export async function syncEvolutionQrWebhooksForOrganization(
   organizationId: string,
   instanceName: string,
   log?: EvolutionWebhookLogger,
-): Promise<{ ok: true; webhookUrl: string } | { ok: false; status: number; body: string; webhookUrl: string }> {
+): Promise<
+  | { ok: true; webhookUrl: string; instanceName: string; attempt?: string }
+  | { ok: false; status: number; body: string; webhookUrl: string; instanceName: string; attempts?: string[] }
+> {
   const creds = await resolveEvolutionQrPlatformCredentials(instanceName);
   if (!creds) {
-    return { ok: false, status: 400, body: "Evolution QR mode not active", webhookUrl: "" };
+    return {
+      ok: false,
+      status: 400,
+      body: "Evolution QR mode not active",
+      webhookUrl: "",
+      instanceName,
+    };
+  }
+
+  const resolved = await evolutionApiResolveInstanceName(
+    creds.baseUrl,
+    creds.apiKey,
+    creds.instanceName,
+    organizationId,
+  );
+  const effectiveInstance = resolved.name;
+
+  if (resolved.corrected && effectiveInstance) {
+    await prisma.settings.update({
+      where: { organizationId },
+      data: {
+        whatsappProvider: "evolution",
+        whatsappPhoneNumberId: effectiveInstance,
+      },
+    });
+    await patchEvolutionInboxAfterQrFlow(organizationId, effectiveInstance);
   }
 
   const evolutionInbox = await findWhatsappInboxByProvider(organizationId, "evolution");
@@ -226,7 +257,7 @@ export async function syncEvolutionQrWebhooksForOrganization(
   const setWh = await evolutionApiSetWebhook({
     baseUrl: creds.baseUrl,
     apiKey: creds.apiKey,
-    instanceName: creds.instanceName,
+    instanceName: effectiveInstance,
     webhookUrl,
     webhookHeaders,
   });
@@ -236,19 +267,28 @@ export async function syncEvolutionQrWebhooksForOrganization(
       {
         status: setWh.status,
         body: setWh.body.slice(0, 400),
-        instanceName: creds.instanceName,
+        instanceName: effectiveInstance,
+        preferredInstance: creds.instanceName,
         webhookUrl,
+        attempts: setWh.attempts,
       },
       "Evolution POST /webhook/set failed (QR flow)",
     );
-    return { ok: false, status: setWh.status, body: setWh.body, webhookUrl };
+    return {
+      ok: false,
+      status: setWh.status,
+      body: setWh.body,
+      webhookUrl,
+      instanceName: effectiveInstance,
+      attempts: setWh.attempts,
+    };
   }
 
   if (evolutionInbox) {
     await syncEvolutionApiWebhookForInbox(organizationId, evolutionInbox.id, log);
   }
 
-  return { ok: true, webhookUrl };
+  return { ok: true, webhookUrl, instanceName: effectiveInstance, attempt: setWh.attempt };
 }
 
 /**
