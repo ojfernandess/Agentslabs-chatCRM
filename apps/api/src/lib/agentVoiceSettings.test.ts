@@ -50,6 +50,18 @@ test("shouldSendVoiceReply respects native, inbound audio and ElevenLabs overrid
       { ...base, replyWithAudioOnInboundAudio: true, voiceResponsePercent: 0 },
       { type: "AUDIO" },
     ),
+    true,
+  );
+  assert.equal(
+    shouldSendVoiceReply(
+      {
+        ...base,
+        replyWithAudioOnInboundAudio: true,
+        voiceResponsePercent: 100,
+        inboundAudioResponsePercent: 0,
+      },
+      { type: "AUDIO" },
+    ),
     false,
   );
   assert.equal(

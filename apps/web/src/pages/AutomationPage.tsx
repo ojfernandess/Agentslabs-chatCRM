@@ -18,6 +18,7 @@ import {
   Tags,
   ShieldCheck,
   ChevronDown,
+  CircleHelp,
   History,
 } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
@@ -1993,6 +1994,37 @@ type Translate = (key: string) => string;
 
 const VOICE_PERCENT_STEPS = [0, 10, 20, 30, 50, 75, 100] as const;
 
+function InlineInfoHint({ text, label }: { text: string; label: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="group/hint relative inline-flex shrink-0">
+      <button
+        type="button"
+        aria-label={label}
+        title={text}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className="rounded-full p-0.5 text-ink-400 transition-colors hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/40 dark:hover:text-brand-400"
+      >
+        <CircleHelp className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      <span
+        role="tooltip"
+        className={clsx(
+          "pointer-events-none absolute bottom-full left-1/2 z-30 mb-1.5 w-64 -translate-x-1/2 rounded-lg border border-ink-200 bg-white px-2.5 py-2 text-[11px] leading-relaxed text-ink-600 shadow-md transition-opacity dark:border-ink-600 dark:bg-ink-900 dark:text-ink-300",
+          open ? "opacity-100" : "opacity-0 group-hover/hint:opacity-100 group-focus-within/hint:opacity-100",
+        )}
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 function VoicePercentPicker({
   value,
   onChange,
@@ -3688,7 +3720,13 @@ function AgentsTab({
                       setAgentForm((f) => ({ ...f, nativeVoiceEnabled: e.target.checked }))
                     }
                   />
-                  <span>{t("automationPage.agentNativeVoiceToggle")}</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    {t("automationPage.agentNativeVoiceToggle")}
+                    <InlineInfoHint
+                      label={t("automationPage.agentNativeVoiceToggleHelpTitle")}
+                      text={t("automationPage.agentNativeVoiceToggleHelp")}
+                    />
+                  </span>
                 </label>
                 {agentForm.nativeVoiceEnabled ? (
                   <VoicePercentPicker
@@ -3698,20 +3736,10 @@ function AgentsTab({
                     disabled={agentForm.voiceEnabled}
                   />
                 ) : null}
-                <p
-                  className={clsx(
-                    "mt-4 text-xs font-semibold uppercase tracking-wide text-ink-500",
-                    agentForm.voiceEnabled && "opacity-50",
-                  )}
-                >
+                <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink-500">
                   {t("automationPage.agentVoiceInboundAudioMode")}
                 </p>
-                <div
-                  className={clsx(
-                    "mt-2 space-y-2 text-sm",
-                    agentForm.voiceEnabled && "pointer-events-none opacity-50",
-                  )}
-                >
+                <div className="mt-2 space-y-2 text-sm">
                   {(
                     [
                       {
@@ -3741,7 +3769,6 @@ function AgentsTab({
                         name="inbound-audio-reply-mode"
                         className="mt-0.5 h-4 w-4 border-ink-300 text-brand-600 focus:ring-brand-500"
                         checked={opt.checked}
-                        disabled={agentForm.voiceEnabled}
                         onChange={() =>
                           setAgentForm((f) => ({
                             ...f,
@@ -3762,7 +3789,6 @@ function AgentsTab({
                     value={agentForm.inboundAudioResponsePercent}
                     onChange={(pct) => setAgentForm((f) => ({ ...f, inboundAudioResponsePercent: pct }))}
                     t={t}
-                    disabled={agentForm.voiceEnabled}
                   />
                 ) : null}
                 {elevenLabsTools.length > 0 ? (

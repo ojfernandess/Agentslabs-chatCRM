@@ -683,14 +683,17 @@ export const messages = {
       agentVoiceSectionGeneral: "Respostas em áudio",
       agentVoiceSection: "ElevenLabs (opcional)",
       agentVoiceResponses: "Respostas em áudio",
-      agentNativeVoiceToggle: "Ativar respostas em áudio nativas",
+      agentNativeVoiceToggle: "Ativar respostas em áudio",
+      agentNativeVoiceToggleHelpTitle: "O que faz «Ativar respostas em áudio»",
+      agentNativeVoiceToggleHelp:
+        "Quando ativado, o agente pode enviar respostas em áudio usando a síntese de voz do servidor. O percentual de «Interação por voz» define quantas respostas em texto serão convertidas em áudio antes do envio ao cliente.",
       agentNativeVoiceHelp:
         "Recurso nativo da plataforma: converte respostas do agente em áudio usando a síntese de voz do servidor.",
       agentVoiceHelp:
         "Substitui as configurações nativas acima. Instale e configure a ferramenta ElevenLabs TTS na aba Ferramentas.",
       agentElevenLabsToggle: "Usar ElevenLabs",
       agentElevenLabsOverrideWarning:
-        "As configurações nativas de voz serão substituídas pelas configurações do ElevenLabs.",
+        "A síntese de voz geral passa a usar o ElevenLabs. As opções «Quando o cliente enviar áudio» (responder em texto, em áudio ou comportamento normal) continuam válidas.",
       agentElevenLabsConfig: "Configuração ElevenLabs",
       agentElevenLabsSelect: "Selecione…",
       agentElevenLabsToolsTabHint: "Abrir aba Ferramentas para instalar ou editar ElevenLabs.",
@@ -6676,14 +6679,17 @@ export const messages = {
       agentVoiceSectionGeneral: "Audio responses",
       agentVoiceSection: "ElevenLabs (optional)",
       agentVoiceResponses: "Audio responses",
-      agentNativeVoiceToggle: "Enable native audio responses",
+      agentNativeVoiceToggle: "Enable audio responses",
+      agentNativeVoiceToggleHelpTitle: "What «Enable audio responses» does",
+      agentNativeVoiceToggleHelp:
+        "When enabled, the agent can send audio replies using the server voice synthesis. The «Voice interaction» percentage controls how many text replies are converted to audio before sending to the customer.",
       agentNativeVoiceHelp:
         "Built-in platform feature: converts agent replies to audio using the server voice synthesis.",
       agentVoiceHelp:
         "Replaces the native settings above. Install and configure the ElevenLabs TTS tool in the Tools tab.",
       agentElevenLabsToggle: "Use ElevenLabs",
       agentElevenLabsOverrideWarning:
-        "Native voice settings will be replaced by ElevenLabs settings.",
+        "General voice synthesis will use ElevenLabs. «When the customer sends audio» options (reply with text, audio, or default behavior) remain in effect.",
       agentElevenLabsConfig: "ElevenLabs configuration",
       agentElevenLabsSelect: "Select…",
       agentElevenLabsToolsTabHint: "Open the Tools tab to install or edit ElevenLabs.",
