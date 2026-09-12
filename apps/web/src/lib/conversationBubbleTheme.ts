@@ -113,15 +113,26 @@ export function audioPlayerPreviewStyle(
     clientAccentDark: string;
   },
 ): Record<string, string> {
-  const isDark = mode === "dark";
   if (role === "agent") {
+    if (mode === "dark") {
+      return {
+        "--org-audio-player-agent-surface-dark": colors.agentSurfaceDark,
+        "--org-audio-player-agent-accent-dark": colors.agentAccentDark,
+      };
+    }
     return {
-      "--org-audio-player-agent-surface": isDark ? colors.agentSurfaceDark : colors.agentSurface,
-      "--org-audio-player-agent-accent": isDark ? colors.agentAccentDark : colors.agentAccent,
+      "--org-audio-player-agent-surface": colors.agentSurface,
+      "--org-audio-player-agent-accent": colors.agentAccent,
+    };
+  }
+  if (mode === "dark") {
+    return {
+      "--org-audio-player-client-surface-dark": colors.clientSurfaceDark,
+      "--org-audio-player-client-accent-dark": colors.clientAccentDark,
     };
   }
   return {
-    "--org-audio-player-client-surface": isDark ? colors.clientSurfaceDark : colors.clientSurface,
-    "--org-audio-player-client-accent": isDark ? colors.clientAccentDark : colors.clientAccent,
+    "--org-audio-player-client-surface": colors.clientSurface,
+    "--org-audio-player-client-accent": colors.clientAccent,
   };
 }
