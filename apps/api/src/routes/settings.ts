@@ -166,6 +166,14 @@ const settingsSchema = z.object({
   conversationBubbleClientMetaColorDark: hexColorField,
   conversationBubbleAgentMetaColor: hexColorField,
   conversationBubbleAgentMetaColorDark: hexColorField,
+  conversationAudioPlayerAgentSurfaceColor: hexColorField,
+  conversationAudioPlayerAgentAccentColor: hexColorField,
+  conversationAudioPlayerAgentSurfaceColorDark: hexColorField,
+  conversationAudioPlayerAgentAccentColorDark: hexColorField,
+  conversationAudioPlayerClientSurfaceColor: hexColorField,
+  conversationAudioPlayerClientAccentColor: hexColorField,
+  conversationAudioPlayerClientSurfaceColorDark: hexColorField,
+  conversationAudioPlayerClientAccentColorDark: hexColorField,
   organizationLogoUrl: z.union([z.string().url().max(2048), z.literal(""), z.null()]).optional(),
   intelligentTaggingEnabled: z.boolean().optional(),
   intelligentTaggingMinConfidence: z.number().min(0.5).max(1).optional(),
@@ -335,6 +343,14 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationBubbleClientMetaColorDark: true,
         conversationBubbleAgentMetaColor: true,
         conversationBubbleAgentMetaColorDark: true,
+        conversationAudioPlayerAgentSurfaceColor: true,
+        conversationAudioPlayerAgentAccentColor: true,
+        conversationAudioPlayerAgentSurfaceColorDark: true,
+        conversationAudioPlayerAgentAccentColorDark: true,
+        conversationAudioPlayerClientSurfaceColor: true,
+        conversationAudioPlayerClientAccentColor: true,
+        conversationAudioPlayerClientSurfaceColorDark: true,
+        conversationAudioPlayerClientAccentColorDark: true,
       },
     });
 
@@ -353,6 +369,14 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationBubbleClientMetaColorDark: settings?.conversationBubbleClientMetaColorDark ?? null,
       conversationBubbleAgentMetaColor: settings?.conversationBubbleAgentMetaColor ?? null,
       conversationBubbleAgentMetaColorDark: settings?.conversationBubbleAgentMetaColorDark ?? null,
+      conversationAudioPlayerAgentSurfaceColor: settings?.conversationAudioPlayerAgentSurfaceColor ?? null,
+      conversationAudioPlayerAgentAccentColor: settings?.conversationAudioPlayerAgentAccentColor ?? null,
+      conversationAudioPlayerAgentSurfaceColorDark: settings?.conversationAudioPlayerAgentSurfaceColorDark ?? null,
+      conversationAudioPlayerAgentAccentColorDark: settings?.conversationAudioPlayerAgentAccentColorDark ?? null,
+      conversationAudioPlayerClientSurfaceColor: settings?.conversationAudioPlayerClientSurfaceColor ?? null,
+      conversationAudioPlayerClientAccentColor: settings?.conversationAudioPlayerClientAccentColor ?? null,
+      conversationAudioPlayerClientSurfaceColorDark: settings?.conversationAudioPlayerClientSurfaceColorDark ?? null,
+      conversationAudioPlayerClientAccentColorDark: settings?.conversationAudioPlayerClientAccentColorDark ?? null,
     };
   });
 
@@ -544,6 +568,14 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.conversationBubbleClientMetaColorDark === "") data.conversationBubbleClientMetaColorDark = null;
       if (data.conversationBubbleAgentMetaColor === "") data.conversationBubbleAgentMetaColor = null;
       if (data.conversationBubbleAgentMetaColorDark === "") data.conversationBubbleAgentMetaColorDark = null;
+      if (data.conversationAudioPlayerAgentSurfaceColor === "") data.conversationAudioPlayerAgentSurfaceColor = null;
+      if (data.conversationAudioPlayerAgentAccentColor === "") data.conversationAudioPlayerAgentAccentColor = null;
+      if (data.conversationAudioPlayerAgentSurfaceColorDark === "") data.conversationAudioPlayerAgentSurfaceColorDark = null;
+      if (data.conversationAudioPlayerAgentAccentColorDark === "") data.conversationAudioPlayerAgentAccentColorDark = null;
+      if (data.conversationAudioPlayerClientSurfaceColor === "") data.conversationAudioPlayerClientSurfaceColor = null;
+      if (data.conversationAudioPlayerClientAccentColor === "") data.conversationAudioPlayerClientAccentColor = null;
+      if (data.conversationAudioPlayerClientSurfaceColorDark === "") data.conversationAudioPlayerClientSurfaceColorDark = null;
+      if (data.conversationAudioPlayerClientAccentColorDark === "") data.conversationAudioPlayerClientAccentColorDark = null;
       if (data.organizationLogoUrl === "") data.organizationLogoUrl = null;
 
       if (data.whatsappApiKey !== undefined && typeof data.whatsappApiKey === "string") {

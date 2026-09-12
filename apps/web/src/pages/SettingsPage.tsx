@@ -75,9 +75,11 @@ import { MASKED_WHATSAPP_SECRET, whatsappProviderLabel } from "@/lib/whatsappOrg
 import clsx from "clsx";
 import {
   applyConversationBubbleTheme,
+  audioPlayerPreviewStyle,
   DEFAULT_BUBBLE_THEME,
   hasCustomBubbleTheme,
 } from "@/lib/conversationBubbleTheme";
+import { ChatAudioPlayerPreview } from "@/components/conversation/ChatAudioPlayer";
 import { brandAssetUrl } from "@/lib/brandingAssets";
 import { notifyOrganizationBrandingUpdated } from "@/hooks/useOrganizationBranding";
 
@@ -155,6 +157,14 @@ interface AppSettings {
   conversationBubbleClientMetaColorDark?: string | null;
   conversationBubbleAgentMetaColor?: string | null;
   conversationBubbleAgentMetaColorDark?: string | null;
+  conversationAudioPlayerAgentSurfaceColor?: string | null;
+  conversationAudioPlayerAgentAccentColor?: string | null;
+  conversationAudioPlayerAgentSurfaceColorDark?: string | null;
+  conversationAudioPlayerAgentAccentColorDark?: string | null;
+  conversationAudioPlayerClientSurfaceColor?: string | null;
+  conversationAudioPlayerClientAccentColor?: string | null;
+  conversationAudioPlayerClientSurfaceColorDark?: string | null;
+  conversationAudioPlayerClientAccentColorDark?: string | null;
   organizationLogoUrl?: string | null;
 }
 
@@ -336,6 +346,14 @@ export function SettingsPage() {
   const [bubbleClientMetaDark, setBubbleClientMetaDark] = useState<string>(DEFAULT_BUBBLE_THEME.clientMetaDark);
   const [bubbleAgentMetaColor, setBubbleAgentMetaColor] = useState<string>(DEFAULT_BUBBLE_THEME.agentMeta);
   const [bubbleAgentMetaDark, setBubbleAgentMetaDark] = useState<string>(DEFAULT_BUBBLE_THEME.agentMetaDark);
+  const [audioAgentSurface, setAudioAgentSurface] = useState<string>(DEFAULT_BUBBLE_THEME.audioAgentSurface);
+  const [audioAgentAccent, setAudioAgentAccent] = useState<string>(DEFAULT_BUBBLE_THEME.audioAgentAccent);
+  const [audioClientSurface, setAudioClientSurface] = useState<string>(DEFAULT_BUBBLE_THEME.audioClientSurface);
+  const [audioClientAccent, setAudioClientAccent] = useState<string>(DEFAULT_BUBBLE_THEME.audioClientAccent);
+  const [audioAgentSurfaceDark, setAudioAgentSurfaceDark] = useState<string>(DEFAULT_BUBBLE_THEME.audioAgentSurfaceDark);
+  const [audioAgentAccentDark, setAudioAgentAccentDark] = useState<string>(DEFAULT_BUBBLE_THEME.audioAgentAccentDark);
+  const [audioClientSurfaceDark, setAudioClientSurfaceDark] = useState<string>(DEFAULT_BUBBLE_THEME.audioClientSurfaceDark);
+  const [audioClientAccentDark, setAudioClientAccentDark] = useState<string>(DEFAULT_BUBBLE_THEME.audioClientAccentDark);
   const [appearanceSaveError, setAppearanceSaveError] = useState("");
   const [appearanceUsesDefaults, setAppearanceUsesDefaults] = useState(true);
   const [organizationLogoUrl, setOrganizationLogoUrl] = useState<string | null>(null);
@@ -575,6 +593,20 @@ export function SettingsPage() {
         setBubbleClientMetaDark(data.conversationBubbleClientMetaColorDark ?? DEFAULT_BUBBLE_THEME.clientMetaDark);
         setBubbleAgentMetaColor(data.conversationBubbleAgentMetaColor ?? DEFAULT_BUBBLE_THEME.agentMeta);
         setBubbleAgentMetaDark(data.conversationBubbleAgentMetaColorDark ?? DEFAULT_BUBBLE_THEME.agentMetaDark);
+        setAudioAgentSurface(data.conversationAudioPlayerAgentSurfaceColor ?? DEFAULT_BUBBLE_THEME.audioAgentSurface);
+        setAudioAgentAccent(data.conversationAudioPlayerAgentAccentColor ?? DEFAULT_BUBBLE_THEME.audioAgentAccent);
+        setAudioClientSurface(data.conversationAudioPlayerClientSurfaceColor ?? DEFAULT_BUBBLE_THEME.audioClientSurface);
+        setAudioClientAccent(data.conversationAudioPlayerClientAccentColor ?? DEFAULT_BUBBLE_THEME.audioClientAccent);
+        setAudioAgentSurfaceDark(
+          data.conversationAudioPlayerAgentSurfaceColorDark ?? DEFAULT_BUBBLE_THEME.audioAgentSurfaceDark,
+        );
+        setAudioAgentAccentDark(data.conversationAudioPlayerAgentAccentColorDark ?? DEFAULT_BUBBLE_THEME.audioAgentAccentDark);
+        setAudioClientSurfaceDark(
+          data.conversationAudioPlayerClientSurfaceColorDark ?? DEFAULT_BUBBLE_THEME.audioClientSurfaceDark,
+        );
+        setAudioClientAccentDark(
+          data.conversationAudioPlayerClientAccentColorDark ?? DEFAULT_BUBBLE_THEME.audioClientAccentDark,
+        );
         setOrganizationLogoUrl(data.organizationLogoUrl ?? null);
         setOrganizationLogoUrlInput(data.organizationLogoUrl ?? "");
         setLogoError("");
@@ -958,6 +990,14 @@ export function SettingsPage() {
             conversationBubbleClientMetaColorDark: null,
             conversationBubbleAgentMetaColor: null,
             conversationBubbleAgentMetaColorDark: null,
+            conversationAudioPlayerAgentSurfaceColor: null,
+            conversationAudioPlayerAgentAccentColor: null,
+            conversationAudioPlayerAgentSurfaceColorDark: null,
+            conversationAudioPlayerAgentAccentColorDark: null,
+            conversationAudioPlayerClientSurfaceColor: null,
+            conversationAudioPlayerClientAccentColor: null,
+            conversationAudioPlayerClientSurfaceColorDark: null,
+            conversationAudioPlayerClientAccentColorDark: null,
           }
         : {
             conversationBubbleClientColor: bubbleClientColor,
@@ -974,6 +1014,14 @@ export function SettingsPage() {
             conversationBubbleClientMetaColorDark: bubbleClientMetaDark,
             conversationBubbleAgentMetaColor: bubbleAgentMetaColor,
             conversationBubbleAgentMetaColorDark: bubbleAgentMetaDark,
+            conversationAudioPlayerAgentSurfaceColor: audioAgentSurface,
+            conversationAudioPlayerAgentAccentColor: audioAgentAccent,
+            conversationAudioPlayerAgentSurfaceColorDark: audioAgentSurfaceDark,
+            conversationAudioPlayerAgentAccentColorDark: audioAgentAccentDark,
+            conversationAudioPlayerClientSurfaceColor: audioClientSurface,
+            conversationAudioPlayerClientAccentColor: audioClientAccent,
+            conversationAudioPlayerClientSurfaceColorDark: audioClientSurfaceDark,
+            conversationAudioPlayerClientAccentColorDark: audioClientAccentDark,
           };
       const data = await api.put<AppSettings>("/settings", payload);
       setSettings(data);
@@ -1002,6 +1050,14 @@ export function SettingsPage() {
     setBubbleClientMetaDark(DEFAULT_BUBBLE_THEME.clientMetaDark);
     setBubbleAgentMetaColor(DEFAULT_BUBBLE_THEME.agentMeta);
     setBubbleAgentMetaDark(DEFAULT_BUBBLE_THEME.agentMetaDark);
+    setAudioAgentSurface(DEFAULT_BUBBLE_THEME.audioAgentSurface);
+    setAudioAgentAccent(DEFAULT_BUBBLE_THEME.audioAgentAccent);
+    setAudioClientSurface(DEFAULT_BUBBLE_THEME.audioClientSurface);
+    setAudioClientAccent(DEFAULT_BUBBLE_THEME.audioClientAccent);
+    setAudioAgentSurfaceDark(DEFAULT_BUBBLE_THEME.audioAgentSurfaceDark);
+    setAudioAgentAccentDark(DEFAULT_BUBBLE_THEME.audioAgentAccentDark);
+    setAudioClientSurfaceDark(DEFAULT_BUBBLE_THEME.audioClientSurfaceDark);
+    setAudioClientAccentDark(DEFAULT_BUBBLE_THEME.audioClientAccentDark);
   };
 
   const handleSaveOrganizationLogoUrl = async () => {
@@ -1062,16 +1118,30 @@ export function SettingsPage() {
     }
   };
 
+  const audioPreviewColors = {
+    agentSurface: audioAgentSurface,
+    agentAccent: audioAgentAccent,
+    clientSurface: audioClientSurface,
+    clientAccent: audioClientAccent,
+    agentSurfaceDark: audioAgentSurfaceDark,
+    agentAccentDark: audioAgentAccentDark,
+    clientSurfaceDark: audioClientSurfaceDark,
+    clientAccentDark: audioClientAccentDark,
+  };
+
   const bubblePreviewStyle = (
     bg: string,
     text: string,
     meta?: string,
     agentName?: string,
+    audioMode?: "light" | "dark",
+    audioRole?: "agent" | "client",
   ): CSSProperties => ({
     backgroundColor: bg,
     color: text,
     ...(meta ? { ["--crm-bubble-meta" as string]: meta } : {}),
     ...(agentName ? { ["--org-bubble-agent-name" as string]: agentName } : {}),
+    ...(audioMode && audioRole ? audioPlayerPreviewStyle(audioMode, audioRole, audioPreviewColors) : {}),
   });
 
   const handleSave = async (e: FormEvent) => {
@@ -2078,25 +2148,78 @@ export function SettingsPage() {
                             className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
                           />
                         </label>
+                        <p className="pt-2 text-xs font-medium text-ink-500 dark:text-ink-400">{t("settings.appearanceAudioPlayer")}</p>
+                        <p className="text-[11px] text-ink-500 dark:text-ink-400">{t("settings.appearanceAudioPlayerClient")}</p>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceAudioPlayerSurface")}</span>
+                          <input
+                            type="color"
+                            value={audioClientSurface}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioClientSurface(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceAudioPlayerAccent")}</span>
+                          <input
+                            type="color"
+                            value={audioClientAccent}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioClientAccent(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                        <p className="text-[11px] text-ink-500 dark:text-ink-400">{t("settings.appearanceAudioPlayerAgent")}</p>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceAudioPlayerSurface")}</span>
+                          <input
+                            type="color"
+                            value={audioAgentSurface}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioAgentSurface(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-700 dark:text-ink-300">{t("settings.appearanceAudioPlayerAccent")}</span>
+                          <input
+                            type="color"
+                            value={audioAgentAccent}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioAgentAccent(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-200 bg-white dark:border-ink-600 dark:bg-ink-900"
+                          />
+                        </label>
                       </div>
                       <div className="mt-4 flex flex-col gap-2 rounded-xl bg-white p-3 dark:bg-ink-900/60">
                         <div
                           className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-ink-200/60 px-3 py-2 text-sm dark:border-soft-border"
-                          style={bubblePreviewStyle(bubbleClientColor, bubbleClientTextColor, bubbleClientMetaColor)}
+                          style={bubblePreviewStyle(bubbleClientColor, bubbleClientTextColor, bubbleClientMetaColor, undefined, "light", "client")}
                         >
                           <p>{t("settings.appearancePreviewClient")}</p>
+                          <ChatAudioPlayerPreview outbound={false} />
                           <div className="crm-bubble-meta mt-1 flex justify-end">
                             <span>14:30</span>
                           </div>
                         </div>
                         <div
                           className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-500/25 px-3 py-2 text-sm dark:border-brand-400/30"
-                          style={bubblePreviewStyle(bubbleAgentColor, bubbleAgentTextColor, bubbleAgentMetaColor, bubbleAgentNameColor)}
+                          style={bubblePreviewStyle(bubbleAgentColor, bubbleAgentTextColor, bubbleAgentMetaColor, bubbleAgentNameColor, "light", "agent")}
                         >
                           <p className="crm-bubble-agent-name" style={{ color: bubbleAgentNameColor }}>
                             {t("settings.appearancePreviewAgentName")}
                           </p>
                           <p>{t("settings.appearancePreviewAgent")}</p>
+                          <ChatAudioPlayerPreview outbound />
                           <div className="crm-bubble-meta mt-1 flex items-center justify-end gap-1">
                             <span>14:31</span>
                             <CheckCheck className="crm-bubble-read-status is-read h-4 w-4" aria-hidden />
@@ -2201,25 +2324,78 @@ export function SettingsPage() {
                             className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
                           />
                         </label>
+                        <p className="pt-2 text-xs font-medium text-ink-400">{t("settings.appearanceAudioPlayer")}</p>
+                        <p className="text-[11px] text-ink-500">{t("settings.appearanceAudioPlayerClient")}</p>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceAudioPlayerSurface")}</span>
+                          <input
+                            type="color"
+                            value={audioClientSurfaceDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioClientSurfaceDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceAudioPlayerAccent")}</span>
+                          <input
+                            type="color"
+                            value={audioClientAccentDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioClientAccentDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                        <p className="text-[11px] text-ink-500">{t("settings.appearanceAudioPlayerAgent")}</p>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceAudioPlayerSurface")}</span>
+                          <input
+                            type="color"
+                            value={audioAgentSurfaceDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioAgentSurfaceDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-ink-300">{t("settings.appearanceAudioPlayerAccent")}</span>
+                          <input
+                            type="color"
+                            value={audioAgentAccentDark}
+                            onChange={(e) => {
+                              setAppearanceUsesDefaults(false);
+                              setAudioAgentAccentDark(e.target.value);
+                            }}
+                            className="h-9 w-14 cursor-pointer rounded border border-ink-600 bg-ink-900"
+                          />
+                        </label>
                       </div>
-                      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#0F1420] p-3">
+                      <div className="mt-4 flex flex-col gap-2 rounded-xl bg-[#0F1420] p-3 dark">
                         <div
                           className="crm-bubble crm-bubble-in max-w-[85%] self-start border border-white/10 px-3 py-2 text-sm"
-                          style={bubblePreviewStyle(bubbleClientDark, bubbleClientTextDark, bubbleClientMetaDark)}
+                          style={bubblePreviewStyle(bubbleClientDark, bubbleClientTextDark, bubbleClientMetaDark, undefined, "dark", "client")}
                         >
                           <p>{t("settings.appearancePreviewClient")}</p>
+                          <ChatAudioPlayerPreview outbound={false} />
                           <div className="crm-bubble-meta mt-1 flex justify-end">
                             <span>14:30</span>
                           </div>
                         </div>
                         <div
                           className="crm-bubble crm-bubble-out max-w-[85%] self-end border border-brand-400/30 px-3 py-2 text-sm"
-                          style={bubblePreviewStyle(bubbleAgentDark, bubbleAgentTextDark, bubbleAgentMetaDark, bubbleAgentNameDark)}
+                          style={bubblePreviewStyle(bubbleAgentDark, bubbleAgentTextDark, bubbleAgentMetaDark, bubbleAgentNameDark, "dark", "agent")}
                         >
                           <p className="crm-bubble-agent-name" style={{ color: bubbleAgentNameDark }}>
                             {t("settings.appearancePreviewAgentName")}
                           </p>
                           <p>{t("settings.appearancePreviewAgent")}</p>
+                          <ChatAudioPlayerPreview outbound />
                           <div className="crm-bubble-meta mt-1 flex items-center justify-end gap-1">
                             <span>14:31</span>
                             <CheckCheck className="crm-bubble-read-status is-read h-4 w-4" aria-hidden />

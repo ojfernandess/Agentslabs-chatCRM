@@ -187,35 +187,28 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
     setMuted(audio.muted);
   };
 
-  const controlTone = outbound
-    ? "text-brand-900/80 dark:text-brand-50/90"
-    : "text-ink-600 dark:text-ink-200/90";
-
-  const trackTone = outbound
-    ? "bg-brand-900/10 dark:bg-white/12"
-    : "bg-ink-900/10 dark:bg-white/12";
-
   const speedLabel = playbackRate === 1 ? "1×" : `${playbackRate}×`;
 
   return (
     <div
       className={clsx(
         "chat-audio-player w-full min-w-[200px] max-w-[280px]",
+        outbound ? "chat-audio-player--outbound" : "chat-audio-player--inbound",
         className,
       )}
     >
       <audio ref={audioRef} src={src} preload="auto" playsInline className="sr-only" />
 
-      <div className="flex items-start gap-2.5">
+      <div className="chat-audio-player__surface">
+        <div className="flex items-start gap-2.5">
         <button
           type="button"
           onClick={() => void togglePlay()}
           aria-label={playing ? t("conversationDetail.audioPause") : t("conversationDetail.audioPlay")}
           className={clsx(
-            "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-150",
-            "bg-brand-500 text-white hover:bg-brand-600 active:scale-95",
+            "chat-audio-player__play relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-150",
             "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/60 focus-visible:ring-offset-1",
-            "dark:bg-brand-500/90 dark:hover:bg-brand-400",
+            "active:scale-95",
             outbound && "shadow-sm shadow-brand-900/10 dark:shadow-black/20",
           )}
         >
@@ -255,25 +248,24 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
               }
             }}
             className={clsx(
-              "group relative h-1 cursor-pointer rounded-full transition-colors duration-150",
-              trackTone,
+              "chat-audio-player__track group relative h-1 cursor-pointer rounded-full transition-colors duration-150",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50",
             )}
           >
             <div
-              className="absolute inset-y-0 left-0 rounded-full bg-brand-500 transition-[width] duration-150 dark:bg-brand-400"
+              className="chat-audio-player__progress-fill absolute inset-y-0 left-0 rounded-full transition-[width] duration-150"
               style={{ width: `${progressPct}%` }}
             />
             <div
               className={clsx(
-                "absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-brand-500 opacity-0 transition-opacity duration-150",
-                "group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-brand-300",
+                "chat-audio-player__progress-thumb absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-150",
+                "group-hover:opacity-100 group-focus-visible:opacity-100",
               )}
               style={{ left: `calc(${progressPct}% - 5px)` }}
               aria-hidden
             />
           </div>
-          <div className={clsx("mt-1 flex items-center justify-between tabular-nums", controlTone)}>
+          <div className="chat-audio-player__control mt-1 flex items-center justify-between tabular-nums opacity-80">
             <span className="text-[10px] leading-none">{formatAudioTime(currentTime)}</span>
             <span className="text-[10px] leading-none">
               {duration > 0 ? formatAudioTime(duration) : "—"}
@@ -291,9 +283,7 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
             }}
             aria-label={muted || volume === 0 ? t("conversationDetail.audioUnmute") : t("conversationDetail.audioVolume")}
             className={clsx(
-              "flex h-7 w-7 items-center justify-center rounded-md transition-colors duration-150",
-              controlTone,
-              "hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/8 dark:active:bg-white/12",
+              "chat-audio-player__control flex h-7 w-7 items-center justify-center rounded-md transition-colors duration-150",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50",
             )}
           >
@@ -343,11 +333,9 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
               aria-label={t("conversationDetail.audioSpeed")}
               aria-expanded={speedOpen}
               className={clsx(
-                "min-w-[2rem] rounded-md px-1.5 py-1 text-[10px] font-semibold leading-none transition-colors duration-150",
-                controlTone,
-                "hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/8 dark:active:bg-white/12",
+                "chat-audio-player__control min-w-[2rem] rounded-md px-1.5 py-1 text-[10px] font-semibold leading-none transition-colors duration-150",
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50",
-                speedOpen && "bg-black/5 dark:bg-white/8",
+                speedOpen && "opacity-100",
               )}
             >
               {speedLabel}
@@ -386,6 +374,41 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
                 })}
               </div>
             ) : null}
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Pré-visualização estática em Configurações → Aparência. */
+export function ChatAudioPlayerPreview({ outbound = true }: { outbound?: boolean }) {
+  return (
+    <div
+      className={clsx(
+        "chat-audio-player mt-2 w-full max-w-[220px]",
+        outbound ? "chat-audio-player--outbound" : "chat-audio-player--inbound",
+      )}
+      aria-hidden
+    >
+      <div className="chat-audio-player__surface">
+        <div className="flex items-start gap-2.5">
+          <div className="chat-audio-player__play flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+            <Play className="ml-0.5 h-4 w-4 fill-current" />
+          </div>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <div className="chat-audio-player__track relative h-1 rounded-full">
+              <div className="chat-audio-player__progress-fill absolute inset-y-0 left-0 w-[35%] rounded-full" />
+            </div>
+            <div className="chat-audio-player__control mt-1 flex items-center justify-between text-[10px] leading-none opacity-80">
+              <span>0:01</span>
+              <span>0:03</span>
+            </div>
+          </div>
+          <div className="chat-audio-player__control flex shrink-0 items-center gap-0.5 pt-0.5 text-[10px] font-semibold">
+            <Volume2 className="h-3.5 w-3.5" />
+            <span>1×</span>
           </div>
         </div>
       </div>

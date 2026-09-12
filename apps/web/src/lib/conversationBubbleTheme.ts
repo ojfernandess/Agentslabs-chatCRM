@@ -13,6 +13,14 @@ export type ConversationBubbleTheme = {
   conversationBubbleClientMetaColorDark?: string | null;
   conversationBubbleAgentMetaColor?: string | null;
   conversationBubbleAgentMetaColorDark?: string | null;
+  conversationAudioPlayerAgentSurfaceColor?: string | null;
+  conversationAudioPlayerAgentAccentColor?: string | null;
+  conversationAudioPlayerAgentSurfaceColorDark?: string | null;
+  conversationAudioPlayerAgentAccentColorDark?: string | null;
+  conversationAudioPlayerClientSurfaceColor?: string | null;
+  conversationAudioPlayerClientAccentColor?: string | null;
+  conversationAudioPlayerClientSurfaceColorDark?: string | null;
+  conversationAudioPlayerClientAccentColorDark?: string | null;
 };
 
 export const DEFAULT_BUBBLE_THEME = {
@@ -30,6 +38,14 @@ export const DEFAULT_BUBBLE_THEME = {
   clientMetaDark: "#94a3b8",
   agentMeta: "#64748b",
   agentMetaDark: "#cbd5e1",
+  audioAgentSurface: "#ffffff",
+  audioAgentAccent: "#6734ff",
+  audioAgentSurfaceDark: "#2f264d",
+  audioAgentAccentDark: "#a78bfa",
+  audioClientSurface: "#f1f5f9",
+  audioClientAccent: "#6734ff",
+  audioClientSurfaceDark: "#253041",
+  audioClientAccentDark: "#7c5cff",
 } as const;
 
 const THEME_VAR_PAIRS: [keyof ConversationBubbleTheme, string][] = [
@@ -47,6 +63,14 @@ const THEME_VAR_PAIRS: [keyof ConversationBubbleTheme, string][] = [
   ["conversationBubbleClientMetaColorDark", "--org-bubble-client-meta-dark"],
   ["conversationBubbleAgentMetaColor", "--org-bubble-agent-meta"],
   ["conversationBubbleAgentMetaColorDark", "--org-bubble-agent-meta-dark"],
+  ["conversationAudioPlayerAgentSurfaceColor", "--org-audio-player-agent-surface"],
+  ["conversationAudioPlayerAgentAccentColor", "--org-audio-player-agent-accent"],
+  ["conversationAudioPlayerAgentSurfaceColorDark", "--org-audio-player-agent-surface-dark"],
+  ["conversationAudioPlayerAgentAccentColorDark", "--org-audio-player-agent-accent-dark"],
+  ["conversationAudioPlayerClientSurfaceColor", "--org-audio-player-client-surface"],
+  ["conversationAudioPlayerClientAccentColor", "--org-audio-player-client-accent"],
+  ["conversationAudioPlayerClientSurfaceColorDark", "--org-audio-player-client-surface-dark"],
+  ["conversationAudioPlayerClientAccentColorDark", "--org-audio-player-client-accent-dark"],
 ];
 
 export function hasCustomBubbleTheme(theme: ConversationBubbleTheme | null | undefined): boolean {
@@ -72,4 +96,32 @@ export function applyConversationBubbleTheme(theme: ConversationBubbleTheme | nu
 
 export function clearConversationBubbleTheme(): void {
   applyConversationBubbleTheme(null);
+}
+
+/** Variáveis CSS do reprodutor para pré-visualização inline (Aparência). */
+export function audioPlayerPreviewStyle(
+  mode: "light" | "dark",
+  role: "agent" | "client",
+  colors: {
+    agentSurface: string;
+    agentAccent: string;
+    clientSurface: string;
+    clientAccent: string;
+    agentSurfaceDark: string;
+    agentAccentDark: string;
+    clientSurfaceDark: string;
+    clientAccentDark: string;
+  },
+): Record<string, string> {
+  const isDark = mode === "dark";
+  if (role === "agent") {
+    return {
+      "--org-audio-player-agent-surface": isDark ? colors.agentSurfaceDark : colors.agentSurface,
+      "--org-audio-player-agent-accent": isDark ? colors.agentAccentDark : colors.agentAccent,
+    };
+  }
+  return {
+    "--org-audio-player-client-surface": isDark ? colors.clientSurfaceDark : colors.clientSurface,
+    "--org-audio-player-client-accent": isDark ? colors.clientAccentDark : colors.clientAccent,
+  };
 }

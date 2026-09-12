@@ -1462,6 +1462,16 @@ model Settings {
   conversationBubbleAgentMetaColor      String? @map("conversation_bubble_agent_meta_color") @db.VarChar(7)
   conversationBubbleAgentMetaColorDark  String? @map("conversation_bubble_agent_meta_color_dark") @db.VarChar(7)
 
+  /// Reprodutor de áudio — superfície e destaque (play/progresso), por bolha e tema.
+  conversationAudioPlayerAgentSurfaceColor     String? @map("conversation_audio_player_agent_surface_color") @db.VarChar(7)
+  conversationAudioPlayerAgentAccentColor      String? @map("conversation_audio_player_agent_accent_color") @db.VarChar(7)
+  conversationAudioPlayerAgentSurfaceColorDark String? @map("conversation_audio_player_agent_surface_color_dark") @db.VarChar(7)
+  conversationAudioPlayerAgentAccentColorDark  String? @map("conversation_audio_player_agent_accent_color_dark") @db.VarChar(7)
+  conversationAudioPlayerClientSurfaceColor     String? @map("conversation_audio_player_client_surface_color") @db.VarChar(7)
+  conversationAudioPlayerClientAccentColor      String? @map("conversation_audio_player_client_accent_color") @db.VarChar(7)
+  conversationAudioPlayerClientSurfaceColorDark String? @map("conversation_audio_player_client_surface_color_dark") @db.VarChar(7)
+  conversationAudioPlayerClientAccentColorDark  String? @map("conversation_audio_player_client_accent_color_dark") @db.VarChar(7)
+
   /// Logo opcional da organização (URL absoluta). Se null, a UI usa a logo do sistema.
   organizationLogoUrl String? @map("organization_logo_url") @db.VarChar(2048)
 

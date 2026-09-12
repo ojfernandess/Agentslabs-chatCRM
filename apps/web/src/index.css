@@ -435,6 +435,74 @@
     color: #f87171;
   }
 
+  .chat-audio-player--outbound {
+    --chat-audio-accent: var(--org-audio-player-agent-accent, var(--brand-primary, #6734ff));
+    --chat-audio-control: var(--crm-bubble-text, #0f172a);
+    --chat-audio-track: color-mix(in srgb, var(--chat-audio-control) 22%, transparent);
+    --chat-audio-surface: var(--org-audio-player-agent-surface, rgba(255, 255, 255, 0.42));
+  }
+
+  .dark .chat-audio-player--outbound {
+    --chat-audio-accent: var(--org-audio-player-agent-accent-dark, var(--soft-primary, #7c5cff));
+    --chat-audio-control: var(--crm-bubble-text, #f8fafc);
+    --chat-audio-track: color-mix(in srgb, var(--chat-audio-control) 24%, transparent);
+    --chat-audio-surface: var(--org-audio-player-agent-surface-dark, rgba(47, 38, 77, 0.85));
+  }
+
+  .chat-audio-player--inbound {
+    --chat-audio-accent: var(--org-audio-player-client-accent, var(--brand-primary, #6734ff));
+    --chat-audio-control: var(--crm-bubble-text, #0f172a);
+    --chat-audio-track: color-mix(in srgb, var(--chat-audio-control) 22%, transparent);
+    --chat-audio-surface: var(--org-audio-player-client-surface, rgba(241, 245, 249, 0.92));
+  }
+
+  .dark .chat-audio-player--inbound {
+    --chat-audio-accent: var(--org-audio-player-client-accent-dark, var(--soft-primary, #7c5cff));
+    --chat-audio-control: var(--crm-bubble-text, #f8fafc);
+    --chat-audio-track: color-mix(in srgb, var(--chat-audio-control) 24%, transparent);
+    --chat-audio-surface: var(--org-audio-player-client-surface-dark, rgba(37, 48, 65, 0.92));
+  }
+
+  .chat-audio-player__surface {
+    background-color: var(--chat-audio-surface);
+    border-radius: 10px;
+    padding: 2px 4px;
+  }
+
+  .chat-audio-player__play {
+    background-color: var(--chat-audio-accent);
+    color: #ffffff;
+  }
+
+  .chat-audio-player__play:hover {
+    filter: brightness(1.06);
+  }
+
+  .chat-audio-player__play:active {
+    filter: brightness(0.96);
+  }
+
+  .chat-audio-player__track {
+    background-color: var(--chat-audio-track);
+  }
+
+  .chat-audio-player__progress-fill,
+  .chat-audio-player__progress-thumb {
+    background-color: var(--chat-audio-accent);
+  }
+
+  .chat-audio-player__control {
+    color: var(--chat-audio-control);
+  }
+
+  .chat-audio-player__control:hover {
+    background-color: color-mix(in srgb, var(--chat-audio-control) 10%, transparent);
+  }
+
+  .chat-audio-player__control:active {
+    background-color: color-mix(in srgb, var(--chat-audio-control) 16%, transparent);
+  }
+
   .crm-bubble-agent-name {
     color: var(--org-bubble-agent-name, var(--brand-primary));
     font-size: 0.8125rem;
