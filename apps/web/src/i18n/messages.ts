@@ -5365,7 +5365,7 @@ export const messages = {
       audioTranscriptionOn: "Ativado",
       audioTranscriptionOff: "Desativado",
       audioTranscriptionHint:
-        "Quando ativo, mensagens de voz/áudio do WhatsApp e das caixas API são transcritas para texto (prefixo «[Transcrição automática]») antes de chegarem ao agente e às regras de etiquetas. Requer chave OpenAI no servidor (OPENAI_API_KEY ou OPENAI_PROMPT_PREVIEW_KEY). Modelo opcional: OPENAI_WHISPER_MODEL (predefinição whisper-1).",
+        "Quando ativo, mensagens de voz/áudio do WhatsApp e das caixas API são transcritas para texto antes de chegarem ao agente e às regras de etiquetas. Requer chave OpenAI no servidor (OPENAI_API_KEY ou OPENAI_PROMPT_PREVIEW_KEY). Modelo opcional: OPENAI_WHISPER_MODEL (predefinição whisper-1).",
       imageTranscription: "Transcrever imagens recebidas",
       imageTranscriptionOn: "Ativado",
       imageTranscriptionOff: "Desativado",
@@ -11343,7 +11343,7 @@ export const messages = {
       audioTranscriptionOn: "Enabled",
       audioTranscriptionOff: "Disabled",
       audioTranscriptionHint:
-        "When enabled, WhatsApp voice notes and API inbox audio are transcribed to text (prefix “[Transcrição automática]”) before the agent and auto-tag rules run. Requires an OpenAI key on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY). Optional model: OPENAI_WHISPER_MODEL (default whisper-1).",
+        "When enabled, WhatsApp voice notes and API inbox audio are transcribed to text before the agent and auto-tag rules run. Requires an OpenAI key on the server (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY). Optional model: OPENAI_WHISPER_MODEL (default whisper-1).",
       imageTranscription: "Transcribe inbound images",
       imageTranscriptionOn: "Enabled",
       imageTranscriptionOff: "Disabled",

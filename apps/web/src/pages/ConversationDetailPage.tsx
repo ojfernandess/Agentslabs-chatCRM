@@ -121,10 +121,12 @@ import {
 import { ChatAudioPlayer } from "@/components/conversation/ChatAudioPlayer";
 import { ConversationDismissibleBanner } from "@/components/conversation/ConversationDismissibleBanner";
 import { VoicePreviewPanel, VoiceRecordingPanel } from "@/components/conversation/VoiceMessageComposer";
+import { AudioTranscriptionBlock } from "@/components/conversation/AudioTranscriptionBlock";
 import {
   ImageTranscriptionBlock,
   parseImageTranscriptionBody,
 } from "@/components/conversation/ImageTranscriptionBlock";
+import { parseAudioTranscriptionBody } from "@/lib/messagePreviewText";
 import { ImageLightboxModal } from "@/components/conversation/ImageLightboxModal";
 import {
   contactEmailDisplay,
@@ -3706,8 +3708,14 @@ export function ConversationDetailPage() {
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
+              const audioTranscriptionText =
+                msg.type === "AUDIO" ? parseAudioTranscriptionBody(msg.body) : null;
               const displayBody =
-                isEmailInbox && msg.type === "TEXT" ? emailMessageContent(msg.body) : msg.body?.trim() || "";
+                isEmailInbox && msg.type === "TEXT"
+                  ? emailMessageContent(msg.body)
+                  : audioTranscriptionText
+                    ? ""
+                    : msg.body?.trim() || "";
               const messageEmailSubject =
                 isEmailInbox && msg.type === "TEXT" ? emailSubjectFromBody(msg.body) : null;
               const hasRenderableBody =
@@ -3827,7 +3835,7 @@ export function ConversationDetailPage() {
                       inbound={inbound}
                     />
                   ) : null}
-                  {displayBody && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" ? (
+                  {displayBody && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" && msg.type !== "AUDIO" ? (
                     isEmailInbox && msg.type === "TEXT" ? (
                       <EmailMessageBody body={msg.body} />
                     ) : (
@@ -3848,12 +3856,20 @@ export function ConversationDetailPage() {
                     />
                   )}
                   {msg.type === "AUDIO" && msg.mediaUrl && (
-                    <ChatAudioPlayer
-                      key={`${msg.id}-${msg.mediaUrl}`}
-                      src={msg.mediaUrl}
-                      outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
-                      className={msg.body?.trim() ? "mt-2" : undefined}
-                    />
+                    <>
+                      <ChatAudioPlayer
+                        key={`${msg.id}-${msg.mediaUrl}`}
+                        src={msg.mediaUrl}
+                        outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
+                      />
+                      {audioTranscriptionText ? (
+                        <AudioTranscriptionBlock text={audioTranscriptionText} />
+                      ) : msg.body?.trim() ? (
+                        <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                          {msg.body}
+                        </p>
+                      ) : null}
+                    </>
                   )}
                   <div className="crm-bubble-meta mt-1.5 flex items-center justify-end gap-1 tabular-nums">
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>

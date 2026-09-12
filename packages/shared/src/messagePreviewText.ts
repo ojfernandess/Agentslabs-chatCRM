@@ -19,6 +19,13 @@ export function parseImageTranscriptionBody(body: string | null | undefined): Im
   }
 }
 
+/** Texto falado após transcrição automática de áudio inbound (prefixo interno em message.body). */
+export function parseAudioTranscriptionBody(body: string | null | undefined): string | null {
+  if (!body?.startsWith(AUDIO_TRANSCRIPTION_PREFIX)) return null;
+  const spoken = body.slice(AUDIO_TRANSCRIPTION_PREFIX.length).trim();
+  return spoken.length > 0 ? spoken : null;
+}
+
 /** Texto legível para listas e notificações — oculta JSON de transcrição automática. */
 export function formatMessageBodyForPreview(
   body: string | null | undefined,
@@ -43,10 +50,8 @@ export function formatMessageBodyForPreview(
     return parts.join(" · ") || emptyFallback || "Imagem";
   }
 
-  if (trimmed.startsWith(AUDIO_TRANSCRIPTION_PREFIX)) {
-    const spoken = trimmed.slice(AUDIO_TRANSCRIPTION_PREFIX.length).trim();
-    return spoken || emptyFallback || "Áudio";
-  }
+  const audioTrans = parseAudioTranscriptionBody(trimmed);
+  if (audioTrans) return audioTrans || emptyFallback || "Áudio";
 
   // Corpo de e-mail HTML armazenado — evita vazar markup nas listas.
   if (trimmed.includes("<!--oc-email-html-->") || /<(?:html|body|div|table|p|a|img)\b/i.test(trimmed)) {
