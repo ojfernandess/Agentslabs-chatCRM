@@ -1285,6 +1285,8 @@ export function AutomationToolsHub({
                 json={editEilJson}
                 onJsonChange={setEditEilJson}
                 t={t}
+                toolName={editName}
+                parametersSchemaJson={editParamsJson}
               />
             </div>
 

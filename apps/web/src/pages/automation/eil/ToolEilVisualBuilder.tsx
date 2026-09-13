@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import clsx from "clsx";
-import { CheckCircle2, CircleAlert, Code2, Database } from "lucide-react";
+import { CheckCircle2, CircleAlert, Code2, Database, Sparkles } from "lucide-react";
 import { EIL_FACT_CATALOG } from "@/lib/eil/catalog.js";
+import { inferToolEilFromSchema, parameterFactSuggestions } from "@/lib/eil/inferToolEilFromSchema.js";
 import { parseToolEilJson, type ToolEilConfigDraft } from "@/lib/eil/toolConfig.js";
 import { EilHelpHint, type EilHelpSection } from "./EilHelpHint.js";
 
@@ -16,6 +17,8 @@ type Props = {
   t: Translate;
   locale: "pt" | "en";
   helpSections: EilHelpSection[];
+  toolName?: string;
+  parametersSchemaJson?: string;
 };
 
 function draftFromJson(json: string): ToolEilConfigDraft {
@@ -39,12 +42,64 @@ function parseLines(raw: string): string[] {
     .filter(Boolean);
 }
 
-export function ToolEilVisualBuilder({ enabled, onEnabledChange, json, onJsonChange, t, locale, helpSections }: Props) {
+function unionLineList(existing: string[] | undefined, value: string): string[] {
+  const set = new Set(existing ?? []);
+  set.add(value);
+  return [...set];
+}
+
+export function ToolEilVisualBuilder({
+  enabled,
+  onEnabledChange,
+  json,
+  onJsonChange,
+  t,
+  locale,
+  helpSections,
+  toolName = "",
+  parametersSchemaJson = "{}",
+}: Props) {
   const [tab, setTab] = useState<TabId>("visual");
+  const [autoConfigNote, setAutoConfigNote] = useState<string | null>(null);
   const draft = useMemo(() => draftFromJson(json), [json]);
   const parsed = useMemo(() => (enabled ? parseToolEilJson(json) : null), [enabled, json]);
 
+  const parametersSchema = useMemo(() => {
+    try {
+      return JSON.parse(parametersSchemaJson || "{}") as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }, [parametersSchemaJson]);
+
+  const paramSuggestions = useMemo(() => parameterFactSuggestions(parametersSchema), [parametersSchema]);
+
   const syncDraft = (next: ToolEilConfigDraft) => onJsonChange(draftToJson(next));
+
+  const runAutoConfig = () => {
+    let schema: Record<string, unknown>;
+    try {
+      schema = JSON.parse(parametersSchemaJson || "{}") as Record<string, unknown>;
+    } catch {
+      setAutoConfigNote(t("automationPage.toolEilAutoConfigInvalidParams"));
+      return;
+    }
+    const result = inferToolEilFromSchema({
+      toolName: toolName.trim(),
+      parametersSchema: schema,
+      existing: draft,
+    });
+    if (!enabled) onEnabledChange(true);
+    syncDraft(result.draft);
+    const parts = [
+      t("automationPage.toolEilAutoConfigDone"),
+      result.summary.fromPreset ? t("automationPage.toolEilAutoConfigUsedPreset") : null,
+      result.summary.paramProperties > 0
+        ? t("automationPage.toolEilAutoConfigParams").replace("{count}", String(result.summary.paramProperties))
+        : null,
+    ].filter(Boolean);
+    setAutoConfigNote(parts.join(" · "));
+  };
 
   const validationMessage = (() => {
     if (!enabled || !parsed) return null;
@@ -60,10 +115,16 @@ export function ToolEilVisualBuilder({ enabled, onEnabledChange, json, onJsonCha
     return map[parsed.error] ?? t("automationPage.toolEilInvalidJson");
   })();
 
-  const factOptions = EIL_FACT_CATALOG.map((f) => ({
-    key: f.key,
-    label: locale === "pt" ? f.labelPt : f.labelEn,
-  }));
+  const factOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of EIL_FACT_CATALOG) {
+      map.set(f.key, locale === "pt" ? f.labelPt : f.labelEn);
+    }
+    for (const key of paramSuggestions) {
+      if (!map.has(key)) map.set(key, key);
+    }
+    return [...map.entries()].map(([key, label]) => ({ key, label }));
+  }, [locale, paramSuggestions]);
 
   return (
     <div className="rounded-xl border border-ink-200/80 bg-ink-50/60 p-4 dark:border-ink-700 dark:bg-ink-900/40">
@@ -80,6 +141,21 @@ export function ToolEilVisualBuilder({ enabled, onEnabledChange, json, onJsonCha
           {t("automationPage.toolEilEnable")}
         </label>
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={runAutoConfig}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-violet-900 hover:bg-violet-50 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {t("automationPage.toolEilAutoConfig")}
+        </button>
+        <p className="text-[10px] text-ink-500">{t("automationPage.toolEilAutoConfigHelp")}</p>
+      </div>
+      {autoConfigNote ? (
+        <p className="mt-2 text-[11px] text-emerald-800 dark:text-emerald-200">{autoConfigNote}</p>
+      ) : null}
 
       {enabled ? (
         <>
@@ -122,6 +198,23 @@ export function ToolEilVisualBuilder({ enabled, onEnabledChange, json, onJsonCha
                   className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 font-mono text-xs dark:border-ink-600 dark:bg-ink-950"
                 />
                 <p className="mt-1 text-[10px] text-ink-500">{t("automationPage.toolEilFieldProducesHelp")}</p>
+                {paramSuggestions.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {paramSuggestions.map((key) => (
+                      <button
+                        key={`prod-${key}`}
+                        type="button"
+                        onClick={() => {
+                          const produces = unionLineList(draft.produces, key);
+                          syncDraft({ ...draft, produces });
+                        }}
+                        className="rounded-full border border-ink-200 px-2 py-0.5 text-[10px] text-ink-600 hover:border-brand-400 dark:border-ink-600"
+                      >
+                        + {key}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </label>
 
               <label className="block">
@@ -134,6 +227,9 @@ export function ToolEilVisualBuilder({ enabled, onEnabledChange, json, onJsonCha
                   onChange={(e) => syncDraft({ ...draft, requiresFacts: parseLines(e.target.value) })}
                   className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 font-mono text-xs dark:border-ink-600 dark:bg-ink-950"
                 />
+                {paramSuggestions.length > 0 ? (
+                  <p className="mt-1 text-[10px] text-ink-500">{t("automationPage.toolEilParamSuggestionsHint")}</p>
+                ) : null}
               </label>
 
               <label className="block">

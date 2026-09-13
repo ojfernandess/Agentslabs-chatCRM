@@ -19,9 +19,20 @@ type Props = {
   onJsonChange: (json: string) => void;
   t: AutomationToolsTranslate;
   locale?: "pt" | "en";
+  toolName?: string;
+  parametersSchemaJson?: string;
 };
 
-export function ToolEilConfigSection({ enabled, onEnabledChange, json, onJsonChange, t, locale = "pt" }: Props) {
+export function ToolEilConfigSection({
+  enabled,
+  onEnabledChange,
+  json,
+  onJsonChange,
+  t,
+  locale = "pt",
+  toolName,
+  parametersSchemaJson,
+}: Props) {
   const helpSections = buildEilHelpSections(t);
   return (
     <ToolEilVisualBuilder
@@ -32,6 +43,8 @@ export function ToolEilConfigSection({ enabled, onEnabledChange, json, onJsonCha
       t={t}
       locale={locale}
       helpSections={helpSections}
+      toolName={toolName}
+      parametersSchemaJson={parametersSchemaJson}
     />
   );
 }
