@@ -201,6 +201,17 @@ export const config = {
     .trim()
     .replace(/\/+$/, ""),
   /**
+   * Chave opcional Anthropic Claude (Messages API). Ordem: ANTHROPIC_PROMPT_PREVIEW_KEY, ANTHROPIC_API_KEY.
+   */
+  anthropicPromptPreviewKey: optionalEnv(
+    "ANTHROPIC_PROMPT_PREVIEW_KEY",
+    optionalEnv("ANTHROPIC_API_KEY", ""),
+  ).trim(),
+  /** Base URL Anthropic (Messages API). */
+  anthropicApiBaseUrl: optionalEnv("ANTHROPIC_API_BASE_URL", "https://api.anthropic.com")
+    .trim()
+    .replace(/\/+$/, ""),
+  /**
    * Máximo de pedidos LLM em voo por API key (contactos partilham a mesma chave).
    * Evita stampede TPM/RPM quando vários WhatsApps disparam o agente em paralelo.
    */

@@ -7,12 +7,14 @@ const keys = {
   geminiPromptPreviewKey: "gem-gemini",
   kimiPromptPreviewKey: "sk-kimi",
   xaiPromptPreviewKey: "sk-xai",
+  anthropicPromptPreviewKey: "sk-anthropic",
 };
 
 const urls = {
   openAiApiBaseUrl: "https://api.openai.com/v1",
   kimiApiBaseUrl: "https://api.moonshot.ai/v1",
   xaiApiBaseUrl: "https://api.x.ai/v1",
+  anthropicApiBaseUrl: "https://api.anthropic.com",
 };
 
 test("resolvePlatformLlmApiKey prefers stored key", () => {
@@ -37,4 +39,12 @@ test("resolvePlatformLlmApiKey falls back to xai env", () => {
 
 test("resolveLlmApiBaseUrl defaults xai to x.ai endpoint", () => {
   assert.equal(resolveLlmApiBaseUrl("xai", "", urls), "https://api.x.ai/v1");
+});
+
+test("resolvePlatformLlmApiKey falls back to anthropic env", () => {
+  assert.equal(resolvePlatformLlmApiKey("anthropic", "", keys), "sk-anthropic");
+});
+
+test("resolveLlmApiBaseUrl defaults anthropic to anthropic endpoint", () => {
+  assert.equal(resolveLlmApiBaseUrl("anthropic", "", urls), "https://api.anthropic.com");
 });

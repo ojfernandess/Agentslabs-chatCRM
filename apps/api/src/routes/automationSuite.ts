@@ -18,6 +18,7 @@ import {
 import { runCalComTool } from "../lib/calComToolExecute.js";
 import { redactAutomationToolConfig } from "../lib/automationWebhookBundle.js";
 import {
+  callAnthropicMessages,
   callGeminiGenerateContent,
   callOpenAiCompatibleChat,
   type PreviewChatTurn,
@@ -30,7 +31,12 @@ import {
   syncKnowledgeArticleBotsFromPromptBuilder,
 } from "../lib/knowledgeRetrieval.js";
 import { parseNativeToolsFromBehavior, generateNativeAgentReply } from "../lib/agentNativeLlm.js";
-import { isGeminiProvider, resolveLlmApiBaseUrl, resolvePlatformLlmApiKey } from "../lib/llmProviders.js";
+import {
+  isAnthropicProvider,
+  isGeminiProvider,
+  resolveLlmApiBaseUrl,
+  resolvePlatformLlmApiKey,
+} from "../lib/llmProviders.js";
 import { ensureAgentProfileTestSandbox } from "../lib/agentTestChatSandbox.js";
 import {
   buildSyncedPromptAutoInstructionBlock,
@@ -331,7 +337,7 @@ const promptModuleSchema = z.object({
   labels: z.record(z.unknown()).optional().nullable(),
 });
 
-const llmProviderSchema = z.enum(["openai", "google_gemini", "kimi", "xai"]);
+const llmProviderSchema = z.enum(["openai", "google_gemini", "kimi", "xai", "anthropic"]);
 
 const promptPreviewSchema = z.object({
   systemPrompt: z.string().min(1).max(120_000),
@@ -1251,7 +1257,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         error: "Bad Request",
         code: "kb_playground_no_api_key",
         message:
-          "Missing API key for LLM (or configure server OPENAI_* / GEMINI_PROMPT_PREVIEW_KEY / KIMI_PROMPT_PREVIEW_KEY / XAI_PROMPT_PREVIEW_KEY).",
+          "Missing API key for LLM (or configure server OPENAI_* / GEMINI_PROMPT_PREVIEW_KEY / KIMI_PROMPT_PREVIEW_KEY / XAI_PROMPT_PREVIEW_KEY / ANTHROPIC_PROMPT_PREVIEW_KEY).",
         statusCode: 400,
       });
     }
@@ -1289,20 +1295,8 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     const started = Date.now();
     try {
       let answer: string;
-      if (!isGeminiProvider(body.provider)) {
-        const baseUrl = resolveLlmApiBaseUrl(body.provider, body.apiBaseUrl?.trim() ?? "", config);
-        try {
-          assertHttpUrlAllowed(baseUrl);
-        } catch (e) {
-          clearTimeout(timer);
-          return reply.status(400).send({
-            error: "Bad Request",
-            message: e instanceof Error ? e.message : "Invalid API base URL",
-            statusCode: 400,
-          });
-        }
-        const res = await callOpenAiCompatibleChat({
-          baseUrl,
+      if (isGeminiProvider(body.provider)) {
+        const res = await callGeminiGenerateContent({
           apiKey,
           model: body.model,
           temperature: body.temperature,
@@ -1314,16 +1308,31 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         });
         answer = res.text;
       } else {
-        const res = await callGeminiGenerateContent({
+        const baseUrl = resolveLlmApiBaseUrl(body.provider, body.apiBaseUrl?.trim() ?? "", config);
+        try {
+          assertHttpUrlAllowed(baseUrl);
+        } catch (e) {
+          clearTimeout(timer);
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: e instanceof Error ? e.message : "Invalid API base URL",
+            statusCode: 400,
+          });
+        }
+        const chatParams = {
+          baseUrl,
           apiKey,
           model: body.model,
           temperature: body.temperature,
           maxTokens: body.maxTokens,
           system: systemPrompt,
-          history: [],
+          history: [] as PreviewChatTurn[],
           userMessage: body.query.trim(),
           signal: ctrl.signal,
-        });
+        };
+        const res = isAnthropicProvider(body.provider)
+          ? await callAnthropicMessages(chatParams)
+          : await callOpenAiCompatibleChat(chatParams);
         answer = res.text;
       }
       clearTimeout(timer);
@@ -1551,6 +1560,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       hasPlatformGeminiKey: config.geminiPromptPreviewKey.length > 0,
       hasPlatformKimiKey: config.kimiPromptPreviewKey.length > 0,
       hasPlatformXaiKey: config.xaiPromptPreviewKey.length > 0,
+      hasPlatformAnthropicKey: config.anthropicPromptPreviewKey.length > 0,
     };
   });
 
@@ -1568,7 +1578,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         error: "Bad Request",
         code: "prompt_preview_no_api_key",
         message:
-          "Missing API key: enter one in the preview panel or set OPENAI_PROMPT_PREVIEW_KEY / OPENAI_API_KEY (OpenAI), GEMINI_PROMPT_PREVIEW_KEY (Gemini), KIMI_PROMPT_PREVIEW_KEY (Kimi), or XAI_PROMPT_PREVIEW_KEY (xAI) on the server.",
+          "Missing API key: enter one in the preview panel or set OPENAI_PROMPT_PREVIEW_KEY / OPENAI_API_KEY (OpenAI), GEMINI_PROMPT_PREVIEW_KEY (Gemini), KIMI_PROMPT_PREVIEW_KEY (Kimi), XAI_PROMPT_PREVIEW_KEY (xAI), or ANTHROPIC_PROMPT_PREVIEW_KEY (Claude) on the server.",
         statusCode: 400,
       });
     }
@@ -1580,20 +1590,8 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     try {
       let text: string;
       let usage: { prompt: number; completion: number; total: number } | undefined;
-      if (!isGeminiProvider(body.provider)) {
-        const baseUrl = resolveLlmApiBaseUrl(body.provider, body.apiBaseUrl?.trim() ?? "", config);
-        try {
-          assertHttpUrlAllowed(baseUrl);
-        } catch (e) {
-          clearTimeout(timer);
-          return reply.status(400).send({
-            error: "Bad Request",
-            message: e instanceof Error ? e.message : "Invalid API base URL",
-            statusCode: 400,
-          });
-        }
-        const r = await callOpenAiCompatibleChat({
-          baseUrl,
+      if (isGeminiProvider(body.provider)) {
+        const r = await callGeminiGenerateContent({
           apiKey,
           model: body.model,
           temperature: body.temperature,
@@ -1606,7 +1604,19 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         text = r.text;
         usage = r.usage;
       } else {
-        const r = await callGeminiGenerateContent({
+        const baseUrl = resolveLlmApiBaseUrl(body.provider, body.apiBaseUrl?.trim() ?? "", config);
+        try {
+          assertHttpUrlAllowed(baseUrl);
+        } catch (e) {
+          clearTimeout(timer);
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: e instanceof Error ? e.message : "Invalid API base URL",
+            statusCode: 400,
+          });
+        }
+        const chatParams = {
+          baseUrl,
           apiKey,
           model: body.model,
           temperature: body.temperature,
@@ -1615,7 +1625,10 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           history,
           userMessage: body.userMessage,
           signal: ctrl.signal,
-        });
+        };
+        const r = isAnthropicProvider(body.provider)
+          ? await callAnthropicMessages(chatParams)
+          : await callOpenAiCompatibleChat(chatParams);
         text = r.text;
         usage = r.usage;
       }
@@ -2837,7 +2850,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         return reply.status(400).send({
           error: "Bad Request",
           message:
-            "Agent API key not configured. Save a key in Automation > Agents IA or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY, GEMINI_PROMPT_PREVIEW_KEY, KIMI_PROMPT_PREVIEW_KEY, or XAI_PROMPT_PREVIEW_KEY on the server.",
+            "Agent API key not configured. Save a key in Automation > Agents IA or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY, GEMINI_PROMPT_PREVIEW_KEY, KIMI_PROMPT_PREVIEW_KEY, XAI_PROMPT_PREVIEW_KEY, or ANTHROPIC_PROMPT_PREVIEW_KEY on the server.",
           statusCode: 400,
         });
       }

@@ -3,10 +3,12 @@
  * Responsável apenas por invocar o modelo (texto); plan/contract vive no ExecutionEngine.
  */
 import {
+  callAnthropicMessages,
   callGeminiGenerateContent,
   callOpenAiCompatibleChat,
   type PreviewChatTurn,
 } from "../../promptModulePreviewLlm.js";
+import { isAnthropicProvider } from "../../llmProviders.js";
 
 export type LlmTextGenerationInput = {
   provider: string;
@@ -33,6 +35,20 @@ export async function invokeLlmTextGeneration(
   const maxTokens = clampLlmMaxTokens(input.maxTokens);
   if (input.provider === "google_gemini") {
     const r = await callGeminiGenerateContent({
+      apiKey: input.apiKey,
+      model: input.model,
+      temperature: input.temperature,
+      maxTokens,
+      system: input.system,
+      history: input.history,
+      userMessage: input.userMessage,
+      signal: input.signal,
+    });
+    return { text: r.text.trim() };
+  }
+  if (isAnthropicProvider(input.provider)) {
+    const r = await callAnthropicMessages({
+      baseUrl: input.apiBaseUrl.replace(/\/+$/, ""),
       apiKey: input.apiKey,
       model: input.model,
       temperature: input.temperature,

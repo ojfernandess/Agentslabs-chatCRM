@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { Bot, Conversation, Message } from "@prisma/client";
 import { config } from "../config.js";
 import {
+  isAnthropicProvider,
   isGeminiProvider,
   platformLlmKeySource,
   resolveLlmApiBaseUrl,
@@ -9,6 +10,7 @@ import {
 } from "./llmProviders.js";
 import { prisma } from "../db.js";
 import {
+  callAnthropicMessagesWithTools,
   callOpenAiCompatibleChatWithTools,
   type OpenAiToolDefinition,
   type PreviewChatTurn,
@@ -2642,7 +2644,10 @@ async function generateNativeAgentReplyCore(input: {
           "Início da geração com ferramentas nativas",
           { input: { provider, model, toolCount: tools.length, historyTurns: history.length } },
         );
-        const r = await callOpenAiCompatibleChatWithTools({
+        const callLlmWithTools = isAnthropicProvider(provider)
+          ? callAnthropicMessagesWithTools
+          : callOpenAiCompatibleChatWithTools;
+        const r = await callLlmWithTools({
           baseUrl: apiBaseUrl.replace(/\/+$/, ""),
           apiKey,
           model,

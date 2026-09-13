@@ -237,7 +237,9 @@ export function AutomationPromptsHub({
   const [previewMessages, setPreviewMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
   const [previewInput, setPreviewInput] = useState("");
   const [previewLiveMode, setPreviewLiveMode] = useState(true);
-  const [previewProvider, setPreviewProvider] = useState<"openai" | "google_gemini" | "kimi" | "xai">("openai");
+  const [previewProvider, setPreviewProvider] = useState<
+    "openai" | "google_gemini" | "kimi" | "xai" | "anthropic"
+  >("openai");
   const [previewModel, setPreviewModel] = useState("gpt-4o-mini");
   const [previewTemperature, setPreviewTemperature] = useState(0.7);
   const [previewMaxTokens, setPreviewMaxTokens] = useState(1024);
@@ -251,6 +253,7 @@ export function AutomationPromptsHub({
     hasPlatformGeminiKey: boolean;
     hasPlatformKimiKey?: boolean;
     hasPlatformXaiKey?: boolean;
+    hasPlatformAnthropicKey?: boolean;
   } | null>(null);
   const [sampleCtx, setSampleCtx] = useState({
     "contact.name": "Maria Silva",
@@ -371,6 +374,8 @@ export function AutomationPromptsHub({
         setPreviewBaseUrl(ld.apiBaseUrl?.trim() || "https://api.moonshot.ai/v1");
       } else if (ld.provider === "xai") {
         setPreviewBaseUrl(ld.apiBaseUrl?.trim() || "https://api.x.ai/v1");
+      } else if (ld.provider === "anthropic") {
+        setPreviewBaseUrl(ld.apiBaseUrl?.trim() || "https://api.anthropic.com");
       }
     } else {
       setPreviewModel((lb.modelHint ?? "").trim() || "gpt-4o-mini");
@@ -382,7 +387,9 @@ export function AutomationPromptsHub({
             ? "kimi"
             : /^grok-/i.test(hint)
               ? "xai"
-              : "openai",
+              : /^claude-/i.test(hint)
+                ? "anthropic"
+                : "openai",
       );
     }
     setPreviewRecordMetrics(false);
@@ -581,7 +588,9 @@ export function AutomationPromptsHub({
           ? "kimi"
           : /^grok-/i.test(tplHint)
             ? "xai"
-            : "openai",
+            : /^claude-/i.test(tplHint)
+              ? "anthropic"
+              : "openai",
     );
     setPreviewTemperature(0.7);
     setPreviewMaxTokens(1024);
@@ -1474,19 +1483,28 @@ export function AutomationPromptsHub({
                                     ? previewOptions?.hasPlatformXaiKey
                                       ? t("automationPage.promptHub.previewPlatformXai")
                                       : t("automationPage.promptHub.previewPlatformXaiOff")
-                                    : previewOptions?.hasPlatformOpenAiKey
-                                      ? t("automationPage.promptHub.previewPlatformOpenAi")
-                                      : t("automationPage.promptHub.previewPlatformOpenAiOff")}
+                                    : previewProvider === "anthropic"
+                                      ? previewOptions?.hasPlatformAnthropicKey
+                                        ? t("automationPage.promptHub.previewPlatformAnthropic")
+                                        : t("automationPage.promptHub.previewPlatformAnthropicOff")
+                                      : previewOptions?.hasPlatformOpenAiKey
+                                        ? t("automationPage.promptHub.previewPlatformOpenAi")
+                                        : t("automationPage.promptHub.previewPlatformOpenAiOff")}
                             </p>
                             <label className="block text-[11px] font-medium text-ink-600 dark:text-ink-400">
                               {t("automationPage.promptHub.previewProvider")}
                               <select
                                 value={previewProvider}
                                 onChange={(e) => {
-                                  const p = e.target.value as "openai" | "google_gemini" | "kimi" | "xai";
+                                  const p = e.target.value as
+                                    | "openai"
+                                    | "google_gemini"
+                                    | "kimi"
+                                    | "xai"
+                                    | "anthropic";
                                   setPreviewProvider(p);
                                   if (p === "google_gemini") {
-                                    setPreviewModel((m) => (/gemini/i.test(m) ? m : "gemini-1.5-flash"));
+                                    setPreviewModel((m) => (/gemini/i.test(m) ? m : "gemini-3.5-flash"));
                                     setPreviewBaseUrl("https://generativelanguage.googleapis.com");
                                   } else if (p === "kimi") {
                                     setPreviewModel((m) => (/^kimi-/i.test(m) ? m : "kimi-k3"));
@@ -1494,6 +1512,9 @@ export function AutomationPromptsHub({
                                   } else if (p === "xai") {
                                     setPreviewModel((m) => (/^grok-/i.test(m) ? m : "grok-4.6"));
                                     setPreviewBaseUrl("https://api.x.ai/v1");
+                                  } else if (p === "anthropic") {
+                                    setPreviewModel((m) => (/^claude-/i.test(m) ? m : "claude-sonnet-5"));
+                                    setPreviewBaseUrl("https://api.anthropic.com");
                                   } else {
                                     setPreviewModel((m) => (/^gpt-/i.test(m) ? m : "gpt-4o-mini"));
                                     setPreviewBaseUrl("https://api.openai.com/v1");
@@ -1502,6 +1523,7 @@ export function AutomationPromptsHub({
                                 className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-xs dark:border-ink-600 dark:bg-ink-900"
                               >
                                 <option value="openai">OpenAI / compatível</option>
+                                <option value="anthropic">Claude (Anthropic)</option>
                                 <option value="kimi">Kimi (Moonshot)</option>
                                 <option value="xai">xAI (Grok)</option>
                                 <option value="google_gemini">Google Gemini</option>
@@ -1555,7 +1577,9 @@ export function AutomationPromptsHub({
                                       ? "https://api.moonshot.ai/v1"
                                       : previewProvider === "xai"
                                         ? "https://api.x.ai/v1"
-                                        : "https://api.openai.com/v1"
+                                        : previewProvider === "anthropic"
+                                          ? "https://api.anthropic.com"
+                                          : "https://api.openai.com/v1"
                                   }
                                   className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 font-mono text-xs dark:border-ink-600 dark:bg-ink-900"
                                 />

@@ -167,22 +167,25 @@ const DEFAULT_API_BASE: Record<string, string> = {
   google_gemini: "https://generativelanguage.googleapis.com",
   kimi: "https://api.moonshot.ai/v1",
   xai: "https://api.x.ai/v1",
+  anthropic: "https://api.anthropic.com",
 };
 
 const PROVIDER_OPTIONS = [
   { value: "openai", labelKey: "automationPage.agentProviderOpenAI" as const },
   { value: "google_gemini", labelKey: "automationPage.agentProviderGemini" as const },
+  { value: "anthropic", labelKey: "automationPage.agentProviderAnthropic" as const },
   { value: "kimi", labelKey: "automationPage.agentProviderKimi" as const },
   { value: "xai", labelKey: "automationPage.agentProviderXai" as const },
 ];
 
-/** Provedores OpenAI-compatible com seletor de modelo + «Outro modelo». */
-const OPENAI_COMPAT_PROVIDERS = new Set(["openai", "kimi", "xai"]);
+/** Provedores com seletor de modelo + «Outro modelo» (OpenAI-compatible e Anthropic). */
+const OPENAI_COMPAT_PROVIDERS = new Set(["openai", "kimi", "xai", "anthropic"]);
 
 function defaultModelForProvider(provider: string): string {
-  if (provider === "google_gemini") return MODELS_BY_PROVIDER.google_gemini[0] ?? "gemini-2.0-flash";
+  if (provider === "google_gemini") return MODELS_BY_PROVIDER.google_gemini[0] ?? "gemini-3.5-flash";
   if (provider === "kimi") return MODELS_BY_PROVIDER.kimi[0] ?? "kimi-k3";
   if (provider === "xai") return MODELS_BY_PROVIDER.xai[0] ?? "grok-4.6";
+  if (provider === "anthropic") return MODELS_BY_PROVIDER.anthropic[0] ?? "claude-sonnet-5";
   return "gpt-4o-mini";
 }
 
@@ -232,7 +235,17 @@ const MODELS_BY_PROVIDER: Record<string, string[]> = {
     "gpt-4",
     "gpt-3.5-turbo",
   ],
-  google_gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+  google_gemini: [
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+  ],
   kimi: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
   xai: [
     "grok-4.6",
@@ -242,6 +255,7 @@ const MODELS_BY_PROVIDER: Record<string, string[]> = {
     "grok-4.20-0309-non-reasoning",
     "grok-build-0.1",
   ],
+  anthropic: ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5", "claude-fable-5-1"],
 };
 
 interface KnowledgeArticle {

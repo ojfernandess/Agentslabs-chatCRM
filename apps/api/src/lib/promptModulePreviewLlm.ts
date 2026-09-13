@@ -514,3 +514,219 @@ export async function callGeminiGenerateContent(params: {
     : undefined;
   return { text, usage };
 }
+
+/** Versão estável da [Messages API](https://platform.claude.com/docs/pt-BR/api/messages/create). */
+export const ANTHROPIC_MESSAGES_API_VERSION = "2023-06-01";
+
+export function anthropicMessagesUrl(baseUrl: string): string {
+  const base = baseUrl.replace(/\/+$/, "");
+  return base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`;
+}
+
+export function openAiToolsToAnthropic(tools: OpenAiToolDefinition[]): Array<{
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}> {
+  return tools.map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters,
+  }));
+}
+
+type AnthropicContentBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; tool_use_id: string; content: string };
+
+type AnthropicMessage = { role: "user" | "assistant"; content: string | AnthropicContentBlock[] };
+
+function anthropicRequestHeaders(apiKey: string): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+    "anthropic-version": ANTHROPIC_MESSAGES_API_VERSION,
+  };
+}
+
+function parseAnthropicUsage(raw: {
+  usage?: { input_tokens?: number; output_tokens?: number };
+}): PreviewLlmUsage | undefined {
+  const u = raw.usage;
+  if (!u) return undefined;
+  const prompt = u.input_tokens ?? 0;
+  const completion = u.output_tokens ?? 0;
+  return { prompt, completion, total: prompt + completion };
+}
+
+function anthropicTextFromContent(content: AnthropicContentBlock[] | undefined): string {
+  return (content ?? [])
+    .filter((b): b is { type: "text"; text: string } => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+}
+
+export async function callAnthropicMessages(params: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  system: string;
+  history: PreviewChatTurn[];
+  userMessage: string;
+  signal?: AbortSignal;
+}): Promise<{ text: string; usage?: PreviewLlmUsage }> {
+  const url = anthropicMessagesUrl(params.baseUrl);
+  const messages: AnthropicMessage[] = [
+    ...params.history.map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: params.userMessage },
+  ];
+  const { res, rawText } = await fetchLlmJsonWithRateLimitRetry(
+    url,
+    {
+      method: "POST",
+      headers: anthropicRequestHeaders(params.apiKey),
+      body: JSON.stringify({
+        model: params.model,
+        max_tokens: params.maxTokens,
+        temperature: params.temperature,
+        system: params.system,
+        messages,
+      }),
+      signal: params.signal,
+    },
+    {
+      signal: params.signal,
+      quotaKey: llmQuotaGateKey("anthropic", params.apiKey),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Anthropic API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
+  }
+  let data: { content?: AnthropicContentBlock[]; usage?: { input_tokens?: number; output_tokens?: number } };
+  try {
+    data = JSON.parse(rawText) as typeof data;
+  } catch {
+    throw new Error("Anthropic API returned non-JSON");
+  }
+  return { text: anthropicTextFromContent(data.content), usage: parseAnthropicUsage(data) };
+}
+
+/** Messages API com tool use (function calling nativo Anthropic). */
+export async function callAnthropicMessagesWithTools(params: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  system: string;
+  history: PreviewChatTurn[];
+  userMessage: string;
+  tools: OpenAiToolDefinition[];
+  onToolCall: (name: string, argsJson: string) => Promise<string>;
+  onAssistantToolRound?: (input: {
+    assistantContent: string | null;
+    toolNames: string[];
+    round: number;
+  }) => Promise<void>;
+  maxToolRounds?: number;
+  signal?: AbortSignal;
+  onTokenDelta?: (delta: string) => void;
+}): Promise<{ text: string; toolRounds: number; usage?: PreviewLlmUsage }> {
+  const maxRounds = Math.max(1, Math.min(params.maxToolRounds ?? 6, 12));
+  const url = anthropicMessagesUrl(params.baseUrl);
+  const messages: AnthropicMessage[] = [
+    ...params.history.map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: params.userMessage },
+  ];
+  const anthropicTools = openAiToolsToAnthropic(params.tools);
+
+  let toolRounds = 0;
+  let totalUsage: PreviewLlmUsage | undefined;
+
+  for (;;) {
+    const { res, rawText } = await fetchLlmJsonWithRateLimitRetry(
+      url,
+      {
+        method: "POST",
+        headers: anthropicRequestHeaders(params.apiKey),
+        body: JSON.stringify({
+          model: params.model,
+          max_tokens: params.maxTokens,
+          temperature: params.temperature,
+          system: params.system,
+          messages,
+          tools: anthropicTools,
+        }),
+        signal: params.signal,
+      },
+      {
+        signal: params.signal,
+        quotaKey: llmQuotaGateKey("anthropic", params.apiKey),
+      },
+    );
+    if (!res.ok) {
+      throw new Error(`Anthropic API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
+    }
+    let data: {
+      content?: AnthropicContentBlock[];
+      stop_reason?: string;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+    try {
+      data = JSON.parse(rawText) as typeof data;
+    } catch {
+      throw new Error("Anthropic API returned non-JSON");
+    }
+
+    const usage = parseAnthropicUsage(data);
+    if (usage) {
+      totalUsage = totalUsage
+        ? {
+            prompt: totalUsage.prompt + usage.prompt,
+            completion: totalUsage.completion + usage.completion,
+            total: totalUsage.total + usage.total,
+          }
+        : usage;
+    }
+
+    const content = data.content ?? [];
+    const toolUses = content.filter(
+      (b): b is { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } =>
+        b.type === "tool_use",
+    );
+
+    if (toolUses.length) {
+      if (toolRounds >= maxRounds) {
+        const fallback = anthropicTextFromContent(content).trim();
+        return { text: fallback, toolRounds, usage: totalUsage };
+      }
+      toolRounds++;
+      const toolNames = toolUses.map((t) => t.name);
+      const assistantText = anthropicTextFromContent(content);
+      if (params.onAssistantToolRound) {
+        await params.onAssistantToolRound({
+          assistantContent: assistantText || null,
+          toolNames,
+          round: toolRounds,
+        });
+      }
+      messages.push({ role: "assistant", content });
+      const toolResults: AnthropicContentBlock[] = [];
+      for (const tu of toolUses) {
+        const out = await params.onToolCall(tu.name, JSON.stringify(tu.input ?? {}));
+        toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: out });
+      }
+      messages.push({ role: "user", content: toolResults });
+      continue;
+    }
+
+    const finalText = anthropicTextFromContent(content);
+    if (params.onTokenDelta && finalText) {
+      params.onTokenDelta(finalText);
+    }
+    return { text: finalText, toolRounds, usage: totalUsage };
+  }
+}
