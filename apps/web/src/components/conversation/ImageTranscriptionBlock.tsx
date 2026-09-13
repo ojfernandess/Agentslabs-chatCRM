@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { ScanLine } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { IMAGE_TRANSCRIPTION_PREFIX, parseImageTranscriptionBody } from "@/lib/messagePreviewText";
@@ -6,10 +7,12 @@ export { IMAGE_TRANSCRIPTION_PREFIX, parseImageTranscriptionBody };
 
 type Props = {
   body: string;
+  /** Mensagem enviada pelo atendente (bolha outbound). */
+  outbound?: boolean;
   className?: string;
 };
 
-export function ImageTranscriptionBlock({ body, className }: Props) {
+export function ImageTranscriptionBlock({ body, outbound = false, className }: Props) {
   const { t } = useI18n();
   const data = parseImageTranscriptionBody(body);
   if (!data) return null;
@@ -21,34 +24,33 @@ export function ImageTranscriptionBlock({ body, className }: Props) {
 
   return (
     <div
-      className={
-        className ??
-        "mt-2 overflow-hidden rounded-xl border border-ink-200/80 bg-ink-50/90 dark:border-ink-700/80 dark:bg-ink-900/50"
-      }
+      className={clsx(
+        "chat-media-transcription",
+        outbound ? "chat-media-transcription--outbound" : "chat-media-transcription--inbound",
+        className,
+      )}
     >
-      <div className="flex items-center gap-2 border-b border-ink-200/60 bg-ink-100/60 px-3 py-2 dark:border-ink-700/60 dark:bg-ink-800/40">
-        <ScanLine className="h-4 w-4 text-brand-600 dark:text-brand-400" />
-        <span className="text-xs font-bold uppercase tracking-wide text-ink-700 dark:text-ink-200">
+      <div className="chat-media-transcription__header">
+        <ScanLine className="chat-media-transcription__icon h-4 w-4" aria-hidden />
+        <span className="chat-media-transcription__title">
           {t("conversationDetail.imageTranscriptionTitle")}
         </span>
       </div>
-      <div className="space-y-3 px-3 py-2.5 text-xs leading-relaxed text-ink-700 dark:text-ink-200">
+      <div className="chat-media-transcription__body space-y-3">
         {description ? (
           <div>
-            <p className="mb-1 font-semibold text-ink-800 dark:text-ink-100">
+            <p className="chat-media-transcription__section-label">
               {t("conversationDetail.imageTranscriptionDescription")}
             </p>
-            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{description}</p>
+            <p>{description}</p>
           </div>
         ) : null}
         {extractedText ? (
           <div>
-            <p className="mb-1 font-semibold text-ink-800 dark:text-ink-100">
+            <p className="chat-media-transcription__section-label">
               {t("conversationDetail.imageTranscriptionExtracted")}
             </p>
-            <p className="whitespace-pre-wrap break-words font-mono text-[11px] [overflow-wrap:anywhere]">
-              {extractedText}
-            </p>
+            <p className="chat-media-transcription__extracted">{extractedText}</p>
           </div>
         ) : null}
       </div>

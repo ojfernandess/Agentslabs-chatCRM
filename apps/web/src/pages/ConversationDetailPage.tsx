@@ -3821,7 +3821,10 @@ export function ConversationDetailPage() {
                         onOpen={() => setLightboxSrc(msg.mediaUrl!)}
                       />
                       {msg.body?.trim() && parseImageTranscriptionBody(msg.body) ? (
-                        <ImageTranscriptionBlock body={msg.body} />
+                        <ImageTranscriptionBlock
+                          body={msg.body}
+                          outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
+                        />
                       ) : msg.body?.trim() ? (
                         <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.body}</p>
                       ) : null}
@@ -3863,7 +3866,10 @@ export function ConversationDetailPage() {
                         outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
                       />
                       {audioTranscriptionText ? (
-                        <AudioTranscriptionBlock text={audioTranscriptionText} />
+                        <AudioTranscriptionBlock
+                          text={audioTranscriptionText}
+                          outbound={msg.direction === "OUTBOUND" && !msg.isPrivate}
+                        />
                       ) : msg.body?.trim() ? (
                         <p className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                           {msg.body}
