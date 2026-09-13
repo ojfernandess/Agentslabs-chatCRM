@@ -19,6 +19,7 @@ import {
   buildFactStoreFromInputs,
   evaluatePolicies,
   evaluatePredicateDetailed,
+  toEilPolicyEval,
   type PredicateEvalResult,
 } from "@/lib/eil/policyEval.js";
 import {
@@ -164,7 +165,7 @@ export function AgentEilPolicyBuilder({
       for (const pred of policy.requires) details.push(evaluatePredicateDetailed(store, pred));
     }
     const violations = evaluatePolicies({
-      policies: targetPolicies.filter((p) => p.active !== false),
+      policies: targetPolicies.filter((p) => p.active !== false).map(toEilPolicyEval),
       facts: store,
       replyActions: [simAction],
     });

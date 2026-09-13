@@ -1,5 +1,5 @@
 import { getActionLabel, getFactLabel, getOpLabel, slugifyPolicyId } from "./catalog.js";
-import type { AgentEilPolicyDraft } from "./types.js";
+import type { AgentEilPolicyDraft, FactValue } from "./types.js";
 
 const UI_POLICY_KEYS = ["name", "description", "instruction", "active", "onUnknown", "onViolation", "idManuallyEdited"] as const;
 
@@ -30,10 +30,7 @@ export function serializePolicyForJson(policy: AgentEilPolicyDraft): AgentEilPol
 export type OnUnknownMode = "fetch" | "ask" | "block" | "ignore";
 export type OnViolationMode = "block" | "guide" | "escalate" | "alert" | "warn";
 
-export function formatPredicate(
-  pred: { fact: string; op: string; value?: unknown },
-  locale: "pt" | "en",
-): string {
+export function formatPredicate(pred: { fact: string; op: string; value?: FactValue }, locale: "pt" | "en"): string {
   const factLabel = getFactLabel(pred.fact, locale);
   const opLabel = getOpLabel(pred.op, locale);
   if (pred.op === "exists" || pred.op === "not_exists") return `${factLabel} ${opLabel}`;
@@ -88,8 +85,8 @@ export function policyFromTemplate(template: {
   policy: {
     id: string;
     action: string;
-    requires?: Array<{ fact: string; op: string; value?: unknown }>;
-    forbids?: Array<{ fact: string; op: string; value?: unknown }>;
+    requires?: ReadonlyArray<{ fact: string; op: string; value?: FactValue }>;
+    forbids?: ReadonlyArray<{ fact: string; op: string; value?: FactValue }>;
   };
 }): AgentEilPolicyDraft {
   return {

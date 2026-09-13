@@ -9,7 +9,7 @@ import {
 } from "@/lib/eil/catalog.js";
 import type { ResolvedFactEntry } from "@/lib/eil/factCatalog.js";
 import { ensurePolicyId } from "@/lib/eil/policyVisual.js";
-import type { AgentEilPolicyDraft } from "@/lib/eil/types.js";
+import type { AgentEilPolicyDraft, EilPredicateDraft } from "@/lib/eil/types.js";
 
 type Translate = (key: string) => string;
 
@@ -24,8 +24,8 @@ type Props = {
   existingIds: string[];
 };
 
-function emptyCondition() {
-  return { fact: "", op: "exists", value: "" as string | number | boolean };
+function emptyCondition(): EilPredicateDraft {
+  return { fact: "", op: "exists" };
 }
 
 export function PolicyEditorDrawer({ open, policy, facts, locale, t, onClose, onSave, existingIds }: Props) {
@@ -71,10 +71,7 @@ export function PolicyEditorDrawer({ open, policy, facts, locale, t, onClose, on
   const requires = draft.requires ?? [];
   const forbids = draft.forbids ?? [];
 
-  const renderConditionRows = (
-    items: Array<{ fact: string; op: string; value?: unknown }>,
-    field: "requires" | "forbids",
-  ) => (
+  const renderConditionRows = (items: EilPredicateDraft[], field: "requires" | "forbids") => (
     <div className="space-y-2">
       {items.map((cond, idx) => {
         const factDef = selectedFact(cond.fact);

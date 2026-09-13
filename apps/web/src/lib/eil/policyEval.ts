@@ -3,14 +3,11 @@
  * Espelha PolicyEngine.ts — não duplicar lógica de domínio.
  */
 
-export type FactValue = string | number | boolean | null;
-export type FactStore = Record<string, { value?: FactValue; source?: string }>;
+import type { AgentEilPolicyDraft, EilPredicateDraft, FactValue } from "./types.js";
 
-export type FactPredicate = {
-  fact: string;
-  op: string;
-  value?: FactValue;
-};
+export type { FactValue };
+export type FactStore = Record<string, { value?: FactValue; source?: string }>;
+export type FactPredicate = EilPredicateDraft;
 
 export type EilPolicyEval = {
   id: string;
@@ -143,6 +140,17 @@ export function evaluatePolicies(input: {
   }
 
   return violations;
+}
+
+export function toEilPolicyEval(policy: AgentEilPolicyDraft): EilPolicyEval {
+  return {
+    id: policy.id,
+    action: policy.action,
+    requires: policy.requires,
+    forbids: policy.forbids,
+    blockWhenUnmet: policy.blockWhenUnmet,
+    active: policy.active,
+  };
 }
 
 export function buildFactStoreFromInputs(inputs: Record<string, string>): FactStore {

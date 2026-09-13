@@ -1,5 +1,5 @@
 import { buildEilHelpSections } from "@/lib/eil/helpSections.js";
-import type { AgentEilConfigDraft, AgentEilPolicyDraft } from "@/lib/eil/types.js";
+import { coerceFactValue, type AgentEilConfigDraft, type AgentEilPolicyDraft, type EilPredicateDraft } from "@/lib/eil/types.js";
 import type { AutomationCustomToolRow } from "./automationToolTypes.js";
 import { AgentEilPolicyBuilder } from "./eil/AgentEilPolicyBuilder.js";
 
@@ -30,8 +30,11 @@ function parsePredicates(raw: unknown): AgentEilPolicyDraft["requires"] | null {
     const fact = typeof o.fact === "string" ? o.fact.trim() : "";
     const op = typeof o.op === "string" ? o.op.trim() : "";
     if (!fact || !VALID_OPS.has(op)) return null;
-    const pred: { fact: string; op: string; value?: unknown } = { fact, op };
-    if ("value" in o) pred.value = o.value;
+    const pred: EilPredicateDraft = { fact, op };
+    if ("value" in o) {
+      const coerced = coerceFactValue(o.value);
+      if (coerced !== undefined) pred.value = coerced;
+    }
     out.push(pred);
   }
   return out;
