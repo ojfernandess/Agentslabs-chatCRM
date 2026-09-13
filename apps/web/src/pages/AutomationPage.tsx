@@ -69,6 +69,7 @@ import {
   agentEilPoliciesToJson,
   buildAgentEilForPayload,
   DEFAULT_AGENT_EIL_JSON,
+  EMPTY_AGENT_EIL_JSON,
   extractAgentEil,
 } from "@/pages/automation/AgentEilConfigSection";
 import {
@@ -545,7 +546,7 @@ function emptyAgentForm(): AgentFormFields {
     },
     knowledgeEngine: defaultKnowledgeEngineFormValues(),
     eilEnabled: false,
-    eilJson: DEFAULT_AGENT_EIL_JSON,
+    eilJson: EMPTY_AGENT_EIL_JSON,
   };
 }
 
@@ -1879,6 +1880,7 @@ export function AutomationPage() {
             orgTeams={orgTeamsForAgent}
             orgTags={orgTagsForAgent}
             suggestionLocale={locale}
+            uiLocale={locale.startsWith("pt") ? "pt" : "en"}
             showSuggestErrorDetails={
               isTenantAdmin(user?.role, user?.actingOrganizationId) || isSuperAdminRole(user?.role)
             }
@@ -2103,6 +2105,7 @@ function AgentsTab({
   orgTeams,
   orgTags,
   suggestionLocale,
+  uiLocale,
   showSuggestErrorDetails,
 }: {
   t: Translate;
@@ -2128,6 +2131,7 @@ function AgentsTab({
   orgTeams: Array<{ id: string; name: string }>;
   orgTags: Array<{ id: string; name: string; color: string }>;
   suggestionLocale: string;
+  uiLocale: "pt" | "en";
   showSuggestErrorDetails: boolean;
 }) {
   const promptUserCoreRef = useRef<HTMLTextAreaElement | null>(null);
@@ -3688,6 +3692,12 @@ function AgentsTab({
                 json={agentForm.eilJson}
                 onJsonChange={(eilJson) => setAgentForm((f) => ({ ...f, eilJson }))}
                 t={t}
+                locale={uiLocale}
+                tools={tools}
+                connectedToolNames={agentForm.connectedTools.filter((x) => x.enabled).map((x) => {
+                  const tl = tools.find((t) => t.id === x.toolId);
+                  return tl?.name ?? "";
+                }).filter(Boolean)}
                 editBotId={agentForm.editBotId}
                 onApplyDefault={agentForm.editBotId ? applyAgentEilDefault : undefined}
                 applyingDefault={applyingAgentEil}

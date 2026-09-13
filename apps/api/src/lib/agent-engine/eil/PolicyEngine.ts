@@ -74,6 +74,8 @@ export function evaluatePolicies(input: EvaluatePoliciesInput): ConstraintViolat
   const actions = new Set(input.replyActions.map(String));
 
   for (const policy of input.policies) {
+    if ((policy as { active?: boolean }).active === false) continue;
+
     // Policy scoped to an action: only apply when that action is present
     if (policy.action) {
       if (!actions.has(policy.action)) continue;
