@@ -32,7 +32,7 @@ import {
 import type { AutomationCustomToolRow } from "../automationToolTypes.js";
 import type { AgentEilPolicyDraft } from "@/lib/eil/types.js";
 import { parseAgentEilJson } from "../AgentEilConfigSection.js";
-import { EilActiveBadge, EilHelpHint } from "./EilHelpHint.js";
+import { EilActiveBadge, EilHelpHint, type EilHelpSection } from "./EilHelpHint.js";
 import { PolicyEditorDrawer } from "./PolicyEditorDrawer.js";
 
 type Translate = (key: string) => string;
@@ -51,7 +51,7 @@ type Props = {
   onApplyDefault?: () => Promise<void>;
   applyingDefault?: boolean;
   lastApplySummary?: { toolsUpdated: number; policyIds: string[] } | null;
-  helpSections: Array<{ title: string; body: string }>;
+  helpSections: EilHelpSection[];
 };
 
 const TABS: Array<{ id: TabId; icon: typeof Shield; labelKey: string }> = [

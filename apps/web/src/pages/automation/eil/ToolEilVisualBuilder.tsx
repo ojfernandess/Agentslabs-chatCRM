@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { CheckCircle2, CircleAlert, Code2, Database } from "lucide-react";
 import { EIL_FACT_CATALOG } from "@/lib/eil/catalog.js";
 import { parseToolEilJson, type ToolEilConfigDraft } from "@/lib/eil/toolConfig.js";
-import { EilHelpHint } from "./EilHelpHint.js";
+import { EilHelpHint, type EilHelpSection } from "./EilHelpHint.js";
 
 type Translate = (key: string) => string;
 type TabId = "visual" | "json";
@@ -15,7 +15,7 @@ type Props = {
   onJsonChange: (json: string) => void;
   t: Translate;
   locale: "pt" | "en";
-  helpSections: Array<{ title: string; body: string }>;
+  helpSections: EilHelpSection[];
 };
 
 function draftFromJson(json: string): ToolEilConfigDraft {

@@ -1,13 +1,16 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { CircleHelp, X } from "lucide-react";
+import { EilRuntimeFlowVisual } from "./EilRuntimeFlowVisual.js";
 
-type Section = { title: string; body: string };
+export type EilHelpSection =
+  | { kind: "text"; title: string; body: string }
+  | { kind: "runtime-flow"; title: string; intro?: string; steps: string[] };
 
 type Props = {
   label: string;
   title: string;
-  sections: Section[];
+  sections: EilHelpSection[];
 };
 
 export function EilHelpHint({ label, title, sections }: Props) {
@@ -51,13 +54,22 @@ export function EilHelpHint({ label, title, sections }: Props) {
               </button>
             </div>
             <div className="overflow-y-auto px-5 py-4">
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {sections.map((s) => (
                   <section key={s.title}>
                     <h3 className="text-xs font-semibold text-ink-800 dark:text-ink-100">{s.title}</h3>
-                    <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-ink-600 dark:text-ink-400">
-                      {s.body}
-                    </p>
+                    {s.kind === "text" ? (
+                      <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-ink-600 dark:text-ink-400">
+                        {s.body}
+                      </p>
+                    ) : (
+                      <>
+                        {s.intro ? (
+                          <p className="mt-1 text-[11px] leading-relaxed text-ink-600 dark:text-ink-400">{s.intro}</p>
+                        ) : null}
+                        <EilRuntimeFlowVisual steps={s.steps} />
+                      </>
+                    )}
                   </section>
                 ))}
               </div>

@@ -1340,6 +1340,12 @@ export const messages = {
       agentEilHelpWhat: "O que é o Execution Intelligence Layer",
       agentEilHelpWhatBody:
         "O EIL é uma camada de inteligência de execução que controla o que o agente pode fazer com base em fatos (dados) obtidos durante a conversa. Ele planeja turnos, valida restrições e audita decisões — sem substituir o LLM.",
+      agentEilHelpWhenActive: "Quando está ativo",
+      agentEilHelpWhenActiveBody:
+        "O EIL entra em ação quando «Ativar EIL neste agente» está ligado e behaviorConfig.eil.enabled não está desativado. A cada mensagem do cliente, o runtime executa o fluxo abaixo automaticamente — não é necessário configurar nada extra por turno.",
+      agentEilHelpPracticalSummary: "Resumo prático",
+      agentEilHelpPracticalSummaryBody:
+        "No agente: crie políticas visuais que definem quando cada ação é permitida ou bloqueada.\nNas ferramentas: informe quais fatos cada tool produz (config.eil).\nUse o Simulador para testar regras antes de publicar.\nO JSON avançado continua disponível para desenvolvedores.",
       agentEilHelpAgentConfig: "O que você configura no editor de agente",
       agentEilHelpAgentConfigBody:
         "Políticas declarativas em behaviorConfig.eil: regras do tipo «quando o agente tentar a ação X, permitir somente se os fatos Y forem verdadeiros». Cada política tem id, action, requires, forbids e blockWhenUnmet.",
@@ -1353,8 +1359,14 @@ export const messages = {
       agentEilHelpToolMetaBody:
         "Em config.eil de cada ferramenta HTTP: produces (fatos que a ferramenta extrai), requiresFacts, capabilities e factPaths (caminho no JSON de resposta). O planejador usa isso para buscar fatos ausentes.",
       agentEilHelpRuntime: "Como funciona em runtime (cada turno)",
-      agentEilHelpRuntimeBody:
-        "1) Extrair fatos das ferramentas e slots · 2) Detectar ações no texto do agente · 3) Avaliar políticas · 4) Planejar ferramentas pendentes · 5) Supervisor valida · 6) Registrar eilSnapshot no trace.",
+      agentEilHelpRuntimeIntro:
+        "A cada turno, o EIL percorre estas etapas em sequência:",
+      agentEilHelpRuntimeStep1: "Extrair fatos das ferramentas e slots",
+      agentEilHelpRuntimeStep2: "Detectar ações no texto do agente",
+      agentEilHelpRuntimeStep3: "Avaliar políticas",
+      agentEilHelpRuntimeStep4: "Planejar ferramentas pendentes",
+      agentEilHelpRuntimeStep5: "Supervisor valida",
+      agentEilHelpRuntimeStep6: "Registrar eilSnapshot no trace",
       agentEilTabPolicies: "Políticas",
       agentEilTabFacts: "Facts (Dados)",
       agentEilTabActions: "Ações",
@@ -7421,6 +7433,12 @@ export const messages = {
       agentEilHelpWhat: "What is the Execution Intelligence Layer",
       agentEilHelpWhatBody:
         "EIL is an execution intelligence layer that controls what the agent can do based on facts (data) obtained during the conversation. It plans turns, validates constraints, and audits decisions — without replacing the LLM.",
+      agentEilHelpWhenActive: "When it is active",
+      agentEilHelpWhenActiveBody:
+        "EIL runs when «Enable EIL on this agent» is on and behaviorConfig.eil.enabled is not disabled. On every customer message, the runtime executes the flow below automatically — no extra per-turn setup is required.",
+      agentEilHelpPracticalSummary: "Practical summary",
+      agentEilHelpPracticalSummaryBody:
+        "On the agent: create visual policies that define when each action is allowed or blocked.\nOn tools: declare which facts each tool produces (config.eil).\nUse the Simulator to test rules before publishing.\nAdvanced JSON remains available for developers.",
       agentEilHelpAgentConfig: "What you configure in the agent editor",
       agentEilHelpAgentConfigBody:
         "Declarative policies in behaviorConfig.eil: rules like «when the agent tries action X, allow only if facts Y are true». Each policy has id, action, requires, forbids, and blockWhenUnmet.",
@@ -7434,8 +7452,13 @@ export const messages = {
       agentEilHelpToolMetaBody:
         "In config.eil for each HTTP tool: produces (facts extracted), requiresFacts, capabilities, and factPaths (response JSON paths). The planner uses this to fetch missing facts.",
       agentEilHelpRuntime: "How it works at runtime (each turn)",
-      agentEilHelpRuntimeBody:
-        "1) Extract facts from tools and slots · 2) Detect actions in agent text · 3) Evaluate policies · 4) Plan pending tools · 5) Supervisor validates · 6) Record eilSnapshot in trace.",
+      agentEilHelpRuntimeIntro: "On each turn, EIL runs through these steps in sequence:",
+      agentEilHelpRuntimeStep1: "Extract facts from tools and slots",
+      agentEilHelpRuntimeStep2: "Detect actions in agent text",
+      agentEilHelpRuntimeStep3: "Evaluate policies",
+      agentEilHelpRuntimeStep4: "Plan pending tools",
+      agentEilHelpRuntimeStep5: "Supervisor validates",
+      agentEilHelpRuntimeStep6: "Record eilSnapshot in trace",
       agentEilTabPolicies: "Policies",
       agentEilTabFacts: "Facts (Data)",
       agentEilTabActions: "Actions",
