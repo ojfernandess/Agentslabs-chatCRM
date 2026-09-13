@@ -1,5 +1,13 @@
 import { buildEilHelpSections } from "@/lib/eil/helpSections.js";
-import { coerceFactValue, type AgentEilConfigDraft, type AgentEilPolicyDraft, type EilPredicateDraft } from "@/lib/eil/types.js";
+import { EIL_CATEGORIES } from "@/lib/eil/eilCategories.js";
+import { eilConfigToJson } from "@/lib/eil/policyVisual.js";
+import {
+  coerceFactValue,
+  type AgentEilConfigDraft,
+  type AgentEilPolicyDraft,
+  type EilCustomActionDef,
+  type EilPredicateDraft,
+} from "@/lib/eil/types.js";
 import type { AutomationCustomToolRow } from "./automationToolTypes.js";
 import { AgentEilPolicyBuilder } from "./eil/AgentEilPolicyBuilder.js";
 
@@ -19,6 +27,28 @@ export const DEFAULT_AGENT_EIL_JSON = JSON.stringify({ policies: DEFAULT_AGENT_E
 export const EMPTY_AGENT_EIL_JSON = JSON.stringify({ policies: [] }, null, 2);
 
 const VALID_OPS = new Set(["eq", "neq", "gt", "gte", "lt", "lte", "exists", "not_exists"]);
+const VALID_CATEGORY_IDS = new Set<string>(EIL_CATEGORIES.map((c) => c.id));
+
+function parseCustomActions(raw: unknown): EilCustomActionDef[] | null {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) return null;
+  const out: EilCustomActionDef[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") return null;
+    const o = item as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id.trim() : "";
+    const label = typeof o.label === "string" ? o.label.trim() : "";
+    if (!id || !label) return null;
+    const action: EilCustomActionDef = { id, label };
+    if (typeof o.description === "string" && o.description.trim()) action.description = o.description.trim();
+    if (o.enabled === false) action.enabled = false;
+    if (Array.isArray(o.detectionAliases)) {
+      action.detectionAliases = o.detectionAliases.filter((a): a is string => typeof a === "string" && a.trim().length > 0);
+    }
+    out.push(action);
+  }
+  return out;
+}
 
 function parsePredicates(raw: unknown): AgentEilPolicyDraft["requires"] | null {
   if (raw === undefined) return [];
@@ -85,6 +115,17 @@ export function parseAgentEilJson(raw: string): ParsedAgentEilResult {
   }
   if (obj.enabled !== undefined) out.enabled = obj.enabled;
 
+  if (obj.category !== undefined) {
+    if (typeof obj.category !== "string" || !VALID_CATEGORY_IDS.has(obj.category)) {
+      return { ok: false, error: "category" };
+    }
+    out.category = obj.category as AgentEilConfigDraft["category"];
+  }
+
+  const customActions = parseCustomActions(obj.customActions);
+  if (customActions === null) return { ok: false, error: "customActions" };
+  if (customActions.length > 0) out.customActions = customActions;
+
   if (obj.policies === undefined) {
     out.policies = [];
   } else if (!Array.isArray(obj.policies)) {
@@ -133,10 +174,18 @@ export function agentEilIsActive(behaviorConfig: Record<string, unknown> | undef
   return eil.enabled !== false;
 }
 
-/** Serializa policies para o editor (sem duplicar enabled — vem do checkbox). */
+/** Serializa config EIL para o editor (sem duplicar enabled — vem do checkbox). */
 export function agentEilPoliciesToJson(eil: AgentEilConfigDraft | null): string {
-  if (!eil?.policies?.length) return EMPTY_AGENT_EIL_JSON;
-  return JSON.stringify({ policies: eil.policies }, null, 2);
+  if (!eil) return EMPTY_AGENT_EIL_JSON;
+  if (!eil.policies?.length && !eil.category && !eil.customActions?.length) return EMPTY_AGENT_EIL_JSON;
+  return eilConfigToJson(eil);
+}
+
+function pickEilMeta(value: AgentEilConfigDraft): Pick<AgentEilConfigDraft, "category" | "customActions"> {
+  const meta: Pick<AgentEilConfigDraft, "category" | "customActions"> = {};
+  if (value.category) meta.category = value.category;
+  if (value.customActions?.length) meta.customActions = value.customActions;
+  return meta;
 }
 
 /** Monta `behaviorConfig.eil` para persistência. */
@@ -144,11 +193,12 @@ export function buildAgentEilForPayload(enabled: boolean, json: string): AgentEi
   const parsed = parseAgentEilJson(json);
   if (!parsed.ok) return enabled ? null : null;
   const policies = parsed.value.policies ?? [];
+  const meta = pickEilMeta(parsed.value);
   if (!enabled) {
-    if (policies.length === 0) return null;
-    return { enabled: false, policies };
+    if (policies.length === 0 && !meta.category && !meta.customActions?.length) return null;
+    return { enabled: false, ...meta, policies };
   }
-  return { enabled: true, policies };
+  return { enabled: true, ...meta, policies };
 }
 
 type Translate = (key: string) => string;

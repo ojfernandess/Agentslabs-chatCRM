@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { CircleAlert, X } from "lucide-react";
-import {
-  EIL_ACTION_CATALOG,
-  EIL_OPERATOR_CATALOG,
-  operatorsForFactType,
-  slugifyPolicyId,
-} from "@/lib/eil/catalog.js";
+import { EIL_OPERATOR_CATALOG, operatorsForFactType, slugifyPolicyId } from "@/lib/eil/catalog.js";
+import type { ResolvedActionEntry } from "@/lib/eil/categoryCatalog.js";
 import type { ResolvedFactEntry } from "@/lib/eil/factCatalog.js";
 import { ensurePolicyId } from "@/lib/eil/policyVisual.js";
-import type { AgentEilPolicyDraft, EilPredicateDraft } from "@/lib/eil/types.js";
+import type { AgentEilConfigDraft, AgentEilPolicyDraft, EilPredicateDraft } from "@/lib/eil/types.js";
+import { SearchableActionSelect } from "./SearchableActionSelect.js";
 
 type Translate = (key: string) => string;
 
@@ -17,6 +14,8 @@ type Props = {
   open: boolean;
   policy: AgentEilPolicyDraft | null;
   facts: ResolvedFactEntry[];
+  eilConfig: AgentEilConfigDraft;
+  actionCatalog: ResolvedActionEntry[];
   locale: "pt" | "en";
   t: Translate;
   onClose: () => void;
@@ -28,7 +27,7 @@ function emptyCondition(): EilPredicateDraft {
   return { fact: "", op: "exists" };
 }
 
-export function PolicyEditorDrawer({ open, policy, facts, locale, t, onClose, onSave, existingIds }: Props) {
+export function PolicyEditorDrawer({ open, policy, facts, eilConfig, actionCatalog, locale, t, onClose, onSave, existingIds }: Props) {
   const [draft, setDraft] = useState<AgentEilPolicyDraft | null>(null);
   const [idManuallyEdited, setIdManuallyEdited] = useState(false);
 
@@ -55,10 +54,6 @@ export function PolicyEditorDrawer({ open, policy, facts, locale, t, onClose, on
   };
 
   const selectedFact = (key: string) => factMap.get(key);
-  const actionOptions = EIL_ACTION_CATALOG.map((a) => ({
-    id: a.id,
-    label: locale === "pt" ? a.labelPt : a.labelEn,
-  }));
 
   const id = draft.id?.trim() || slugifyPolicyId(draft.name ?? "");
   const validationErrors: string[] = [];
@@ -227,18 +222,15 @@ export function PolicyEditorDrawer({ open, policy, facts, locale, t, onClose, on
             <p className="text-[11px] font-semibold text-ink-800 dark:text-ink-200">
               1. {t("automationPage.agentEilWhenAgentTries")}
             </p>
-            <select
+            <SearchableActionSelect
               value={draft.action ?? ""}
-              onChange={(e) => update({ action: e.target.value })}
-              className="mt-2 w-full rounded-lg border border-ink-200 px-3 py-2 text-xs dark:border-ink-600 dark:bg-ink-950"
-            >
-              <option value="">{t("automationPage.agentEilSelectAction")}</option>
-              {actionOptions.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
+              onChange={(actionId) => update({ action: actionId })}
+              catalog={actionCatalog}
+              eilConfig={eilConfig}
+              locale={locale}
+              t={t}
+              className="mt-2"
+            />
           </section>
 
           <section>

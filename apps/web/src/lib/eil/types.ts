@@ -1,3 +1,5 @@
+import type { EilCategoryId } from "./eilCategories.js";
+
 export type FactValue = string | number | boolean | null;
 
 export type EilPredicateDraft = {
@@ -28,7 +30,19 @@ export type AgentEilPolicyDraft = {
   idManuallyEdited?: boolean;
 };
 
+export type EilCustomActionDef = {
+  id: string;
+  label: string;
+  description?: string;
+  enabled?: boolean;
+  /** Aliases opcionais para detecção textual (metadata de editor). */
+  detectionAliases?: string[];
+};
+
 export type AgentEilConfigDraft = {
   enabled?: boolean;
+  /** Categoria EIL (preset de UI — não altera runtime). */
+  category?: EilCategoryId;
+  customActions?: EilCustomActionDef[];
   policies?: AgentEilPolicyDraft[];
 };

@@ -1,5 +1,6 @@
-import { getActionLabel, getFactLabel, getOpLabel, slugifyPolicyId } from "./catalog.js";
-import type { AgentEilPolicyDraft, FactValue } from "./types.js";
+import { getFactLabel, getOpLabel, slugifyPolicyId } from "./catalog.js";
+import { resolveActionLabel } from "./categoryCatalog.js";
+import type { AgentEilConfigDraft, AgentEilPolicyDraft, EilCustomActionDef, FactValue } from "./types.js";
 
 const UI_POLICY_KEYS = ["name", "description", "instruction", "active", "onUnknown", "onViolation", "idManuallyEdited"] as const;
 
@@ -37,13 +38,17 @@ export function formatPredicate(pred: { fact: string; op: string; value?: FactVa
   return `${factLabel} ${opLabel} ${String(pred.value ?? "")}`;
 }
 
-export function formatPolicySummary(policy: AgentEilPolicyDraft, locale: "pt" | "en"): {
+export function formatPolicySummary(
+  policy: AgentEilPolicyDraft,
+  locale: "pt" | "en",
+  eilConfig?: AgentEilConfigDraft,
+): {
   actionLabel: string;
   requiresLabel: string;
   forbidsLabel: string;
   failureLabel: string;
 } {
-  const actionLabel = policy.action ? getActionLabel(policy.action, locale) : "—";
+  const actionLabel = policy.action ? resolveActionLabel(policy.action, locale, eilConfig) : "—";
   const requires = policy.requires ?? [];
   const forbids = policy.forbids ?? [];
   const requiresLabel =
@@ -107,8 +112,27 @@ export function ensurePolicyId(policy: AgentEilPolicyDraft, locale: "pt" | "en")
   return { ...policy, id: slugifyPolicyId(base) || `policy_${Date.now()}` };
 }
 
-export function policiesToJson(policies: AgentEilPolicyDraft[]): string {
-  return JSON.stringify({ policies: policies.map(serializePolicyForJson) }, null, 2);
+function serializeCustomAction(action: EilCustomActionDef): EilCustomActionDef {
+  const out: EilCustomActionDef = { id: action.id, label: action.label };
+  if (action.description?.trim()) out.description = action.description.trim();
+  if (action.enabled === false) out.enabled = false;
+  if (action.detectionAliases?.length) out.detectionAliases = action.detectionAliases;
+  return out;
+}
+
+/** Serializa config EIL completo (policies + category + customActions). */
+export function eilConfigToJson(config: AgentEilConfigDraft): string {
+  const out: Record<string, unknown> = {};
+  if (config.category) out.category = config.category;
+  if (config.customActions?.length) {
+    out.customActions = config.customActions.map(serializeCustomAction);
+  }
+  out.policies = (config.policies ?? []).map(serializePolicyForJson);
+  return JSON.stringify(out, null, 2);
+}
+
+export function policiesToJson(policies: AgentEilPolicyDraft[], meta?: Pick<AgentEilConfigDraft, "category" | "customActions">): string {
+  return eilConfigToJson({ ...meta, policies });
 }
 
 export function parsePoliciesFromJson(json: string): AgentEilPolicyDraft[] {

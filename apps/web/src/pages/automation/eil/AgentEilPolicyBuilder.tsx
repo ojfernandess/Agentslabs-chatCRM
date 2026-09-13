@@ -13,7 +13,16 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
-import { EIL_ACTION_CATALOG, EIL_POLICY_TEMPLATES } from "@/lib/eil/catalog.js";
+import {
+  buildActionCatalog,
+  getCategoryLabel,
+  getEffectiveCategoryId,
+  getEilCategory,
+  getSuggestedFactsForCategory,
+  getTemplatesForCategory,
+  isActionInCategory,
+} from "@/lib/eil/categoryCatalog.js";
+import type { EilCategoryId } from "@/lib/eil/eilCategories.js";
 import { buildFactCatalog, countPoliciesUsingAction, type ToolEilSource } from "@/lib/eil/factCatalog.js";
 import {
   buildFactStoreFromInputs,
@@ -24,15 +33,19 @@ import {
 } from "@/lib/eil/policyEval.js";
 import {
   createEmptyPolicy,
+  eilConfigToJson,
   formatPolicySummary,
   parsePoliciesFromJson,
-  policiesToJson,
   policyFromTemplate,
 } from "@/lib/eil/policyVisual.js";
 import type { AutomationCustomToolRow } from "../automationToolTypes.js";
-import type { AgentEilPolicyDraft } from "@/lib/eil/types.js";
+import type { AgentEilConfigDraft, AgentEilPolicyDraft, EilCustomActionDef } from "@/lib/eil/types.js";
 import { parseAgentEilJson } from "../AgentEilConfigSection.js";
 import { EilActiveBadge, EilHelpHint, type EilHelpSection } from "./EilHelpHint.js";
+import { EilCategoryIcon } from "./EilCategoryIcon.js";
+import { EilCategoryPicker } from "./EilCategoryPicker.js";
+import { EilCustomActionModal } from "./EilCustomActionModal.js";
+import { EilImportActionsModal } from "./EilImportActionsModal.js";
 import { PolicyEditorDrawer } from "./PolicyEditorDrawer.js";
 
 type Translate = (key: string) => string;
@@ -89,9 +102,34 @@ export function AgentEilPolicyBuilder({
     details: PredicateEvalResult[];
     violations: ReturnType<typeof evaluatePolicies>;
   } | null>(null);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [customActionModalOpen, setCustomActionModalOpen] = useState(false);
+  const [importActionsOpen, setImportActionsOpen] = useState(false);
+  const [editingCustomAction, setEditingCustomAction] = useState<EilCustomActionDef | null>(null);
 
   const parsed = useMemo(() => (enabled ? parseAgentEilJson(json) : null), [enabled, json]);
-  const policies = parsed?.ok ? (parsed.value.policies ?? []) : parsePoliciesFromJson(json);
+  const eilConfig: AgentEilConfigDraft = useMemo(() => {
+    if (parsed?.ok) return parsed.value;
+    return { policies: parsePoliciesFromJson(json) };
+  }, [parsed, json]);
+  const policies = eilConfig.policies ?? [];
+  const effectiveCategoryId = getEffectiveCategoryId(eilConfig);
+  const legacyActionIds = useMemo(
+    () => [...new Set(policies.map((p) => p.action).filter(Boolean) as string[])],
+    [policies],
+  );
+  const actionCatalog = useMemo(
+    () =>
+      buildActionCatalog({
+        categoryId: effectiveCategoryId,
+        customActions: eilConfig.customActions,
+        legacyActionIds,
+        locale,
+      }),
+    [effectiveCategoryId, eilConfig.customActions, legacyActionIds, locale],
+  );
+  const categoryTemplates = useMemo(() => getTemplatesForCategory(effectiveCategoryId), [effectiveCategoryId]);
+  const suggestedFacts = useMemo(() => new Set(getSuggestedFactsForCategory(effectiveCategoryId)), [effectiveCategoryId]);
 
   const enabledToolSet = useMemo(() => new Set(connectedToolNames), [connectedToolNames]);
   const toolSources: ToolEilSource[] = useMemo(
@@ -111,8 +149,37 @@ export function AgentEilPolicyBuilder({
     );
   }, [factCatalog, factsFilter]);
 
+  const syncEilConfig = (patch: Partial<AgentEilConfigDraft>) => {
+    onJsonChange(eilConfigToJson({ ...eilConfig, ...patch, policies: patch.policies ?? policies }));
+  };
+
   const syncPolicies = (nextPolicies: AgentEilPolicyDraft[]) => {
-    onJsonChange(policiesToJson(nextPolicies));
+    syncEilConfig({ policies: nextPolicies });
+  };
+
+  const handleCategorySelect = (categoryId: EilCategoryId) => {
+    syncEilConfig({ category: categoryId });
+  };
+
+  const handleSaveCustomAction = (action: EilCustomActionDef) => {
+    const existing = eilConfig.customActions ?? [];
+    const idx = existing.findIndex((a) => a.id === action.id);
+    const next = idx >= 0 ? existing.map((a, i) => (i === idx ? action : a)) : [...existing, action];
+    syncEilConfig({ customActions: next });
+    setEditingCustomAction(null);
+  };
+
+  const handleImportCustomActions = (imported: EilCustomActionDef[]) => {
+    const existing = eilConfig.customActions ?? [];
+    const ids = new Set(existing.map((a) => a.id));
+    const merged = [...existing];
+    for (const action of imported) {
+      if (!ids.has(action.id)) {
+        merged.push(action);
+        ids.add(action.id);
+      }
+    }
+    syncEilConfig({ customActions: merged });
   };
 
   const openNewPolicy = () => {
@@ -150,9 +217,13 @@ export function AgentEilPolicyBuilder({
       policyId: t("automationPage.agentEilInvalidPolicyId"),
       requires: t("automationPage.agentEilInvalidRequires"),
       forbids: t("automationPage.agentEilInvalidForbids"),
+      category: t("automationPage.agentEilInvalidCategory"),
+      customActions: t("automationPage.agentEilInvalidCustomActions"),
     };
     return map[parsed.error] ?? t("automationPage.agentEilInvalidJson");
   })();
+
+  const showOnboarding = !eilConfig.category && policies.length === 0;
 
   const activeCount = policies.filter((p) => p.active !== false).length;
 
@@ -224,6 +295,70 @@ export function AgentEilPolicyBuilder({
 
       {enabled ? (
         <>
+          <div className="mt-4 rounded-xl border border-ink-200/80 bg-white/70 p-4 dark:border-ink-700 dark:bg-ink-900/40">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">{t("automationPage.agentEilCategorySection")}</p>
+            {eilConfig.category || effectiveCategoryId ? (
+              <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-violet-100 p-2 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                    <EilCategoryIcon name={getEilCategory(effectiveCategoryId ?? undefined)?.icon ?? "Sparkles"} className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                      {getCategoryLabel(effectiveCategoryId, locale) || t("automationPage.agentEilCategoryUndefined")}
+                      {!eilConfig.category && effectiveCategoryId ? (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                          {t("automationPage.agentEilCategoryInferred")}
+                        </span>
+                      ) : null}
+                    </p>
+                    {effectiveCategoryId ? (
+                      <p className="mt-1 text-[11px] text-ink-500">
+                        {locale === "pt"
+                          ? getEilCategory(effectiveCategoryId)?.descriptionPt
+                          : getEilCategory(effectiveCategoryId)?.descriptionEn}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCategoryPickerOpen(true)}
+                  className="rounded-lg border border-brand-300 px-3 py-1.5 text-[11px] font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-700 dark:text-brand-300"
+                >
+                  {t("automationPage.agentEilChangeCategory")}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-ink-700 dark:text-ink-300">{t("automationPage.agentEilCategoryUndefined")}</p>
+                  <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.agentEilCategoryUndefinedHint")}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCategoryPickerOpen(true)}
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700"
+                >
+                  {t("automationPage.agentEilChooseCategory")}
+                </button>
+              </div>
+            )}
+            <p className="mt-3 text-[10px] text-ink-500">{t("automationPage.agentEilCategoryDisclaimer")}</p>
+          </div>
+
+          {showOnboarding ? (
+            <div className="mt-4 rounded-xl border border-dashed border-brand-300 bg-brand-50/50 p-4 dark:border-brand-800 dark:bg-brand-950/20">
+              <p className="text-xs font-semibold text-brand-900 dark:text-brand-100">{t("automationPage.agentEilOnboardingTitle")}</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-brand-800 dark:text-brand-200">
+                <li>{t("automationPage.agentEilOnboardingStep1")}</li>
+                <li>{t("automationPage.agentEilOnboardingStep2")}</li>
+                <li>{t("automationPage.agentEilOnboardingStep3")}</li>
+                <li>{t("automationPage.agentEilOnboardingStep4")}</li>
+              </ol>
+            </div>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap gap-1 border-b border-violet-200/60 dark:border-violet-900/40">
             {TABS.map(({ id, icon: Icon, labelKey }) => (
               <button
@@ -271,7 +406,11 @@ export function AgentEilPolicyBuilder({
               ) : (
                 <div className="space-y-3">
                   {policies.map((policy) => {
-                    const summary = formatPolicySummary(policy, locale);
+                    const summary = formatPolicySummary(policy, locale, eilConfig);
+                    const actionOutOfCategory =
+                      policy.action &&
+                      effectiveCategoryId &&
+                      !isActionInCategory(policy.action, effectiveCategoryId, eilConfig.customActions ?? []);
                     const isActive = policy.active !== false;
                     return (
                       <div
@@ -297,7 +436,14 @@ export function AgentEilPolicyBuilder({
                         <dl className="mt-3 grid gap-1 text-[11px] text-ink-600 dark:text-ink-400">
                           <div>
                             <dt className="inline font-semibold">{t("automationPage.agentEilCardAction")}: </dt>
-                            <dd className="inline">{summary.actionLabel}</dd>
+                            <dd className="inline">
+                              {summary.actionLabel}
+                              {actionOutOfCategory ? (
+                                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                                  {t("automationPage.agentEilOutOfCategoryBadge")}
+                                </span>
+                              ) : null}
+                            </dd>
                           </div>
                           <div>
                             <dt className="inline font-semibold">{t("automationPage.agentEilCardCondition")}: </dt>
@@ -346,23 +492,27 @@ export function AgentEilPolicyBuilder({
 
               <div className="rounded-xl border border-ink-200/60 bg-white/50 p-3 dark:border-ink-700 dark:bg-ink-900/30">
                 <p className="text-[11px] font-semibold text-ink-700 dark:text-ink-300">{t("automationPage.agentEilTemplates")}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {EIL_POLICY_TEMPLATES.map((tpl) => (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      onClick={() => {
-                        if (policies.some((p) => p.id === tpl.id)) return;
-                        syncPolicies([...policies, policyFromTemplate(tpl)]);
-                      }}
-                      disabled={policies.some((p) => p.id === tpl.id)}
-                      className="rounded-lg border border-ink-200 px-2 py-1 text-[10px] disabled:opacity-40 dark:border-ink-600"
-                      title={locale === "pt" ? tpl.descriptionPt : tpl.descriptionEn}
-                    >
-                      {locale === "pt" ? tpl.namePt : tpl.nameEn}
-                    </button>
-                  ))}
-                </div>
+                {categoryTemplates.length === 0 ? (
+                  <p className="mt-2 text-[11px] text-ink-500">{t("automationPage.agentEilNoTemplates")}</p>
+                ) : (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {categoryTemplates.map((tpl) => (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        onClick={() => {
+                          if (policies.some((p) => p.id === tpl.id)) return;
+                          syncPolicies([...policies, policyFromTemplate(tpl)]);
+                        }}
+                        disabled={policies.some((p) => p.id === tpl.id)}
+                        className="rounded-lg border border-ink-200 px-2 py-1 text-[10px] disabled:opacity-40 dark:border-ink-600"
+                        title={locale === "pt" ? tpl.descriptionPt : tpl.descriptionEn}
+                      >
+                        {locale === "pt" ? tpl.namePt : tpl.nameEn}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ) : null}
@@ -383,38 +533,177 @@ export function AgentEilPolicyBuilder({
                     <th className="py-2 pr-3">{t("automationPage.agentEilFactsColType")}</th>
                     <th className="py-2 pr-3">{t("automationPage.agentEilFactsColProducer")}</th>
                     <th className="py-2 pr-3">{t("automationPage.agentEilFactsColPath")}</th>
+                    <th className="py-2 pr-3">{t("automationPage.agentEilFactsColSuggested")}</th>
                     <th className="py-2">{t("automationPage.agentEilFactsColStatus")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredFacts.map((f) => (
-                    <tr key={f.key} className="border-b border-ink-100 dark:border-ink-800">
-                      <td className="py-2 pr-3 font-medium">{locale === "pt" ? f.labelPt : f.labelEn}</td>
-                      <td className="py-2 pr-3">{f.type}</td>
-                      <td className="py-2 pr-3">{f.producedBy.join(", ") || "—"}</td>
-                      <td className="py-2 pr-3 font-mono text-[10px]">{f.jsonPath ?? "—"}</td>
-                      <td className="py-2">{f.available ? "✓" : "⚠"}</td>
-                    </tr>
-                  ))}
+                  {filteredFacts.map((f) => {
+                    const isSuggested = suggestedFacts.has(f.key);
+                    return (
+                      <tr key={f.key} className="border-b border-ink-100 dark:border-ink-800">
+                        <td className="py-2 pr-3 font-medium">{locale === "pt" ? f.labelPt : f.labelEn}</td>
+                        <td className="py-2 pr-3">{f.type}</td>
+                        <td className="py-2 pr-3">{f.producedBy.join(", ") || "—"}</td>
+                        <td className="py-2 pr-3 font-mono text-[10px]">{f.jsonPath ?? "—"}</td>
+                        <td className="py-2 pr-3">{isSuggested ? t("automationPage.agentEilFactSuggestedYes") : "—"}</td>
+                        <td className="py-2">
+                          {f.available
+                            ? t("automationPage.agentEilFactAvailableYes")
+                            : isSuggested
+                              ? "⚠"
+                              : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ) : null}
 
           {tab === "actions" ? (
-            <div className="mt-4 space-y-2">
-              {EIL_ACTION_CATALOG.map((action) => (
-                <div key={action.id} className="rounded-lg border border-ink-200 bg-white px-3 py-2 dark:border-ink-700 dark:bg-ink-900/40">
-                  <p className="text-xs font-semibold">{locale === "pt" ? action.labelPt : action.labelEn}</p>
-                  <p className="font-mono text-[10px] text-ink-500">{action.id}</p>
-                  <p className="mt-1 text-[11px] text-ink-600 dark:text-ink-400">
-                    {locale === "pt" ? action.descriptionPt : action.descriptionEn}
-                  </p>
-                  <p className="mt-1 text-[10px] text-ink-500">
-                    {t("automationPage.agentEilActionsPolicyCount")}: {countPoliciesUsingAction(policies, action.id)}
-                  </p>
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingCustomAction(null);
+                    setCustomActionModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-brand-700"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {t("automationPage.agentEilNewCustomAction")}
+                </button>
+                {effectiveCategoryId === "custom" ? (
+                  <button
+                    type="button"
+                    onClick={() => setImportActionsOpen(true)}
+                    className="rounded-lg border border-ink-200 px-3 py-1.5 text-[11px] font-semibold dark:border-ink-600"
+                  >
+                    {t("automationPage.agentEilImportActions")}
+                  </button>
+                ) : null}
+              </div>
+              {actionCatalog.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-ink-200 px-4 py-8 text-center dark:border-ink-700">
+                  <p className="text-xs text-ink-500">{t("automationPage.agentEilNoCustomActions")}</p>
+                  <button
+                    type="button"
+                    onClick={() => setCustomActionModalOpen(true)}
+                    className="mt-3 text-[11px] font-semibold text-brand-600 hover:underline"
+                  >
+                    + {t("automationPage.agentEilCreateFirstAction")}
+                  </button>
                 </div>
-              ))}
+              ) : (
+                actionCatalog.map((action) => {
+                  const policyCount = countPoliciesUsingAction(policies, action.id);
+                  const sourceLabel =
+                    action.source === "custom"
+                      ? t("automationPage.agentEilActionOriginCustom")
+                      : action.source === "legacy"
+                        ? t("automationPage.agentEilActionOriginLegacy")
+                        : t("automationPage.agentEilActionOriginDefault");
+                  return (
+                    <div key={action.id} className="rounded-lg border border-ink-200 bg-white px-3 py-3 dark:border-ink-700 dark:bg-ink-900/40">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold">{locale === "pt" ? action.labelPt : action.labelEn}</p>
+                          <p className="font-mono text-[10px] text-ink-500">{action.id}</p>
+                        </div>
+                        <span
+                          className={clsx(
+                            "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            action.enabled === false
+                              ? "bg-ink-100 text-ink-500 dark:bg-ink-800"
+                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200",
+                          )}
+                        >
+                          {action.enabled === false
+                            ? t("automationPage.agentEilActionStatusDisabled")
+                            : t("automationPage.agentEilActionStatusActive")}
+                        </span>
+                      </div>
+                      <dl className="mt-2 grid gap-1 text-[10px] text-ink-600 dark:text-ink-400">
+                        <div>
+                          <dt className="inline font-semibold">{t("automationPage.agentEilActionColCategory")}: </dt>
+                          <dd className="inline">{getCategoryLabel(action.categoryId ?? effectiveCategoryId, locale) || "—"}</dd>
+                        </div>
+                        <div>
+                          <dt className="inline font-semibold">{t("automationPage.agentEilActionColOrigin")}: </dt>
+                          <dd className="inline">{sourceLabel}</dd>
+                        </div>
+                        <div>
+                          <dt className="inline font-semibold">{t("automationPage.agentEilActionsPolicyCount")}: </dt>
+                          <dd className="inline">{policyCount}</dd>
+                        </div>
+                      </dl>
+                      {action.source === "custom" ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const custom = eilConfig.customActions?.find((c) => c.id === action.id);
+                              if (custom) {
+                                setEditingCustomAction(custom);
+                                setCustomActionModalOpen(true);
+                              }
+                            }}
+                            className="rounded border px-2 py-0.5 text-[10px] font-semibold dark:border-ink-600"
+                          >
+                            {t("automationPage.agentEilEdit")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const custom = eilConfig.customActions?.find((c) => c.id === action.id);
+                              if (custom) {
+                                handleSaveCustomAction({
+                                  ...custom,
+                                  id: `${custom.id}_copy`,
+                                  label: `${custom.label} (cópia)`,
+                                });
+                              }
+                            }}
+                            className="rounded border px-2 py-0.5 text-[10px] font-semibold dark:border-ink-600"
+                          >
+                            {t("automationPage.agentEilDuplicate")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const custom = eilConfig.customActions?.find((c) => c.id === action.id);
+                              if (custom) {
+                                handleSaveCustomAction({ ...custom, enabled: false });
+                              }
+                            }}
+                            className="rounded border px-2 py-0.5 text-[10px] font-semibold dark:border-ink-600"
+                          >
+                            {t("automationPage.agentEilDisableAction")}
+                          </button>
+                          {policyCount === 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                syncEilConfig({
+                                  customActions: (eilConfig.customActions ?? []).filter((c) => c.id !== action.id),
+                                });
+                              }}
+                              className="rounded border border-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:border-red-900/50"
+                            >
+                              {t("automationPage.agentEilDeleteAction")}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-amber-700">{t("automationPage.agentEilActionInUse").replace("{count}", String(policyCount))}</span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
             </div>
           ) : null}
 
@@ -441,7 +730,7 @@ export function AgentEilPolicyBuilder({
                   onChange={(e) => setSimAction(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-xs dark:border-ink-600 dark:bg-ink-950"
                 >
-                  {EIL_ACTION_CATALOG.map((a) => (
+                  {actionCatalog.map((a) => (
                     <option key={a.id} value={a.id}>
                       {locale === "pt" ? a.labelPt : a.labelEn}
                     </option>
@@ -560,6 +849,8 @@ export function AgentEilPolicyBuilder({
         open={editorOpen}
         policy={editingPolicy}
         facts={factCatalog}
+        eilConfig={eilConfig}
+        actionCatalog={actionCatalog}
         locale={locale}
         t={t}
         onClose={() => {
@@ -568,6 +859,36 @@ export function AgentEilPolicyBuilder({
         }}
         onSave={handleSavePolicy}
         existingIds={policies.map((p) => p.id)}
+      />
+
+      <EilCategoryPicker
+        open={categoryPickerOpen}
+        currentCategoryId={eilConfig.category ?? effectiveCategoryId}
+        locale={locale}
+        t={t}
+        onClose={() => setCategoryPickerOpen(false)}
+        onSelect={handleCategorySelect}
+      />
+
+      <EilCustomActionModal
+        open={customActionModalOpen}
+        initial={editingCustomAction}
+        existingCustomActions={eilConfig.customActions ?? []}
+        t={t}
+        onClose={() => {
+          setCustomActionModalOpen(false);
+          setEditingCustomAction(null);
+        }}
+        onSave={handleSaveCustomAction}
+      />
+
+      <EilImportActionsModal
+        open={importActionsOpen}
+        locale={locale}
+        existingIds={new Set([...actionCatalog.map((a) => a.id), ...(eilConfig.customActions ?? []).map((c) => c.id)])}
+        t={t}
+        onClose={() => setImportActionsOpen(false)}
+        onImport={handleImportCustomActions}
       />
     </div>
   );
