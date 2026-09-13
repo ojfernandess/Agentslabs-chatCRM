@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { resolveLlmApiBaseUrl, resolvePlatformLlmApiKey } from "./llmProviders.js";
+
+const keys = {
+  openAiPromptPreviewKey: "sk-openai",
+  geminiPromptPreviewKey: "gem-gemini",
+  kimiPromptPreviewKey: "sk-kimi",
+};
+
+const urls = {
+  openAiApiBaseUrl: "https://api.openai.com/v1",
+  kimiApiBaseUrl: "https://api.moonshot.ai/v1",
+};
+
+test("resolvePlatformLlmApiKey prefers stored key", () => {
+  assert.equal(resolvePlatformLlmApiKey("kimi", "sk-profile", keys), "sk-profile");
+});
+
+test("resolvePlatformLlmApiKey falls back to kimi env", () => {
+  assert.equal(resolvePlatformLlmApiKey("kimi", "", keys), "sk-kimi");
+});
+
+test("resolveLlmApiBaseUrl defaults kimi to moonshot endpoint", () => {
+  assert.equal(resolveLlmApiBaseUrl("kimi", "", urls), "https://api.moonshot.ai/v1");
+});
+
+test("resolveLlmApiBaseUrl keeps stored url", () => {
+  assert.equal(resolveLlmApiBaseUrl("kimi", "https://custom.example/v1/", urls), "https://custom.example/v1");
+});

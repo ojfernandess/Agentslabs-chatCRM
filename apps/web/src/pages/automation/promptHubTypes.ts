@@ -21,7 +21,7 @@ export type PromptHistoryEntry = {
 
 /** Defaults for agent / preview LLM (no apiKey — never store secrets in labels). */
 export type PromptLlmDefaults = {
-  provider: "openai" | "google_gemini";
+  provider: "openai" | "google_gemini" | "kimi";
   model: string;
   temperature: number;
   maxTokens: number;
@@ -56,7 +56,14 @@ export type PromptLabels = {
 export function parseLlmDefaultsFromUnknown(raw: unknown): PromptLlmDefaults | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const d = raw as Record<string, unknown>;
-  const prov = d.provider === "google_gemini" ? "google_gemini" : d.provider === "openai" ? "openai" : null;
+  const prov =
+    d.provider === "google_gemini"
+      ? "google_gemini"
+      : d.provider === "kimi"
+        ? "kimi"
+        : d.provider === "openai"
+          ? "openai"
+          : null;
   if (!prov) return undefined;
   const model = typeof d.model === "string" && d.model.trim() ? d.model.trim() : "gpt-4o-mini";
   const temperature =

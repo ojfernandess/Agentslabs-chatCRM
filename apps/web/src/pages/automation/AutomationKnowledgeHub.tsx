@@ -249,7 +249,7 @@ export function AutomationKnowledgeHub({
 
   const [pgQuery, setPgQuery] = useState("");
   const [pgBotId, setPgBotId] = useState("");
-  const [pgProvider, setPgProvider] = useState<"openai" | "google_gemini">("openai");
+  const [pgProvider, setPgProvider] = useState<"openai" | "google_gemini" | "kimi">("openai");
   const [pgModel, setPgModel] = useState("gpt-4o-mini");
   const [pgApiKey, setPgApiKey] = useState("");
   const [pgBaseUrl, setPgBaseUrl] = useState("https://api.openai.com/v1");
@@ -1462,14 +1462,21 @@ export function AutomationKnowledgeHub({
               <select
                 value={pgProvider}
                 onChange={(e) => {
-                  const p = e.target.value as "openai" | "google_gemini";
+                  const p = e.target.value as "openai" | "google_gemini" | "kimi";
                   setPgProvider(p);
                   if (p === "google_gemini") setPgModel("gemini-1.5-flash");
-                  else setPgModel("gpt-4o-mini");
+                  else if (p === "kimi") {
+                    setPgModel("kimi-k3");
+                    setPgBaseUrl("https://api.moonshot.ai/v1");
+                  } else {
+                    setPgModel("gpt-4o-mini");
+                    setPgBaseUrl("https://api.openai.com/v1");
+                  }
                 }}
                 className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 dark:border-ink-600 dark:bg-ink-950"
               >
                 <option value="openai">OpenAI / compatível</option>
+                <option value="kimi">Kimi (Moonshot)</option>
                 <option value="google_gemini">Google Gemini</option>
               </select>
             </label>
@@ -1481,7 +1488,7 @@ export function AutomationKnowledgeHub({
                 className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 font-mono text-xs dark:border-ink-600 dark:bg-ink-950"
               />
             </label>
-            {pgProvider === "openai" ? (
+            {pgProvider !== "google_gemini" ? (
               <label className="block text-xs">
                 API base
                 <input

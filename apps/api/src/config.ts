@@ -179,6 +179,17 @@ export const config = {
   /** Chave opcional para pré-visualização com Google Gemini (cliente pode omitir apiKey quando definida). */
   geminiPromptPreviewKey: optionalEnv("GEMINI_PROMPT_PREVIEW_KEY", "").trim(),
   /**
+   * Chave opcional Kimi / Moonshot (OpenAI-compatible). Ordem: KIMI_PROMPT_PREVIEW_KEY, MOONSHOT_API_KEY.
+   */
+  kimiPromptPreviewKey: optionalEnv(
+    "KIMI_PROMPT_PREVIEW_KEY",
+    optionalEnv("MOONSHOT_API_KEY", ""),
+  ).trim(),
+  /** Base URL Kimi Open Platform (Chat Completions compatível). */
+  kimiApiBaseUrl: optionalEnv("KIMI_API_BASE_URL", "https://api.moonshot.ai/v1")
+    .trim()
+    .replace(/\/+$/, ""),
+  /**
    * Máximo de pedidos LLM em voo por API key (contactos partilham a mesma chave).
    * Evita stampede TPM/RPM quando vários WhatsApps disparam o agente em paralelo.
    */

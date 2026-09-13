@@ -1,6 +1,12 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { Bot, Conversation, Message } from "@prisma/client";
 import { config } from "../config.js";
+import {
+  isGeminiProvider,
+  platformLlmKeySource,
+  resolveLlmApiBaseUrl,
+  resolvePlatformLlmApiKey,
+} from "./llmProviders.js";
 import { prisma } from "../db.js";
 import {
   callOpenAiCompatibleChatWithTools,
@@ -1478,7 +1484,7 @@ async function augmentReplyWithToolOutcomes(params: {
     "Não repita apenas «um momento» ou «vou verificar».\n\n" +
     toolBlock;
   try {
-    if (params.provider === "google_gemini") {
+    if (isGeminiProvider(params.provider)) {
       const r = await invokeLlmTextGeneration({
         provider: params.provider,
         apiKey: params.apiKey,
@@ -1688,14 +1694,7 @@ async function generateNativeAgentReplyCore(input: {
   const model = llmString(llm, "model") || "gpt-4o-mini";
   const storedKey = llmString(llm, "apiKey");
   /** Mesma ordem que embeddings/playground: chave no perfil ou `OPENAI_PROMPT_PREVIEW_KEY` / `OPENAI_API_KEY` no servidor. */
-  const apiKey =
-    storedKey && storedKey !== "***"
-      ? storedKey
-      : provider === "openai"
-        ? config.openAiPromptPreviewKey.trim()
-        : provider === "google_gemini"
-          ? config.geminiPromptPreviewKey.trim()
-          : "";
+  const apiKey = resolvePlatformLlmApiKey(provider, storedKey, config);
   if (!apiKey) {
     log.warn(
       { botId: bot.id },
@@ -1818,7 +1817,7 @@ async function generateNativeAgentReplyCore(input: {
     applyFallbackNativeToolFlags(parseNativeToolsFromBehavior(profile.behaviorConfig), instructionFallbacks),
     profile.behaviorConfig,
   );
-  const apiBaseUrl = llmString(llm, "apiBaseUrl") || "https://api.openai.com/v1";
+  const apiBaseUrl = resolveLlmApiBaseUrl(provider, llmString(llm, "apiBaseUrl"), config);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
   const toolCallNotify = parseToolCallNotifyFromBehavior(profile.behaviorConfig);
   /** Mensagens de espera do agente (config + default) — nunca válidas como resposta final. */
@@ -2579,7 +2578,7 @@ async function generateNativeAgentReplyCore(input: {
             }),
           ),
       ];
-  const useTools = provider !== "google_gemini" && tools.length > 0;
+  const useTools = !isGeminiProvider(provider) && tools.length > 0;
 
   let httpToolRuntimeContext: Record<string, unknown> | undefined;
   if (customHttpTools.length > 0 && historyOverride == null) {
@@ -2631,14 +2630,7 @@ async function generateNativeAgentReplyCore(input: {
       historyTurns: history.length,
       historyIsolated,
       identityConflictCleared,
-      apiKeySource:
-        storedKey && storedKey !== "***"
-          ? "profile"
-          : provider === "openai" && config.openAiPromptPreviewKey.trim()
-            ? "server_openai_env"
-            : provider === "google_gemini" && config.geminiPromptPreviewKey.trim()
-              ? "server_gemini_env"
-              : "none",
+      apiKeySource: platformLlmKeySource(provider, storedKey, config),
     });
   }
 
@@ -3133,7 +3125,7 @@ async function generateNativeAgentReplyCore(input: {
           replyText = "";
         }
       }
-    } else if (provider === "google_gemini") {
+    } else if (isGeminiProvider(provider)) {
       ex?.info({ id: "llm", name: "Gemini" }, "Geração sem tools (Gemini)");
       const r = await invokeLlmTextGeneration({
         provider,

@@ -30,6 +30,7 @@ import {
   syncKnowledgeArticleBotsFromPromptBuilder,
 } from "../lib/knowledgeRetrieval.js";
 import { parseNativeToolsFromBehavior, generateNativeAgentReply } from "../lib/agentNativeLlm.js";
+import { isGeminiProvider, resolveLlmApiBaseUrl, resolvePlatformLlmApiKey } from "../lib/llmProviders.js";
 import { ensureAgentProfileTestSandbox } from "../lib/agentTestChatSandbox.js";
 import {
   buildSyncedPromptAutoInstructionBlock,
@@ -330,6 +331,8 @@ const promptModuleSchema = z.object({
   labels: z.record(z.unknown()).optional().nullable(),
 });
 
+const llmProviderSchema = z.enum(["openai", "google_gemini", "kimi"]);
+
 const promptPreviewSchema = z.object({
   systemPrompt: z.string().min(1).max(120_000),
   history: z
@@ -343,7 +346,7 @@ const promptPreviewSchema = z.object({
     .optional()
     .default([]),
   userMessage: z.string().min(1).max(48_000),
-  provider: z.enum(["openai", "google_gemini"]),
+  provider: llmProviderSchema,
   model: z.string().min(1).max(120),
   temperature: z.number().min(0).max(2).optional().default(0.7),
   maxTokens: z.number().int().min(16).max(8192).optional().default(1024),
@@ -1221,7 +1224,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
   const kbPlaygroundSchema = z.object({
     query: z.string().min(1).max(500),
     botId: z.string().uuid().optional().nullable(),
-    provider: z.enum(["openai", "google_gemini"]),
+    provider: llmProviderSchema,
     model: z.string().min(1).max(120),
     temperature: z.number().min(0).max(2).optional().default(0.35),
     maxTokens: z.number().int().min(64).max(4096).optional().default(900),
@@ -1242,17 +1245,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     const norm = body.query.trim().toLowerCase().slice(0, 500);
     const botId = body.botId ?? undefined;
 
-    let apiKey = body.apiKey?.trim() ?? "";
-    if (body.provider === "openai") {
-      if (!apiKey) apiKey = config.openAiPromptPreviewKey;
-    } else if (!apiKey) {
-      apiKey = config.geminiPromptPreviewKey;
-    }
+    const apiKey = resolvePlatformLlmApiKey(body.provider, body.apiKey?.trim() ?? "", config);
     if (!apiKey) {
       return reply.status(400).send({
         error: "Bad Request",
         code: "kb_playground_no_api_key",
-        message: "Missing API key for LLM (or configure server OPENAI_* / GEMINI_PROMPT_PREVIEW_KEY).",
+        message:
+          "Missing API key for LLM (or configure server OPENAI_* / GEMINI_PROMPT_PREVIEW_KEY / KIMI_PROMPT_PREVIEW_KEY).",
         statusCode: 400,
       });
     }
@@ -1290,8 +1289,8 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     const started = Date.now();
     try {
       let answer: string;
-      if (body.provider === "openai") {
-        const baseUrl = (body.apiBaseUrl?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+      if (!isGeminiProvider(body.provider)) {
+        const baseUrl = resolveLlmApiBaseUrl(body.provider, body.apiBaseUrl?.trim() ?? "", config);
         try {
           assertHttpUrlAllowed(baseUrl);
         } catch (e) {
@@ -1550,6 +1549,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     return {
       hasPlatformOpenAiKey: config.openAiPromptPreviewKey.length > 0,
       hasPlatformGeminiKey: config.geminiPromptPreviewKey.length > 0,
+      hasPlatformKimiKey: config.kimiPromptPreviewKey.length > 0,
     };
   });
 
@@ -1561,18 +1561,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
     const body = parsed.data;
-    let apiKey = body.apiKey?.trim() ?? "";
-    if (body.provider === "openai") {
-      if (!apiKey) apiKey = config.openAiPromptPreviewKey;
-    } else if (!apiKey) {
-      apiKey = config.geminiPromptPreviewKey;
-    }
+    const apiKey = resolvePlatformLlmApiKey(body.provider, body.apiKey?.trim() ?? "", config);
     if (!apiKey) {
       return reply.status(400).send({
         error: "Bad Request",
         code: "prompt_preview_no_api_key",
         message:
-          "Missing API key: enter one in the preview panel or set OPENAI_PROMPT_PREVIEW_KEY / OPENAI_API_KEY (OpenAI) or GEMINI_PROMPT_PREVIEW_KEY (Gemini) on the server.",
+          "Missing API key: enter one in the preview panel or set OPENAI_PROMPT_PREVIEW_KEY / OPENAI_API_KEY (OpenAI), GEMINI_PROMPT_PREVIEW_KEY (Gemini), or KIMI_PROMPT_PREVIEW_KEY (Kimi) on the server.",
         statusCode: 400,
       });
     }
@@ -1584,8 +1579,8 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     try {
       let text: string;
       let usage: { prompt: number; completion: number; total: number } | undefined;
-      if (body.provider === "openai") {
-        const baseUrl = (body.apiBaseUrl?.trim() || "https://api.openai.com/v1").replace(/\/+$/, "");
+      if (!isGeminiProvider(body.provider)) {
+        const baseUrl = resolveLlmApiBaseUrl(body.provider, body.apiBaseUrl?.trim() ?? "", config);
         try {
           assertHttpUrlAllowed(baseUrl);
         } catch (e) {
@@ -2833,14 +2828,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       const provider = String(llm.provider ?? "openai");
       const model = String(llm.model ?? "gpt-4o-mini");
       const storedKey = String(llm.apiKey ?? "").trim();
-      const apiKey =
-        storedKey && storedKey !== "***"
-          ? storedKey
-          : provider === "openai"
-            ? config.openAiPromptPreviewKey.trim()
-            : provider === "google_gemini"
-              ? config.geminiPromptPreviewKey.trim()
-              : "";
+      const apiKey = resolvePlatformLlmApiKey(provider, storedKey, config);
       const history = parsed.data.history as PreviewChatTurn[];
       const userMessage = parsed.data.message;
 
@@ -2848,12 +2836,12 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         return reply.status(400).send({
           error: "Bad Request",
           message:
-            "Agent API key not configured. Save a key in Automation > Agents IA or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY (or GEMINI_PROMPT_PREVIEW_KEY) on the server.",
+            "Agent API key not configured. Save a key in Automation > Agents IA or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY, GEMINI_PROMPT_PREVIEW_KEY, or KIMI_PROMPT_PREVIEW_KEY on the server.",
           statusCode: 400,
         });
       }
 
-      if (provider === "google_gemini") {
+      if (isGeminiProvider(provider)) {
         const system = String(llm.systemInstructions ?? "");
         const temperature = Number(llm.temperature ?? 0.7);
         const maxTokens = Number(llm.maxTokens ?? 1024);

@@ -237,7 +237,7 @@ export function AutomationPromptsHub({
   const [previewMessages, setPreviewMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
   const [previewInput, setPreviewInput] = useState("");
   const [previewLiveMode, setPreviewLiveMode] = useState(true);
-  const [previewProvider, setPreviewProvider] = useState<"openai" | "google_gemini">("openai");
+  const [previewProvider, setPreviewProvider] = useState<"openai" | "google_gemini" | "kimi">("openai");
   const [previewModel, setPreviewModel] = useState("gpt-4o-mini");
   const [previewTemperature, setPreviewTemperature] = useState(0.7);
   const [previewMaxTokens, setPreviewMaxTokens] = useState(1024);
@@ -249,6 +249,7 @@ export function AutomationPromptsHub({
   const [previewOptions, setPreviewOptions] = useState<{
     hasPlatformOpenAiKey: boolean;
     hasPlatformGeminiKey: boolean;
+    hasPlatformKimiKey?: boolean;
   } | null>(null);
   const [sampleCtx, setSampleCtx] = useState({
     "contact.name": "Maria Silva",
@@ -434,7 +435,7 @@ export function AutomationPromptsHub({
         model: previewModel.trim() || draftModelHint.trim() || "gpt-4o-mini",
         temperature: previewTemperature,
         maxTokens: previewMaxTokens,
-        apiBaseUrl: previewProvider === "openai" ? previewBaseUrl.trim() || null : null,
+        apiBaseUrl: previewProvider !== "google_gemini" ? previewBaseUrl.trim() || null : null,
       };
       const labels: PromptLabels = {
         category: draftCategory,
@@ -683,7 +684,7 @@ export function AutomationPromptsHub({
         model: previewModel.trim(),
         temperature: previewTemperature,
         maxTokens: previewMaxTokens,
-        apiBaseUrl: previewProvider === "openai" ? previewBaseUrl.trim() || null : null,
+        apiBaseUrl: previewProvider !== "google_gemini" ? previewBaseUrl.trim() || null : null,
         apiKey: previewApiKey.trim() || null,
         promptModuleId: draftId,
         recordMetrics: previewRecordMetrics && Boolean(draftId),
@@ -1438,30 +1439,40 @@ export function AutomationPromptsHub({
                         {previewLiveMode ? (
                           <div className="space-y-2 rounded-xl border border-ink-200 bg-white/80 p-3 dark:border-ink-700 dark:bg-ink-900/40">
                             <p className="text-[11px] text-ink-500">
-                              {previewProvider === "openai"
-                                ? previewOptions?.hasPlatformOpenAiKey
-                                  ? t("automationPage.promptHub.previewPlatformOpenAi")
-                                  : t("automationPage.promptHub.previewPlatformOpenAiOff")
-                                : previewOptions?.hasPlatformGeminiKey
+                              {previewProvider === "google_gemini"
+                                ? previewOptions?.hasPlatformGeminiKey
                                   ? t("automationPage.promptHub.previewPlatformGemini")
-                                  : t("automationPage.promptHub.previewPlatformGeminiOff")}
+                                  : t("automationPage.promptHub.previewPlatformGeminiOff")
+                                : previewProvider === "kimi"
+                                  ? previewOptions?.hasPlatformKimiKey
+                                    ? t("automationPage.promptHub.previewPlatformKimi")
+                                    : t("automationPage.promptHub.previewPlatformKimiOff")
+                                  : previewOptions?.hasPlatformOpenAiKey
+                                    ? t("automationPage.promptHub.previewPlatformOpenAi")
+                                    : t("automationPage.promptHub.previewPlatformOpenAiOff")}
                             </p>
                             <label className="block text-[11px] font-medium text-ink-600 dark:text-ink-400">
                               {t("automationPage.promptHub.previewProvider")}
                               <select
                                 value={previewProvider}
                                 onChange={(e) => {
-                                  const p = e.target.value as "openai" | "google_gemini";
+                                  const p = e.target.value as "openai" | "google_gemini" | "kimi";
                                   setPreviewProvider(p);
                                   if (p === "google_gemini") {
                                     setPreviewModel((m) => (/gemini/i.test(m) ? m : "gemini-1.5-flash"));
+                                    setPreviewBaseUrl("https://generativelanguage.googleapis.com");
+                                  } else if (p === "kimi") {
+                                    setPreviewModel((m) => (/^kimi-/i.test(m) ? m : "kimi-k3"));
+                                    setPreviewBaseUrl("https://api.moonshot.ai/v1");
                                   } else {
                                     setPreviewModel((m) => (/^gpt-/i.test(m) ? m : "gpt-4o-mini"));
+                                    setPreviewBaseUrl("https://api.openai.com/v1");
                                   }
                                 }}
                                 className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 text-xs dark:border-ink-600 dark:bg-ink-900"
                               >
                                 <option value="openai">OpenAI / compatível</option>
+                                <option value="kimi">Kimi (Moonshot)</option>
                                 <option value="google_gemini">Google Gemini</option>
                               </select>
                             </label>
@@ -1502,13 +1513,15 @@ export function AutomationPromptsHub({
                                 />
                               </label>
                             </div>
-                            {previewProvider === "openai" ? (
+                            {previewProvider !== "google_gemini" ? (
                               <label className="block text-[11px] font-medium text-ink-600 dark:text-ink-400">
                                 API base URL
                                 <input
                                   value={previewBaseUrl}
                                   onChange={(e) => setPreviewBaseUrl(e.target.value)}
-                                  placeholder="https://api.openai.com/v1"
+                                  placeholder={
+                                    previewProvider === "kimi" ? "https://api.moonshot.ai/v1" : "https://api.openai.com/v1"
+                                  }
                                   className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 font-mono text-xs dark:border-ink-600 dark:bg-ink-900"
                                 />
                               </label>

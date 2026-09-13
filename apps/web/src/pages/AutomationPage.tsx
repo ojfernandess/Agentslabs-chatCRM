@@ -165,12 +165,23 @@ function compactToolConfigPatch(patch: Record<string, unknown>): Record<string, 
 const DEFAULT_API_BASE: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   google_gemini: "https://generativelanguage.googleapis.com",
+  kimi: "https://api.moonshot.ai/v1",
 };
 
 const PROVIDER_OPTIONS = [
   { value: "openai", labelKey: "automationPage.agentProviderOpenAI" as const },
   { value: "google_gemini", labelKey: "automationPage.agentProviderGemini" as const },
+  { value: "kimi", labelKey: "automationPage.agentProviderKimi" as const },
 ];
+
+/** Provedores OpenAI-compatible com seletor de modelo + «Outro modelo». */
+const OPENAI_COMPAT_PROVIDERS = new Set(["openai", "kimi"]);
+
+function defaultModelForProvider(provider: string): string {
+  if (provider === "google_gemini") return MODELS_BY_PROVIDER.google_gemini[0] ?? "gemini-2.0-flash";
+  if (provider === "kimi") return MODELS_BY_PROVIDER.kimi[0] ?? "kimi-k3";
+  return "gpt-4o-mini";
+}
 
 /** Valor sintético no `<select>` quando o modelo guardado não está na lista fixa. */
 const OPENAI_MODEL_CUSTOM = "__oc_openai_custom_model__";
@@ -219,6 +230,7 @@ const MODELS_BY_PROVIDER: Record<string, string[]> = {
     "gpt-3.5-turbo",
   ],
   google_gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+  kimi: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
 };
 
 interface KnowledgeArticle {
@@ -994,9 +1006,7 @@ function formToPayload(
   });
   const mergedInstructions = mergeSystemWithAutoBlock(promptCoreForSave, autoInner);
 
-  const modelResolved =
-    form.model.trim() ||
-    (form.provider === "google_gemini" ? (MODELS_BY_PROVIDER.google_gemini[0] ?? "gemini-2.0-flash") : "gpt-4o-mini");
+  const modelResolved = form.model.trim() || defaultModelForProvider(form.provider);
 
   const llmConfig: Record<string, unknown> = {
     provider: form.provider,
@@ -1245,10 +1255,7 @@ function applyPromptModuleSelectionToAgentForm(
       model: firstLlm.model,
       temperature: firstLlm.temperature,
       maxTokens: firstLlm.maxTokens,
-      apiBaseUrl:
-        firstLlm.provider === "openai"
-          ? firstLlm.apiBaseUrl?.trim() || DEFAULT_API_BASE.openai
-          : DEFAULT_API_BASE.google_gemini,
+      apiBaseUrl: firstLlm.apiBaseUrl?.trim() || DEFAULT_API_BASE[firstLlm.provider] || DEFAULT_API_BASE.openai,
     };
   }
 
@@ -3585,20 +3592,21 @@ function AgentsTab({
                 </label>
                 <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
                   {t("automationPage.agentModel")}
-                  {agentForm.provider === "openai" ? (
+                  {OPENAI_COMPAT_PROVIDERS.has(agentForm.provider) ? (
                     <>
                       <select
                         value={
-                          MODELS_BY_PROVIDER.openai.includes(agentForm.model)
+                          (MODELS_BY_PROVIDER[agentForm.provider] ?? []).includes(agentForm.model)
                             ? agentForm.model
                             : OPENAI_MODEL_CUSTOM
                         }
                         onChange={(e) => {
                           const v = e.target.value;
+                          const catalog = MODELS_BY_PROVIDER[agentForm.provider] ?? [];
                           if (v === OPENAI_MODEL_CUSTOM) {
                             setAgentForm((f) => ({
                               ...f,
-                              model: MODELS_BY_PROVIDER.openai.includes(f.model) ? "" : f.model,
+                              model: catalog.includes(f.model) ? "" : f.model,
                             }));
                           } else {
                             setAgentForm((f) => ({ ...f, model: v }));
@@ -3606,14 +3614,14 @@ function AgentsTab({
                         }}
                         className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                       >
-                        {MODELS_BY_PROVIDER.openai.map((m) => (
+                        {(MODELS_BY_PROVIDER[agentForm.provider] ?? MODELS_BY_PROVIDER.openai).map((m) => (
                           <option key={m} value={m}>
                             {m}
                           </option>
                         ))}
                         <option value={OPENAI_MODEL_CUSTOM}>{t("automationPage.agentModelCustom")}</option>
                       </select>
-                      {!MODELS_BY_PROVIDER.openai.includes(agentForm.model) ? (
+                      {!(MODELS_BY_PROVIDER[agentForm.provider] ?? []).includes(agentForm.model) ? (
                         <input
                           type="text"
                           value={agentForm.model}
