@@ -166,20 +166,23 @@ const DEFAULT_API_BASE: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   google_gemini: "https://generativelanguage.googleapis.com",
   kimi: "https://api.moonshot.ai/v1",
+  xai: "https://api.x.ai/v1",
 };
 
 const PROVIDER_OPTIONS = [
   { value: "openai", labelKey: "automationPage.agentProviderOpenAI" as const },
   { value: "google_gemini", labelKey: "automationPage.agentProviderGemini" as const },
   { value: "kimi", labelKey: "automationPage.agentProviderKimi" as const },
+  { value: "xai", labelKey: "automationPage.agentProviderXai" as const },
 ];
 
 /** Provedores OpenAI-compatible com seletor de modelo + «Outro modelo». */
-const OPENAI_COMPAT_PROVIDERS = new Set(["openai", "kimi"]);
+const OPENAI_COMPAT_PROVIDERS = new Set(["openai", "kimi", "xai"]);
 
 function defaultModelForProvider(provider: string): string {
   if (provider === "google_gemini") return MODELS_BY_PROVIDER.google_gemini[0] ?? "gemini-2.0-flash";
   if (provider === "kimi") return MODELS_BY_PROVIDER.kimi[0] ?? "kimi-k3";
+  if (provider === "xai") return MODELS_BY_PROVIDER.xai[0] ?? "grok-4.6";
   return "gpt-4o-mini";
 }
 
@@ -231,6 +234,14 @@ const MODELS_BY_PROVIDER: Record<string, string[]> = {
   ],
   google_gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
   kimi: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
+  xai: [
+    "grok-4.6",
+    "grok-4.5",
+    "grok-4.3",
+    "grok-4.20-0309-reasoning",
+    "grok-4.20-0309-non-reasoning",
+    "grok-build-0.1",
+  ],
 };
 
 interface KnowledgeArticle {

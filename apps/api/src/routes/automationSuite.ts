@@ -331,7 +331,7 @@ const promptModuleSchema = z.object({
   labels: z.record(z.unknown()).optional().nullable(),
 });
 
-const llmProviderSchema = z.enum(["openai", "google_gemini", "kimi"]);
+const llmProviderSchema = z.enum(["openai", "google_gemini", "kimi", "xai"]);
 
 const promptPreviewSchema = z.object({
   systemPrompt: z.string().min(1).max(120_000),
@@ -1251,7 +1251,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         error: "Bad Request",
         code: "kb_playground_no_api_key",
         message:
-          "Missing API key for LLM (or configure server OPENAI_* / GEMINI_PROMPT_PREVIEW_KEY / KIMI_PROMPT_PREVIEW_KEY).",
+          "Missing API key for LLM (or configure server OPENAI_* / GEMINI_PROMPT_PREVIEW_KEY / KIMI_PROMPT_PREVIEW_KEY / XAI_PROMPT_PREVIEW_KEY).",
         statusCode: 400,
       });
     }
@@ -1550,6 +1550,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       hasPlatformOpenAiKey: config.openAiPromptPreviewKey.length > 0,
       hasPlatformGeminiKey: config.geminiPromptPreviewKey.length > 0,
       hasPlatformKimiKey: config.kimiPromptPreviewKey.length > 0,
+      hasPlatformXaiKey: config.xaiPromptPreviewKey.length > 0,
     };
   });
 
@@ -1567,7 +1568,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         error: "Bad Request",
         code: "prompt_preview_no_api_key",
         message:
-          "Missing API key: enter one in the preview panel or set OPENAI_PROMPT_PREVIEW_KEY / OPENAI_API_KEY (OpenAI), GEMINI_PROMPT_PREVIEW_KEY (Gemini), or KIMI_PROMPT_PREVIEW_KEY (Kimi) on the server.",
+          "Missing API key: enter one in the preview panel or set OPENAI_PROMPT_PREVIEW_KEY / OPENAI_API_KEY (OpenAI), GEMINI_PROMPT_PREVIEW_KEY (Gemini), KIMI_PROMPT_PREVIEW_KEY (Kimi), or XAI_PROMPT_PREVIEW_KEY (xAI) on the server.",
         statusCode: 400,
       });
     }
@@ -2836,7 +2837,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         return reply.status(400).send({
           error: "Bad Request",
           message:
-            "Agent API key not configured. Save a key in Automation > Agents IA or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY, GEMINI_PROMPT_PREVIEW_KEY, or KIMI_PROMPT_PREVIEW_KEY on the server.",
+            "Agent API key not configured. Save a key in Automation > Agents IA or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY, GEMINI_PROMPT_PREVIEW_KEY, KIMI_PROMPT_PREVIEW_KEY, or XAI_PROMPT_PREVIEW_KEY on the server.",
           statusCode: 400,
         });
       }

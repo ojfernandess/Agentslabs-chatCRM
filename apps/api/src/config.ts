@@ -190,6 +190,17 @@ export const config = {
     .trim()
     .replace(/\/+$/, ""),
   /**
+   * Chave opcional xAI Grok (OpenAI-compatible). Ordem: XAI_PROMPT_PREVIEW_KEY, XAI_API_KEY.
+   */
+  xaiPromptPreviewKey: optionalEnv(
+    "XAI_PROMPT_PREVIEW_KEY",
+    optionalEnv("XAI_API_KEY", ""),
+  ).trim(),
+  /** Base URL xAI (Chat Completions compatível). */
+  xaiApiBaseUrl: optionalEnv("XAI_API_BASE_URL", "https://api.x.ai/v1")
+    .trim()
+    .replace(/\/+$/, ""),
+  /**
    * Máximo de pedidos LLM em voo por API key (contactos partilham a mesma chave).
    * Evita stampede TPM/RPM quando vários WhatsApps disparam o agente em paralelo.
    */

@@ -249,7 +249,7 @@ export function AutomationKnowledgeHub({
 
   const [pgQuery, setPgQuery] = useState("");
   const [pgBotId, setPgBotId] = useState("");
-  const [pgProvider, setPgProvider] = useState<"openai" | "google_gemini" | "kimi">("openai");
+  const [pgProvider, setPgProvider] = useState<"openai" | "google_gemini" | "kimi" | "xai">("openai");
   const [pgModel, setPgModel] = useState("gpt-4o-mini");
   const [pgApiKey, setPgApiKey] = useState("");
   const [pgBaseUrl, setPgBaseUrl] = useState("https://api.openai.com/v1");
@@ -1462,12 +1462,15 @@ export function AutomationKnowledgeHub({
               <select
                 value={pgProvider}
                 onChange={(e) => {
-                  const p = e.target.value as "openai" | "google_gemini" | "kimi";
+                  const p = e.target.value as "openai" | "google_gemini" | "kimi" | "xai";
                   setPgProvider(p);
                   if (p === "google_gemini") setPgModel("gemini-1.5-flash");
                   else if (p === "kimi") {
                     setPgModel("kimi-k3");
                     setPgBaseUrl("https://api.moonshot.ai/v1");
+                  } else if (p === "xai") {
+                    setPgModel("grok-4.6");
+                    setPgBaseUrl("https://api.x.ai/v1");
                   } else {
                     setPgModel("gpt-4o-mini");
                     setPgBaseUrl("https://api.openai.com/v1");
@@ -1477,6 +1480,7 @@ export function AutomationKnowledgeHub({
               >
                 <option value="openai">OpenAI / compatível</option>
                 <option value="kimi">Kimi (Moonshot)</option>
+                <option value="xai">xAI (Grok)</option>
                 <option value="google_gemini">Google Gemini</option>
               </select>
             </label>

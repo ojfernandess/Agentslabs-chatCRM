@@ -1,13 +1,13 @@
 /** Provedores LLM suportados no runtime de agentes e pré-visualização. */
-export type LlmProviderId = "openai" | "google_gemini" | "kimi";
+export type LlmProviderId = "openai" | "google_gemini" | "kimi" | "xai";
 
-export const LLM_PROVIDER_IDS = ["openai", "google_gemini", "kimi"] as const satisfies readonly LlmProviderId[];
+export const LLM_PROVIDER_IDS = ["openai", "google_gemini", "kimi", "xai"] as const satisfies readonly LlmProviderId[];
 
 export function isGeminiProvider(provider: string): boolean {
   return provider === "google_gemini";
 }
 
-/** OpenAI-compatible (inclui Kimi / Moonshot). */
+/** OpenAI-compatible (inclui Kimi / Moonshot e xAI Grok). */
 export function isOpenAiCompatibleProvider(provider: string): boolean {
   return !isGeminiProvider(provider);
 }
@@ -16,6 +16,7 @@ type PlatformKeys = {
   openAiPromptPreviewKey: string;
   geminiPromptPreviewKey: string;
   kimiPromptPreviewKey: string;
+  xaiPromptPreviewKey: string;
 };
 
 export function resolvePlatformLlmApiKey(provider: string, storedKey: string, keys: PlatformKeys): string {
@@ -24,12 +25,14 @@ export function resolvePlatformLlmApiKey(provider: string, storedKey: string, ke
   if (provider === "openai") return keys.openAiPromptPreviewKey.trim();
   if (provider === "google_gemini") return keys.geminiPromptPreviewKey.trim();
   if (provider === "kimi") return keys.kimiPromptPreviewKey.trim();
+  if (provider === "xai") return keys.xaiPromptPreviewKey.trim();
   return "";
 }
 
 type PlatformUrls = {
   openAiApiBaseUrl: string;
   kimiApiBaseUrl: string;
+  xaiApiBaseUrl: string;
 };
 
 export function resolveLlmApiBaseUrl(provider: string, storedUrl: string, urls: PlatformUrls): string {
@@ -37,6 +40,7 @@ export function resolveLlmApiBaseUrl(provider: string, storedUrl: string, urls: 
   if (trimmed) return trimmed;
   if (provider === "google_gemini") return "https://generativelanguage.googleapis.com";
   if (provider === "kimi") return urls.kimiApiBaseUrl;
+  if (provider === "xai") return urls.xaiApiBaseUrl;
   return urls.openAiApiBaseUrl || "https://api.openai.com/v1";
 }
 
@@ -45,5 +49,6 @@ export function platformLlmKeySource(provider: string, storedKey: string, keys: 
   if (provider === "openai" && keys.openAiPromptPreviewKey.trim()) return "server_openai_env";
   if (provider === "google_gemini" && keys.geminiPromptPreviewKey.trim()) return "server_gemini_env";
   if (provider === "kimi" && keys.kimiPromptPreviewKey.trim()) return "server_kimi_env";
+  if (provider === "xai" && keys.xaiPromptPreviewKey.trim()) return "server_xai_env";
   return "none";
 }

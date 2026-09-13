@@ -237,7 +237,7 @@ export function AutomationPromptsHub({
   const [previewMessages, setPreviewMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
   const [previewInput, setPreviewInput] = useState("");
   const [previewLiveMode, setPreviewLiveMode] = useState(true);
-  const [previewProvider, setPreviewProvider] = useState<"openai" | "google_gemini" | "kimi">("openai");
+  const [previewProvider, setPreviewProvider] = useState<"openai" | "google_gemini" | "kimi" | "xai">("openai");
   const [previewModel, setPreviewModel] = useState("gpt-4o-mini");
   const [previewTemperature, setPreviewTemperature] = useState(0.7);
   const [previewMaxTokens, setPreviewMaxTokens] = useState(1024);
@@ -250,6 +250,7 @@ export function AutomationPromptsHub({
     hasPlatformOpenAiKey: boolean;
     hasPlatformGeminiKey: boolean;
     hasPlatformKimiKey?: boolean;
+    hasPlatformXaiKey?: boolean;
   } | null>(null);
   const [sampleCtx, setSampleCtx] = useState({
     "contact.name": "Maria Silva",
@@ -366,10 +367,23 @@ export function AutomationPromptsHub({
       setPreviewMaxTokens(ld.maxTokens);
       if (ld.provider === "openai") {
         setPreviewBaseUrl(ld.apiBaseUrl?.trim() || "https://api.openai.com/v1");
+      } else if (ld.provider === "kimi") {
+        setPreviewBaseUrl(ld.apiBaseUrl?.trim() || "https://api.moonshot.ai/v1");
+      } else if (ld.provider === "xai") {
+        setPreviewBaseUrl(ld.apiBaseUrl?.trim() || "https://api.x.ai/v1");
       }
     } else {
       setPreviewModel((lb.modelHint ?? "").trim() || "gpt-4o-mini");
-      setPreviewProvider(/gemini/i.test(lb.modelHint ?? "") ? "google_gemini" : "openai");
+      const hint = lb.modelHint ?? "";
+      setPreviewProvider(
+        /gemini/i.test(hint)
+          ? "google_gemini"
+          : /^kimi-/i.test(hint)
+            ? "kimi"
+            : /^grok-/i.test(hint)
+              ? "xai"
+              : "openai",
+      );
     }
     setPreviewRecordMetrics(false);
     setPreviewError("");
@@ -559,7 +573,16 @@ export function AutomationPromptsHub({
     setSlugTouched(false);
     setDraftConnectedToolIds([]);
     setPreviewModel((tpl.modelHint ?? "").trim() || "gpt-4o-mini");
-    setPreviewProvider(/gemini/i.test(tpl.modelHint ?? "") ? "google_gemini" : "openai");
+    const tplHint = tpl.modelHint ?? "";
+    setPreviewProvider(
+      /gemini/i.test(tplHint)
+        ? "google_gemini"
+        : /^kimi-/i.test(tplHint)
+          ? "kimi"
+          : /^grok-/i.test(tplHint)
+            ? "xai"
+            : "openai",
+    );
     setPreviewTemperature(0.7);
     setPreviewMaxTokens(1024);
     setPreviewBaseUrl("https://api.openai.com/v1");
@@ -1447,16 +1470,20 @@ export function AutomationPromptsHub({
                                   ? previewOptions?.hasPlatformKimiKey
                                     ? t("automationPage.promptHub.previewPlatformKimi")
                                     : t("automationPage.promptHub.previewPlatformKimiOff")
-                                  : previewOptions?.hasPlatformOpenAiKey
-                                    ? t("automationPage.promptHub.previewPlatformOpenAi")
-                                    : t("automationPage.promptHub.previewPlatformOpenAiOff")}
+                                  : previewProvider === "xai"
+                                    ? previewOptions?.hasPlatformXaiKey
+                                      ? t("automationPage.promptHub.previewPlatformXai")
+                                      : t("automationPage.promptHub.previewPlatformXaiOff")
+                                    : previewOptions?.hasPlatformOpenAiKey
+                                      ? t("automationPage.promptHub.previewPlatformOpenAi")
+                                      : t("automationPage.promptHub.previewPlatformOpenAiOff")}
                             </p>
                             <label className="block text-[11px] font-medium text-ink-600 dark:text-ink-400">
                               {t("automationPage.promptHub.previewProvider")}
                               <select
                                 value={previewProvider}
                                 onChange={(e) => {
-                                  const p = e.target.value as "openai" | "google_gemini" | "kimi";
+                                  const p = e.target.value as "openai" | "google_gemini" | "kimi" | "xai";
                                   setPreviewProvider(p);
                                   if (p === "google_gemini") {
                                     setPreviewModel((m) => (/gemini/i.test(m) ? m : "gemini-1.5-flash"));
@@ -1464,6 +1491,9 @@ export function AutomationPromptsHub({
                                   } else if (p === "kimi") {
                                     setPreviewModel((m) => (/^kimi-/i.test(m) ? m : "kimi-k3"));
                                     setPreviewBaseUrl("https://api.moonshot.ai/v1");
+                                  } else if (p === "xai") {
+                                    setPreviewModel((m) => (/^grok-/i.test(m) ? m : "grok-4.6"));
+                                    setPreviewBaseUrl("https://api.x.ai/v1");
                                   } else {
                                     setPreviewModel((m) => (/^gpt-/i.test(m) ? m : "gpt-4o-mini"));
                                     setPreviewBaseUrl("https://api.openai.com/v1");
@@ -1473,6 +1503,7 @@ export function AutomationPromptsHub({
                               >
                                 <option value="openai">OpenAI / compatível</option>
                                 <option value="kimi">Kimi (Moonshot)</option>
+                                <option value="xai">xAI (Grok)</option>
                                 <option value="google_gemini">Google Gemini</option>
                               </select>
                             </label>
@@ -1520,7 +1551,11 @@ export function AutomationPromptsHub({
                                   value={previewBaseUrl}
                                   onChange={(e) => setPreviewBaseUrl(e.target.value)}
                                   placeholder={
-                                    previewProvider === "kimi" ? "https://api.moonshot.ai/v1" : "https://api.openai.com/v1"
+                                    previewProvider === "kimi"
+                                      ? "https://api.moonshot.ai/v1"
+                                      : previewProvider === "xai"
+                                        ? "https://api.x.ai/v1"
+                                        : "https://api.openai.com/v1"
                                   }
                                   className="mt-1 w-full rounded-lg border border-ink-200 px-2 py-1.5 font-mono text-xs dark:border-ink-600 dark:bg-ink-900"
                                 />
