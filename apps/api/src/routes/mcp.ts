@@ -11,6 +11,7 @@ import {
   revokeMcpAccessTokenById,
 } from "../lib/mcp/auth/mcpTokenService.js";
 import { prisma } from "../db.js";
+import { getMcpCatalog } from "../lib/mcp/catalog/mcpCatalog.js";
 
 const createTokenSchema = z.object({
   name: z.string().min(1).max(200),
@@ -118,6 +119,11 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
     }
     return { data: { revoked: true } };
   });
+
+  /** Catálogo de servidores MCP disponíveis (super admin) */
+  app.get("/catalog", { preHandler: [authenticate, requireSuperAdmin] }, async () => ({
+    data: getMcpCatalog(),
+  }));
 
   /** Metadados (requer super admin autenticado) */
   app.get("/info", { preHandler: [authenticate, requireSuperAdmin] }, async () => ({

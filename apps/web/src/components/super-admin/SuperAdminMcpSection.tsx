@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Copy, Plug, Trash2 } from "lucide-react";
+import clsx from "clsx";
+import { Copy, LayoutGrid, Plug, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPageHeader, SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
+import { SuperAdminMcpCatalogPanel } from "@/components/super-admin/SuperAdminMcpCatalogPanel";
 
 type OrgOption = { id: string; name: string; slug: string };
 
@@ -24,6 +26,8 @@ type McpTokensResponse = {
   endpoint: string;
 };
 
+type McpTab = "tokens" | "catalog";
+
 type SuperAdminMcpSectionProps = {
   organizations: OrgOption[];
   onError: (message: string) => void;
@@ -31,6 +35,7 @@ type SuperAdminMcpSectionProps = {
 
 export function SuperAdminMcpSection({ organizations, onError }: SuperAdminMcpSectionProps) {
   const { t } = useI18n();
+  const [tab, setTab] = useState<McpTab>("catalog");
   const [loading, setLoading] = useState(false);
   const [tokens, setTokens] = useState<McpTokenRow[]>([]);
   const [endpoint, setEndpoint] = useState("");
@@ -56,8 +61,8 @@ export function SuperAdminMcpSection({ organizations, onError }: SuperAdminMcpSe
   }, [onError, t]);
 
   useEffect(() => {
-    void fetchTokens();
-  }, [fetchTokens]);
+    if (tab === "tokens") void fetchTokens();
+  }, [fetchTokens, tab]);
 
   useEffect(() => {
     if (!organizationId && organizations.length > 0) {
@@ -120,6 +125,34 @@ export function SuperAdminMcpSection({ organizations, onError }: SuperAdminMcpSe
         subtitle={t("superAdmin.mcp.subtitle")}
       />
 
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { id: "catalog" as const, labelKey: "superAdmin.mcp.tabCatalog", icon: LayoutGrid },
+            { id: "tokens" as const, labelKey: "superAdmin.mcp.tabTokens", icon: Plug },
+          ] as const
+        ).map(({ id, labelKey, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={clsx(
+              "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium",
+              tab === id
+                ? "bg-brand-600 text-white"
+                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {t(labelKey)}
+          </button>
+        ))}
+      </div>
+
+      {tab === "catalog" ? <SuperAdminMcpCatalogPanel onError={onError} /> : null}
+
+      {tab === "tokens" ? (
+        <>
       <SuperAdminPanel className="p-6">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
@@ -256,6 +289,8 @@ export function SuperAdminMcpSection({ organizations, onError }: SuperAdminMcpSe
           </ul>
         )}
       </section>
+        </>
+      ) : null}
     </div>
   );
 }
