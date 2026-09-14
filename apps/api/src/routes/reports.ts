@@ -14,11 +14,16 @@ import {
 } from "../lib/agentAssistLlm.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { buildTelephonyReports } from "../lib/telephonyReports.js";
+import { buildDealReports } from "../lib/dealReports.js";
+import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 
 const querySchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   granularity: z.enum(["day", "week", "month"]).optional(),
+  /** Filtro opcional — afecta apenas métricas de negócios (deals), não closureValue. */
+  dealCategory: z.string().max(64).optional(),
+  dealType: z.string().max(64).optional(),
 });
 
 type Granularity = "day" | "week" | "month";
@@ -537,6 +542,17 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       granularity,
     });
 
+    const crmDealsEnabled = await isOrganizationFeatureEnabled(org, "crm_deals");
+    const deals = crmDealsEnabled
+      ? await buildDealReports({
+          organizationId: org,
+          from,
+          to,
+          category: q.data.dealCategory ?? null,
+          dealType: q.data.dealType ?? null,
+        })
+      : undefined;
+
     return {
       meta: {
         from: from.toISOString(),
@@ -603,6 +619,7 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         conversationsCount: r.n,
       })),
       telephony,
+      deals,
     };
   });
 

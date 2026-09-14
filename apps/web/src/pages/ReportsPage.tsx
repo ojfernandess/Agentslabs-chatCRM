@@ -31,7 +31,8 @@ import clsx from "clsx";
 import { PageTransition } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
-import { formatCurrencyUnits } from "@/lib/currency";
+import { formatCurrencyFromCents, formatCurrencyUnits } from "@/lib/currency";
+import { Briefcase } from "lucide-react";
 
 type Granularity = "day" | "week" | "month";
 
@@ -100,6 +101,32 @@ interface ReportsPayload {
   heatmap: { cells: number[][]; max: number };
   tags: Array<{ tagId: string; name: string; color: string; conversationsCount: number }>;
   telephony?: TelephonyReports;
+  deals?: {
+    enabled: boolean;
+    filterCategory: string | null;
+    filterDealType: string | null;
+    activeCategory: string;
+    catalog: Array<{ id: string; labelPt: string; labelEn: string }>;
+    summary: {
+      wonAmountCents: number;
+      openAmountCents: number;
+      lostAmountCents: number;
+      dealCount: number;
+    };
+    byCategory: Array<{
+      categoryKey: string;
+      wonAmountCents: number;
+      openAmountCents: number;
+      lostAmountCents: number;
+      dealCount: number;
+    }>;
+    linkedToConversations: {
+      dealCount: number;
+      wonAmountCents: number;
+      openAmountCents: number;
+      closureValueSum: number;
+    };
+  };
 }
 
 type TelephonyProvider = "wavoip" | "nvoip" | "threecx";
@@ -172,11 +199,13 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export function ReportsPage() {
-  const { t, dateLocale } = useI18n();
+  const { t, dateLocale, locale } = useI18n();
+  const pt = locale === "pt-BR";
   const [tab, setTab] = useState<TabId>("overview");
   const [fromStr, setFromStr] = useState(() => toInputDate(startOfDay(subDays(new Date(), 29))));
   const [toStr, setToStr] = useState(() => toInputDate(new Date()));
   const [granularity, setGranularity] = useState<Granularity>("day");
+  const [dealCategoryFilter, setDealCategoryFilter] = useState("");
   const [data, setData] = useState<ReportsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -192,6 +221,7 @@ export function ReportsPage() {
         to: to.toISOString(),
         granularity,
       });
+      if (dealCategoryFilter) params.set("dealCategory", dealCategoryFilter);
       const res = await api.get<ReportsPayload>(`/reports?${params.toString()}`);
       setData(res);
     } catch (e) {
@@ -201,7 +231,16 @@ export function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [fromStr, toStr, granularity]);
+  }, [fromStr, toStr, granularity, dealCategoryFilter]);
+
+  const dealCategoryLabel = useCallback(
+    (key: string) => {
+      const item = data?.deals?.catalog.find((c) => c.id === key);
+      if (!item) return key === "default" ? (pt ? "Padrão / Comercial" : "Default / Commercial") : key;
+      return pt ? item.labelPt : item.labelEn;
+    },
+    [data?.deals?.catalog, pt],
+  );
 
   useEffect(() => {
     void load();
@@ -506,6 +545,21 @@ export function ReportsPage() {
                     value={formatCurrencyUnits(data.summary.closureValueSum)}
                   />
                   <Kpi icon={Tag} label={t("reportsPage.kpiClosuresWithValue")} value={data.summary.closuresWithValue} />
+                  {data.deals?.enabled ? (
+                    <>
+                      <Kpi
+                        icon={Briefcase}
+                        label={t("reportsPage.kpiDealsWon")}
+                        value={formatCurrencyFromCents(data.deals.summary.wonAmountCents)}
+                      />
+                      <Kpi
+                        icon={Briefcase}
+                        label={t("reportsPage.kpiDealsOpen")}
+                        value={formatCurrencyFromCents(data.deals.summary.openAmountCents)}
+                      />
+                      <Kpi icon={Briefcase} label={t("reportsPage.kpiDealsCount")} value={data.deals.summary.dealCount} />
+                    </>
+                  ) : null}
                 </div>
 
                 {data.meta.agentBot?.enabled ? (
@@ -985,9 +1039,95 @@ export function ReportsPage() {
             ) : null}
 
             {tab === "revenue" && (
+              <div className="space-y-6">
+              {data.deals?.enabled ? (
+                <section className="rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
+                  <div className="border-b border-ink-100 px-6 py-4 dark:border-ink-800">
+                    <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">
+                      {t("reportsPage.dealsSectionTitle")}
+                    </h2>
+                    <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("reportsPage.dealsSectionHint")}</p>
+                    <div className="mt-3 flex flex-wrap items-end gap-3">
+                      <label className="flex flex-col text-xs font-medium text-ink-600 dark:text-ink-400">
+                        {t("reportsPage.dealCategoryFilter")}
+                        <select
+                          value={dealCategoryFilter}
+                          onChange={(e) => setDealCategoryFilter(e.target.value)}
+                          className="mt-1 min-w-[200px] rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+                        >
+                          <option value="">{t("reportsPage.dealCategoryFilterAll")}</option>
+                          {data.deals.catalog.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {pt ? c.labelPt : c.labelEn}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 border-b border-ink-100 px-6 py-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-ink-800">
+                    <Kpi
+                      icon={Briefcase}
+                      label={t("reportsPage.kpiDealsWon")}
+                      value={formatCurrencyFromCents(data.deals.summary.wonAmountCents)}
+                    />
+                    <Kpi
+                      icon={Briefcase}
+                      label={t("reportsPage.kpiDealsOpen")}
+                      value={formatCurrencyFromCents(data.deals.summary.openAmountCents)}
+                    />
+                    <Kpi icon={Briefcase} label={t("reportsPage.kpiDealsCount")} value={data.deals.summary.dealCount} />
+                    <Kpi
+                      icon={TrendingUp}
+                      label={t("reportsPage.kpiDealsLinkedClosure")}
+                      value={formatCurrencyUnits(data.deals.linkedToConversations.closureValueSum)}
+                    />
+                  </div>
+                  {data.deals.byCategory.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-ink-100 bg-ink-50/80 text-left text-xs font-semibold uppercase tracking-wide text-ink-500 dark:border-ink-800 dark:bg-ink-800/50 dark:text-ink-400">
+                            <th className="px-6 py-3">{t("reportsPage.colDealCategory")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colDeals")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colDealsWon")}</th>
+                            <th className="px-6 py-3">{t("reportsPage.colDealsOpen")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.deals.byCategory.map((row) => (
+                            <tr
+                              key={row.categoryKey}
+                              className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
+                            >
+                              <td className="px-6 py-3 font-medium text-ink-900 dark:text-ink-100">
+                                {dealCategoryLabel(row.categoryKey)}
+                              </td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{row.dealCount}</td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                                {formatCurrencyFromCents(row.wonAmountCents)}
+                              </td>
+                              <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                                {formatCurrencyFromCents(row.openAmountCents)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="px-6 py-8 text-sm text-ink-500">{t("reportsPage.emptyDeals")}</p>
+                  )}
+                  <p className="border-t border-ink-100 px-6 py-3 text-xs text-ink-500 dark:border-ink-800 dark:text-ink-400">
+                    {t("reportsPage.dealsFootnote")}
+                  </p>
+                </section>
+              ) : null}
+
               <section className="rounded-xl border border-ink-200 bg-white shadow-sm dark:border-ink-800 dark:bg-ink-900/60">
                 <div className="border-b border-ink-100 px-6 py-4 dark:border-ink-800">
                   <h2 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("reportsPage.leadTypesTitle")}</h2>
+                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.leadTypesFootnote")}</p>
                 </div>
                 <div className="overflow-x-auto">
                   {data.leadTypes.length === 0 ? (
@@ -1024,6 +1164,7 @@ export function ReportsPage() {
                   )}
                 </div>
               </section>
+              </div>
             )}
           </>
         ) : null}
