@@ -435,6 +435,8 @@ export function ConversationDetailPage() {
   const resolveNextIdRef = useRef<string | null>(null);
   /** Evita repor lead/valor a cada poll da conversa enquanto o modal está aberto. */
   const resolveFormInitializedRef = useRef(false);
+  /** Só fecha o modal se mousedown e click forem no backdrop (não ao seleccionar texto). */
+  const resolveBackdropMouseDownRef = useRef(false);
 
   const openResolveModal = useCallback((nextId: string | null) => {
     resolveNextIdRef.current = nextId;
@@ -4711,7 +4713,19 @@ export function ConversationDetailPage() {
             initial="hidden"
             animate="show"
             exit="hidden"
-            onClick={() => !actionLoading && setResolveOpen(false)}
+            onMouseDown={(e) => {
+              resolveBackdropMouseDownRef.current = e.target === e.currentTarget;
+            }}
+            onClick={(e) => {
+              if (
+                resolveBackdropMouseDownRef.current &&
+                e.target === e.currentTarget &&
+                !actionLoading
+              ) {
+                setResolveOpen(false);
+              }
+              resolveBackdropMouseDownRef.current = false;
+            }}
           >
             <motion.div
               variants={modalVariants}
@@ -4719,6 +4733,7 @@ export function ConversationDetailPage() {
               animate="show"
               exit="hidden"
               className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl bg-white p-6 shadow-xl dark:border dark:border-soft-border dark:bg-ink-900"
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-lg font-semibold text-ink-900 dark:text-ink-50">{t("conversationDetail.finalizeTitle")}</h3>
@@ -4811,7 +4826,7 @@ export function ConversationDetailPage() {
                     values={dealCategoryData}
                     onChange={setDealCategoryData}
                     onSuggestedAmountCents={(cents) => {
-                      if (cents != null && cents > 0) {
+                      if (cents != null && cents > 0 && !closureAmount.trim()) {
                         setClosureAmount((cents / 100).toFixed(2));
                       }
                     }}

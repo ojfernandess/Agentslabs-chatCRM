@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getDealCategoryById, suggestAmountCentsFromCategoryData } from "@openconduit/shared";
 
@@ -63,6 +63,57 @@ function parseMoneyToCents(raw: string): number | null {
   const n = Number.parseFloat(trimmed.replace(",", "."));
   if (!Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100);
+}
+
+/** Input monetário com rascunho local — evita reformatar a cada tecla (ex.: "4" → "4.00"). */
+function MoneyFieldInput({
+  fieldKey,
+  centsValue,
+  onCommit,
+  inputClass,
+  placeholder,
+}: {
+  fieldKey: string;
+  centsValue: unknown;
+  onCommit: (cents: number | undefined) => void;
+  inputClass: string;
+  placeholder: string;
+}) {
+  const [draft, setDraft] = useState(() => moneyInputFromCents(centsValue));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setDraft(moneyInputFromCents(centsValue));
+    }
+  }, [centsValue, fieldKey]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        const cents = parseMoneyToCents(draft);
+        onCommit(cents ?? undefined);
+        if (cents != null) {
+          setDraft(moneyInputFromCents(cents));
+        }
+      }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        const cents = parseMoneyToCents(raw);
+        onCommit(cents ?? undefined);
+      }}
+      className={inputClass}
+      placeholder={placeholder}
+    />
+  );
 }
 
 export function DealCategoryFieldsForm({
@@ -174,15 +225,11 @@ export function DealCategoryFieldsForm({
                 {labelFor(field)}
                 {req}
               </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={moneyInputFromCents(val)}
-                onChange={(e) => {
-                  const cents = parseMoneyToCents(e.target.value);
-                  setField(field.key, cents ?? undefined);
-                }}
-                className={inputClass}
+              <MoneyFieldInput
+                fieldKey={field.key}
+                centsValue={val}
+                onCommit={(cents) => setField(field.key, cents)}
+                inputClass={inputClass}
                 placeholder={pt ? "0,00" : "0.00"}
               />
             </div>
