@@ -2139,7 +2139,9 @@ export function ConversationDetailPage() {
     setTransferOpen(true);
   };
 
-  const actionBtnSize = isSplitLayout ? "px-2.5 py-1.5 text-[11px]" : "px-3.5 py-2 text-xs";
+  const actionBtnSize = isSplitLayout
+    ? "px-2.5 py-1.5 text-[11px] max-lg:px-2 max-lg:py-1 max-lg:text-[10px]"
+    : "px-3.5 py-2 text-xs";
   const filledSoftBase =
     "inline-flex shrink-0 items-center gap-2 rounded-xl border-0 font-semibold shadow-none transition-colors disabled:opacity-50";
   const filledSoftSlate =
@@ -3284,11 +3286,11 @@ export function ConversationDetailPage() {
           <div
             className={clsx(
               isSplitLayout
-                ? "max-h-[min(40vh,22rem)] overflow-y-auto overscroll-contain px-2.5 py-2.5 lg:px-3"
+                ? "max-h-[min(40vh,22rem)] max-lg:max-h-[min(28vh,8.75rem)] overflow-y-auto overscroll-contain px-2.5 py-2.5 max-lg:px-2 max-lg:py-1.5 lg:px-3"
                 : "px-3 py-3 lg:px-5",
             )}
           >
-          <div className="flex items-start gap-3">
+          <div className={clsx("flex items-start gap-3", isSplitLayout && "max-lg:gap-2")}>
             <Link
               to={
                 emailInboxId
@@ -3314,18 +3316,26 @@ export function ConversationDetailPage() {
               thumbnail={conversation.contact.thumbnail}
               channelType={isWhatsappInbox ? "WHATSAPP" : isEmailInbox ? "EMAIL" : undefined}
               priority={conversation.priority}
-              size="detail"
+              size={isSplitLayout ? "listCompact" : "detail"}
               presenceOnline={presenceRecent}
             />
             <div className="min-w-0 flex-1">
               <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+                <div
+                  className={clsx(
+                    "flex flex-wrap items-start justify-between gap-3",
+                    isSplitLayout && "max-lg:flex-col max-lg:items-stretch max-lg:gap-2",
+                  )}
+                >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         to={`/contacts/${conversation.contact.id}`}
                         title={t("conversationDetail.viewContactDetails")}
-                        className="break-words text-base font-semibold leading-snug tracking-tight text-ink-900 transition-colors hover:text-brand-600 dark:text-ink-50 dark:hover:text-brand-400"
+                        className={clsx(
+                          "break-words text-base font-semibold leading-snug tracking-tight text-ink-900 transition-colors hover:text-brand-600 dark:text-ink-50 dark:hover:text-brand-400",
+                          isSplitLayout && "max-lg:text-sm",
+                        )}
                       >
                         {conversation.contact.name}
                       </Link>
@@ -3385,7 +3395,12 @@ export function ConversationDetailPage() {
                       ) : null}
                     </div>
 
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500 dark:text-ink-300">
+                    <div
+                      className={clsx(
+                        "mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500 dark:text-ink-300",
+                        isSplitLayout && "max-lg:mt-0.5 max-lg:gap-x-2 max-lg:gap-y-0.5 max-lg:text-[11px]",
+                      )}
+                    >
                       {isWebsiteInbox ? (
                         <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
                           <span>{t("conversationDetail.channelLabelWebsite")}</span>
@@ -3433,7 +3448,7 @@ export function ConversationDetailPage() {
                         <span>{presenceRecent ? t("conversationDetail.presenceActive") : t("conversationDetail.presenceAway")}</span>
                       </span>
                       {conversation.team?.name ? (
-                        <span className="inline-flex items-center gap-1">
+                        <span className={clsx("inline-flex items-center gap-1", isSplitLayout && "max-lg:hidden")}>
                           <span className="text-ink-400 dark:text-ink-500">•</span>
                           <span>
                             {t("conversationDetail.team")}: {conversation.team.name}
@@ -3452,7 +3467,14 @@ export function ConversationDetailPage() {
                     </div>
                   </div>
 
-                  <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+                  <div
+                    className={clsx(
+                      "flex max-w-full items-center justify-end gap-2",
+                      isSplitLayout
+                        ? "max-lg:w-full max-lg:flex-nowrap max-lg:justify-start max-lg:overflow-x-auto max-lg:pb-0.5 max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden"
+                        : "flex-wrap",
+                    )}
+                  >
                     {!isWebsiteInbox && contactPhoneDisplay ? (
                       <TelephonyCallButton
                         phone={contactPhoneDisplay}
@@ -4003,13 +4025,13 @@ export function ConversationDetailPage() {
             "w-full min-w-0 shrink-0 border-t border-ink-200/80 dark:border-soft-border",
             emailWorkspaceMode
               ? "bg-[#f8fafc] px-4 py-3 dark:bg-[#1B2230]"
-              : "bg-ink-50/80 px-3 py-2.5 dark:bg-[#151826]/80 sm:px-4",
+              : "bg-ink-50/80 px-3 py-2.5 dark:bg-[#151826]/80 max-lg:px-2 max-lg:py-2 sm:px-4",
           )}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: 0.08, ease: "easeOut" }}
         >
-          <form onSubmit={handleSend} className="w-full min-w-0">
+          <form onSubmit={handleSend} className="w-full min-w-0 max-lg:[&_.composer-tab]:px-2 max-lg:[&_.composer-tab]:py-2 max-lg:[&_.composer-toolbar]:px-1.5 max-lg:[&_.composer-toolbar]:py-1.5">
             {imageSentNotice ? (
               <p className="mb-2 text-center text-xs text-ink-500 dark:text-ink-400">
                 {t("conversationDetail.imageSentToContact")}

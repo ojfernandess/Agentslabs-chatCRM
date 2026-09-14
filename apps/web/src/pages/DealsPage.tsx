@@ -554,7 +554,7 @@ export function DealsPage() {
         <AnimatePresence>
           {createOpen ? (
             <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-4"
               initial="hidden"
               animate="show"
               exit="exit"
@@ -567,11 +567,11 @@ export function DealsPage() {
                 onClick={() => setCreateOpen(false)}
               />
               <motion.div
-                className="relative w-full max-w-md rounded-xl border border-gray-200 dark:border-ink-700 bg-white dark:bg-ink-900/50 p-6 shadow-xl"
+                className="relative flex max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-none border border-gray-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900/50 sm:max-h-[min(90vh,900px)] sm:rounded-xl"
                 variants={modalVariants}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="mb-4 flex items-center justify-between">
+                <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-ink-800 sm:px-6">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-ink-50">Novo negócio</h2>
                   <button
                     type="button"
@@ -581,75 +581,79 @@ export function DealsPage() {
                     <X className="h-5 w-5" />
                   </button>
                 </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-ink-300">Nome</label>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                      value={createName}
-                      onChange={(e) => setCreateName(e.target.value)}
-                      placeholder="Ex.: Licença anual — Cliente X"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-ink-300">Etapa</label>
-                    <select
-                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                      value={createStageId}
-                      onChange={(e) => setCreateStageId(e.target.value)}
-                    >
-                      {stages.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-ink-300">
-                      Valor inicial (opcional, R$)
-                    </label>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                      value={createAmount}
-                      onChange={(e) => setCreateAmount(e.target.value)}
-                      placeholder="0,00"
-                    />
-                    <p className="mt-1 text-xs text-gray-500 dark:text-ink-400">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+                  <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-ink-300">Nome</label>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                          value={createName}
+                          onChange={(e) => setCreateName(e.target.value)}
+                          placeholder="Ex.: Licença anual — Cliente X"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-ink-300">Etapa</label>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                          value={createStageId}
+                          onChange={(e) => setCreateStageId(e.target.value)}
+                        >
+                          {stages.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-ink-300">
+                          Valor inicial (opcional, R$)
+                        </label>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                          value={createAmount}
+                          onChange={(e) => setCreateAmount(e.target.value)}
+                          placeholder="0,00"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-ink-400">
                       Ao adicionar linhas abaixo, o total do negócio passa a ser a soma das linhas.
                     </p>
+                    {categoryContext ? (
+                      <DealCategoryFieldsForm
+                        context={categoryContext}
+                        values={createCategoryData}
+                        onChange={setCreateCategoryData}
+                        onSuggestedAmountCents={(cents) => {
+                          if (cents != null && cents > 0 && !createAmount.trim()) {
+                            setCreateAmount((cents / 100).toFixed(2));
+                          }
+                        }}
+                        compact
+                      />
+                    ) : null}
+                    {createError ? <p className="text-sm text-red-600">{createError}</p> : null}
                   </div>
-                  {categoryContext ? (
-                    <DealCategoryFieldsForm
-                      context={categoryContext}
-                      values={createCategoryData}
-                      onChange={setCreateCategoryData}
-                      onSuggestedAmountCents={(cents) => {
-                        if (cents != null && cents > 0 && !createAmount.trim()) {
-                          setCreateAmount((cents / 100).toFixed(2));
-                        }
-                      }}
-                      compact
-                    />
-                  ) : null}
-                  {createError && <p className="text-sm text-red-600">{createError}</p>}
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-gray-300 dark:border-ink-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-ink-200 hover:bg-gray-50 dark:hover:bg-ink-800"
-                      onClick={() => setCreateOpen(false)}
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={createSubmitting}
-                      className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-                      onClick={() => void handleCreateDeal()}
-                    >
-                      {createSubmitting ? "A guardar…" : "Criar"}
-                    </button>
-                  </div>
+                </div>
+                <div className="flex shrink-0 justify-end gap-2 border-t border-gray-100 px-4 py-3 dark:border-ink-800 sm:px-6">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-ink-600 dark:text-ink-200 dark:hover:bg-ink-800"
+                    onClick={() => setCreateOpen(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={createSubmitting}
+                    className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                    onClick={() => void handleCreateDeal()}
+                  >
+                    {createSubmitting ? "A guardar…" : "Criar"}
+                  </button>
                 </div>
               </motion.div>
             </motion.div>
@@ -659,7 +663,7 @@ export function DealsPage() {
         <AnimatePresence>
           {detailId ? (
             <motion.div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-4"
               initial="hidden"
               animate="show"
               exit="exit"
@@ -672,11 +676,11 @@ export function DealsPage() {
                 onClick={closeDetail}
               />
               <motion.div
-                className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-200 dark:border-ink-700 bg-white dark:bg-ink-900/50 p-6 shadow-xl"
+                className="relative flex max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-none border border-gray-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900/50 sm:max-h-[min(90vh,900px)] sm:rounded-xl"
                 variants={modalVariants}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+                <div className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b border-gray-100 px-4 py-4 dark:border-ink-800 sm:px-6">
                   <div className="min-w-0 flex-1">
                     <h2 className="sr-only">{detail?.name ?? "Negócio"}</h2>
                     <label className="block text-xs font-medium text-gray-600 dark:text-ink-300">
@@ -732,6 +736,7 @@ export function DealsPage() {
                   </div>
                 </div>
 
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 sm:px-6 sm:pb-6">
                 {detailLoading || !detail ? (
                   <div className="flex justify-center py-12">
                     <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
@@ -918,6 +923,7 @@ export function DealsPage() {
                     </div>
                   </>
                 )}
+                </div>
               </motion.div>
             </motion.div>
           ) : null}

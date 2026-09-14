@@ -291,6 +291,7 @@ export function Layout() {
     location.pathname.startsWith("/conversations")
       ? new URLSearchParams(location.search).get("inboxId")
       : null;
+  const conversationThreadActive = /^\/conversations\/[^/]+/.test(location.pathname);
 
   const fetchSidebarTeams = useCallback(() => {
     if (!user) {
@@ -808,7 +809,7 @@ export function Layout() {
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
         <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-soft-border dark:bg-ink-950 lg:hidden">
           <button
             type="button"
@@ -859,7 +860,12 @@ export function Layout() {
             onComplete={(id) => void completeReminder(id)}
           />
         ) : null}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-ink-50 dark:bg-transparent">
+        <main
+          className={clsx(
+            "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-ink-50 dark:bg-transparent",
+            conversationThreadActive ? "max-lg:overflow-hidden" : "overflow-y-auto",
+          )}
+        >
           <Outlet />
         </main>
       </div>
