@@ -91,6 +91,10 @@ import {
   shouldCreateDealOnConversationClosure,
   type LeadValueRollupKind,
 } from "@openconduit/shared";
+import {
+  DealCategoryFieldsForm,
+  type DealCategoryContext,
+} from "@/components/crm/DealCategoryFieldsForm";
 import { isTenantAdmin } from "@/lib/authRole";
 import { readSendShortcutPref } from "@/lib/profilePrefs";
 import { formatCurrencyUnits } from "@/lib/currency";
@@ -328,6 +332,7 @@ export function ConversationDetailPage() {
   const { user } = useAuth();
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const funnelEnabled = user?.organizationFeatures?.crm_kanban ?? true;
+  const crmDealsEnabled = user?.organizationFeatures?.crm_deals ?? false;
   const agentBotTyping = useConversationAgentTyping(id);
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
@@ -343,6 +348,8 @@ export function ConversationDetailPage() {
   const [resolveOpen, setResolveOpen] = useState(false);
   const [closureReason, setClosureReason] = useState("");
   const [closureAmount, setClosureAmount] = useState("");
+  const [dealCategoryContext, setDealCategoryContext] = useState<DealCategoryContext | null>(null);
+  const [dealCategoryData, setDealCategoryData] = useState<Record<string, unknown>>({});
   const [leadTypeId, setLeadTypeId] = useState("");
   const [resolveError, setResolveError] = useState("");
   const [resolveRequireClosureReason, setResolveRequireClosureReason] = useState(true);
@@ -490,8 +497,28 @@ export function ConversationDetailPage() {
   }, [crmDesktopOpen]);
 
   useEffect(() => {
+    if (!resolveOpen || !crmDealsEnabled) {
+      if (!resolveOpen) setDealCategoryContext(null);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<{ data: DealCategoryContext }>("/crm/deal-category-context")
+      .then((res) => {
+        if (!cancelled) setDealCategoryContext(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setDealCategoryContext(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolveOpen, crmDealsEnabled]);
+
+  useEffect(() => {
     if (!resolveOpen) {
       resolveFormInitializedRef.current = false;
+      setDealCategoryData({});
       return;
     }
     if (!conversation || resolveFormInitializedRef.current) return;
@@ -1540,6 +1567,7 @@ export function ConversationDetailPage() {
       closureReason?: string | null;
       leadTypeId?: string | null;
       closureValue?: number | null;
+      dealCategoryData?: Record<string, unknown>;
       assignedToId?: string | null;
       resolveReminder?: { note: string; dueAt: string };
     },
@@ -1558,6 +1586,9 @@ export function ConversationDetailPage() {
       }
       if (extra && "closureValue" in extra) {
         body.closureValue = extra.closureValue;
+      }
+      if (extra?.dealCategoryData && Object.keys(extra.dealCategoryData).length > 0) {
+        body.dealCategoryData = extra.dealCategoryData;
       }
       if (extra && "assignedToId" in extra) {
         body.assignedToId = extra.assignedToId;
@@ -1947,7 +1978,11 @@ export function ConversationDetailPage() {
       closureReason?: string | null;
       leadTypeId?: string | null;
       closureValue?: number | null;
-    } = { closureValue };
+      dealCategoryData?: Record<string, unknown>;
+    } = {
+      closureValue,
+      ...(Object.keys(dealCategoryData).length > 0 ? { dealCategoryData } : {}),
+    };
     if (resolveRequireClosureReason) {
       extra.closureReason = closureReason.trim();
     } else {
@@ -4770,6 +4805,19 @@ export function ConversationDetailPage() {
                     </p>
                   ) : null}
                 </div>
+                {crmDealsEnabled && dealCategoryContext && willCreateDealOnResolve ? (
+                  <DealCategoryFieldsForm
+                    context={dealCategoryContext}
+                    values={dealCategoryData}
+                    onChange={setDealCategoryData}
+                    onSuggestedAmountCents={(cents) => {
+                      if (cents != null && cents > 0) {
+                        setClosureAmount((cents / 100).toFixed(2));
+                      }
+                    }}
+                    compact
+                  />
+                ) : null}
                 {showRemindersFeature && resolveOfferReminder ? (
                   <div className="rounded-xl border border-ink-200 bg-ink-50/80 p-4 dark:border-soft-border dark:bg-ink-800/40">
                     <p className="text-sm font-medium text-ink-800 dark:text-ink-100">

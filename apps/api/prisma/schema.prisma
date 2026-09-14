@@ -190,7 +190,12 @@ model Organization {
   pipelines          Pipeline[]
   accounts           Account[]
   products           Product[]
+  productCategories  ProductCategory[]
   deals              Deal[]
+  dealOrgSettings    DealOrgSettings?
+  dealOptionSets     DealOptionSet[]
+  dealFieldOverrides DealFieldOverride[]
+  dealCustomFields   DealCustomField[]
   timelineEvents     TimelineEvent[]
   leadTypes          LeadType[]
   reminders          Reminder[]
@@ -841,6 +846,25 @@ model Account {
   @@map("accounts")
 }
 
+model ProductCategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?  @db.Text
+  dealCategoryKey String? @map("deal_category_key") @db.VarChar(64)
+  enabled        Boolean  @default(true)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  products Product[]
+
+  @@index([organizationId])
+  @@map("product_categories")
+}
+
 model Product {
   id         String   @id @default(uuid()) @db.Uuid
   name       String
@@ -855,9 +879,13 @@ model Product {
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  productCategoryId String?          @map("product_category_id") @db.Uuid
+  productCategory   ProductCategory? @relation(fields: [productCategoryId], references: [id], onDelete: SetNull)
+
   lineItems DealLineItem[]
 
   @@index([organizationId])
+  @@index([productCategoryId])
   @@map("products")
 }
 
@@ -894,13 +922,107 @@ model Deal {
   sourceConversationId  String? @map("source_conversation_id") @db.Uuid
   sourceClosureRecordId String? @map("source_closure_record_id") @db.Uuid
 
+  /// Extensão por categoria (null = default em interpretação).
+  category     String? @db.VarChar(64)
+  categoryData Json?   @map("category_data")
+
   lineItems DealLineItem[]
 
   @@index([organizationId])
   @@index([pipelineId])
   @@index([stageId])
   @@index([sourceConversationId])
+  @@index([organizationId, category])
   @@map("deals")
+}
+
+/// Configuração de categorias de negócio por organização (extensão crm_deals).
+model DealOrgSettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  activeCategory        String   @default("default") @map("active_category") @db.VarChar(64)
+  autoGenerateLineItems Boolean  @default(false) @map("auto_generate_line_items")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @unique @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("deal_org_settings")
+}
+
+/// Listas de opções configuráveis (tipos de hóspede, áreas jurídicas, etc.).
+model DealOptionSet {
+  id             String   @id @default(uuid()) @db.Uuid
+  setKey         String   @map("set_key") @db.VarChar(120)
+  label          String   @db.VarChar(255)
+  categoryKey    String?  @map("category_key") @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  options DealOptionSetOption[]
+
+  @@unique([organizationId, setKey])
+  @@index([organizationId])
+  @@map("deal_option_sets")
+}
+
+model DealOptionSetOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  optionSetId String        @map("option_set_id") @db.Uuid
+  optionSet   DealOptionSet @relation(fields: [optionSetId], references: [id], onDelete: Cascade)
+
+  @@index([optionSetId])
+  @@map("deal_option_set_options")
+}
+
+/// Overrides de campos do catálogo por organização/categoria.
+model DealFieldOverride {
+  id          String   @id @default(uuid()) @db.Uuid
+  categoryKey String   @map("category_key") @db.VarChar(64)
+  fieldKey    String   @map("field_key") @db.VarChar(120)
+  enabled     Boolean  @default(true)
+  required    Boolean  @default(false)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, categoryKey, fieldKey])
+  @@index([organizationId, categoryKey])
+  @@map("deal_field_overrides")
+}
+
+/// Campos personalizados (categoria custom).
+model DealCustomField {
+  id          String   @id @default(uuid()) @db.Uuid
+  categoryKey String   @default("custom") @map("category_key") @db.VarChar(64)
+  fieldKey    String   @map("field_key") @db.VarChar(120)
+  label       String   @db.VarChar(255)
+  type        String   @db.VarChar(32)
+  required    Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0) @map("sort_order")
+  options     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, categoryKey, fieldKey])
+  @@index([organizationId, categoryKey])
+  @@map("deal_custom_fields")
 }
 
 model DealLineItem {

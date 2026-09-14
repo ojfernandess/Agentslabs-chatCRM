@@ -10,6 +10,12 @@ import { DealStatus, Prisma } from "@prisma/client";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { fireBroadcastEventTriggers } from "../lib/broadcastEventHooks.js";
 import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
+import { dealCategorySettingsRoutes } from "./dealCategorySettings.js";
+import {
+  maybeAutoGenerateLineItemsFromCategory,
+  validateDealCategoryPayload,
+} from "../lib/dealCategories/dealCategoryService.js";
+import { normalizeDealCategory } from "@openconduit/shared";
 
 async function requireCrmDeals(organizationId: string, reply: FastifyReply): Promise<boolean> {
   const enabled = await isOrganizationFeatureEnabled(organizationId, "crm_deals");
@@ -39,12 +45,15 @@ const createAccountSchema = z.object({
 
 const patchAccountSchema = createAccountSchema.partial();
 
+const categoryDataSchema = z.record(z.unknown()).optional();
+
 const createProductSchema = z.object({
   name: z.string().min(1).max(255),
   sku: z.string().max(120).nullable().optional(),
   priceCents: z.number().int().min(0).optional(),
   currency: z.string().length(3).optional(),
   isActive: z.boolean().optional(),
+  productCategoryId: z.string().uuid().nullable().optional(),
 });
 
 const patchProductSchema = createProductSchema.partial();
@@ -60,6 +69,8 @@ const createDealSchema = z.object({
   currency: z.string().length(3).optional(),
   probabilityPct: z.number().int().min(0).max(100).nullable().optional(),
   closeDate: z.coerce.date().nullable().optional(),
+  category: z.string().max(64).nullable().optional(),
+  categoryData: categoryDataSchema,
 });
 
 const patchDealSchema = z.object({
@@ -75,6 +86,13 @@ const patchDealSchema = z.object({
   probabilityPct: z.number().int().min(0).max(100).nullable().optional(),
   closeDate: z.coerce.date().nullable().optional(),
   lostReason: z.string().max(2000).nullable().optional(),
+  category: z.string().max(64).nullable().optional(),
+  categoryData: categoryDataSchema,
+});
+
+const dealsQuerySchema = z.object({
+  category: z.string().max(64).optional(),
+  dealType: z.string().max(64).optional(),
 });
 
 const createDealLineItemSchema = z.object({
@@ -262,6 +280,15 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
+    if (parsed.data.productCategoryId) {
+      const pc = await prisma.productCategory.findFirst({
+        where: { id: parsed.data.productCategoryId, organizationId },
+      });
+      if (!pc) {
+        return reply.status(400).send({ error: "Bad Request", message: "Invalid product category", statusCode: 400 });
+      }
+    }
+
     const row = await prisma.product.create({
       data: {
         organizationId,
@@ -270,6 +297,7 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
         priceCents: parsed.data.priceCents ?? 0,
         currency: parsed.data.currency ?? "BRL",
         isActive: parsed.data.isActive ?? true,
+        productCategoryId: parsed.data.productCategoryId ?? undefined,
       },
     });
     return reply.status(201).send(row);
@@ -289,6 +317,19 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     if (parsed.data.priceCents !== undefined) data.priceCents = parsed.data.priceCents;
     if (parsed.data.currency !== undefined) data.currency = parsed.data.currency;
     if (parsed.data.isActive !== undefined) data.isActive = parsed.data.isActive;
+    if (parsed.data.productCategoryId !== undefined) {
+      if (parsed.data.productCategoryId === null) {
+        data.productCategory = { disconnect: true };
+      } else {
+        const pc = await prisma.productCategory.findFirst({
+          where: { id: parsed.data.productCategoryId, organizationId },
+        });
+        if (!pc) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid product category", statusCode: 400 });
+        }
+        data.productCategory = { connect: { id: parsed.data.productCategoryId } };
+      }
+    }
     const existingProd = await prisma.product.findFirst({
       where: { id: request.params.id, organizationId },
     });
@@ -306,7 +347,26 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
     if (!(await requireCrmDeals(organizationId, reply))) return;
 
+    const qParsed = dealsQuerySchema.safeParse(request.query);
+    if (!qParsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: qParsed.error.message, statusCode: 400 });
+    }
+
     const where: Prisma.DealWhereInput = { organizationId };
+    if (qParsed.data.category) {
+      const cat = normalizeDealCategory(qParsed.data.category);
+      if (cat === "default") {
+        where.OR = [{ category: null }, { category: "default" }];
+      } else {
+        where.category = cat;
+      }
+    }
+    if (qParsed.data.dealType) {
+      where.categoryData = {
+        path: ["dealType"],
+        equals: qParsed.data.dealType,
+      };
+    }
 
     const rows = await prisma.deal.findMany({
       where,
@@ -368,6 +428,20 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
     });
     const initialStatus = dealStatusFromLeadValueRollup(stageWithLt?.leadType?.valueRollup);
 
+    const catPayload = await validateDealCategoryPayload(
+      organizationId,
+      parsed.data.category,
+      parsed.data.categoryData,
+    );
+    if (!catPayload.ok) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: catPayload.message,
+        errors: catPayload.errors,
+        statusCode: 400,
+      });
+    }
+
     const deal = await prisma.deal.create({
       data: {
         organizationId,
@@ -382,6 +456,8 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
         accountId: parsed.data.accountId ?? undefined,
         primaryContactId: parsed.data.primaryContactId ?? undefined,
         ownerId: parsed.data.ownerId ?? request.user.id,
+        category: catPayload.category ?? undefined,
+        categoryData: (catPayload.categoryData ?? undefined) as Prisma.InputJsonValue | undefined,
       },
       include: {
         stage: true,
@@ -411,6 +487,18 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    await maybeAutoGenerateLineItemsFromCategory(
+      prisma,
+      organizationId,
+      deal.id,
+      catPayload.category,
+      catPayload.categoryData,
+    );
+    const dealAfterItems = await prisma.deal.findUnique({ where: { id: deal.id } });
+    if (dealAfterItems && dealAfterItems.amountCents !== deal.amountCents) {
+      await syncDealAmountFromLineItems(deal.id);
+    }
+
     fireCrmFlowTriggers(
       organizationId,
       "deal_created",
@@ -418,11 +506,21 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
         dealId: deal.id,
         contactId: deal.primaryContactId,
         pipelineStageId: deal.stageId,
+        category: deal.category,
       },
       request.log,
     );
 
-    return reply.status(201).send(deal);
+    const refreshed = await prisma.deal.findUnique({
+      where: { id: deal.id },
+      include: {
+        stage: true,
+        pipeline: { select: { id: true, name: true } },
+        account: { select: { id: true, name: true } },
+        primaryContact: { select: { id: true, name: true } },
+      },
+    });
+    return reply.status(201).send(refreshed ?? deal);
   });
 
   app.get<{ Params: { id: string } }>("/deals/:id", async (request, reply) => {
@@ -540,6 +638,37 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
       });
       data.status = dealStatusFromLeadValueRollup(stRow?.leadType?.valueRollup);
       if (stRow) data.probabilityPct = stRow.probabilityPct;
+    }
+
+    if (parsed.data.category !== undefined || parsed.data.categoryData !== undefined) {
+      const nextCategory =
+        parsed.data.category !== undefined
+          ? parsed.data.category
+          : existing.category ?? undefined;
+      const mergedData =
+        parsed.data.categoryData !== undefined
+          ? {
+              ...(existing.categoryData && typeof existing.categoryData === "object" && !Array.isArray(existing.categoryData)
+                ? (existing.categoryData as Record<string, unknown>)
+                : {}),
+              ...parsed.data.categoryData,
+            }
+          : existing.categoryData;
+
+      const catPayload = await validateDealCategoryPayload(organizationId, nextCategory, mergedData);
+      if (!catPayload.ok) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: catPayload.message,
+          errors: catPayload.errors,
+          statusCode: 400,
+        });
+      }
+      data.category = catPayload.category;
+      data.categoryData =
+        catPayload.categoryData != null
+          ? (catPayload.categoryData as Prisma.InputJsonValue)
+          : Prisma.JsonNull;
     }
 
     const updated = await prisma.deal.update({
@@ -734,4 +863,6 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(204).send();
     },
   );
+
+  await dealCategorySettingsRoutes(app);
 }

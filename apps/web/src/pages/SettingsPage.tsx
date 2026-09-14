@@ -38,6 +38,7 @@ import { SlaPoliciesSettings } from "@/components/settings/SlaPoliciesSettings";
 import { CannedResponsesSettings } from "@/components/settings/CannedResponsesSettings";
 import { OrganizationTagsPanel } from "@/components/settings/OrganizationTagsPanel";
 import { TeamSettingsPanel } from "@/components/settings/TeamSettingsPanel";
+import { DealCategorySettingsPanel } from "@/components/settings/DealCategorySettingsPanel";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
@@ -3156,6 +3157,10 @@ export function SettingsPage() {
                   <p className="mt-3 text-xs text-ink-400 dark:text-ink-500">{t("settings.saveLeadTypesNote")}</p>
                 </motion.div>
               )}
+
+              {section === "crm" && (user?.organizationFeatures?.crm_deals ?? false) && isTenantAdmin(user?.role, user?.actingOrganizationId) ? (
+                <DealCategorySettingsPanel />
+              ) : null}
 
               {section === "templates" && (
                 <WhatsAppMessageTemplatesSection

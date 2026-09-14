@@ -14,6 +14,10 @@ import { isTenantAdmin } from "@/lib/authRole";
 import { Briefcase, Plus, X, ListTree, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { APP_CURRENCY, formatCurrencyFromCents } from "@/lib/currency";
+import {
+  DealCategoryFieldsForm,
+  type DealCategoryContext,
+} from "@/components/crm/DealCategoryFieldsForm";
 
 interface StageItem {
   id: string;
@@ -29,6 +33,8 @@ interface DealRow {
   status: string;
   amountCents: number;
   currency: string;
+  category?: string | null;
+  categoryData?: Record<string, unknown> | null;
   stage: { id: string; name: string; color: string };
   primaryContact: { id: string; name: string } | null;
 }
@@ -106,21 +112,31 @@ export function DealsPage() {
   const [nameSaving, setNameSaving] = useState(false);
   const [nameMessage, setNameMessage] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [categoryContext, setCategoryContext] = useState<DealCategoryContext | null>(null);
+  const [createCategoryData, setCreateCategoryData] = useState<Record<string, unknown>>({});
+  const [detailCategoryData, setDetailCategoryData] = useState<Record<string, unknown>>({});
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState("");
 
   const loadDeals = useCallback(async () => {
-    const res = await api.get<{ data: DealRow[] }>("/crm/deals");
+    const qs = categoryFilter ? `?category=${encodeURIComponent(categoryFilter)}` : "";
+    const res = await api.get<{ data: DealRow[] }>(`/crm/deals${qs}`);
     setDeals(res.data);
-  }, []);
+  }, [categoryFilter]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         await loadDeals();
-        const st = await api.get<StageItem[]>("/crm/pipeline-stages");
+        const [st, ctxRes] = await Promise.all([
+          api.get<StageItem[]>("/crm/pipeline-stages"),
+          api.get<{ data: DealCategoryContext }>("/crm/deal-category-context").catch(() => null),
+        ]);
         if (!cancelled) {
           setStages(st);
           if (st[0]) setCreateStageId(st[0].id);
+          if (ctxRes) setCategoryContext(ctxRes.data);
         }
       } catch {
         if (!cancelled) {
@@ -136,6 +152,10 @@ export function DealsPage() {
     };
   }, [loadDeals]);
 
+  useEffect(() => {
+    if (!loading) void loadDeals();
+  }, [categoryFilter, loadDeals, loading]);
+
   const openDetail = async (id: string) => {
     setDetailId(id);
     setDetail(null);
@@ -147,6 +167,11 @@ export function DealsPage() {
         api.get<{ data: ProductOption[] }>("/crm/products"),
       ]);
       setDetail(d);
+      setDetailCategoryData(
+        d.categoryData && typeof d.categoryData === "object" && !Array.isArray(d.categoryData)
+          ? (d.categoryData as Record<string, unknown>)
+          : {},
+      );
       setProducts(prodRes.data);
     } catch {
       setDetail(null);
@@ -225,10 +250,12 @@ export function DealsPage() {
         name: createName.trim(),
         stageId: createStageId,
         amountCents,
+        ...(Object.keys(createCategoryData).length > 0 ? { categoryData: createCategoryData } : {}),
       });
       setCreateOpen(false);
       setCreateName("");
       setCreateAmount("");
+      setCreateCategoryData({});
       await loadDeals();
     } catch (e) {
       setCreateError(e instanceof ApiError ? e.message : "Não foi possível criar o negócio.");
@@ -328,6 +355,25 @@ export function DealsPage() {
   const totalWonCents = deals.filter((d) => d.status === "WON").reduce((a, d) => a + d.amountCents, 0);
   const totalOpenCents = deals.filter((d) => d.status === "OPEN").reduce((a, d) => a + d.amountCents, 0);
 
+  const handleSaveCategoryData = async () => {
+    if (!detailId) return;
+    setCategorySaving(true);
+    try {
+      await api.patch(`/crm/deals/${detailId}`, { categoryData: detailCategoryData });
+      await refreshDetailAndList(detailId);
+    } catch (e) {
+      window.alert(e instanceof ApiError ? e.message : "Error");
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
+  const categoryLabel = (cat: string | null | undefined) => {
+    if (!cat || !categoryContext) return "—";
+    const item = categoryContext.catalog.find((c) => c.id === cat);
+    return item?.labelPt ?? cat;
+  };
+
   const handleSaveDetailStage = async () => {
     if (!detailId || !detailStageId) return;
     setStageMessage("");
@@ -409,6 +455,24 @@ export function DealsPage() {
           </div>
         ) : null}
 
+        {categoryContext && categoryContext.catalog.length > 1 ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <label className="text-sm text-gray-600 dark:text-ink-400">{t("dealsPage.filterCategory")}</label>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+            >
+              <option value="">{t("dealsPage.filterCategoryAll")}</option>
+              {categoryContext.catalog.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.labelPt}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="flex justify-center py-16">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
@@ -426,6 +490,11 @@ export function DealsPage() {
                   <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-ink-200">Nome</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-ink-200">Etapa</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-ink-200">Estado</th>
+                  {categoryContext && categoryContext.settings.activeCategory !== "default" ? (
+                    <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-ink-200">
+                      {t("dealsPage.columnCategory")}
+                    </th>
+                  ) : null}
                   <th className="px-4 py-3 text-right font-medium text-gray-700 dark:text-ink-200">Valor</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-ink-200">Contato</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-700 dark:text-ink-200">Linhas</th>
@@ -445,6 +514,11 @@ export function DealsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-ink-300">{d.status}</td>
+                    {categoryContext && categoryContext.settings.activeCategory !== "default" ? (
+                      <td className="px-4 py-3 text-gray-600 dark:text-ink-300 text-xs">
+                        {categoryLabel(d.category ?? "default")}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-right tabular-nums text-gray-800 dark:text-ink-100">
                       {fmtMoney(d.amountCents, d.currency)}
                     </td>
@@ -545,6 +619,19 @@ export function DealsPage() {
                       Ao adicionar linhas abaixo, o total do negócio passa a ser a soma das linhas.
                     </p>
                   </div>
+                  {categoryContext ? (
+                    <DealCategoryFieldsForm
+                      context={categoryContext}
+                      values={createCategoryData}
+                      onChange={setCreateCategoryData}
+                      onSuggestedAmountCents={(cents) => {
+                        if (cents != null && cents > 0 && !createAmount.trim()) {
+                          setCreateAmount((cents / 100).toFixed(2));
+                        }
+                      }}
+                      compact
+                    />
+                  ) : null}
                   {createError && <p className="text-sm text-red-600">{createError}</p>}
                   <div className="flex justify-end gap-2 pt-2">
                     <button
@@ -680,6 +767,25 @@ export function DealsPage() {
                         <p className="mt-2 text-xs text-gray-600 dark:text-ink-300">{stageMessage}</p>
                       ) : null}
                     </div>
+
+                    {categoryContext && categoryContext.settings.activeCategory !== "default" ? (
+                      <div className="mb-4">
+                        <DealCategoryFieldsForm
+                          context={categoryContext}
+                          values={detailCategoryData}
+                          onChange={setDetailCategoryData}
+                          compact
+                        />
+                        <button
+                          type="button"
+                          disabled={categorySaving}
+                          onClick={() => void handleSaveCategoryData()}
+                          className="mt-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                        >
+                          {categorySaving ? t("dealsPage.savingCategory") : t("dealsPage.saveCategoryDetails")}
+                        </button>
+                      </div>
+                    ) : null}
 
                     <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-ink-200">Linhas</h3>
                     {detail.lineItems.length === 0 ? (

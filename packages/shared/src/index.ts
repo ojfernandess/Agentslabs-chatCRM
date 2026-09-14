@@ -13,3 +13,5 @@ export * from "./contactWebsiteDisplay.js";
 export * from "./legalVersions.js";
 export * from "./billingReminderEmailTemplate.js";
 export * from "./paymentConfirmationEmailTemplate.js";
+export * from "./dealCategoryCatalog.js";
+export * from "./dealCategoryValidation.js";

@@ -8,6 +8,11 @@ import {
 import { getOrCreateDefaultPipeline } from "./defaultPipeline.js";
 import { ensurePipelineStageForLeadType } from "./pipelineLeadTypeSync.js";
 import { dealStatusFromLeadValueRollup, syncDealsForContactPipelineStage } from "./dealStageSync.js";
+import {
+  getActiveDealCategory,
+  maybeAutoGenerateLineItemsFromCategory,
+  validateDealCategoryPayload,
+} from "./dealCategories/dealCategoryService.js";
 
 type Tx = Prisma.TransactionClient;
 
@@ -54,6 +59,8 @@ export async function maybeCreateDealOnConversationClosure(
     stage: { id: string; probabilityPct: number };
     valueRollup: LeadValueRollup;
     playbook: LeadTypeClosurePlaybook;
+    category?: string | null;
+    categoryData?: Record<string, unknown> | null;
   },
 ): Promise<ClosureDealResult> {
   if (
@@ -73,6 +80,16 @@ export async function maybeCreateDealOnConversationClosure(
   });
   const val = input.closureValue ?? 0;
   const dealStatus = dealStatusFromLeadValueRollup(input.valueRollup);
+
+  const activeCategory = input.category ?? (await getActiveDealCategory(input.organizationId));
+  const catPayload = await validateDealCategoryPayload(
+    input.organizationId,
+    activeCategory,
+    input.categoryData ?? null,
+  );
+  const category = catPayload.ok ? catPayload.category : null;
+  const categoryData = catPayload.ok ? catPayload.categoryData : null;
+
   const deal = await tx.deal.create({
     data: {
       organizationId: input.organizationId,
@@ -87,8 +104,27 @@ export async function maybeCreateDealOnConversationClosure(
       probabilityPct: input.stage.probabilityPct,
       sourceConversationId: input.conversationId,
       sourceClosureRecordId: input.closureRecordId,
+      category: category ?? undefined,
+      categoryData: (categoryData ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });
+
+  await maybeAutoGenerateLineItemsFromCategory(
+    tx,
+    input.organizationId,
+    deal.id,
+    category,
+    categoryData,
+  );
+  const items = await tx.dealLineItem.findMany({ where: { dealId: deal.id } });
+  if (items.length > 0) {
+    const sum = items.reduce((acc, i) => {
+      const factor = Math.max(0, 1 - i.discountPct / 100);
+      return acc + Math.round(i.quantity * i.unitPriceCents * factor);
+    }, 0);
+    await tx.deal.update({ where: { id: deal.id }, data: { amountCents: sum } });
+  }
+
   return { id: deal.id, name: deal.name, primaryContactId: deal.primaryContactId };
 }
 

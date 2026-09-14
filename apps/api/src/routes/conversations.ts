@@ -123,6 +123,7 @@ const updateSchema = z.object({
   closureReason: z.union([z.string().max(4000), z.null()]).optional(),
   leadTypeId: z.union([z.string().uuid(), z.null()]).optional(),
   closureValue: z.number().nonnegative().nullable().optional(),
+  dealCategoryData: z.record(z.unknown()).optional(),
   resolveReminder: z
     .object({
       note: z.string().min(1).max(2000),
@@ -2163,6 +2164,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
                 stage: stageForDeal,
                 valueRollup: ltPlaybook.valueRollup,
                 playbook: ltPlaybook.playbook,
+                categoryData: parsed.data.dealCategoryData ?? null,
               });
             }
 
