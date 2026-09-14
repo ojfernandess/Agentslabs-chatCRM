@@ -140,11 +140,12 @@ export function getMcpCatalog(): { servers: McpCatalogServer[]; endpoint: string
         tagline: "Voz, SMS, WhatsApp e PABX — diagnóstico",
         description:
           "Servidor MCP dedicado à integração Nvoip. Consulta conta, saldo, trunks, DIDs, logs e insights. Somente leitura — não altera configuração nem dispara chamadas.",
-        transport: "stdio",
+        transport: "stdio-bridge",
         access: "super_admin",
         auth: ["OPENNEXO_MCP_TOKEN ou NVOIP_MCP_TOKEN (ocm_*)"],
-        entrypoint: "apps/api/src/mcp-nvoip-stdio.ts",
-        envVars: ["OPENNEXO_MCP_TOKEN", "NVOIP_MCP_TOKEN"],
+        endpoint: `${endpoint}/nvoip`,
+        entrypoint: "apps/api/src/mcp-nvoip-http-bridge.ts (Cursor) · apps/api/src/mcp-nvoip-stdio.ts (Docker com DB)",
+        envVars: ["OPENNEXO_MCP_TOKEN", "NVOIP_MCP_TOKEN", "NVOIP_MCP_URL (opcional)"],
         tools: [
           {
             name: "search_nvoip",

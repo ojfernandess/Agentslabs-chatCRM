@@ -1,11 +1,10 @@
 /**
- * Nvoip MCP Server — ponto de entrada stdio para Cursor / Claude Desktop.
+ * Nvoip MCP Server — ponto de entrada stdio com DB local (Docker / dev com Postgres).
  *
- * Usa o mesmo token MCP do OpenNexo (Super Admin → MCP Server):
- *   OPENNEXO_MCP_TOKEN=ocm_...
+ * Para Cursor no host Windows/macOS, use o bridge HTTP (sem DB local):
+ *   apps/api/src/mcp-nvoip-http-bridge.ts
  *
- * Uso:
- *   npx tsx apps/api/src/mcp-nvoip-stdio.ts
+ * Token: OPENNEXO_MCP_TOKEN=ocm_... ou NVOIP_MCP_TOKEN=ocm_...
  */
 import { config as loadEnv } from "dotenv";
 import { resolve } from "node:path";

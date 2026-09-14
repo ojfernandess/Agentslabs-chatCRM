@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { McpAuthContext } from "../types.js";
 import { createOpenNexoMcpServer } from "../server/createMcpServer.js";
 
@@ -24,11 +25,14 @@ function cleanupStaleSessions(): void {
   }
 }
 
+type McpServerFactory = (auth: McpAuthContext) => McpServer;
+
 export async function handleMcpHttpRequest(
   req: IncomingMessage,
   res: ServerResponse,
   auth: McpAuthContext,
   parsedBody?: unknown,
+  createServer: McpServerFactory = createOpenNexoMcpServer,
 ): Promise<void> {
   cleanupStaleSessions();
 
@@ -67,7 +71,7 @@ export async function handleMcpHttpRequest(
       }
     };
 
-    const server = createOpenNexoMcpServer(auth);
+    const server = createServer(auth);
     await server.connect(transport);
 
     await transport.handleRequest(req, res, parsedBody);

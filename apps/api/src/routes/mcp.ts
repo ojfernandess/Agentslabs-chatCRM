@@ -5,6 +5,7 @@ import { getPublicOrigin } from "../config.js";
 import { initMcpProviders } from "../lib/mcp/providers/index.js";
 import { resolveMcpAuth } from "../lib/mcp/auth/resolveMcpAuth.js";
 import { handleMcpHttpRequest } from "../lib/mcp/transport/McpSessionManager.js";
+import { createNvoipMcpServer } from "../lib/mcp/server/createNvoipMcpServer.js";
 import {
   createMcpAccessToken,
   listMcpAccessTokensForSuperAdmin,
@@ -61,6 +62,28 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
     const auth = await mcpAuthOr401(request, reply);
     if (!auth) return;
     await handleMcpHttpRequest(request.raw, reply.raw, auth);
+    reply.hijack();
+  });
+
+  /** Nvoip MCP — Streamable HTTP (POST/GET/DELETE) */
+  app.post("/nvoip", async (request, reply) => {
+    const auth = await mcpAuthOr401(request, reply);
+    if (!auth) return;
+    await handleMcpHttpRequest(request.raw, reply.raw, auth, request.body, createNvoipMcpServer);
+    reply.hijack();
+  });
+
+  app.get("/nvoip", async (request, reply) => {
+    const auth = await mcpAuthOr401(request, reply);
+    if (!auth) return;
+    await handleMcpHttpRequest(request.raw, reply.raw, auth, undefined, createNvoipMcpServer);
+    reply.hijack();
+  });
+
+  app.delete("/nvoip", async (request, reply) => {
+    const auth = await mcpAuthOr401(request, reply);
+    if (!auth) return;
+    await handleMcpHttpRequest(request.raw, reply.raw, auth, undefined, createNvoipMcpServer);
     reply.hijack();
   });
 

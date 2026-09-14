@@ -126,7 +126,9 @@ function buildCursorSnippet(server: McpCatalogServer, endpoint: string): string 
       2,
     );
   }
-  const entry = server.entrypoint?.split("·")[0]?.trim() ?? `apps/api/src/mcp-${key}-stdio.ts`;
+  const entry =
+    server.entrypoint?.split("·")[0]?.trim() ??
+    (key === "nvoip" ? "apps/api/src/mcp-nvoip-http-bridge.ts" : `apps/api/src/mcp-${key}-stdio.ts`);
   return JSON.stringify(
     {
       mcpServers: {
