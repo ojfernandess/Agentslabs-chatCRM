@@ -13,6 +13,13 @@
         "tsx",
         "apps/api/src/mcp-langfuse-bridge.ts"
       ]
+    },
+    "nvoip": {
+      "command": "npx",
+      "args": [
+        "tsx",
+        "apps/api/src/mcp-nvoip-stdio.ts"
+      ]
     }
   }
 }

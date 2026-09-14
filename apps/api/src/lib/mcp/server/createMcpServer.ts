@@ -65,7 +65,7 @@ export function createOpenNexoMcpServer(ctx: McpAuthContext): McpServer {
     },
     {
       instructions: `OpenNexo MCP Server — plataforma de agentes (SUPER ADMIN ONLY).
-Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor, snapshots EIL, contratos de turno (opennexo://turn|contract), webhooks WhatsApp (Meta, 360dialog, Evolution API, Evolution Go, Twilio via search_webhook) e governança arquitetural (opennexo://architecture/adr/* — ADR, RCA, impact analysis).
+Use as ferramentas de busca para investigar agentes, execuções, prompts, ferramentas, logs, memória, RAG, workflows LangGraph, traces Langfuse, decisões do Supervisor, snapshots EIL, contratos de turno (opennexo://turn|contract), webhooks WhatsApp (Meta, 360dialog, Evolution API, Evolution Go, Twilio via search_webhook), integração Nvoip (search_nvoip — voz, SMS, WhatsApp, trunks) e governança arquitetural (opennexo://architecture/adr/* — ADR, RCA, impact analysis).
 Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMode ? "ativado" : "desativado"}.`,
       capabilities: {
         resources: { subscribe: false, listChanged: false },
@@ -364,6 +364,36 @@ Acesso restrito a super administradores da plataforma. Modo debug: ${ctx.debugMo
           getMcpProvider("config")!.readResource(ctx, `opennexo://config/${ctx.organizationId}`),
         ),
       ),
+  );
+
+  server.registerTool(
+    "search_nvoip",
+    {
+      description:
+        "Search Nvoip integration — account, insights, logs, trunks, DIDs, balance, test_connection, whatsapp, sip_users, pabx_trunk (read-only diagnostics)",
+      inputSchema: {
+        action: z
+          .enum([
+            "account",
+            "insights",
+            "logs",
+            "trunks",
+            "dids",
+            "balance",
+            "test_connection",
+            "whatsapp",
+            "sip_users",
+            "pabx_trunk",
+          ])
+          .optional()
+          .describe("What to fetch (default: account)"),
+        periodDays: z.number().int().min(1).max(365).optional().describe("For insights — period in days"),
+        level: z.enum(["info", "warn", "error"]).optional().describe("Filter integration logs by level"),
+        limit: z.number().int().min(1).max(100).optional().describe("Max log rows"),
+      },
+    },
+    async (args) =>
+      textResult(await withAudit(ctx, "tool:search_nvoip", () => getMcpProvider("nvoip")!.search!(ctx, args))),
   );
 
   server.registerTool(

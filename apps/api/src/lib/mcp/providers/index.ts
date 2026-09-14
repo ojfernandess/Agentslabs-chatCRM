@@ -20,6 +20,7 @@ import { eilProvider } from "./eilProvider.js";
 import { turnProvider, contractProvider } from "./turnContractProvider.js";
 import { architectureGovernanceProvider } from "./architectureGovernanceProvider.js";
 import { webhookProvider } from "./webhookProvider.js";
+import { nvoipProvider } from "./nvoipProvider.js";
 
 let initialized = false;
 
@@ -45,5 +46,6 @@ export function initMcpProviders(): void {
   registerMcpProvider(configProvider);
   registerMcpProvider(architectureGovernanceProvider);
   registerMcpProvider(webhookProvider);
+  registerMcpProvider(nvoipProvider);
   initialized = true;
 }

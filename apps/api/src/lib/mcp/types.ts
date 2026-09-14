@@ -27,7 +27,8 @@ export type McpResourceDomain =
   | "contract"
   | "config"
   | "architecture"
-  | "webhook";
+  | "webhook"
+  | "nvoip";
 
 /** Permissões granulares por recurso. */
 export type McpPermission =
@@ -59,7 +60,8 @@ export type McpPermission =
   | "config:read"
   | "architecture:read"
   | "audit:read"
-  | "webhook:read";
+  | "webhook:read"
+  | "nvoip:read";
 
 /** Contexto autenticado de um pedido MCP. */
 export type McpAuthContext = {
@@ -103,6 +105,10 @@ export type McpProviderSearchParams = {
   inboxId?: string;
   provider?: string;
   resyncEvolutionWebhook?: boolean;
+  /** Nvoip MCP — action to run (search_nvoip). */
+  action?: string;
+  periodDays?: number;
+  level?: string;
 };
 
 export type McpToolResult = {
