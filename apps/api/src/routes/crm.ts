@@ -16,6 +16,8 @@ import {
   validateDealCategoryPayload,
 } from "../lib/dealCategories/dealCategoryService.js";
 import { normalizeDealCategory } from "@openconduit/shared";
+import { endOfDay, startOfDay, subDays } from "date-fns";
+import { buildDealOwnerStats } from "../lib/dealOwnerStats.js";
 
 async function requireCrmDeals(organizationId: string, reply: FastifyReply): Promise<boolean> {
   const enabled = await isOrganizationFeatureEnabled(organizationId, "crm_deals");
@@ -94,6 +96,24 @@ const dealsQuerySchema = z.object({
   category: z.string().max(64).optional(),
   dealType: z.string().max(64).optional(),
 });
+
+const dealOwnerStatsQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  category: z.string().max(64).optional(),
+  dealType: z.string().max(64).optional(),
+  ownerId: z.string().uuid().optional(),
+});
+
+function parseDealStatsDateRange(query: { from?: string; to?: string }): { from: Date; to: Date } | { error: string } {
+  const now = new Date();
+  const defaultTo = endOfDay(now);
+  const defaultFrom = startOfDay(subDays(now, 29));
+  const from = query.from ? new Date(query.from) : defaultFrom;
+  const to = query.to ? new Date(query.to) : defaultTo;
+  if (from > to) return { error: "`from` must be before `to`" };
+  return { from, to };
+}
 
 const createDealLineItemSchema = z.object({
   description: z.string().min(1).max(2000),
@@ -381,6 +401,60 @@ export async function crmRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     return { data: rows };
+  });
+
+  /** Estatísticas de negócios do utilizador autenticado (por ownerId). */
+  app.get("/deals/my-stats", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
+
+    const qParsed = dealOwnerStatsQuerySchema.safeParse(request.query);
+    if (!qParsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: qParsed.error.message, statusCode: 400 });
+    }
+
+    const range = parseDealStatsDateRange(qParsed.data);
+    if ("error" in range) {
+      return reply.status(400).send({ error: "Bad Request", message: range.error, statusCode: 400 });
+    }
+
+    const data = await buildDealOwnerStats({
+      organizationId,
+      from: range.from,
+      to: range.to,
+      category: qParsed.data.category ?? null,
+      dealType: qParsed.data.dealType ?? null,
+      ownerId: request.user.id,
+    });
+    return { data };
+  });
+
+  /** Painel admin — estatísticas de negócios por atendente (owner). */
+  app.get("/deals/stats-by-owner", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireCrmDeals(organizationId, reply))) return;
+
+    const qParsed = dealOwnerStatsQuerySchema.safeParse(request.query);
+    if (!qParsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: qParsed.error.message, statusCode: 400 });
+    }
+
+    const range = parseDealStatsDateRange(qParsed.data);
+    if ("error" in range) {
+      return reply.status(400).send({ error: "Bad Request", message: range.error, statusCode: 400 });
+    }
+
+    const data = await buildDealOwnerStats({
+      organizationId,
+      from: range.from,
+      to: range.to,
+      category: qParsed.data.category ?? null,
+      dealType: qParsed.data.dealType ?? null,
+      ownerId: qParsed.data.ownerId ?? null,
+    });
+    return { data };
   });
 
   app.post("/deals", async (request, reply) => {

@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import clsx from "clsx";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { ClipboardCheck, Clock, PhoneCall } from "lucide-react";
+import { BarChart3, ClipboardCheck, Clock, PhoneCall } from "lucide-react";
+import { DealOwnerStatsPanel } from "@/components/crm/DealOwnerStatsPanel";
+import type { DealCategoryContext } from "@/components/crm/DealCategoryFieldsForm";
 import { formatDistanceToNow } from "date-fns";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -52,8 +54,11 @@ export function MyAttendancePage() {
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState({ wonValue: 0, pipelineValue: 0 });
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"attendance" | "calls">("attendance");
+  const [activeTab, setActiveTab] = useState<"attendance" | "calls" | "deals">("attendance");
+  const [categoryContext, setCategoryContext] = useState<DealCategoryContext | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState("");
   const hasAnimated = useRef(false);
+  const dealsEnabled = user?.organizationFeatures?.crm_deals ?? true;
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
@@ -119,6 +124,17 @@ export function MyAttendancePage() {
     void load();
   }, [user?.organizationFeatures?.nvoip_voice, user?.organizationFeatures?.wavoip_voice]);
 
+  useEffect(() => {
+    if (!dealsEnabled) {
+      setCategoryContext(null);
+      return;
+    }
+    void api
+      .get<{ data: DealCategoryContext }>("/crm/deal-category-context")
+      .then((res) => setCategoryContext(res.data))
+      .catch(() => setCategoryContext(null));
+  }, [dealsEnabled]);
+
   const totalWonValue = summary.wonValue;
   const totalPipelineValue = summary.pipelineValue;
 
@@ -160,6 +176,7 @@ export function MyAttendancePage() {
             {(
               [
                 ["attendance", t("attendance.tabAttendances"), total],
+                ...(dealsEnabled ? ([["deals", t("attendance.tabDeals"), null]] as const) : []),
                 ["calls", t("attendance.tabCalls"), callRows.length],
               ] as const
             ).map(([id, label, count]) => (
@@ -174,17 +191,20 @@ export function MyAttendancePage() {
                     : "text-gray-600 hover:bg-gray-50 dark:text-ink-300 dark:hover:bg-ink-800",
                 )}
               >
+                {id === "deals" ? <BarChart3 className="h-4 w-4" /> : null}
                 {label}
-                <span
-                  className={clsx(
-                    "rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
-                    activeTab === id
-                      ? "bg-white/20 text-white"
-                      : "bg-gray-100 text-gray-600 dark:bg-ink-800 dark:text-ink-300",
-                  )}
-                >
-                  {count}
-                </span>
+                {count != null ? (
+                  <span
+                    className={clsx(
+                      "rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
+                      activeTab === id
+                        ? "bg-white/20 text-white"
+                        : "bg-gray-100 text-gray-600 dark:bg-ink-800 dark:text-ink-300",
+                    )}
+                  >
+                    {count}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -194,6 +214,13 @@ export function MyAttendancePage() {
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
+        ) : activeTab === "deals" && dealsEnabled ? (
+          <DealOwnerStatsPanel
+            mode="self"
+            categoryContext={categoryContext}
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
+          />
         ) : activeTab === "calls" ? (
           callRows.length === 0 ? (
             <p className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500 dark:border-ink-600 dark:bg-ink-900/40 dark:text-ink-400">

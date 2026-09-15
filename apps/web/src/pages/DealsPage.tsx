@@ -11,13 +11,14 @@ import {
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
-import { Briefcase, Plus, X, ListTree, Trash2 } from "lucide-react";
+import { BarChart3, Briefcase, Plus, X, ListTree, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { APP_CURRENCY, formatCurrencyFromCents } from "@/lib/currency";
 import {
   DealCategoryFieldsForm,
   type DealCategoryContext,
 } from "@/components/crm/DealCategoryFieldsForm";
+import { DealOwnerStatsPanel } from "@/components/crm/DealOwnerStatsPanel";
 
 interface StageItem {
   id: string;
@@ -117,6 +118,7 @@ export function DealsPage() {
   const [detailCategoryData, setDetailCategoryData] = useState<Record<string, unknown>>({});
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [pageTab, setPageTab] = useState<"list" | "attendants">("list");
 
   const loadDeals = useCallback(async () => {
     const qs = categoryFilter ? `?category=${encodeURIComponent(categoryFilter)}` : "";
@@ -401,7 +403,7 @@ export function DealsPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            {!loading && deals.length > 0 ? (
+            {pageTab === "list" && !loading && deals.length > 0 ? (
               <div className="flex flex-wrap gap-3 text-sm">
                 <div className="rounded-lg border border-gray-200 dark:border-ink-700 bg-white dark:bg-ink-900/50 px-3 py-2 shadow-sm">
                   <p className="text-xs text-gray-500 dark:text-ink-400">{t("dealsPage.totalWon")}</p>
@@ -417,23 +419,25 @@ export function DealsPage() {
                 </div>
               </div>
             ) : null}
-            <button
-            type="button"
-            onClick={() => {
-              setCreateOpen(true);
-              setCreateError("");
-            }}
-            disabled={stages.length === 0}
-            className={clsx(
-              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white",
-              stages.length === 0
-                ? "cursor-not-allowed bg-gray-400"
-                : "bg-brand-600 hover:bg-brand-700",
-            )}
-          >
-            <Plus className="h-4 w-4" />
-            Novo negócio
-          </button>
+            {pageTab === "list" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateOpen(true);
+                  setCreateError("");
+                }}
+                disabled={stages.length === 0}
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white",
+                  stages.length === 0
+                    ? "cursor-not-allowed bg-gray-400"
+                    : "bg-brand-600 hover:bg-brand-700",
+                )}
+              >
+                <Plus className="h-4 w-4" />
+                Novo negócio
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -455,7 +459,42 @@ export function DealsPage() {
           </div>
         ) : null}
 
-        {categoryContext && categoryContext.catalog.length > 1 ? (
+        {canManageProducts ? (
+          <div className="mb-4 flex gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-ink-700 dark:bg-ink-900/50">
+            {(
+              [
+                ["list", t("dealsPage.tabList")],
+                ["attendants", t("dealsPage.tabAttendants")],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPageTab(id)}
+                className={clsx(
+                  "flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition",
+                  pageTab === id
+                    ? "bg-brand-500 text-white shadow-sm"
+                    : "text-gray-600 hover:bg-gray-50 dark:text-ink-300 dark:hover:bg-ink-800",
+                )}
+              >
+                {id === "attendants" ? <BarChart3 className="h-4 w-4" /> : null}
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {pageTab === "attendants" && canManageProducts ? (
+          <DealOwnerStatsPanel
+            mode="admin"
+            categoryContext={categoryContext}
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
+          />
+        ) : null}
+
+        {pageTab === "list" && categoryContext && categoryContext.catalog.length > 1 ? (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <label className="text-sm text-gray-600 dark:text-ink-400">{t("dealsPage.filterCategory")}</label>
             <select
@@ -473,16 +512,16 @@ export function DealsPage() {
           </div>
         ) : null}
 
-        {loading ? (
+        {pageTab === "list" && loading ? (
           <div className="flex justify-center py-16">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
           </div>
-        ) : deals.length === 0 ? (
+        ) : pageTab === "list" && deals.length === 0 ? (
           <div className="rounded-xl border border-gray-200 dark:border-ink-700 bg-white dark:bg-ink-900/50 p-12 text-center text-gray-500 dark:text-ink-400">
             Nenhum negócio ainda. Use &quot;Novo negócio&quot; ou a API{" "}
             <code className="text-xs">POST /api/v1/crm/deals</code>.
           </div>
-        ) : (
+        ) : pageTab === "list" ? (
           <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-ink-700 bg-white dark:bg-ink-900/50">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-ink-700 text-sm">
               <thead className="bg-gray-50 dark:bg-ink-800/80">
@@ -549,7 +588,7 @@ export function DealsPage() {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
 
         <AnimatePresence>
           {createOpen ? (
