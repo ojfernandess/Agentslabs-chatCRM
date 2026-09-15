@@ -92,6 +92,8 @@ interface ContactListRow {
   recentlyActive: boolean;
 }
 
+const CONTACTS_PAGE_SIZE = 50;
+
 function formatMoney(cents: number, currency: string): string {
   try {
     return new Intl.NumberFormat(undefined, {
@@ -118,6 +120,7 @@ export function ContactsPage() {
   const nvoipSmsEnabled = user?.organizationFeatures?.nvoip_sms ?? false;
   const nvoipWhatsappEnabled = user?.organizationFeatures?.nvoip_whatsapp ?? false;
   const [contacts, setContacts] = useState<ContactListRow[]>([]);
+  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<{ withOpenDeals: number; avgEngagementOnPage: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -174,10 +177,13 @@ export function ContactsPage() {
     [t],
   );
 
-  const loadContacts = async (searchQuery = "", showSpinner = false) => {
+  const loadContacts = async (searchQuery = "", showSpinner = false, nextPage = page) => {
     if (showSpinner) setLoading(true);
     try {
-      const params = new URLSearchParams({ pageSize: "50" });
+      const params = new URLSearchParams({
+        pageSize: String(CONTACTS_PAGE_SIZE),
+        page: String(nextPage),
+      });
       if (searchQuery) params.set("search", searchQuery);
       const res = await api.get<{
         data: ContactListRow[];
@@ -186,8 +192,11 @@ export function ContactsPage() {
       }>(`/contacts?${params}`);
       setContacts(res.data);
       setTotal(res.total);
+      setPage(nextPage);
       setStats(res.stats ?? null);
       setSelectedIds(new Set());
+      setStagePickerFor(null);
+      setTagPickerFor(null);
       const ids = res.data.map((c) => c.id).slice(0, 40);
       if (ids.length > 0) {
         void api.post("/contacts/sync-avatars", { contactIds: ids }).catch(() => {});
@@ -226,7 +235,7 @@ export function ContactsPage() {
   }, [showExportMenu]);
 
   const handleSearch = () => {
-    loadContacts(search);
+    void loadContacts(search, true, 1);
   };
 
   const handleCreate = async () => {
@@ -236,7 +245,7 @@ export function ContactsPage() {
       setNewName("");
       setNewPhone("");
       setShowCreate(false);
-      loadContacts(search);
+      void loadContacts(search, true, 1);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create contact");
     }
@@ -318,7 +327,10 @@ export function ContactsPage() {
       if (drawerContactId && selectedIds.has(drawerContactId)) setDrawerContactId(null);
       setSelectedIds(new Set());
       setBulkDeleteOpen(false);
-      void loadContacts(search);
+      const remainingOnPage = contacts.filter((c) => !selectedIds.has(c.id)).length;
+      const nextPage =
+        remainingOnPage === 0 && page > 1 ? page - 1 : page;
+      void loadContacts(search, true, nextPage);
     } catch {
       setDeleteError(t("contacts.bulkDeleteError"));
     } finally {
@@ -403,7 +415,7 @@ export function ContactsPage() {
       }>("/contacts/import", form);
       setImportResult(res);
       if (res.created > 0 || res.updated > 0) {
-        await loadContacts(search);
+        await loadContacts(search, true, 1);
         void api.get<TagItem[]>("/tags").then(setAllTags);
       }
     } catch (e) {
@@ -412,6 +424,10 @@ export function ContactsPage() {
       setImportBusy(false);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(total / CONTACTS_PAGE_SIZE));
+  const rangeFrom = total === 0 ? 0 : (page - 1) * CONTACTS_PAGE_SIZE + 1;
+  const rangeTo = Math.min(page * CONTACTS_PAGE_SIZE, total);
 
   return (
     <PageTransition>
@@ -1199,6 +1215,37 @@ export function ContactsPage() {
                   </tbody>
                 </table>
               </div>
+              {total > CONTACTS_PAGE_SIZE ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 dark:border-ink-800">
+                  <p className="text-xs text-slate-500 dark:text-ink-400">
+                    {t("contacts.paginationSummary")
+                      .replace("{from}", String(rangeFrom))
+                      .replace("{to}", String(rangeTo))
+                      .replace("{total}", String(total))}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={page <= 1 || loading}
+                      onClick={() => void loadContacts(search, true, page - 1)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+                    >
+                      {t("contacts.paginationPrev")}
+                    </button>
+                    <span className="min-w-[4.5rem] text-center text-xs tabular-nums text-slate-500 dark:text-ink-400">
+                      {page} / {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={page >= totalPages || loading}
+                      onClick={() => void loadContacts(search, true, page + 1)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800"
+                    >
+                      {t("contacts.paginationNext")}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className="border-t border-slate-100 px-4 py-2 text-center text-xs text-slate-400 dark:border-ink-800 dark:text-ink-500">
                 {t("contacts.footerHint")}{" "}
                 <Link to="/crm" className="font-medium text-brand-600 hover:underline dark:text-brand-400">

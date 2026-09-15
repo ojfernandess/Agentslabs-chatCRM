@@ -4906,6 +4906,9 @@ export const messages = {
       sourceUnknown: "—",
       footerHint: "Arraste contactos no funil ou abra o quadro:",
       footerKanban: "Funil CRM",
+      paginationSummary: "A mostrar {from}–{to} de {total} contatos",
+      paginationPrev: "Anterior",
+      paginationNext: "Seguinte",
       channelTypes: {
         WEBSITE: "Website / widget",
         FACEBOOK: "Facebook",
@@ -11169,6 +11172,9 @@ export const messages = {
       sourceUnknown: "—",
       footerHint: "Move contacts on the board or open:",
       footerKanban: "CRM funnel",
+      paginationSummary: "Showing {from}–{to} of {total} contacts",
+      paginationPrev: "Previous",
+      paginationNext: "Next",
       channelTypes: {
         WEBSITE: "Website / widget",
         FACEBOOK: "Facebook",
