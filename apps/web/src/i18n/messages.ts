@@ -4886,6 +4886,15 @@ export const messages = {
       deleteConfirm:
         "Excluir o contato «{name}» e os dados associados (conversas, tags)? Esta ação não pode ser desfeita.",
       deleteError: "Não foi possível excluir o contato.",
+      bulkSelectAll: "Selecionar todos desta página",
+      bulkSelectOne: "Selecionar {name}",
+      bulkSelected: "{count} selecionado(s)",
+      bulkClearSelection: "Limpar seleção",
+      bulkDelete: "Excluir selecionados",
+      bulkDeleteTitle: "Excluir contatos em massa",
+      bulkDeleteConfirm:
+        "Excluir {count} contato(s) selecionado(s) e os dados associados? Esta ação não pode ser desfeita.",
+      bulkDeleteError: "Não foi possível excluir os contatos selecionados.",
       metricTotalContacts: "Total na base",
       metricWithDeals: "Com negócio aberto",
       metricAvgScore: "Score médio (página)",
@@ -11140,6 +11149,15 @@ export const messages = {
       deleteConfirm:
         "Delete contact «{name}» and associated data (conversations, tags)? This cannot be undone.",
       deleteError: "Could not delete the contact.",
+      bulkSelectAll: "Select all on this page",
+      bulkSelectOne: "Select {name}",
+      bulkSelected: "{count} selected",
+      bulkClearSelection: "Clear selection",
+      bulkDelete: "Delete selected",
+      bulkDeleteTitle: "Bulk delete contacts",
+      bulkDeleteConfirm:
+        "Delete {count} selected contact(s) and associated data? This cannot be undone.",
+      bulkDeleteError: "Could not delete the selected contacts.",
       metricTotalContacts: "Total records",
       metricWithDeals: "With open deal",
       metricAvgScore: "Avg score (page)",

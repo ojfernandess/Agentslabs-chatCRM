@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, formatMessageBodyForPreview } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
@@ -615,6 +615,25 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     fireBroadcastEventTriggers(app, organizationId, "NEW_LEAD", { contactId: contact.id });
 
     return reply.status(201).send(contact);
+  });
+
+  const bulkDeleteContactsSchema = z.object({
+    ids: z.array(z.string().uuid()).min(1).max(200),
+  });
+
+  app.post("/bulk-delete", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const parsed = bulkDeleteContactsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const res = await prisma.contact.deleteMany({
+      where: { id: { in: parsed.data.ids }, organizationId },
+    });
+    return { deleted: res.count };
   });
 
   app.put<{ Params: { id: string } }>("/:id", async (request, reply) => {

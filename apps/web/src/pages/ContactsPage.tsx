@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type RefObject } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
@@ -41,6 +41,7 @@ import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton"
 import { ContactNvoipSmsModal } from "@/components/nvoip/ContactNvoipSmsModal";
 import { ContactNvoipWaTemplateModal } from "@/components/nvoip/ContactNvoipWaTemplateModal";
 import { useAuth } from "@/hooks/useAuth";
+import { isTenantAdmin } from "@/lib/authRole";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
@@ -113,6 +114,7 @@ function ChannelIcon({ channel }: { channel: string | null }) {
 export function ContactsPage() {
   const { t, dateLocale } = useI18n();
   const { user } = useAuth();
+  const canBulkDelete = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const nvoipSmsEnabled = user?.organizationFeatures?.nvoip_sms ?? false;
   const nvoipWhatsappEnabled = user?.organizationFeatures?.nvoip_whatsapp ?? false;
   const [contacts, setContacts] = useState<ContactListRow[]>([]);
@@ -134,6 +136,8 @@ export function ContactsPage() {
     null,
   );
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -183,6 +187,7 @@ export function ContactsPage() {
       setContacts(res.data);
       setTotal(res.total);
       setStats(res.stats ?? null);
+      setSelectedIds(new Set());
       const ids = res.data.map((c) => c.id).slice(0, 40);
       if (ids.length > 0) {
         void api.post("/contacts/sync-avatars", { contactIds: ids }).catch(() => {});
@@ -271,6 +276,11 @@ export function ContactsPage() {
     try {
       await api.delete(`/contacts/${deleteTarget.id}`);
       setContacts((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteTarget.id);
+        return next;
+      });
       if (drawerContactId === deleteTarget.id) setDrawerContactId(null);
       setDeleteTarget(null);
     } catch {
@@ -279,6 +289,45 @@ export function ContactsPage() {
       setDeleteBusy(false);
     }
   };
+
+  const toggleContactSelected = (contactId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(contactId);
+      else next.delete(contactId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllOnPage = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(contacts.map((c) => c.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const confirmBulkDeleteContacts = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await api.post<{ deleted: number }>("/contacts/bulk-delete", { ids });
+      setContacts((prev) => prev.filter((c) => !selectedIds.has(c.id)));
+      if (drawerContactId && selectedIds.has(drawerContactId)) setDrawerContactId(null);
+      setSelectedIds(new Set());
+      setBulkDeleteOpen(false);
+      void loadContacts(search);
+    } catch {
+      setDeleteError(t("contacts.bulkDeleteError"));
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const allOnPageSelected = contacts.length > 0 && contacts.every((c) => selectedIds.has(c.id));
+  const someOnPageSelected = contacts.some((c) => selectedIds.has(c.id));
 
   const setStage = async (contactId: string, leadTypeId: string | null) => {
     try {
@@ -473,6 +522,37 @@ export function ContactsPage() {
               <p className="mt-0.5 text-[11px] text-slate-400 dark:text-ink-500">{t("contacts.metricAvgScoreHint")}</p>
             </div>
           </motion.div>
+
+          {canBulkDelete && selectedIds.size > 0 ? (
+            <motion.div
+              variants={staggerItem}
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200/80 bg-red-50/70 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20"
+            >
+              <p className="text-sm font-medium text-red-900 dark:text-red-100">
+                {t("contacts.bulkSelected").replace("{count}", String(selectedIds.size))}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50 dark:border-red-800 dark:bg-ink-900 dark:text-red-200 dark:hover:bg-red-950/40"
+                >
+                  {t("contacts.bulkClearSelection")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setBulkDeleteOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {t("contacts.bulkDelete")}
+                </button>
+              </div>
+            </motion.div>
+          ) : null}
 
           <motion.div variants={staggerItem} className="mb-5 flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
@@ -707,6 +787,20 @@ export function ContactsPage() {
                 <table className="w-max min-w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50/90 dark:border-ink-800 dark:bg-ink-900/80">
+                      {canBulkDelete ? (
+                        <th className="w-10 px-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={allOnPageSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = someOnPageSelected && !allOnPageSelected;
+                            }}
+                            onChange={(e) => toggleSelectAllOnPage(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600"
+                            aria-label={t("contacts.bulkSelectAll")}
+                          />
+                        </th>
+                      ) : null}
                       <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-ink-400">
                         {t("contacts.colContact")}
                       </th>
@@ -750,9 +844,23 @@ export function ContactsPage() {
                       return (
                         <tr
                           key={contact.id}
-                          className="group cursor-pointer transition-colors hover:bg-slate-50/90 dark:hover:bg-ink-900/70"
+                          className={clsx(
+                            "group cursor-pointer transition-colors hover:bg-slate-50/90 dark:hover:bg-ink-900/70",
+                            selectedIds.has(contact.id) && "bg-brand-50/40 dark:bg-brand-950/15",
+                          )}
                           onClick={() => setDrawerContactId(contact.id)}
                         >
+                          {canBulkDelete ? (
+                            <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(contact.id)}
+                                onChange={(e) => toggleContactSelected(contact.id, e.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600"
+                                aria-label={t("contacts.bulkSelectOne").replace("{name}", contact.name)}
+                              />
+                            </td>
+                          ) : null}
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className="relative shrink-0">
@@ -843,7 +951,7 @@ export function ContactsPage() {
                                 {stagePickerFor === contact.id && (
                                   <DropdownPortal anchorRef={dropdownAnchorRef} onClose={() => setStagePickerFor(null)}>
                                     <motion.div
-                                      className="w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
+                                      className="w-48 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
                                       variants={dropdownVariants}
                                       initial="hidden"
                                       animate="show"
@@ -936,7 +1044,7 @@ export function ContactsPage() {
                                     {tagPickerFor === contact.id && (
                                       <DropdownPortal anchorRef={dropdownAnchorRef} onClose={() => setTagPickerFor(null)}>
                                         <motion.div
-                                          className="w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
+                                          className="w-48 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-ink-700 dark:bg-ink-900"
                                           variants={dropdownVariants}
                                           initial="hidden"
                                           animate="show"
@@ -1148,8 +1256,47 @@ export function ContactsPage() {
           if (!deleteBusy) setDeleteTarget(null);
         }}
       />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title={t("contacts.bulkDeleteTitle")}
+        message={t("contacts.bulkDeleteConfirm").replace("{count}", String(selectedIds.size))}
+        confirmLabel={t("contacts.bulkDelete")}
+        variant="danger"
+        loading={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void confirmBulkDeleteContacts()}
+        onCancel={() => {
+          if (!deleteBusy) {
+            setBulkDeleteOpen(false);
+            setDeleteError(null);
+          }
+        }}
+      />
     </PageTransition>
   );
+}
+
+function computeDropdownPosition(
+  anchor: HTMLElement,
+  panel: HTMLDivElement | null,
+): { top: number; left: number; maxHeight: number } {
+  const rect = anchor.getBoundingClientRect();
+  const viewportPad = 8;
+  const gap = 4;
+  const panelWidth = panel?.offsetWidth ?? 192;
+  const panelHeight = panel?.offsetHeight ?? 240;
+  const spaceBelow = window.innerHeight - rect.bottom - viewportPad;
+  const spaceAbove = rect.top - viewportPad;
+  const openUp = spaceBelow < Math.min(panelHeight, 256) && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(120, Math.min(256, openUp ? spaceAbove - gap : spaceBelow - gap));
+  const top = openUp ? Math.max(viewportPad, rect.top - maxHeight - gap) : rect.bottom + gap;
+  let left = rect.left;
+  if (left + panelWidth > window.innerWidth - viewportPad) {
+    left = window.innerWidth - panelWidth - viewportPad;
+  }
+  left = Math.max(viewportPad, left);
+  return { top, left, maxHeight };
 }
 
 function DropdownPortal({
@@ -1162,17 +1309,19 @@ function DropdownPortal({
   anchorRef: RefObject<HTMLElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   const updatePosition = useCallback(() => {
     const el = anchorRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setPos({ top: rect.bottom + 4, left: rect.left });
+    setPos(computeDropdownPosition(el, ref.current));
   }, [anchorRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     updatePosition();
+  }, [updatePosition, children]);
+
+  useEffect(() => {
     const onReposition = () => updatePosition();
     window.addEventListener("scroll", onReposition, true);
     window.addEventListener("resize", onReposition);
@@ -1180,6 +1329,14 @@ function DropdownPortal({
       window.removeEventListener("scroll", onReposition, true);
       window.removeEventListener("resize", onReposition);
     };
+  }, [updatePosition]);
+
+  useEffect(() => {
+    const panel = ref.current;
+    if (!panel || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => updatePosition());
+    observer.observe(panel);
+    return () => observer.disconnect();
   }, [updatePosition]);
 
   useEffect(() => {
@@ -1193,10 +1350,16 @@ function DropdownPortal({
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose, anchorRef]);
 
-  if (!pos) return null;
+  const anchor = anchorRef.current;
+  if (!anchor) return null;
+  const layout = pos ?? computeDropdownPosition(anchor, null);
 
   return createPortal(
-    <div ref={ref} className="fixed z-[200]" style={{ top: pos.top, left: pos.left }}>
+    <div
+      ref={ref}
+      className="fixed z-[200] overflow-y-auto overscroll-contain"
+      style={{ top: layout.top, left: layout.left, maxHeight: layout.maxHeight }}
+    >
       {children}
     </div>,
     document.body,
