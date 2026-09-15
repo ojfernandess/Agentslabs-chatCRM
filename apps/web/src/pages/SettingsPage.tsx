@@ -40,6 +40,7 @@ import { OrganizationTagsPanel } from "@/components/settings/OrganizationTagsPan
 import { TeamSettingsPanel } from "@/components/settings/TeamSettingsPanel";
 import { DealCategorySettingsPanel } from "@/components/settings/DealCategorySettingsPanel";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   CONVERSATIONS_SPLIT_VIEW_SIZES,
@@ -1253,7 +1254,10 @@ export function SettingsPage() {
       <div className="page-shell">
         <div className="page-shell-inner">
           <div className="mb-8 border-b border-ink-200/80 pb-6 dark:border-soft-border">
-            <h1 className="text-2xl font-bold text-ink-900 dark:text-ink-50">{t("settings.title")}</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-ink-900 dark:text-ink-50">
+              {t("settings.title")}
+              <HelpContextButton articleSlug="settings/overview" className="p-1" />
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-ink-500 dark:text-ink-400">{t("settings.subtitle")}</p>
           </div>
 

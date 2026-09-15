@@ -22,6 +22,7 @@ import {
   History,
 } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin, isSuperAdminRole } from "@/lib/authRole";
@@ -1745,7 +1746,10 @@ export function AutomationPage() {
               <Sparkles className="h-6 w-6" />
               <span className="text-xs font-semibold uppercase tracking-wide">Automation</span>
             </div>
-            <h1 className="mt-1 text-2xl font-bold text-ink-900 dark:text-ink-50">{t("automationPage.title")}</h1>
+            <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-ink-900 dark:text-ink-50">
+              {t("automationPage.title")}
+              <HelpContextButton articleSlug="automation/overview" className="p-1" />
+            </h1>
             <p className="mt-1 max-w-3xl text-sm text-ink-600 dark:text-ink-400">{t("automationPage.subtitle")}</p>
           </div>
           <button

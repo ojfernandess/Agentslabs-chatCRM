@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { Megaphone, Plus, RefreshCw, Sparkles, LayoutGrid, BookOpen, GitBranch, BarChart3, Tags, Search } from "lucide-react";
 import { PageTransition } from "@/components/Motion";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
@@ -525,6 +526,7 @@ export function BroadcastCampaignsPage() {
           <h1 className="flex items-center gap-2 text-2xl font-bold text-ink-900 dark:text-ink-50">
             <Megaphone className="h-7 w-7 text-brand-600" />
             {t("broadcastPage.centerTitle")}
+            <HelpContextButton articleSlug="campaigns/overview" className="p-1" />
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-ink-600 dark:text-ink-400">{t("broadcastPage.centerSubtitle")}</p>
         </div>

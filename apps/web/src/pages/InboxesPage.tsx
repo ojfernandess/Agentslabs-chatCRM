@@ -5,7 +5,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition } from "@/components/Motion";
-import { HelpCircle, Plus, Trash2 } from "lucide-react";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
+import { Plus, Trash2 } from "lucide-react";
 import { InboxCreateWizard, INBOX_CHANNEL_ORDER, type InboxChannelId } from "@/components/InboxCreateWizard";
 import { InboxesKpiStrip, type InboxKpiStats } from "@/components/inboxes/InboxesKpiStrip";
 import {
@@ -987,7 +988,7 @@ export function InboxesPage() {
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50 sm:text-3xl">
               {t("inboxesPage.title")}
               <span className="sr-only">{t("inboxesPage.subtitle")}</span>
-              <HelpCircle className="h-5 w-5 text-ink-400" aria-hidden />
+              <HelpContextButton articleSlug="settings/inboxes" className="p-1" />
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-ink-500 dark:text-ink-400">{t("inboxesPage.subtitle")}</p>
             {!isAdmin ? (

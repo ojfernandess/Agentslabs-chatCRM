@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone, Tag } from "lucide-react";
 import clsx from "clsx";
 import { PageTransition, motion } from "@/components/Motion";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
 import { useConversationAgentTypingMap } from "@/hooks/useConversationAgentTyping";
@@ -665,7 +666,10 @@ export function ConversationsPage({
           {!splitView ? (
           <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{t("conversations.title")}</h1>
+              <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">
+                {t("conversations.title")}
+                <HelpContextButton articleSlug="conversations/overview" className="p-1" />
+              </h1>
               <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{t("conversations.subtitle")}</p>
             </div>
             <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-4xl">

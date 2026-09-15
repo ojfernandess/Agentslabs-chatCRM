@@ -12,12 +12,8 @@ import {
   Settings,
 } from "lucide-react";
 import clsx from "clsx";
-import {
-  PageTransition,
-  motion,
-  staggerContainer,
-  staggerItem,
-} from "@/components/Motion";
+import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { formatContactPhoneForDisplay } from "@/lib/contactWebsiteDisplay";
@@ -200,6 +196,7 @@ export function CrmKanbanPage() {
               <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-ink-50">
                 <LayoutGrid className="h-7 w-7 text-brand-600 dark:text-brand-400" />
                 {t("crm.title")}
+                <HelpContextButton articleSlug="crm/overview" className="p-1" />
               </h1>
               <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{t("crm.subtitle")}</p>
             </div>

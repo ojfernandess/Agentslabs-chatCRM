@@ -1,0 +1,133 @@
+import type { HelpArticle } from "../types";
+
+export const dealsArticles: HelpArticle[] = [
+  {
+    id: "deals-overview",
+    slug: "deals/overview",
+    title: "Negócios e oportunidades",
+    description: "O que são negócios, pipeline e relação com contatos.",
+    categoryId: "deals",
+    keywords: ["negócio", "deal", "oportunidade", "venda", "pipeline"],
+    level: "basic",
+    readMinutes: 4,
+    featureFlag: "crm_deals",
+    routeContext: ["/deals"],
+    relatedSlugs: ["deals/create", "deals/status", "deals/categories"],
+    blocks: [
+      { type: "heading", id: "what", level: 2, text: "O que é um negócio?" },
+      {
+        type: "paragraph",
+        text: "Negócios representam oportunidades comerciais vinculadas a um contato, com valor, responsável, produtos e estágio no funil de vendas.",
+      },
+      { type: "heading", id: "when", level: 2, text: "Quando criar?" },
+      {
+        type: "list",
+        items: [
+          "Cliente demonstra intenção de compra.",
+          "Após qualificação no atendimento.",
+          "Automaticamente via workflow ou CRM Flow (se configurado).",
+        ],
+      },
+    ],
+  },
+  {
+    id: "deals-create",
+    slug: "deals/create",
+    title: "Como criar um negócio",
+    description: "Passo a passo na página Negócios ou ao encerrar conversa.",
+    categoryId: "deals",
+    keywords: ["criar negócio", "novo deal", "oportunidade"],
+    level: "basic",
+    readMinutes: 4,
+    featureFlag: "crm_deals",
+    routeContext: ["/deals"],
+    relatedSlugs: ["deals/products", "deals/status"],
+    blocks: [
+      { type: "heading", id: "steps", level: 2, text: "Passo a passo" },
+      {
+        type: "steps",
+        steps: [
+          { title: "Acesse Negócios", body: "Menu lateral → Negócios." },
+          { title: "Novo negócio", body: "Abre o modal de criação." },
+          { title: "Selecione contato", body: "Vincule ao cliente da oportunidade." },
+          { title: "Informe valor e categoria", body: "Escolha categoria se configurada (hotelaria, jurídico, etc.)." },
+          { title: "Adicione produtos (opcional)", body: "Line items com quantidade e preço." },
+          { title: "Defina responsável", body: "Atendente owner do negócio." },
+          { title: "Salve", body: "Acompanhe na lista ou kanban interno." },
+        ],
+      },
+    ],
+  },
+  {
+    id: "deals-status",
+    slug: "deals/status",
+    title: "Status OPEN, WON e LOST",
+    description: "Significado de cada estado e impacto no pipeline.",
+    categoryId: "deals",
+    keywords: ["won", "lost", "open", "ganho", "perdido", "status"],
+    level: "basic",
+    readMinutes: 3,
+    featureFlag: "crm_deals",
+    relatedSlugs: ["deals/overview"],
+    blocks: [
+      { type: "heading", id: "states", level: 2, text: "Estados" },
+      {
+        type: "list",
+        items: [
+          "OPEN — oportunidade em andamento; conta nas métricas de pipeline.",
+          "WON — venda concretizada; valor contabilizado como ganho.",
+          "LOST — oportunidade perdida; registre motivo quando disponível.",
+        ],
+      },
+      {
+        type: "callout",
+        variant: "tip",
+        text: "Administradores veem estatísticas por atendente na aba Por atendente.",
+      },
+    ],
+  },
+  {
+    id: "deals-products",
+    slug: "deals/products",
+    title: "Produtos e line items",
+    description: "Catálogo de produtos e itens dentro do negócio.",
+    categoryId: "deals",
+    keywords: ["produto", "line item", "catálogo", "preço"],
+    level: "intermediate",
+    readMinutes: 4,
+    featureFlag: "crm_deals",
+    relatedSlugs: ["deals/create"],
+    blocks: [
+      { type: "heading", id: "what", level: 2, text: "Produtos" },
+      {
+        type: "paragraph",
+        text: "Produtos são itens do catálogo que podem compor um negócio. Cada line item registra quantidade, preço unitário e descontos quando aplicável.",
+      },
+    ],
+  },
+  {
+    id: "deals-categories",
+    slug: "deals/categories",
+    title: "Categorias de negócio",
+    description: "Hotelaria, jurídico, clínicas e campos personalizados.",
+    categoryId: "deals",
+    keywords: ["categoria", "hotelaria", "jurídico", "clínica", "campo personalizado"],
+    level: "intermediate",
+    readMinutes: 5,
+    featureFlag: "crm_deals",
+    requiresAdmin: true,
+    relatedSlugs: ["settings/crm"],
+    blocks: [
+      { type: "heading", id: "what", level: 2, text: "Categorias" },
+      {
+        type: "paragraph",
+        text: "Categorias adaptam campos do negócio ao segmento — por exemplo check-in/check-out em hotelaria ou área jurídica em escritórios.",
+      },
+      { type: "heading", id: "configure", level: 2, text: "Como configurar" },
+      {
+        type: "paragraph",
+        text: "Em Configurações → CRM → aba Negócios, gerencie categorias, campos e listas de opções.",
+      },
+    ],
+  },
+];

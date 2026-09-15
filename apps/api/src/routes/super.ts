@@ -39,6 +39,11 @@ import {
 } from "../lib/evolutionPlatform.js";
 import { EVOLUTION_GO_PLATFORM_KEY, parseEvolutionGoPlatformValue } from "../lib/evolutionGoPlatform.js";
 import {
+  HELP_CENTER_PLATFORM_KEY,
+  parseHelpCenterConfig,
+  type HelpCenterConfig,
+} from "../lib/helpCenterSettings.js";
+import {
   RESEND_EMAIL_PLATFORM_KEY,
   getBillingReminderTemplatesForEditor,
   getPasswordResetTemplatesForEditor,
@@ -2067,5 +2072,53 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return result;
+  });
+
+  const helpCenterPutSchema = z.object({
+    support: z.object({
+      enabled: z.boolean(),
+      phone: z.string(),
+      whatsappMessage: z.string(),
+      title: z.string(),
+      description: z.string(),
+    }),
+    guide: z.object({
+      enabled: z.boolean(),
+      title: z.string(),
+      description: z.string(),
+    }),
+  });
+
+  app.get("/help-center", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: HELP_CENTER_PLATFORM_KEY },
+    });
+    return parseHelpCenterConfig(row?.value);
+  });
+
+  app.put("/help-center", async (request, reply) => {
+    const parsed = helpCenterPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const value: HelpCenterConfig = parsed.data;
+    await prisma.platformSetting.upsert({
+      where: { key: HELP_CENTER_PLATFORM_KEY },
+      create: { key: HELP_CENTER_PLATFORM_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.help_center.upsert",
+      resourceType: "platform_setting",
+      resourceId: HELP_CENTER_PLATFORM_KEY,
+      metadata: {
+        supportEnabled: value.support.enabled,
+        guideEnabled: value.guide.enabled,
+        phoneConfigured: Boolean(value.support.phone.trim()),
+      },
+      ip: clientIp(request),
+    });
+    return value;
   });
 }

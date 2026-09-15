@@ -31,6 +31,9 @@ import { EmailInboxLayout, EmailInboxThreadPlaceholder } from "@/pages/EmailInbo
 import { PublicApiDocsPage } from "@/pages/PublicApiDocsPage";
 import { GoogleCalendarConnectedPage } from "@/pages/GoogleCalendarConnectedPage";
 import { LegalPage } from "@/pages/legal/LegalPage";
+import { lazy, Suspense } from "react";
+
+const HelpRoutes = lazy(() => import("@/pages/help/HelpRoutes").then((m) => ({ default: m.HelpRoutes })));
 import { isSuperAdminRole } from "@/lib/authRole";
 import { TenantAdminRoute } from "@/components/TenantAdminRoute";
 import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
@@ -190,6 +193,20 @@ export function App() {
           }
         />
         <Route path="reminders" element={<RemindersPage />} />
+        <Route
+          path="help/*"
+          element={
+            <Suspense
+              fallback={
+                <div className="flex min-h-[40vh] items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
+                </div>
+              }
+            >
+              <HelpRoutes />
+            </Suspense>
+          }
+        />
         <Route path="profile" element={<ProfilePage />} />
         <Route
           path="settings"

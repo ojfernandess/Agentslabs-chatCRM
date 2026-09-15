@@ -33,6 +33,7 @@ import { ResendPaymentConfirmationTemplateEditor } from "@/components/ResendPaym
 import { SuperAdminConversationMediaSection } from "@/components/super-admin/SuperAdminConversationMediaSection";
 import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSection";
 import { SuperAdminBillingSection } from "@/components/super-admin/SuperAdminBillingSection";
+import { SuperAdminHelpCenterPanel } from "@/components/super-admin/SuperAdminHelpCenterPanel";
 import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
 
@@ -2957,6 +2958,8 @@ export function SuperAdminPage() {
               onError={setError}
             />
           )}
+
+          {section === "helpCenter" && <SuperAdminHelpCenterPanel />}
 
           {section === "featureFlags" && (
             <div className="mx-auto max-w-3xl space-y-6">

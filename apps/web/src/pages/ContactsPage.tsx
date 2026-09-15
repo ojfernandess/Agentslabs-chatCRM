@@ -31,6 +31,7 @@ import {
   modalVariants,
   dropdownVariants,
 } from "@/components/Motion";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
 import { filterTagsForDisplay } from "@/lib/tagDisplay";
 import { format } from "date-fns";
@@ -447,8 +448,9 @@ export function ContactsPage() {
                 <Sparkles className="h-3.5 w-3.5" />
                 {t("contacts.hubCaption")}
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-ink-50 md:text-3xl">
+              <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-ink-50 md:text-3xl">
                 {t("contacts.title")}
+                <HelpContextButton articleSlug="contacts/overview" className="p-1" />
               </h1>
               <p className="mt-1 max-w-xl text-sm text-slate-600 dark:text-ink-400">{t("contacts.subtitle")}</p>
             </div>

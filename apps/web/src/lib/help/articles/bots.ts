@@ -1,0 +1,182 @@
+import type { HelpArticle } from "../types";
+
+export const botsArticles: HelpArticle[] = [
+  {
+    id: "bots-overview",
+    slug: "bots/overview",
+    title: "O que são Bots?",
+    description: "Entenda a função dos bots na plataforma e quando utilizá-los.",
+    categoryId: "bots",
+    keywords: ["bot", "webhook", "dialogflow", "automação", "integração"],
+    level: "basic",
+    readMinutes: 3,
+    requiresAdmin: true,
+    routeContext: ["/bots"],
+    relatedSlugs: ["bots/create", "bots/webhooks", "automation/agent-profiles"],
+    blocks: [
+      { type: "heading", id: "what", level: 2, text: "O que é?" },
+      {
+        type: "paragraph",
+        text: "Bots representam pontos de automação conectados a canais de atendimento. Eles recebem mensagens, podem encaminhar para agentes de IA nativos ou para sistemas externos via webhook.",
+      },
+      { type: "heading", id: "types", level: 2, text: "Tipos disponíveis" },
+      {
+        type: "list",
+        items: [
+          "WEBHOOK — encaminha eventos para uma URL externa (n8n, Make, sistema próprio).",
+          "DIALOGFLOW — integração com Google Dialogflow.",
+          "CUSTOM — bot personalizado conforme configuração.",
+        ],
+      },
+      {
+        type: "callout",
+        variant: "tip",
+        text: "Bots gerenciados nativamente pela plataforma (OpenConduit) usam Automação → Agentes sem depender de webhook externo.",
+      },
+      { type: "heading", id: "when", level: 2, text: "Quando utilizar?" },
+      {
+        type: "list",
+        items: [
+          "Automatizar respostas iniciais ou triagem.",
+          "Conectar um agente de IA com base de conhecimento.",
+          "Integrar com fluxos externos via webhook.",
+        ],
+      },
+    ],
+  },
+  {
+    id: "bots-create",
+    slug: "bots/create",
+    title: "Como criar um Bot",
+    description: "Passo a passo para cadastrar um bot, definir tipo e ativar.",
+    categoryId: "bots",
+    keywords: ["criar bot", "novo bot", "cadastro", "webhook"],
+    level: "basic",
+    readMinutes: 4,
+    requiresAdmin: true,
+    routeContext: ["/bots"],
+    relatedSlugs: ["bots/webhooks", "bots/test", "automation/agent-profiles"],
+    blocks: [
+      { type: "heading", id: "steps", level: 2, text: "Passo a passo" },
+      {
+        type: "steps",
+        steps: [
+          { title: "Acesse Bots", body: "No menu lateral (área administrativa)." },
+          { title: "Informe o nome", body: "Use um nome que identifique o canal ou finalidade." },
+          { title: "Escolha o tipo", body: "WEBHOOK, DIALOGFLOW ou CUSTOM." },
+          { title: "Configure webhook (se aplicável)", body: "URL que receberá os eventos de mensagem." },
+          { title: "Defina se inicia ativo", body: "Bots inativos não processam mensagens." },
+          { title: "Salve", body: "O bot aparecerá na lista para edição e testes." },
+        ],
+      },
+      {
+        type: "callout",
+        variant: "admin",
+        text: "Somente administradores podem criar e editar bots.",
+      },
+      {
+        type: "callout",
+        variant: "important",
+        text: "Após criar, associe o bot a uma caixa de entrada e configure o perfil de agente em Automação, se usar IA nativa.",
+      },
+    ],
+  },
+  {
+    id: "bots-webhooks",
+    slug: "bots/webhooks",
+    title: "Webhooks e tokens de inbox",
+    description: "Como configurar URL de webhook, secret e token de inbox por organização.",
+    categoryId: "bots",
+    keywords: ["webhook", "token", "inbox", "secret", "integração", "api"],
+    level: "intermediate",
+    readMinutes: 6,
+    requiresAdmin: true,
+    routeContext: ["/bots"],
+    relatedSlugs: ["bots/create", "bots/test", "bots/troubleshooting"],
+    blocks: [
+      { type: "heading", id: "webhook-url", level: 2, text: "URL do webhook" },
+      {
+        type: "paragraph",
+        text: "Informe a URL HTTPS que receberá payloads de mensagens e eventos. A plataforma envia requisições POST com o corpo do evento.",
+      },
+      { type: "heading", id: "secret", level: 2, text: "Webhook secret" },
+      {
+        type: "paragraph",
+        text: "Opcionalmente configure um secret para validar a autenticidade das requisições. Guarde o valor com segurança — ele não é exibido novamente após salvar.",
+      },
+      { type: "heading", id: "inbox-token", level: 2, text: "Token de inbox" },
+      {
+        type: "paragraph",
+        text: "Cada bot possui um token de inbox usado para identificar a origem das mensagens na API. Use o botão de revelar/copiar na página do bot.",
+      },
+      {
+        type: "callout",
+        variant: "important",
+        text: "Nunca compartilhe tokens ou secrets em canais públicos. Trate como credenciais.",
+      },
+    ],
+  },
+  {
+    id: "bots-test",
+    slug: "bots/test",
+    title: "Como testar um Bot",
+    description: "Use o teste de webhook e diagnóstico nativo para validar a integração.",
+    categoryId: "bots",
+    keywords: ["teste", "webhook test", "diagnóstico", "validar"],
+    level: "basic",
+    readMinutes: 3,
+    requiresAdmin: true,
+    relatedSlugs: ["bots/webhooks", "bots/troubleshooting"],
+    blocks: [
+      { type: "heading", id: "webhook-test", level: 2, text: "Teste de webhook" },
+      {
+        type: "paragraph",
+        text: "Na página do bot, use o botão de teste de webhook. A plataforma envia uma requisição de prova e exibe status HTTP, latência e trecho da resposta.",
+      },
+      { type: "heading", id: "native-diag", level: 2, text: "Diagnóstico nativo" },
+      {
+        type: "paragraph",
+        text: "Para bots gerenciados pela plataforma, o diagnóstico verifica perfil de agente, ferramentas e configurações mínimas necessárias.",
+      },
+      {
+        type: "callout",
+        variant: "tip",
+        text: "Após configurar, envie uma mensagem real pelo canal conectado e acompanhe em Conversas e Automação → Interações.",
+      },
+    ],
+  },
+  {
+    id: "bots-troubleshooting",
+    slug: "bots/troubleshooting",
+    title: "Problemas comuns com Bots",
+    description: "Como identificar falhas de webhook, bot inativo ou agente mal configurado.",
+    categoryId: "bots",
+    keywords: ["erro", "problema", "não responde", "falha", "debug"],
+    level: "intermediate",
+    readMinutes: 5,
+    requiresAdmin: true,
+    relatedSlugs: ["bots/test", "automation/agent-profiles"],
+    blocks: [
+      { type: "heading", id: "inactive", level: 2, text: "Bot inativo" },
+      { type: "paragraph", text: "Verifique se o toggle Ativo está ligado na edição do bot." },
+      { type: "heading", id: "webhook-errors", level: 2, text: "Erros de webhook" },
+      {
+        type: "list",
+        items: [
+          "Status 4xx/5xx — URL incorreta ou servidor externo indisponível.",
+          "Timeout — endpoint lento; otimize ou aumente capacidade.",
+          "Secret inválido — confira header de assinatura no sistema receptor.",
+        ],
+      },
+      { type: "heading", id: "no-ai", level: 2, text: "Agente não responde" },
+      {
+        type: "list",
+        items: [
+          "Confirme perfil de agente em Automação → Agentes.",
+          "Verifique prompt e ferramentas obrigatórias.",
+          "Consulte Automação → Interações e Execuções para erros recentes.",
+        ],
+      },
+    ],
+  },
+];

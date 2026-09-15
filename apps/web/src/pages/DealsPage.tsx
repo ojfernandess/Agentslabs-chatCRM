@@ -19,6 +19,7 @@ import {
   type DealCategoryContext,
 } from "@/components/crm/DealCategoryFieldsForm";
 import { DealOwnerStatsPanel } from "@/components/crm/DealOwnerStatsPanel";
+import { HelpContextButton } from "@/components/help/HelpContextButton";
 
 interface StageItem {
   id: string;
@@ -398,7 +399,10 @@ export function DealsPage() {
           <div className="flex items-center gap-3">
             <Briefcase className="h-8 w-8 text-brand-600 dark:text-brand-400" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-ink-50">{t("nav.deals")}</h1>
+              <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-ink-50">
+                {t("nav.deals")}
+                <HelpContextButton articleSlug="deals/overview" className="p-1" />
+              </h1>
               <p className="text-sm text-gray-500 dark:text-ink-400">{t("dealsPage.subtitle")}</p>
             </div>
           </div>

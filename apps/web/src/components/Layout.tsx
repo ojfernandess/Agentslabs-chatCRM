@@ -24,7 +24,9 @@ import {
   X,
   PanelLeftClose,
   PanelLeft,
+  CircleHelp,
 } from "lucide-react";
+import { HelpModal } from "@/components/help/HelpModal";
 import clsx from "clsx";
 import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { EmailUnreadCountBadge } from "@/components/inboxes/EmailUnreadCountBadge";
@@ -167,6 +169,7 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
   const orgLabel =
@@ -703,6 +706,18 @@ export function Layout() {
             </NavLink>
           </>
         ) : null}
+        <button
+          type="button"
+          onClick={() => {
+            setHelpModalOpen(true);
+            if (!showCollapseToggle) setMobileNavOpen(false);
+          }}
+          title={collapsed ? t("nav.help") : undefined}
+          className={navLinkClass(location.pathname.startsWith("/help"), collapsed)}
+        >
+          <CircleHelp className="h-5 w-5 shrink-0" />
+          {!collapsed ? <span className="min-w-0 truncate">{t("nav.help")}</span> : null}
+        </button>
       </nav>
 
       <div
@@ -871,6 +886,7 @@ export function Layout() {
       </div>
       <WorkspaceRealtime />
       <UserAvailabilitySync />
+      <HelpModal open={helpModalOpen} onClose={() => setHelpModalOpen(false)} />
     </div>
     </NvoipVoiceShell>
     </ThreeCxVoiceShell>

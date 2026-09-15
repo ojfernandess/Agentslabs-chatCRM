@@ -1,0 +1,247 @@
+import type { HelpCategory, HelpGettingStartedStep, HelpGoalCard } from "./types";
+
+export const HELP_CATEGORIES: HelpCategory[] = [
+  {
+    id: "getting-started",
+    slug: "getting-started",
+    title: "Primeiros passos",
+    description: "Conheça a plataforma e configure o essencial.",
+    icon: "rocket",
+    order: 1,
+  },
+  {
+    id: "bots",
+    slug: "bots",
+    title: "Bots e Integrações",
+    description: "Conecte canais, webhooks e automações nativas.",
+    icon: "bot",
+    order: 2,
+    requiresAdmin: true,
+  },
+  {
+    id: "campaigns",
+    slug: "campaigns",
+    title: "Campanhas Omnichannel",
+    description: "Envios, follow-up, templates, fluxos e métricas.",
+    icon: "megaphone",
+    order: 3,
+    requiresAdmin: true,
+    featureFlag: "broadcast_campaigns",
+  },
+  {
+    id: "automation",
+    slug: "automation",
+    title: "Automação e Inteligência",
+    description: "Base de conhecimento, agentes, ferramentas e prompts.",
+    icon: "sparkles",
+    order: 4,
+    requiresAdmin: true,
+  },
+  {
+    id: "conversations",
+    slug: "conversations",
+    title: "Conversas e Atendimento",
+    description: "Inbox, filtros, atribuição e encerramento.",
+    icon: "message",
+    order: 5,
+  },
+  {
+    id: "crm",
+    slug: "crm",
+    title: "CRM",
+    description: "Funil, tipos de lead e organização comercial.",
+    icon: "layout-grid",
+    order: 6,
+    featureFlag: "crm_kanban",
+  },
+  {
+    id: "deals",
+    slug: "deals",
+    title: "Negócios e Produtos",
+    description: "Oportunidades, pipeline e categorias de negócio.",
+    icon: "briefcase",
+    order: 7,
+    featureFlag: "crm_deals",
+  },
+  {
+    id: "contacts",
+    slug: "contacts",
+    title: "Contatos",
+    description: "Cadastro, tags, etapas e ações em massa.",
+    icon: "users",
+    order: 8,
+  },
+  {
+    id: "settings",
+    slug: "settings",
+    title: "Configurações da Organização",
+    description: "Canais, equipe, CRM, templates e integrações.",
+    icon: "settings",
+    order: 9,
+    requiresAdmin: true,
+  },
+  {
+    id: "analytics",
+    slug: "analytics",
+    title: "Analytics e Relatórios",
+    description: "Painel, relatórios e IA & Insights.",
+    icon: "bar-chart",
+    order: 10,
+  },
+  {
+    id: "teams",
+    slug: "teams",
+    title: "Times e Colaboração",
+    description: "Equipes, transferências e hub de colaboração.",
+    icon: "users-round",
+    order: 11,
+  },
+  {
+    id: "glossary",
+    slug: "glossary",
+    title: "Glossário",
+    description: "Termos usados na plataforma.",
+    icon: "book",
+    order: 99,
+  },
+];
+
+export const GETTING_STARTED_TRAIL: HelpGettingStartedStep[] = [
+  {
+    order: 1,
+    title: "Conheça a plataforma",
+    description: "Entenda o painel e a navegação principal.",
+    articleSlug: "getting-started/platform-overview",
+  },
+  {
+    order: 2,
+    title: "Configure sua organização",
+    description: "Canais, aparência e equipe.",
+    articleSlug: "getting-started/configure-organization",
+    requiresAdmin: true,
+  },
+  {
+    order: 3,
+    title: "Configure seu primeiro Bot",
+    description: "Crie um bot e conecte ao canal.",
+    articleSlug: "bots/create",
+    requiresAdmin: true,
+  },
+  {
+    order: 4,
+    title: "Configure um agente",
+    description: "Perfil de agente por bot na Automação.",
+    articleSlug: "automation/agent-profiles",
+    requiresAdmin: true,
+  },
+  {
+    order: 5,
+    title: "Adicione conhecimento",
+    description: "Artigos para o agente consultar.",
+    articleSlug: "automation/knowledge-base",
+    requiresAdmin: true,
+  },
+  {
+    order: 6,
+    title: "Configure ferramentas",
+    description: "HTTP tools e integrações do agente.",
+    articleSlug: "automation/tools",
+    requiresAdmin: true,
+  },
+  {
+    order: 7,
+    title: "Teste o atendimento",
+    description: "Envie mensagens e valide respostas.",
+    articleSlug: "conversations/first-conversation",
+  },
+  {
+    order: 8,
+    title: "Conheça Campanhas",
+    description: "Envios em massa e follow-up.",
+    articleSlug: "campaigns/overview",
+    requiresAdmin: true,
+    featureFlag: "broadcast_campaigns",
+  },
+  {
+    order: 9,
+    title: "Conheça o CRM",
+    description: "Funil e tipos de lead.",
+    articleSlug: "crm/overview",
+    featureFlag: "crm_kanban",
+  },
+  {
+    order: 10,
+    title: "Organize negócios",
+    description: "Oportunidades e produtos.",
+    articleSlug: "deals/overview",
+    featureFlag: "crm_deals",
+  },
+];
+
+export const HELP_GOAL_CARDS: HelpGoalCard[] = [
+  {
+    id: "create-bot",
+    title: "Criar meu primeiro Bot",
+    description: "Conecte um canal e automatize respostas.",
+    articleSlug: "bots/create",
+    requiresAdmin: true,
+  },
+  {
+    id: "create-campaign",
+    title: "Criar uma campanha",
+    description: "Envie mensagens para um público segmentado.",
+    articleSlug: "campaigns/create",
+    requiresAdmin: true,
+    featureFlag: "broadcast_campaigns",
+  },
+  {
+    id: "configure-agent",
+    title: "Configurar um agente",
+    description: "Defina comportamento, prompts e ferramentas.",
+    articleSlug: "automation/agent-profiles",
+    requiresAdmin: true,
+  },
+  {
+    id: "knowledge-base",
+    title: "Adicionar Base de Conhecimento",
+    description: "Informações da empresa para o agente.",
+    articleSlug: "automation/knowledge-base",
+    requiresAdmin: true,
+  },
+  {
+    id: "configure-tool",
+    title: "Configurar uma ferramenta",
+    description: "Integre APIs externas ao agente.",
+    articleSlug: "automation/tools",
+    requiresAdmin: true,
+  },
+  {
+    id: "create-automation",
+    title: "Criar uma automação",
+    description: "Fluxos de chatbot ou CRM.",
+    articleSlug: "automation/overview",
+    requiresAdmin: true,
+  },
+  {
+    id: "configure-crm",
+    title: "Configurar meu CRM",
+    description: "Funil, tipos de lead e etapas.",
+    articleSlug: "crm/configure",
+    featureFlag: "crm_kanban",
+  },
+  {
+    id: "create-deal",
+    title: "Criar um negócio",
+    description: "Registre oportunidades com valor e produtos.",
+    articleSlug: "deals/create",
+    featureFlag: "crm_deals",
+  },
+];
+
+export function getCategoryById(id: string): HelpCategory | undefined {
+  return HELP_CATEGORIES.find((c) => c.id === id);
+}
+
+export function getCategoryBySlug(slug: string): HelpCategory | undefined {
+  return HELP_CATEGORIES.find((c) => c.slug === slug);
+}

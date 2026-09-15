@@ -64,6 +64,7 @@ import { mcpRoutes } from "./routes/mcp.js";
 import { publicChatbotFlowRoutes } from "./routes/publicChatbotFlowRoutes.js";
 import { publicKnowledgeSourcePushRoutes } from "./routes/publicKnowledgeSourcePush.js";
 import { publicTurnstileRoutes } from "./routes/publicTurnstile.js";
+import { helpCenterRoutes } from "./routes/helpCenter.js";
 import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
 import {
   flushAutomationLogBuffer,
@@ -214,6 +215,7 @@ await app.register(cannedResponseRoutes, { prefix: "/api/v1/canned-responses" })
 await app.register(broadcastRoutes, { prefix: "/api/v1/broadcasts" });
 await app.register(leadFinderRoutes, { prefix: "/api/v1/lead-finder" });
 await app.register(settingsRoutes, { prefix: "/api/v1/settings" });
+await app.register(helpCenterRoutes, { prefix: "/api/v1/help-center" });
 await app.register(billingRoutes, { prefix: "/api/v1/billing" });
 await app.register(wavoipIntegrationRoutes, { prefix: "/api/v1/settings/wavoip" });
 await app.register(wavoipVoiceRoutes, { prefix: "/api/v1/wavoip" });
