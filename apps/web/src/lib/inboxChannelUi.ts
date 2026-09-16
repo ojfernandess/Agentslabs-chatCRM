@@ -6,9 +6,9 @@ import {
   MessageSquare,
   PanelTop,
   Phone,
-  Share2,
   Smartphone,
 } from "lucide-react";
+import { FacebookBrandIcon } from "@/components/FacebookBrandIcon";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { InstagramBrandIcon } from "@/components/InstagramBrandIcon";
 import { TelegramBrandIcon } from "@/components/TelegramBrandIcon";
@@ -44,7 +44,7 @@ import {
 
 export const INBOX_CHANNEL_ICONS: Record<InboxChannelId, ComponentType<{ className?: string }>> = {
   WEBSITE: PanelTop,
-  FACEBOOK: Share2,
+  FACEBOOK: FacebookBrandIcon,
   WHATSAPP: WhatsAppBrandIcon,
   SMS: Smartphone,
   EMAIL: Mail,
@@ -67,9 +67,9 @@ export const INBOX_CHANNEL_STYLES: Record<
   },
   FACEBOOK: {
     ring: "ring-blue-200 dark:ring-blue-900/50",
-    bg: "bg-blue-600",
-    text: "text-blue-700 dark:text-blue-300",
-    badge: "bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-200",
+    bg: "bg-[#1877F2]",
+    text: "text-[#1877F2] dark:text-blue-300",
+    badge: "bg-blue-100 text-[#1877F2] dark:bg-blue-950/50 dark:text-blue-200",
   },
   WHATSAPP: {
     ring: "ring-emerald-200 dark:ring-emerald-900/50",

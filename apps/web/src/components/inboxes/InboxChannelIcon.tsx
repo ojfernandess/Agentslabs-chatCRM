@@ -20,7 +20,7 @@ const SIZE = {
 };
 
 /** Marca com cores próprias no SVG (logo completo) — não aplicar fill branco. */
-const FULL_COLOR_BRAND_CHANNELS = new Set<InboxChannelId>(["TELEGRAM", "INSTAGRAM"]);
+const FULL_COLOR_BRAND_CHANNELS = new Set<InboxChannelId>(["TELEGRAM", "FACEBOOK", "INSTAGRAM"]);
 
 /** Glifo monocromático sobre tile colorido (ex.: WhatsApp). */
 const MONO_GLYPH_ON_SOLID = new Set<InboxChannelId>(["WHATSAPP"]);
@@ -60,7 +60,7 @@ export function InboxChannelIcon({ channelType, size = "md", className }: Props)
 /** Ícone no grid de seleção de canal (wizard Caixas de entrada). */
 export function InboxChannelPickerIcon({ channel }: { channel: InboxChannelId }) {
   const Icon = INBOX_CHANNEL_ICONS[channel];
-  if (channel === "TELEGRAM") {
+  if (channel === "TELEGRAM" || channel === "FACEBOOK") {
     return (
       <div className="flex h-10 w-10 shrink-0 items-center justify-center leading-none">
         <Icon className="block aspect-square h-10 w-10 shrink-0 object-contain" />
