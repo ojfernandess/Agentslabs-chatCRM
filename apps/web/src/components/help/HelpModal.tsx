@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "@/components/Motion";
 import { backdropVariants, modalVariants } from "@/components/Motion";
-import { BookOpen, ChevronRight, CircleHelp, MessageCircle, X } from "lucide-react";
+import { BookOpen, ChevronRight, CircleHelp, X } from "lucide-react";
+import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -148,8 +149,8 @@ export function HelpModal({ open, onClose }: Props) {
                       onClick={() => setView("support")}
                       className="flex w-full items-center gap-4 rounded-2xl border border-ink-200 bg-white p-4 text-left transition-colors hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-ink-700 dark:bg-ink-800/50 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20"
                     >
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
-                        <MessageCircle className="h-5 w-5" />
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/60">
+                        <WhatsAppBrandIcon className="h-6 w-6" />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block font-semibold text-ink-900 dark:text-ink-50">{config.support.title}</span>

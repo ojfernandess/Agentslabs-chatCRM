@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useOutletContext } from "react-router-dom";
-import { ExternalLink, MessageCircle } from "lucide-react";
+import { ExternalLink } from "lucide-react";
+import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import { getArticleBySlug, getRelatedArticles } from "@/lib/help/articles";
 import { getCategoryById } from "@/lib/help/categories";
 import { isArticleVisible } from "@/lib/help/search";
@@ -116,7 +117,7 @@ export function HelpArticlePage() {
                 rel="noopener noreferrer"
                 className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
               >
-                <MessageCircle className="h-4 w-4" />
+                <WhatsAppBrandIcon className="h-4 w-4" />
                 {config.support.title}
                 <ExternalLink className="h-3.5 w-3.5 opacity-80" />
               </a>

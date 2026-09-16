@@ -4076,7 +4076,7 @@ export const messages = {
           manualCurlToggle: "Registro manual (curl avançado)",
           webhookRegisterTitle: "Registro automático",
           webhookRegisterIntro:
-            "Regista esta URL na API do Telegram usando o token do bot configurado nesta caixa. Requer HTTPS público.",
+            "Registra esta URL na API do Telegram usando o token do bot configurado nesta caixa. Requer HTTPS público.",
           webhookRegisterButton: "Registrar webhook no Telegram",
           webhookRegistering: "Registrando…",
           webhookCheckButton: "Verificar status",
