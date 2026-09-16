@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { MessageType } from "@prisma/client";
 import { prisma } from "../db.js";
-import { resolveWebchatSessionByToken } from "../lib/webchatSession.js";
+import { resolveWebchatSessionByToken, type WebchatClientBindingMode } from "../lib/webchatSession.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
@@ -82,8 +82,12 @@ function readClientSessionSecret(request: FastifyRequest): string | null {
   return null;
 }
 
-async function resolvePublicWebchatSession(request: FastifyRequest, token: string) {
-  return resolveWebchatSessionByToken(token, readClientSessionSecret(request));
+async function resolvePublicWebchatSession(
+  request: FastifyRequest,
+  token: string,
+  bindingMode: WebchatClientBindingMode,
+) {
+  return resolveWebchatSessionByToken(token, readClientSessionSecret(request), { bindingMode });
 }
 
 type PublicWebchatMessage = {
@@ -194,7 +198,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     if (rateLimited(`ip:${clientIp(request)}`, 120, 60_000)) {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
-    const resolved = await resolvePublicWebchatSession(request, request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token, "read");
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const presence = await loadWebchatPresence(resolved.conversation.id);
@@ -218,7 +222,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       if (rateLimited(`msgs:${request.params.token}`, 90, 60_000)) {
         return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
       }
-      const resolved = await resolveWebchatSessionByToken(request.params.token);
+      const resolved = await resolvePublicWebchatSession(request, request.params.token, "read");
       if (!resolved.ok) return sessionError(reply, resolved.code);
 
       const q = listQuerySchema.safeParse(request.query ?? {});
@@ -280,7 +284,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     ) {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
-    const resolved = await resolvePublicWebchatSession(request, request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token, "write");
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
@@ -305,7 +309,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     ) {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
-    const resolved = await resolvePublicWebchatSession(request, request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token, "write");
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
@@ -338,7 +342,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const resolved = await resolvePublicWebchatSession(request, request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token, "write");
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const { organizationId } = resolved.conversation;

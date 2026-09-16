@@ -211,40 +211,47 @@ function clientSessionHashesMatch(stored: string, computed: string): boolean {
   }
 }
 
+export type WebchatClientBindingMode = "read" | "write";
+
+async function claimWebchatClientSession(
+  sessionId: string,
+  secret: string,
+): Promise<{ ok: true } | { ok: false; code: "SESSION_CLAIMED" }> {
+  const hash = hashWebchatClientSession(secret);
+  const claimed = await prisma.webchatSession.updateMany({
+    where: { id: sessionId, status: "ACTIVE", clientSessionHash: null },
+    data: {
+      clientSessionHash: hash,
+      claimedAt: new Date(),
+      lastSeenAt: new Date(),
+    },
+  });
+  if (claimed.count === 1) return { ok: true };
+
+  const fresh = await prisma.webchatSession.findUnique({ where: { id: sessionId } });
+  if (!fresh?.clientSessionHash || !clientSessionHashesMatch(fresh.clientSessionHash, hash)) {
+    return { ok: false, code: "SESSION_CLAIMED" };
+  }
+  return { ok: true };
+}
+
 async function verifyWebchatClientSessionBinding(
   session: WebchatSession,
   clientSessionSecret: string | null | undefined,
+  mode: WebchatClientBindingMode,
 ): Promise<{ ok: true } | { ok: false; code: "SESSION_CLAIMED" | "CLIENT_SESSION_REQUIRED" }> {
   const secret = clientSessionSecret?.trim();
-  if (!secret) {
-    if (session.clientSessionHash) return { ok: false, code: "SESSION_CLAIMED" };
-    return { ok: false, code: "CLIENT_SESSION_REQUIRED" };
-  }
-
-  const hash = hashWebchatClientSession(secret);
 
   if (!session.clientSessionHash) {
-    const claimed = await prisma.webchatSession.updateMany({
-      where: { id: session.id, status: "ACTIVE", clientSessionHash: null },
-      data: {
-        clientSessionHash: hash,
-        claimedAt: new Date(),
-        lastSeenAt: new Date(),
-      },
-    });
-    if (claimed.count === 1) return { ok: true };
-
-    const fresh = await prisma.webchatSession.findUnique({ where: { id: session.id } });
-    if (!fresh?.clientSessionHash || !clientSessionHashesMatch(fresh.clientSessionHash, hash)) {
-      return { ok: false, code: "SESSION_CLAIMED" };
-    }
-    return { ok: true };
+    if (mode === "read") return { ok: true };
+    if (!secret) return { ok: false, code: "CLIENT_SESSION_REQUIRED" };
+    return claimWebchatClientSession(session.id, secret);
   }
 
-  if (!clientSessionHashesMatch(session.clientSessionHash, hash)) {
+  if (!secret) return { ok: false, code: "SESSION_CLAIMED" };
+  if (!clientSessionHashesMatch(session.clientSessionHash, hashWebchatClientSession(secret))) {
     return { ok: false, code: "SESSION_CLAIMED" };
   }
-
   return { ok: true };
 }
 
@@ -266,7 +273,9 @@ export type ResolveWebchatSessionResult =
 export async function resolveWebchatSessionByToken(
   token: string,
   clientSessionSecret?: string | null,
+  options?: { bindingMode?: WebchatClientBindingMode },
 ): Promise<ResolveWebchatSessionResult> {
+  const bindingMode = options?.bindingMode ?? "read";
   const trimmed = token.trim();
   if (!trimmed || trimmed.length < 16 || trimmed.length > 96) return { ok: false, code: "NOT_FOUND" };
 
@@ -282,7 +291,7 @@ export async function resolveWebchatSessionByToken(
     return { ok: false, code: "SESSION_EXPIRED" };
   }
 
-  const binding = await verifyWebchatClientSessionBinding(session, clientSessionSecret);
+  const binding = await verifyWebchatClientSessionBinding(session, clientSessionSecret, bindingMode);
   if (!binding.ok) return binding;
 
   const conversation = await prisma.conversation.findFirst({
