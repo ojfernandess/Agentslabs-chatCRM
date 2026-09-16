@@ -4,6 +4,8 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { processChannelInboxInbound } from "../lib/channelInboxIngest.js";
 import { recordWhatsappWebhookAttempt } from "../lib/whatsappWebhookRouting.js";
+import { resolveTelegramBotTokenForInbox } from "../lib/telegramBotApi.js";
+import { buildTelegramInboundPayload } from "../lib/telegramInboundUpdate.js";
 import type { MessageType } from "@prisma/client";
 
 function setCorsPublic(reply: FastifyReply) {
@@ -104,82 +106,30 @@ export async function channelInboxPublicRoutes(app: FastifyInstance): Promise<vo
       return reply.status(400).send({ error: "Bad Request", message: "JSON object body required", statusCode: 400 });
     }
 
-    const msg = (raw as { message?: Record<string, unknown>; edited_message?: Record<string, unknown> }).message ??
-      (raw as { edited_message?: Record<string, unknown> }).edited_message;
-    if (!msg || typeof msg !== "object") {
+    const built = await buildTelegramInboundPayload(raw, {
+      botToken: resolveTelegramBotTokenForInbox(inbox.channelConfig),
+      log: app.log,
+    });
+    if (built.status === "ignored") {
       return reply.status(200).send({ ok: true, ignored: true });
     }
-
-    const chat = msg.chat as { id?: unknown } | undefined;
-    const from = msg.from as { id?: unknown; first_name?: string; username?: string } | undefined;
-    const chatId = chat?.id;
-    const participantId = chatId != null ? String(chatId) : from?.id != null ? String(from.id) : null;
-    if (!participantId) {
-      return reply.status(400).send({ error: "Bad Request", message: "Missing chat/user id", statusCode: 400 });
+    if (built.status === "error") {
+      return reply.status(400).send({ error: "Bad Request", message: built.message, statusCode: 400 });
     }
-
-    const name =
-      [from?.first_name, from && "username" in from ? (from as { username?: string }).username : undefined]
-        .filter(Boolean)
-        .join(" ")
-        .trim() || undefined;
-
-    const text =
-      typeof msg.text === "string"
-        ? msg.text
-        : typeof msg.caption === "string"
-          ? msg.caption
-          : null;
-
-    let type: MessageType = "TEXT";
-    let mediaUrl: string | null = null;
-    let mediaType: string | null = null;
-
-    if (msg.photo && Array.isArray(msg.photo) && msg.photo.length > 0) {
-      type = "IMAGE";
-      const last = msg.photo[msg.photo.length - 1] as { file_id?: string };
-      if (last.file_id) {
-        mediaUrl = `telegram:file_id:${last.file_id}`;
-        mediaType = "image/jpeg";
-      }
-    } else if (msg.document) {
-      type = "DOCUMENT";
-      const doc = msg.document as { file_id?: string; mime_type?: string };
-      if (doc.file_id) {
-        mediaUrl = `telegram:file_id:${doc.file_id}`;
-        mediaType = doc.mime_type ?? "application/octet-stream";
-      }
-    } else if (msg.voice) {
-      type = "AUDIO";
-      const v = msg.voice as { file_id?: string; mime_type?: string };
-      if (v.file_id) {
-        mediaUrl = `telegram:file_id:${v.file_id}`;
-        mediaType = v.mime_type ?? "audio/ogg";
-      }
-    } else if (msg.video) {
-      type = "VIDEO";
-      const v = msg.video as { file_id?: string; mime_type?: string };
-      if (v.file_id) {
-        mediaUrl = `telegram:file_id:${v.file_id}`;
-        mediaType = v.mime_type ?? "video/mp4";
-      }
-    }
-
-    const externalMessageId =
-      typeof msg.message_id === "number" || typeof msg.message_id === "string" ? String(msg.message_id) : null;
+    const payload = built.payload;
 
     try {
       const result = await processChannelInboxInbound({
         organizationId: inbox.organizationId,
         inboxId: inbox.id,
         channelType: inbox.channelType,
-        participantId,
-        participantName: name,
-        body: text,
-        type,
-        mediaUrl,
-        mediaType,
-        externalMessageId,
+        participantId: payload.participantId,
+        participantName: payload.participantName,
+        body: payload.body,
+        type: payload.type,
+        mediaUrl: payload.mediaUrl,
+        mediaType: payload.mediaType,
+        externalMessageId: payload.externalMessageId,
         log: app.log,
       });
       return reply.status(201).send(result);
