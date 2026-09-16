@@ -11,12 +11,13 @@ export function extractContactMobilePhoneFromNotes(notes: string | null | undefi
 }
 
 export function resolveContactMobilePhone(contact: {
-  phone: string;
+  phone?: string | null;
   mobilePhone?: string | null;
   notes?: string | null;
 }): string | null {
   if (contact.mobilePhone?.trim()) return contact.mobilePhone.trim();
-  if (isChannelParticipantPhone(contact.phone)) {
+  const phone = contact.phone ?? "";
+  if (isChannelParticipantPhone(phone)) {
     return extractContactMobilePhoneFromNotes(contact.notes);
   }
   return null;
@@ -24,12 +25,13 @@ export function resolveContactMobilePhone(contact: {
 
 /** Telefone utilizável para ligações/SMS/WhatsApp outbound (não a chave interna do canal). */
 export function resolveContactDialPhone(contact: {
-  phone: string;
+  phone?: string | null;
   mobilePhone?: string | null;
   notes?: string | null;
 }): string | null {
   const mobile = resolveContactMobilePhone(contact);
   if (mobile) return mobile;
-  if (isChannelParticipantPhone(contact.phone)) return null;
-  return contact.phone;
+  const phone = contact.phone ?? "";
+  if (isChannelParticipantPhone(phone)) return null;
+  return phone || null;
 }
