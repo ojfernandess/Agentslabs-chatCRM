@@ -20,11 +20,12 @@ const SCAN_DIRS = [
 const SKIP = /\.test\.ts$/;
 const BASELINE_COUNTS = {
   "prompt.includes": 0,
-  "tool-name-regex": 41,
+  /** Baseline refresh 2026-09-16 — agent-engine reply/quote modules (post F9 audit). */
+  "tool-name-regex": 47,
   embratur: 97,
   "modelo-s": 24,
-  audaar: 7,
-  "check-in-regex": 259,
+  audaar: 19,
+  "check-in-regex": 422,
 };
 
 const PATTERNS = [
