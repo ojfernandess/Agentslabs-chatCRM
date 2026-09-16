@@ -66,9 +66,24 @@ const listQuerySchema = z.object({
   since: z.string().datetime({ offset: true }).optional(),
 });
 
-function sessionError(reply: FastifyReply, code: "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED") {
-  const status = code === "NOT_FOUND" ? 404 : 410;
+function sessionError(
+  reply: FastifyReply,
+  code: "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED" | "SESSION_CLAIMED" | "CLIENT_SESSION_REQUIRED",
+) {
+  const status =
+    code === "NOT_FOUND" ? 404 : code === "SESSION_CLAIMED" || code === "CLIENT_SESSION_REQUIRED" ? 403 : 410;
   return reply.status(status).send({ error: code, statusCode: status });
+}
+
+function readClientSessionSecret(request: FastifyRequest): string | null {
+  const raw = request.headers["x-webchat-client-session"];
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (Array.isArray(raw) && typeof raw[0] === "string" && raw[0].trim()) return raw[0].trim();
+  return null;
+}
+
+async function resolvePublicWebchatSession(request: FastifyRequest, token: string) {
+  return resolveWebchatSessionByToken(token, readClientSessionSecret(request));
 }
 
 type PublicWebchatMessage = {
@@ -179,7 +194,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     if (rateLimited(`ip:${clientIp(request)}`, 120, 60_000)) {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
-    const resolved = await resolveWebchatSessionByToken(request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token);
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const presence = await loadWebchatPresence(resolved.conversation.id);
@@ -209,26 +224,40 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       const q = listQuerySchema.safeParse(request.query ?? {});
       const since = q.success && q.data.since ? new Date(q.data.since) : null;
 
-      const rows = await prisma.message.findMany({
-        where: {
-          conversationId: resolved.conversation.id,
-          isPrivate: false,
-          ...(since ? { createdAt: { gt: since } } : {}),
-        },
-        orderBy: { createdAt: "asc" },
-        take: LIST_LIMIT,
-        select: {
-          id: true,
-          direction: true,
-          type: true,
-          body: true,
-          mediaUrl: true,
-          mediaType: true,
-          channel: true,
-          status: true,
-          createdAt: true,
-        },
-      });
+      const messageSelect = {
+        id: true,
+        direction: true,
+        type: true,
+        body: true,
+        mediaUrl: true,
+        mediaType: true,
+        channel: true,
+        status: true,
+        createdAt: true,
+      } as const;
+
+      const rows = since
+        ? await prisma.message.findMany({
+            where: {
+              conversationId: resolved.conversation.id,
+              isPrivate: false,
+              createdAt: { gt: since },
+            },
+            orderBy: { createdAt: "asc" },
+            take: LIST_LIMIT,
+            select: messageSelect,
+          })
+        : (
+            await prisma.message.findMany({
+              where: {
+                conversationId: resolved.conversation.id,
+                isPrivate: false,
+              },
+              orderBy: { createdAt: "desc" },
+              take: LIST_LIMIT,
+              select: messageSelect,
+            })
+          ).reverse();
 
       const presence = await loadWebchatPresence(resolved.conversation.id);
 
@@ -251,7 +280,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     ) {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
-    const resolved = await resolveWebchatSessionByToken(request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token);
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
@@ -276,7 +305,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     ) {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
-    const resolved = await resolveWebchatSessionByToken(request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token);
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
@@ -309,7 +338,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const resolved = await resolveWebchatSessionByToken(request.params.token);
+    const resolved = await resolvePublicWebchatSession(request, request.params.token);
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
     const { organizationId } = resolved.conversation;

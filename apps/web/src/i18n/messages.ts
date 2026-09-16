@@ -344,6 +344,9 @@ export const messages = {
       expiredTitle: "Sessão expirada",
       expiredBody: "Este link de atendimento expirou. Solicite um novo link pelo canal em que você estava conversando.",
       revokedTitle: "Sessão encerrada",
+      claimedTitle: "Link já em uso",
+      claimedBody:
+        "Este link de atendimento já foi aberto noutro dispositivo ou navegador. Solicite um novo link pelo canal em que estava conversando.",
       notFoundTitle: "Conversa não encontrada",
       notFoundBody: "Este link de atendimento não é válido. Solicite um novo link pelo canal em que você estava conversando.",
     },
@@ -6803,6 +6806,9 @@ export const messages = {
       expiredTitle: "Session expired",
       expiredBody: "This chat link has expired. Please request a new link through the channel you were talking on.",
       revokedTitle: "Session closed",
+      claimedTitle: "Link already in use",
+      claimedBody:
+        "This chat link was already opened on another device or browser. Please request a new link through the channel you were talking on.",
       notFoundTitle: "Conversation not found",
       notFoundBody: "This chat link is not valid. Please request a new link through the channel you were talking on.",
     },

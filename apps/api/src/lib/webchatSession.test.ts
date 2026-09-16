@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 // Import dinâmico após defaults — mesmo padrão dos testes de billing (billingTestEnv).
 process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/test";
 process.env.JWT_SECRET ??= "test-secret";
-const { newWebchatToken, isWebchatSessionExpired, buildWebchatContinuityBody } = await import(
+const { newWebchatToken, isWebchatSessionExpired, buildWebchatContinuityBody, hashWebchatClientSession } = await import(
   "./webchatSession.js"
 );
 
@@ -69,5 +69,14 @@ describe("buildWebchatContinuityBody — {{webchat_url}} substitution (spec §18
       assert.ok(body.includes(url), `template=${JSON.stringify(template)}`);
       assert.ok(body.length > url.length);
     }
+  });
+});
+
+describe("hashWebchatClientSession — device binding secret", () => {
+  it("returns a stable SHA-256 hex digest", () => {
+    const hash = hashWebchatClientSession("client-secret-1");
+    assert.equal(hash.length, 64);
+    assert.equal(hashWebchatClientSession("client-secret-1"), hash);
+    assert.notEqual(hashWebchatClientSession("client-secret-2"), hash);
   });
 });

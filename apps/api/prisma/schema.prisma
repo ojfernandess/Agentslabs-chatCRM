@@ -2910,6 +2910,9 @@ model WebchatSession {
   createdBySource String               @default("AGENT") @map("created_by_source") @db.VarChar(16)
   createdByUserId String?              @map("created_by_user_id") @db.Uuid
   lastSeenAt      DateTime?            @map("last_seen_at")
+  claimedAt       DateTime?            @map("claimed_at")
+  /// SHA-256 hex do segredo do cliente — apenas o primeiro dispositivo que abrir o link mantém acesso.
+  clientSessionHash String?            @map("client_session_hash") @db.VarChar(64)
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at")
 

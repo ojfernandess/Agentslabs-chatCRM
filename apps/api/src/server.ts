@@ -127,14 +127,15 @@ await app.register(cors, {
       path.startsWith("/api/v1/public/channels/") ||
       path.startsWith("/api/v1/public/chatbot/") ||
       path.startsWith("/api/v1/public/csat/") ||
-      path.startsWith("/api/v1/public/inbox/");
+      path.startsWith("/api/v1/public/inbox/") ||
+      path.startsWith("/api/v1/public/webchat/");
 
     if (isPublicEmbed) {
       callback(null, {
         origin: true,
         credentials: false,
         methods: ["GET", "POST", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization"],
+        allowedHeaders: ["Content-Type", "Authorization", "X-Webchat-Client-Session"],
       });
       return;
     }

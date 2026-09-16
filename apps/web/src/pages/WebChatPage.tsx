@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
 import clsx from "clsx";
 import {
@@ -45,14 +45,49 @@ type SessionInfo = {
 };
 
 type ConnectionState = "CONNECTING" | "CONNECTED" | "RECONNECTING" | "OFFLINE";
-type SessionErrorCode = "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED";
+type SessionErrorCode = "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED" | "SESSION_CLAIMED";
 
 const POLL_INTERVAL_MS = 3500;
+const WEBCHAT_CLIENT_SESSION_PREFIX = "webchat_client_session:";
 const QUICK_EMOJIS = ["😊", "👍", "🙏", "❤️", "😅", "🎉"];
 const WEBCHAT_VIEWPORT =
   "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content";
 const DRAFT_MIN_HEIGHT_PX = 40;
 const DRAFT_MAX_HEIGHT_PX = 132;
+
+function getOrCreateWebchatClientSession(token: string): string {
+  const key = `${WEBCHAT_CLIENT_SESSION_PREFIX}${token}`;
+  try {
+    const existing = localStorage.getItem(key);
+    if (existing?.trim()) return existing.trim();
+    const secret = crypto.randomUUID();
+    localStorage.setItem(key, secret);
+    return secret;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function webchatAuthHeaders(token: string, extra?: HeadersInit): HeadersInit {
+  return {
+    ...extra,
+    "X-Webchat-Client-Session": getOrCreateWebchatClientSession(token),
+  };
+}
+
+function parseSessionErrorCode(status: number, data: { error?: string } | null): SessionErrorCode | null {
+  if (status === 404) return "NOT_FOUND";
+  if (status === 403) {
+    if (data?.error === "SESSION_CLAIMED" || data?.error === "CLIENT_SESSION_REQUIRED") {
+      return "SESSION_CLAIMED";
+    }
+    return null;
+  }
+  if (status === 410) {
+    return data?.error === "SESSION_REVOKED" ? "SESSION_REVOKED" : "SESSION_EXPIRED";
+  }
+  return null;
+}
 
 function dayLabel(iso: string, todayLabel: string, locale: string): string {
   const d = new Date(iso);
@@ -319,6 +354,7 @@ export default function WebChatPage() {
   const chunksRef = useRef<BlobPart[]>([]);
   const lastCreatedAtRef = useRef<string | null>(null);
   const stickToBottomRef = useRef(true);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useWebchatMobileShell(!sessionError);
 
@@ -368,9 +404,17 @@ export default function WebChatPage() {
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = listRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior, block: "end" });
   }, []);
+
+  useLayoutEffect(() => {
+    if (!stickToBottomRef.current || messages.length === 0) return;
+    scrollToBottom("auto");
+  }, [messages, scrollToBottom]);
 
   const mergeMessages = useCallback((incoming: PublicMessage[]) => {
     if (incoming.length === 0) return;
@@ -388,12 +432,13 @@ export default function WebChatPage() {
     async (payload: Record<string, unknown>) => {
       const res = await fetch(`${base}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: webchatAuthHeaders(token, { "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
-      if (res.status === 410) {
+      if (res.status === 410 || res.status === 403) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        setSessionError(data?.error === "SESSION_REVOKED" ? "SESSION_REVOKED" : "SESSION_EXPIRED");
+        const code = parseSessionErrorCode(res.status, data);
+        if (code) setSessionError(code);
         return null;
       }
       if (!res.ok) {
@@ -403,10 +448,9 @@ export default function WebChatPage() {
       const data = (await res.json()) as { message: PublicMessage };
       stickToBottomRef.current = true;
       mergeMessages([data.message]);
-      requestAnimationFrame(() => scrollToBottom("smooth"));
       return data.message;
     },
-    [base, mergeMessages, scrollToBottom],
+    [base, mergeMessages, token],
   );
 
   const uploadFile = useCallback(
@@ -415,32 +459,41 @@ export default function WebChatPage() {
       form.append("file", file, filename);
       const res = await fetch(`${base}/${audio ? "upload-audio" : "upload-media"}`, {
         method: "POST",
+        headers: webchatAuthHeaders(token),
         body: form,
       });
+      if (res.status === 403 || res.status === 410) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        const code = parseSessionErrorCode(res.status, data);
+        if (code) setSessionError(code);
+        throw new Error(code ?? "session error");
+      }
       if (!res.ok) throw new Error("upload failed");
       return (await res.json()) as { mediaUrl: string; mimeType: string };
     },
-    [base],
+    [base, token],
   );
 
   useEffect(() => {
     let cancelled = false;
+    stickToBottomRef.current = true;
     void (async () => {
       try {
-        const sres = await fetch(`${base}/session`);
+        const sres = await fetch(`${base}/session`, { headers: webchatAuthHeaders(token) });
         if (!sres.ok) {
           const data = (await sres.json().catch(() => null)) as { error?: string } | null;
-          if (!cancelled) {
-            setSessionError(
-              data?.error === "SESSION_EXPIRED" || data?.error === "SESSION_REVOKED"
-                ? (data.error as SessionErrorCode)
-                : "NOT_FOUND",
-            );
-          }
+          const code = parseSessionErrorCode(sres.status, data);
+          if (!cancelled && code) setSessionError(code);
           return;
         }
         const sdata = (await sres.json()) as SessionInfo & { humanActive: boolean; assigneeName?: string | null };
-        const mres = await fetch(`${base}/messages`);
+        const mres = await fetch(`${base}/messages`, { headers: webchatAuthHeaders(token) });
+        if (mres.status === 403 || mres.status === 410) {
+          const data = (await mres.json().catch(() => null)) as { error?: string } | null;
+          const code = parseSessionErrorCode(mres.status, data);
+          if (!cancelled && code) setSessionError(code);
+          return;
+        }
         const mdata = mres.ok
           ? ((await mres.json()) as {
               messages: PublicMessage[];
@@ -454,7 +507,6 @@ export default function WebChatPage() {
         setAssigneeName(sdata.assigneeName ?? mdata.assigneeName ?? null);
         mergeMessages(mdata.messages);
         setConnection("CONNECTED");
-        requestAnimationFrame(() => scrollToBottom());
       } catch {
         if (!cancelled) setConnection(navigator.onLine ? "RECONNECTING" : "OFFLINE");
       }
@@ -462,7 +514,7 @@ export default function WebChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [base, mergeMessages, scrollToBottom]);
+  }, [base, mergeMessages, token]);
 
   useEffect(() => {
     if (!session || sessionError) return;
@@ -472,13 +524,13 @@ export default function WebChatPage() {
           const since = lastCreatedAtRef.current;
           const res = await fetch(
             `${base}/messages${since ? `?since=${encodeURIComponent(since)}` : ""}`,
+            { headers: webchatAuthHeaders(token) },
           );
           if (!res.ok) {
-            if (res.status === 410) {
+            if (res.status === 410 || res.status === 403) {
               const data = (await res.json().catch(() => null)) as { error?: string } | null;
-              setSessionError(
-                data?.error === "SESSION_REVOKED" ? "SESSION_REVOKED" : "SESSION_EXPIRED",
-              );
+              const code = parseSessionErrorCode(res.status, data);
+              if (code) setSessionError(code);
               return;
             }
             setConnection("RECONNECTING");
@@ -491,9 +543,7 @@ export default function WebChatPage() {
           };
           setHumanActive(Boolean(data.humanActive));
           if (data.assigneeName !== undefined) setAssigneeName(data.assigneeName);
-          if (data.messages.length > 0 && stickToBottomRef.current) {
-            requestAnimationFrame(() => scrollToBottom("smooth"));
-          }
+          if (data.messages.length > 0) stickToBottomRef.current = true;
           mergeMessages(data.messages);
           setConnection("CONNECTED");
         } catch {
@@ -502,7 +552,7 @@ export default function WebChatPage() {
       })();
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [base, session, sessionError, mergeMessages, scrollToBottom]);
+  }, [base, session, sessionError, mergeMessages, token]);
 
   useEffect(() => {
     const onOnline = () => setConnection((c) => (c === "OFFLINE" ? "RECONNECTING" : c));
@@ -677,10 +727,16 @@ export default function WebChatPage() {
               ? t("webchat.expiredTitle")
               : sessionError === "SESSION_REVOKED"
                 ? t("webchat.revokedTitle")
-                : t("webchat.notFoundTitle")}
+                : sessionError === "SESSION_CLAIMED"
+                  ? t("webchat.claimedTitle")
+                  : t("webchat.notFoundTitle")}
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            {sessionError === "SESSION_EXPIRED" ? t("webchat.expiredBody") : t("webchat.notFoundBody")}
+            {sessionError === "SESSION_EXPIRED"
+              ? t("webchat.expiredBody")
+              : sessionError === "SESSION_CLAIMED"
+                ? t("webchat.claimedBody")
+                : t("webchat.notFoundBody")}
           </p>
         </div>
       </div>
@@ -732,6 +788,7 @@ export default function WebChatPage() {
         {messages.length === 0 && connection === "CONNECTED" ? (
           <p className="py-10 text-center text-sm text-gray-500">{t("webchat.emptyState")}</p>
         ) : null}
+        <div ref={messagesEndRef} aria-hidden className="h-px shrink-0" />
       </div>
 
       <form onSubmit={sendText} className="shrink-0 border-t border-black/5 bg-white px-3 py-3">
