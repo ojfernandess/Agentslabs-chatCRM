@@ -138,13 +138,16 @@ export function WebchatLinkModal({
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
           variants={backdropVariants}
           initial="hidden"
-          animate="visible"
-          exit="hidden"
+          animate="show"
+          exit="exit"
           onClick={onClose}
         >
           <motion.div
             className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-ink-900"
             variants={modalVariants}
+            initial="hidden"
+            animate="show"
+            exit="exit"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"

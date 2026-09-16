@@ -31,12 +31,15 @@ const EVENT_I18N: Record<string, string> = {
   nvoip_sms: "contactDetail.timelineNvoipSms",
   nvoip_otp_verified: "contactDetail.timelineNvoipOtpVerified",
   nvoip_wa_template: "contactDetail.timelineNvoipWaTemplate",
+  "webchat.link_generated": "conversationDetail.timelineWebchatLinkGenerated",
+  "webchat.link_sent": "conversationDetail.timelineWebchatLinkSent",
 };
 
 const CHANNEL_I18N: Record<string, string> = {
   whatsapp: "contactDetail.timelineChannelWhatsapp",
   conversation: "contactDetail.timelineChannelConversation",
   wavoip: "contactDetail.timelineChannelWavoip",
+  webchat: "contactDetail.timelineChannelWebchat",
 };
 
 function humanizeUnknownEventType(eventType: string): string {
@@ -138,6 +141,9 @@ export function timelineEventSummary(
     case "message.inbound":
     case "message.outbound":
       return messageSummary(payload, t);
+    case "webchat.link_sent":
+    case "webchat.link_generated":
+      return null;
     case "wavoip_call":
     case "threecx_call":
     case "nvoip_call": {

@@ -1,16 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
 import clsx from "clsx";
-import { MessageCircle, SendHorizonal, WifiOff } from "lucide-react";
+import {
+  CheckCheck,
+  Download,
+  FileText,
+  Loader2,
+  Mic,
+  Paperclip,
+  SendHorizonal,
+  Shield,
+  Smile,
+  Square,
+  WifiOff,
+} from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 
 /**
- * Web Chat externo (/s/:token) — continuidade da MESMA conversa do WhatsApp/Inbox.
- *
- * - mobile-first (viewport, safe areas, teclado virtual, scroll automático);
- * - layout de conversa familiar SEM se passar pelo WhatsApp oficial (sem logo/nome WhatsApp);
- * - realtime por polling incremental com estados CONNECTING / CONNECTED / RECONNECTING / OFFLINE;
- * - o conteúdo é sempre renderizado como texto puro (proteção XSS).
+ * Web Chat externo (/s/:token) — continuidade da MESMA conversa.
+ * Mobile-first, identidade própria (não se passa pelo WhatsApp oficial).
  */
 
 type PublicMessage = {
@@ -33,10 +41,10 @@ type SessionInfo = {
 };
 
 type ConnectionState = "CONNECTING" | "CONNECTED" | "RECONNECTING" | "OFFLINE";
-
 type SessionErrorCode = "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED";
 
 const POLL_INTERVAL_MS = 3500;
+const QUICK_EMOJIS = ["😊", "👍", "🙏", "❤️", "😅", "🎉"];
 
 function dayLabel(iso: string, todayLabel: string, locale: string): string {
   const d = new Date(iso);
@@ -53,17 +61,159 @@ function timeLabel(iso: string, locale: string): string {
   return new Date(iso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 }
 
+function fileNameFromUrl(url: string): string {
+  try {
+    const name = url.split("/").pop() ?? "file";
+    return decodeURIComponent(name.split("?")[0] ?? name);
+  } catch {
+    return "file";
+  }
+}
+
+function pickRecorderMimeTypes(): string[] {
+  return ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+}
+
+function createVoiceMediaRecorder(stream: MediaStream): MediaRecorder {
+  if (typeof MediaRecorder === "undefined") throw new Error("MediaRecorder unsupported");
+  for (const mime of pickRecorderMimeTypes()) {
+    if (!MediaRecorder.isTypeSupported(mime)) continue;
+    try {
+      return new MediaRecorder(stream, { mimeType: mime });
+    } catch {
+      /* next */
+    }
+  }
+  return new MediaRecorder(stream);
+}
+
+function canUseVoiceRecording(): boolean {
+  if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) return false;
+  const host = window.location.hostname.toLowerCase();
+  if (!window.isSecureContext && host !== "localhost" && host !== "127.0.0.1") return false;
+  return true;
+}
+
+function BrandAvatar({ label }: { label: string }) {
+  return (
+    <div
+      className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20"
+      aria-hidden
+    >
+      <span className="absolute left-2 top-2 h-3.5 w-3.5 rounded-full bg-emerald-300/90" />
+      <span className="absolute bottom-1.5 right-1.5 h-4 w-4 rounded-full bg-teal-400/90" />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  locale,
+  t,
+  orgName,
+}: {
+  message: PublicMessage;
+  locale: string;
+  t: (path: string) => string;
+  orgName: string;
+}) {
+  const mine = message.direction === "INBOUND";
+  const read = message.status === "READ" || message.status === "DELIVERED";
+
+  return (
+    <div className={clsx("flex gap-2", mine ? "justify-end" : "justify-start")}>
+      {!mine ? <BrandAvatar label={orgName} /> : null}
+      <div className={clsx("max-w-[min(82%,20rem)]", mine ? "items-end" : "items-start")}>
+        <div
+          className={clsx(
+            "rounded-2xl px-3.5 py-2.5 text-[15px] leading-snug shadow-sm",
+            mine
+              ? "rounded-br-md bg-[#d7f4dd] text-[#1f2937]"
+              : "rounded-bl-md bg-[#eef1f8] text-[#1f2937]",
+          )}
+        >
+          {message.type === "IMAGE" && message.mediaUrl ? (
+            <button
+              type="button"
+              className="block overflow-hidden rounded-xl"
+              onClick={() => window.open(message.mediaUrl!, "_blank", "noopener,noreferrer")}
+            >
+              <img
+                src={message.mediaUrl}
+                alt=""
+                className="max-h-64 w-full object-cover"
+                loading="lazy"
+              />
+            </button>
+          ) : null}
+
+          {message.type === "AUDIO" && message.mediaUrl ? (
+            <audio controls preload="metadata" className="max-w-full" src={message.mediaUrl}>
+              {t("webchat.mediaMessage")}
+            </audio>
+          ) : null}
+
+          {message.type === "VIDEO" && message.mediaUrl ? (
+            <video controls preload="metadata" className="max-h-64 w-full rounded-xl" src={message.mediaUrl} />
+          ) : null}
+
+          {message.type === "DOCUMENT" && message.mediaUrl ? (
+            <a
+              href={message.mediaUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 rounded-xl border border-black/5 bg-white/80 px-3 py-2.5 text-left hover:bg-white"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                <FileText className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{fileNameFromUrl(message.mediaUrl)}</span>
+                <span className="text-xs text-gray-500">{message.mediaType ?? t("webchat.attachment")}</span>
+              </span>
+              <Download className="h-4 w-4 shrink-0 text-gray-500" />
+            </a>
+          ) : null}
+
+          {message.body ? <p className="mt-1 whitespace-pre-wrap break-words">{message.body}</p> : null}
+
+          {!message.body &&
+          !message.mediaUrl &&
+          message.type !== "TEXT" ? (
+            <p className="italic opacity-80">{t("webchat.mediaMessage")}</p>
+          ) : null}
+
+          <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-gray-500">
+            <span>{timeLabel(message.createdAt, locale)}</span>
+            {mine && read ? <CheckCheck className="h-3.5 w-3.5 text-sky-500" /> : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WebChatPage() {
   const { token = "" } = useParams<{ token: string }>();
   const { t, locale } = useI18n();
+  const localeTag = locale === "pt-BR" ? "pt-BR" : "en";
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [sessionError, setSessionError] = useState<SessionErrorCode | null>(null);
   const [messages, setMessages] = useState<PublicMessage[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("CONNECTING");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [humanActive, setHumanActive] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
   const lastCreatedAtRef = useRef<string | null>(null);
   const stickToBottomRef = useRef(true);
 
@@ -87,7 +237,45 @@ export default function WebChatPage() {
     });
   }, []);
 
-  /** Bootstrap: sessão + histórico completo da conversa. */
+  const postMessage = useCallback(
+    async (payload: Record<string, unknown>) => {
+      const res = await fetch(`${base}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 410) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        setSessionError(data?.error === "SESSION_REVOKED" ? "SESSION_REVOKED" : "SESSION_EXPIRED");
+        return null;
+      }
+      if (!res.ok) {
+        setConnection("RECONNECTING");
+        return null;
+      }
+      const data = (await res.json()) as { message: PublicMessage };
+      stickToBottomRef.current = true;
+      mergeMessages([data.message]);
+      requestAnimationFrame(() => scrollToBottom("smooth"));
+      return data.message;
+    },
+    [base, mergeMessages, scrollToBottom],
+  );
+
+  const uploadFile = useCallback(
+    async (file: Blob, filename: string, audio = false) => {
+      const form = new FormData();
+      form.append("file", file, filename);
+      const res = await fetch(`${base}/${audio ? "upload-audio" : "upload-media"}`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) throw new Error("upload failed");
+      return (await res.json()) as { mediaUrl: string; mimeType: string };
+    },
+    [base],
+  );
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -124,7 +312,6 @@ export default function WebChatPage() {
     };
   }, [base, mergeMessages, scrollToBottom]);
 
-  /** Polling incremental — mensagens novas aparecem sem reload. */
   useEffect(() => {
     if (!session || sessionError) return;
     const timer = window.setInterval(() => {
@@ -160,7 +347,6 @@ export default function WebChatPage() {
     return () => window.clearInterval(timer);
   }, [base, session, sessionError, mergeMessages, scrollToBottom]);
 
-  /** Reconexão ao voltar online. */
   useEffect(() => {
     const onOnline = () => setConnection((c) => (c === "OFFLINE" ? "RECONNECTING" : c));
     const onOffline = () => setConnection("OFFLINE");
@@ -172,71 +358,149 @@ export default function WebChatPage() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
   const onListScroll = useCallback(() => {
     const el = listRef.current;
     if (!el) return;
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }, []);
 
-  const send = useCallback(
+  const sendText = useCallback(
     async (e?: FormEvent) => {
       e?.preventDefault();
       const content = draft.trim();
-      if (!content || sending) return;
+      if (!content || sending || uploading) return;
       setSending(true);
       try {
-        const res = await fetch(`${base}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content }),
-        });
-        if (res.status === 410) {
-          const data = (await res.json().catch(() => null)) as { error?: string } | null;
-          setSessionError(data?.error === "SESSION_REVOKED" ? "SESSION_REVOKED" : "SESSION_EXPIRED");
-          return;
-        }
-        if (!res.ok) {
-          setConnection("RECONNECTING");
-          return;
-        }
-        const data = (await res.json()) as { message: PublicMessage };
-        setDraft("");
-        stickToBottomRef.current = true;
-        mergeMessages([data.message]);
-        requestAnimationFrame(() => scrollToBottom("smooth"));
-      } catch {
-        setConnection(navigator.onLine ? "RECONNECTING" : "OFFLINE");
+        const ok = await postMessage({ content });
+        if (ok) setDraft("");
       } finally {
         setSending(false);
       }
     },
-    [base, draft, sending, mergeMessages, scrollToBottom],
+    [draft, sending, uploading, postMessage],
   );
+
+  const sendAttachment = useCallback(
+    async (file: File) => {
+      if (uploading || sending) return;
+      setUploading(true);
+      try {
+        const isAudio = file.type.startsWith("audio/") || file.type === "video/webm";
+        const uploaded = await uploadFile(file, file.name, isAudio);
+        const type = file.type.startsWith("image/")
+          ? "IMAGE"
+          : isAudio
+            ? "AUDIO"
+            : file.type.startsWith("video/")
+              ? "VIDEO"
+              : "DOCUMENT";
+        await postMessage({
+          mediaUrl: uploaded.mediaUrl,
+          mediaType: uploaded.mimeType,
+          type,
+          content: draft.trim() || undefined,
+        });
+        setDraft("");
+      } catch {
+        setConnection("RECONNECTING");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [uploading, sending, uploadFile, postMessage, draft],
+  );
+
+  const onFileChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (file) void sendAttachment(file);
+    },
+    [sendAttachment],
+  );
+
+  const stopRecording = useCallback(async () => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+    setVoiceBusy(true);
+    await new Promise<void>((resolve) => {
+      recorder.onstop = () => resolve();
+      recorder.stop();
+    });
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+    setRecording(false);
+    try {
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      chunksRef.current = [];
+      const ext = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "m4a" : "webm";
+      const uploaded = await uploadFile(blob, `voice.${ext}`, true);
+      await postMessage({
+        mediaUrl: uploaded.mediaUrl,
+        mediaType: uploaded.mimeType,
+        type: "AUDIO",
+      });
+    } catch {
+      setConnection("RECONNECTING");
+    } finally {
+      setVoiceBusy(false);
+    }
+  }, [uploadFile, postMessage]);
+
+  const toggleRecording = useCallback(async () => {
+    if (recording) {
+      await stopRecording();
+      return;
+    }
+    if (!canUseVoiceRecording()) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const recorder = createVoiceMediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      recorder.start();
+      recorderRef.current = recorder;
+      setRecording(true);
+    } catch {
+      /* mic denied */
+    }
+  }, [recording, stopRecording]);
 
   const grouped = useMemo(() => {
     const groups: Array<{ day: string; items: PublicMessage[] }> = [];
     for (const m of messages) {
-      const day = dayLabel(m.createdAt, t("webchat.today"), locale);
+      const day = dayLabel(m.createdAt, t("webchat.today"), localeTag);
       const last = groups[groups.length - 1];
       if (last && last.day === day) last.items.push(m);
       else groups.push({ day, items: [m] });
     }
     return groups;
-  }, [messages, locale, t]);
+  }, [messages, localeTag, t]);
 
   if (sessionError) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-ink-100 p-6 dark:bg-ink-950">
-        <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg dark:bg-ink-900">
-          <MessageCircle className="mx-auto h-10 w-10 text-ink-400" />
-          <h1 className="mt-4 text-lg font-bold text-ink-900 dark:text-ink-100">
+      <div className="flex min-h-dvh items-center justify-center bg-[#eceff1] p-6">
+        <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
+          <BrandAvatar label="OpenNexo" />
+          <h1 className="mt-4 text-lg font-bold text-gray-900">
             {sessionError === "SESSION_EXPIRED"
               ? t("webchat.expiredTitle")
               : sessionError === "SESSION_REVOKED"
                 ? t("webchat.revokedTitle")
                 : t("webchat.notFoundTitle")}
           </h1>
-          <p className="mt-2 text-sm text-ink-500">
+          <p className="mt-2 text-sm text-gray-500">
             {sessionError === "SESSION_EXPIRED" ? t("webchat.expiredBody") : t("webchat.notFoundBody")}
           </p>
         </div>
@@ -245,123 +509,162 @@ export default function WebChatPage() {
   }
 
   return (
-    <div
-      className="flex h-dvh flex-col bg-ink-100 dark:bg-ink-950"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-    >
-      {/* Cabeçalho simples — identidade própria, sem se passar pelo WhatsApp oficial */}
-      <header
-        className="flex items-center gap-3 border-b border-ink-200 bg-white px-4 py-3 shadow-sm dark:border-ink-800 dark:bg-ink-900"
-        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+    <div className="flex min-h-dvh justify-center bg-[#eceff1]">
+      <div
+        className="flex h-dvh w-full max-w-lg flex-col overflow-hidden bg-[#f4f6f8] shadow-2xl"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-600 text-white">
-          <MessageCircle className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-bold text-ink-900 dark:text-ink-100">
-            {t("webchat.headerTitle")}
+        <header
+          className="shrink-0 bg-gradient-to-br from-[#0b2f1a] via-[#123824] to-[#0d2818] px-4 pb-4 pt-[max(0.85rem,env(safe-area-inset-top))] text-white"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <BrandAvatar label={session?.organizationName ?? "OpenNexo"} />
+              <div className="min-w-0">
+                <p className="truncate text-base font-bold">{session?.organizationName ?? t("webchat.headerTitle")}</p>
+                <p className="truncate text-sm text-white/80">{t("webchat.onlineTitle")}</p>
+                <p className="mt-0.5 flex items-center gap-1.5 text-xs text-emerald-200">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                  {t("webchat.onlineSubtitle")}
+                </p>
+              </div>
+            </div>
+            <div className="max-w-[38%] shrink-0 text-right text-[10px] leading-tight text-white/75 sm:max-w-none sm:text-[11px]">
+              <p className="font-semibold text-white">{t("webchat.secureChat")}</p>
+              <p>{t("webchat.sameConversation")}</p>
+            </div>
           </div>
-          <div className="truncate text-xs text-ink-500">
-            {session ? session.organizationName : t("webchat.connecting")}
-            {humanActive ? ` · ${t("webchat.humanActive")}` : session?.agentName ? ` · ${session.agentName}` : ""}
-          </div>
-        </div>
-        {connection !== "CONNECTED" ? (
-          <span
-            className={clsx(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-              connection === "OFFLINE"
-                ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-            )}
-          >
-            {connection === "OFFLINE" ? <WifiOff className="h-3 w-3" /> : null}
-            {connection === "CONNECTING"
-              ? t("webchat.connecting")
-              : connection === "RECONNECTING"
-                ? t("webchat.reconnecting")
-                : t("webchat.offline")}
-          </span>
-        ) : null}
-      </header>
+          {connection !== "CONNECTED" ? (
+            <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium">
+              {connection === "OFFLINE" ? <WifiOff className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}
+              {connection === "CONNECTING"
+                ? t("webchat.connecting")
+                : connection === "RECONNECTING"
+                  ? t("webchat.reconnecting")
+                  : t("webchat.offline")}
+            </p>
+          ) : humanActive ? (
+            <p className="mt-3 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium">
+              {t("webchat.humanActive")}
+            </p>
+          ) : null}
+        </header>
 
-      {/* Lista de mensagens */}
-      <div ref={listRef} onScroll={onListScroll} className="flex-1 overflow-y-auto px-3 py-4">
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-1.5">
+        <div ref={listRef} onScroll={onListScroll} className="flex-1 overflow-y-auto px-3 py-4">
           {grouped.map((group) => (
-            <div key={group.day} className="flex flex-col gap-1.5">
-              <div className="my-3 flex items-center justify-center">
-                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-ink-500 shadow-sm dark:bg-ink-800 dark:text-ink-400">
+            <div key={group.day} className="space-y-3">
+              <div className="flex justify-center py-1">
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-medium text-gray-500 shadow-sm">
                   {group.day}
                 </span>
               </div>
-              {group.items.map((m) => {
-                const mine = m.direction === "INBOUND";
-                return (
-                  <div key={m.id} className={clsx("flex", mine ? "justify-end" : "justify-start")}>
-                    <div
-                      className={clsx(
-                        "max-w-[82%] rounded-2xl px-3.5 py-2 text-sm shadow-sm",
-                        mine
-                          ? "rounded-br-md bg-brand-600 text-white"
-                          : "rounded-bl-md bg-white text-ink-900 dark:bg-ink-800 dark:text-ink-100",
-                      )}
-                    >
-                      {m.body ? (
-                        <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                      ) : m.mediaUrl ? (
-                        <p className="italic opacity-80">{t("webchat.mediaMessage")}</p>
-                      ) : null}
-                      <div
-                        className={clsx(
-                          "mt-1 text-right text-[10px]",
-                          mine ? "text-white/70" : "text-ink-400",
-                        )}
-                      >
-                        {timeLabel(m.createdAt, locale)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {group.items.map((m) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  locale={localeTag}
+                  t={t}
+                  orgName={session?.organizationName ?? t("webchat.headerTitle")}
+                />
+              ))}
             </div>
           ))}
           {messages.length === 0 && connection === "CONNECTED" ? (
-            <p className="py-10 text-center text-sm text-ink-500">{t("webchat.emptyState")}</p>
+            <p className="py-10 text-center text-sm text-gray-500">{t("webchat.emptyState")}</p>
           ) : null}
         </div>
-      </div>
 
-      {/* Campo de mensagem */}
-      <form
-        onSubmit={send}
-        className="border-t border-ink-200 bg-white px-3 py-2.5 dark:border-ink-800 dark:bg-ink-900"
-      >
-        <div className="mx-auto flex w-full max-w-2xl items-end gap-2">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-            rows={1}
-            placeholder={t("webchat.inputPlaceholder")}
-            aria-label={t("webchat.inputPlaceholder")}
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-2xl border border-ink-200 bg-ink-50 px-4 py-2.5 text-sm text-ink-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-200 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-100"
-          />
-          <button
-            type="submit"
-            disabled={sending || !draft.trim()}
-            aria-label={t("webchat.sendLabel")}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-50"
-          >
-            <SendHorizonal className="h-5 w-5" />
-          </button>
-        </div>
-      </form>
+        <form onSubmit={sendText} className="shrink-0 border-t border-black/5 bg-white px-3 py-3">
+          {emojiOpen ? (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {QUICK_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className="rounded-lg px-2 py-1 text-lg hover:bg-gray-100"
+                  onClick={() => setDraft((d) => `${d}${emoji}`)}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*,audio/*,video/*,application/pdf,.doc,.docx"
+              onChange={onFileChange}
+            />
+            <div className="flex min-h-[48px] flex-1 items-center gap-1 rounded-full border border-gray-200 bg-white px-2 shadow-sm">
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+                aria-label={t("webchat.attachLabel")}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || sending || voiceBusy}
+              >
+                {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
+              </button>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendText();
+                  }
+                }}
+                rows={1}
+                placeholder={t("webchat.inputPlaceholder")}
+                aria-label={t("webchat.inputPlaceholder")}
+                className="max-h-28 min-h-[40px] flex-1 resize-none bg-transparent px-1 py-2 text-[15px] text-gray-900 outline-none"
+              />
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
+                aria-label={t("webchat.emojiLabel")}
+                onClick={() => setEmojiOpen((v) => !v)}
+              >
+                <Smile className="h-5 w-5" />
+              </button>
+              {canUseVoiceRecording() ? (
+                <button
+                  type="button"
+                  className={clsx(
+                    "flex h-10 w-10 items-center justify-center rounded-full",
+                    recording ? "bg-red-500 text-white" : "text-gray-600 hover:bg-gray-100",
+                  )}
+                  aria-label={recording ? t("webchat.stopRecording") : t("webchat.recordVoice")}
+                  onClick={() => void toggleRecording()}
+                  disabled={uploading || sending || voiceBusy}
+                >
+                  {recording ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-5 w-5" />}
+                </button>
+              ) : null}
+            </div>
+            <button
+              type="submit"
+              disabled={sending || uploading || voiceBusy || !draft.trim()}
+              aria-label={t("webchat.sendLabel")}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1fa855] text-white shadow-md transition hover:bg-[#199648] disabled:opacity-50"
+            >
+              {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizonal className="h-5 w-5" />}
+            </button>
+          </div>
+        </form>
+
+        <footer className="flex items-center justify-between gap-3 border-t border-black/5 bg-[#f8faf9] px-4 py-2.5 text-[11px] text-gray-600">
+          <p className="flex items-center gap-1.5">
+            <Shield className="h-3.5 w-3.5 text-emerald-600" />
+            {t("webchat.securityFooter")}
+          </p>
+          <p>
+            {t("webchat.poweredBy")} <span className="font-semibold text-gray-800">OpenNexo</span>
+          </p>
+        </footer>
+      </div>
     </div>
   );
 }

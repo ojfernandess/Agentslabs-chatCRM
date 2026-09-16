@@ -1,10 +1,17 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import type { MessageType } from "@prisma/client";
 import { prisma } from "../db.js";
 import { resolveWebchatSessionByToken } from "../lib/webchatSession.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
+import {
+  allowAudioVoiceUpload,
+  allowRichMediaUpload,
+  messageTypeFromMime,
+  persistMultipartMedia,
+} from "../lib/messageMediaUpload.js";
 
 /**
  * Web Chat externo — rotas públicas por token seguro (`/s/:token` no frontend).
@@ -43,9 +50,16 @@ function clientIp(request: FastifyRequest): string {
   return request.ip ?? "unknown";
 }
 
-const sendMessageSchema = z.object({
-  content: z.string().min(1).max(MAX_BODY_CHARS),
-});
+const sendMessageSchema = z
+  .object({
+    content: z.string().max(MAX_BODY_CHARS).optional(),
+    mediaUrl: z.string().url().max(2048).optional(),
+    mediaType: z.string().max(128).optional(),
+    type: z.enum(["TEXT", "IMAGE", "AUDIO", "DOCUMENT", "VIDEO"]).optional(),
+  })
+  .refine((d) => Boolean(d.content?.trim()) || Boolean(d.mediaUrl), {
+    message: "content or mediaUrl required",
+  });
 
 const listQuerySchema = z.object({
   /** ISO timestamp — devolve apenas mensagens criadas depois (polling incremental). */
@@ -91,6 +105,52 @@ function toPublicMessage(m: {
     status: m.status,
     createdAt: m.createdAt.toISOString(),
   };
+}
+
+async function dispatchWebchatInbound(params: {
+  organizationId: string;
+  conversationId: string;
+  contactId: string;
+  inboxId: string;
+  message: {
+    id: string;
+    direction: "INBOUND" | "OUTBOUND";
+    type: string;
+    body: string | null;
+    mediaUrl: string | null;
+    mediaType: string | null;
+    channel: string | null;
+    status: string;
+    createdAt: Date;
+  };
+  log: FastifyRequest["log"];
+}): Promise<void> {
+  broadcastConversationUpdated(params.organizationId, params.conversationId);
+  const agentCtx = await getAgentBotDispatchContextForInbox(params.organizationId, params.inboxId);
+  if (!agentCtx) return;
+  const fresh = await prisma.conversation.findFirst({ where: { id: params.conversationId } });
+  const contact = await prisma.contact.findFirst({
+    where: { id: params.contactId, organizationId: params.organizationId },
+  });
+  if (!fresh || !contact) return;
+  void dispatchAgentBotWebhook({
+    organizationId: params.organizationId,
+    settings: { agentBotId: agentCtx.agentBotId, agentBot: agentCtx.agentBot },
+    conversation: fresh,
+    contact,
+    message: params.message as Parameters<typeof dispatchAgentBotWebhook>[0]["message"],
+    log: params.log,
+  });
+}
+
+function resolveInboundMessageType(input: {
+  type?: MessageType;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+}): MessageType {
+  if (input.type) return input.type;
+  if (input.mediaUrl && input.mediaType) return messageTypeFromMime(input.mediaType);
+  return "TEXT";
 }
 
 export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
@@ -165,6 +225,58 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
   );
 
   /**
+   * Upload de áudio pelo cliente (Web Chat público).
+   */
+  app.post<{ Params: { token: string } }>("/:token/upload-audio", async (request, reply) => {
+    if (
+      rateLimited(`upload:${request.params.token}`, 20, 60_000) ||
+      rateLimited(`ip:${clientIp(request)}`, 60, 60_000)
+    ) {
+      return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
+    }
+    const resolved = await resolveWebchatSessionByToken(request.params.token);
+    if (!resolved.ok) return sessionError(reply, resolved.code);
+
+    const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
+    if (!file) {
+      return reply.status(400).send({ error: "Bad Request", message: "multipart file field required", statusCode: 400 });
+    }
+    const out = await persistMultipartMedia(
+      file,
+      allowAudioVoiceUpload,
+      "Only audio/* (or video/webm voice) allowed",
+      reply,
+    );
+    if (!out) return;
+    return reply.status(201).send(out);
+  });
+
+  /** Upload imagem / documento / vídeo pelo cliente (Web Chat público). */
+  app.post<{ Params: { token: string } }>("/:token/upload-media", async (request, reply) => {
+    if (
+      rateLimited(`upload:${request.params.token}`, 20, 60_000) ||
+      rateLimited(`ip:${clientIp(request)}`, 60, 60_000)
+    ) {
+      return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
+    }
+    const resolved = await resolveWebchatSessionByToken(request.params.token);
+    if (!resolved.ok) return sessionError(reply, resolved.code);
+
+    const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
+    if (!file) {
+      return reply.status(400).send({ error: "Bad Request", message: "multipart file field required", statusCode: 400 });
+    }
+    const out = await persistMultipartMedia(
+      file,
+      allowRichMediaUpload,
+      "Allowed: image/*, audio/*, video/*, application/pdf, Word .doc/.docx",
+      reply,
+    );
+    if (!out) return;
+    return reply.status(201).send(out);
+  });
+
+  /**
    * Cliente envia mensagem pelo Web Chat → mensagem INBOUND na MESMA conversa
    * (channel = WEBCHAT) → mesmo Agent Runtime / mesmo Interaction Budget.
    */
@@ -197,12 +309,21 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(403).send({ error: "Forbidden", statusCode: 403 });
     }
 
+    const messageType = resolveInboundMessageType({
+      type: parsed.data.type,
+      mediaUrl: parsed.data.mediaUrl ?? null,
+      mediaType: parsed.data.mediaType ?? null,
+    });
+    const bodyText = parsed.data.content?.trim().slice(0, MAX_BODY_CHARS) || null;
+
     const message = await prisma.message.create({
       data: {
         conversationId: conversation.id,
         direction: "INBOUND",
-        type: "TEXT",
-        body: parsed.data.content.trim().slice(0, MAX_BODY_CHARS),
+        type: messageType,
+        body: bodyText,
+        mediaUrl: parsed.data.mediaUrl ?? null,
+        mediaType: parsed.data.mediaType ?? null,
         channel: "WEBCHAT",
         status: "DELIVERED",
       },
@@ -213,23 +334,14 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       data: { updatedAt: new Date() },
     });
 
-    broadcastConversationUpdated(organizationId, conversation.id);
-
-    /** Mesmo Agent Runtime — o canal não altera as capacidades do agente. */
-    const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
-    if (agentCtx) {
-      const fresh = await prisma.conversation.findFirst({ where: { id: conversation.id } });
-      if (fresh) {
-        void dispatchAgentBotWebhook({
-          organizationId,
-          settings: { agentBotId: agentCtx.agentBotId, agentBot: agentCtx.agentBot },
-          conversation: fresh,
-          contact,
-          message,
-          log: request.log,
-        });
-      }
-    }
+    await dispatchWebchatInbound({
+      organizationId,
+      conversationId: conversation.id,
+      contactId: contact.id,
+      inboxId: conversation.inboxId,
+      message,
+      log: request.log,
+    });
 
     return { ok: true, message: toPublicMessage(message) };
   });
