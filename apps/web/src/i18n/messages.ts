@@ -321,7 +321,7 @@ export const messages = {
     },
     webchat: {
       headerTitle: "Atendimento",
-      onlineTitle: "Atendimento Online",
+      onlineTitle: "Atendimento online",
       onlineSubtitle: "Estamos aqui para ajudar!",
       secureChat: "Conversa segura",
       sameConversation: "Mesma conversa do seu atendimento",
@@ -6775,7 +6775,7 @@ export const messages = {
     },
     webchat: {
       headerTitle: "Support chat",
-      onlineTitle: "Online Support",
+      onlineTitle: "Online support",
       onlineSubtitle: "We are here to help!",
       secureChat: "Secure chat",
       sameConversation: "Same conversation as your support channel",

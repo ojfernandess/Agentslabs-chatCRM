@@ -153,6 +153,26 @@ function resolveInboundMessageType(input: {
   return "TEXT";
 }
 
+async function loadWebchatPresence(conversationId: string) {
+  const conv = await prisma.conversation.findFirst({
+    where: { id: conversationId },
+    select: {
+      awaitingHumanHandoff: true,
+      assignedToId: true,
+      status: true,
+      assignedTo: { select: { name: true, displayName: true } },
+    },
+  });
+  const assigneeName = conv?.assignedToId
+    ? conv.assignedTo?.displayName?.trim() || conv.assignedTo?.name?.trim() || null
+    : null;
+  return {
+    humanActive: Boolean(conv?.awaitingHumanHandoff || conv?.assignedToId),
+    assigneeName,
+    conversationStatus: conv?.status ?? "OPEN",
+  };
+}
+
 export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
   /** Bootstrap da sessão: branding + estado. Não expõe IDs internos. */
   app.get<{ Params: { token: string } }>("/:token/session", async (request, reply) => {
@@ -162,10 +182,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     const resolved = await resolveWebchatSessionByToken(request.params.token);
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
-    const conv = await prisma.conversation.findFirst({
-      where: { id: resolved.conversation.id },
-      select: { awaitingHumanHandoff: true, assignedToId: true, status: true },
-    });
+    const presence = await loadWebchatPresence(resolved.conversation.id);
 
     return {
       ok: true,
@@ -173,8 +190,9 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       organizationLogoUrl: resolved.organizationLogoUrl,
       agentName: resolved.agentBotName,
       expiresAt: resolved.session.expiresAt.toISOString(),
-      humanActive: Boolean(conv?.awaitingHumanHandoff || conv?.assignedToId),
-      conversationStatus: conv?.status ?? "OPEN",
+      humanActive: presence.humanActive,
+      assigneeName: presence.assigneeName,
+      conversationStatus: presence.conversationStatus,
     };
   });
 
@@ -212,15 +230,13 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      const conv = await prisma.conversation.findFirst({
-        where: { id: resolved.conversation.id },
-        select: { awaitingHumanHandoff: true, assignedToId: true },
-      });
+      const presence = await loadWebchatPresence(resolved.conversation.id);
 
       return {
         ok: true,
         messages: rows.map(toPublicMessage),
-        humanActive: Boolean(conv?.awaitingHumanHandoff || conv?.assignedToId),
+        humanActive: presence.humanActive,
+        assigneeName: presence.assigneeName,
       };
     },
   );

@@ -11,7 +11,6 @@ import {
   SendHorizonal,
   Shield,
   Smile,
-  WifiOff,
 } from "lucide-react";
 import { VoicePreviewPanel, VoiceRecordingPanel } from "@/components/conversation/VoiceMessageComposer";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -38,6 +37,7 @@ type SessionInfo = {
   organizationName: string;
   organizationLogoUrl: string | null;
   agentName: string | null;
+  assigneeName: string | null;
   expiresAt: string;
   humanActive: boolean;
 };
@@ -49,6 +49,8 @@ const POLL_INTERVAL_MS = 3500;
 const QUICK_EMOJIS = ["😊", "👍", "🙏", "❤️", "😅", "🎉"];
 const WEBCHAT_VIEWPORT =
   "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content";
+const DRAFT_MIN_HEIGHT_PX = 40;
+const DRAFT_MAX_HEIGHT_PX = 132;
 
 function dayLabel(iso: string, todayLabel: string, locale: string): string {
   const d = new Date(iso);
@@ -292,12 +294,14 @@ export default function WebChatPage() {
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [humanActive, setHumanActive] = useState(false);
+  const [assigneeName, setAssigneeName] = useState<string | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voicePreview, setVoicePreview] = useState<{ blob: Blob; ext: string } | null>(null);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const draftRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -329,6 +333,19 @@ export default function WebChatPage() {
     const timer = window.setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(timer);
   }, [recording]);
+
+  const adjustDraftHeight = useCallback(() => {
+    const el = draftRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    const next = Math.min(Math.max(el.scrollHeight, DRAFT_MIN_HEIGHT_PX), DRAFT_MAX_HEIGHT_PX);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > DRAFT_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    adjustDraftHeight();
+  }, [draft, adjustDraftHeight]);
 
   const base = `/api/v1/public/webchat/${encodeURIComponent(token)}`;
 
@@ -411,14 +428,19 @@ export default function WebChatPage() {
           }
           return;
         }
-        const sdata = (await sres.json()) as SessionInfo & { humanActive: boolean };
+        const sdata = (await sres.json()) as SessionInfo & { humanActive: boolean; assigneeName?: string | null };
         const mres = await fetch(`${base}/messages`);
         const mdata = mres.ok
-          ? ((await mres.json()) as { messages: PublicMessage[]; humanActive: boolean })
-          : { messages: [], humanActive: false };
+          ? ((await mres.json()) as {
+              messages: PublicMessage[];
+              humanActive: boolean;
+              assigneeName?: string | null;
+            })
+          : { messages: [], humanActive: false, assigneeName: null };
         if (cancelled) return;
         setSession(sdata);
         setHumanActive(Boolean(sdata.humanActive || mdata.humanActive));
+        setAssigneeName(sdata.assigneeName ?? mdata.assigneeName ?? null);
         mergeMessages(mdata.messages);
         setConnection("CONNECTED");
         requestAnimationFrame(() => scrollToBottom());
@@ -451,8 +473,13 @@ export default function WebChatPage() {
             setConnection("RECONNECTING");
             return;
           }
-          const data = (await res.json()) as { messages: PublicMessage[]; humanActive: boolean };
+          const data = (await res.json()) as {
+            messages: PublicMessage[];
+            humanActive: boolean;
+            assigneeName?: string | null;
+          };
           setHumanActive(Boolean(data.humanActive));
+          if (data.assigneeName !== undefined) setAssigneeName(data.assigneeName);
           if (data.messages.length > 0 && stickToBottomRef.current) {
             requestAnimationFrame(() => scrollToBottom("smooth"));
           }
@@ -617,6 +644,15 @@ export default function WebChatPage() {
     return groups;
   }, [messages, localeTag, t]);
 
+  const headerSubtitle = useMemo(() => {
+    if (connection === "CONNECTING") return t("webchat.connecting");
+    if (connection === "RECONNECTING") return t("webchat.reconnecting");
+    if (connection === "OFFLINE") return t("webchat.offline");
+    if (assigneeName) return assigneeName;
+    if (humanActive) return t("webchat.humanActive");
+    return t("webchat.onlineTitle");
+  }, [connection, assigneeName, humanActive, t]);
+
   if (sessionError) {
     return (
       <div
@@ -645,38 +681,14 @@ export default function WebChatPage() {
       className="fixed inset-x-0 top-0 z-10 mx-auto flex w-full max-w-lg flex-col overflow-hidden bg-[#f4f6f8] shadow-2xl"
       style={shellStyle}
     >
-      <header className="shrink-0 bg-gradient-to-br from-[#0b2f1a] via-[#123824] to-[#0d2818] px-4 pb-4 pt-[max(0.85rem,env(safe-area-inset-top))] text-white">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} onDark />
-            <div className="min-w-0">
-              <p className="truncate text-base font-bold">{orgName}</p>
-              <p className="truncate text-sm text-white/80">{t("webchat.onlineTitle")}</p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-emerald-200">
-                <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-                {t("webchat.onlineSubtitle")}
-              </p>
-            </div>
-          </div>
-          <div className="max-w-[38%] shrink-0 text-right text-[10px] leading-tight text-white/75 sm:max-w-none sm:text-[11px]">
-            <p className="font-semibold text-white">{t("webchat.secureChat")}</p>
-            <p>{t("webchat.sameConversation")}</p>
+      <header className="shrink-0 bg-[#008069] px-3 py-2 pt-[max(0.45rem,env(safe-area-inset-top))] text-white shadow-sm">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} onDark className="!h-10 !w-10" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-semibold leading-tight">{orgName}</p>
+            <p className="truncate text-[13px] leading-tight text-white/75">{headerSubtitle}</p>
           </div>
         </div>
-        {connection !== "CONNECTED" ? (
-          <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium">
-            {connection === "OFFLINE" ? <WifiOff className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}
-            {connection === "CONNECTING"
-              ? t("webchat.connecting")
-              : connection === "RECONNECTING"
-                ? t("webchat.reconnecting")
-                : t("webchat.offline")}
-          </p>
-        ) : humanActive ? (
-          <p className="mt-3 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium">
-            {t("webchat.humanActive")}
-          </p>
-        ) : null}
       </header>
 
       <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
@@ -738,7 +750,7 @@ export default function WebChatPage() {
                 accept="image/*,audio/*,video/*,application/pdf,.doc,.docx"
                 onChange={onFileChange}
               />
-              <div className="flex min-h-[48px] flex-1 items-center gap-1 rounded-full border border-gray-200 bg-white px-2 shadow-sm">
+              <div className="flex min-h-[48px] flex-1 items-end gap-1 rounded-[22px] border border-gray-200 bg-white px-2 py-1 shadow-sm">
                 <button
                   type="button"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
@@ -749,6 +761,7 @@ export default function WebChatPage() {
                   {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
                 </button>
                 <textarea
+                  ref={draftRef}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -762,7 +775,7 @@ export default function WebChatPage() {
                   aria-label={t("webchat.inputPlaceholder")}
                   enterKeyHint="send"
                   inputMode="text"
-                  className="max-h-28 min-h-[40px] flex-1 resize-none bg-transparent px-1 py-2 text-base text-gray-900 outline-none"
+                  className="max-h-[132px] min-h-[40px] flex-1 resize-none overflow-hidden bg-transparent px-1 py-2 text-base leading-snug text-gray-900 outline-none"
                 />
                 <button
                   type="button"
