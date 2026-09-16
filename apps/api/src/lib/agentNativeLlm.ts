@@ -30,6 +30,11 @@ import {
 } from "./knowledgeRetrieval.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
 import {
+  buildInteractionBudgetPromptAppendixForConversation,
+  parseInteractionLimitFromBehavior,
+} from "./interactionBudget.js";
+import { generateWebchatLinkForConversation } from "./webchatSession.js";
+import {
   buildKnowledgeSearchQuery,
   knowledgeContentCoversQuery,
   resolveKnowledgeSearchSkip,
@@ -804,6 +809,7 @@ export type NativeToolsFlags = {
   call_human: boolean;
   assign_contact_tags: boolean;
   set_conversation_status: boolean;
+  generate_webchat_link: boolean;
 };
 
 const defaultNativeTools = (): NativeToolsFlags => ({
@@ -813,6 +819,7 @@ const defaultNativeTools = (): NativeToolsFlags => ({
   call_human: true,
   assign_contact_tags: false,
   set_conversation_status: false,
+  generate_webchat_link: false,
 });
 
 function applyFallbackNativeToolFlags(
@@ -854,6 +861,9 @@ export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlag
   const flag = (key: string, def: boolean): boolean => (key in n ? n[key] === true : def);
   const assignOn = flag("assign_team_to_conversation", false);
   const transferOn = flag("transfer_to_team", false);
+  /** Web Chat: disponível quando ativado nas tools OU quando o limite de interações está ativo
+   * (o agente precisa poder oferecer continuidade pelo Web Chat perto do limite). */
+  const interactionLimitOn = parseInteractionLimitFromBehavior(behavior).enabled;
   return {
     knowledge_search: flag("knowledge_search", base.knowledge_search),
     transfer_to_team: assignOn || transferOn,
@@ -861,6 +871,7 @@ export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlag
     call_human: flag("call_human", base.call_human),
     assign_contact_tags: flag("assign_contact_tags", base.assign_contact_tags),
     set_conversation_status: flag("set_conversation_status", base.set_conversation_status),
+    generate_webchat_link: flag("generate_webchat_link", base.generate_webchat_link) || interactionLimitOn,
   };
 }
 
@@ -1024,6 +1035,17 @@ function buildOpenAiTools(
             team_id: { type: "string", description: "UUID opcional da equipa para encaminhar" },
           },
         },
+      },
+    });
+  }
+  if (flags.generate_webchat_link) {
+    tools.push({
+      type: "function",
+      function: {
+        name: "generate_webchat_link",
+        description:
+          "Gera um link seguro do Web Chat para o cliente continuar ESTA MESMA conversa pelo navegador (mesmo histórico e mesmo atendimento). Use quando fizer sentido oferecer continuidade pelo atendimento online (ex.: conversa longa). NUNCA invente a URL — envie ao cliente exatamente a URL retornada por esta ferramenta.",
+        parameters: { type: "object", properties: {} },
       },
     });
   }
@@ -1222,6 +1244,27 @@ async function executeNativeTool(input: {
         log,
       });
       return JSON.stringify({ ok: true, message: r.payload.message });
+    }
+
+    if (name === "generate_webchat_link" && flags.generate_webchat_link) {
+      const r = await generateWebchatLinkForConversation({
+        organizationId,
+        conversationId,
+        createdBySource: "AGENT",
+      });
+      if (!r.ok) {
+        return JSON.stringify({ ok: false, success: false, error: r.code, message: r.message });
+      }
+      return JSON.stringify({
+        ok: true,
+        success: true,
+        url: r.url,
+        conversation_id: conversationId,
+        expires_at: r.session.expiresAt.toISOString(),
+        reused: r.reused,
+        message:
+          "Link seguro do Web Chat gerado. Envie ao cliente exatamente esta URL — a conversa continua no mesmo atendimento.",
+      });
     }
 
     if (name === "set_conversation_status" && flags.set_conversation_status) {
@@ -2489,6 +2532,18 @@ async function generateNativeAgentReplyCore(input: {
     catalogToolNames,
   });
 
+  /** Interaction Budget (Modo Economia / Cost-Aware Messaging): contexto de runtime quando NEAR_LIMIT. */
+  let interactionBudgetAppendix = "";
+  try {
+    interactionBudgetAppendix = await buildInteractionBudgetPromptAppendixForConversation({
+      organizationId,
+      conversationId: conversation.id,
+      behaviorConfig: behaviorConfigObj,
+    });
+  } catch {
+    interactionBudgetAppendix = "";
+  }
+
   const systemBase =
     systemInstructions +
     kbProactiveAppendix +
@@ -2503,6 +2558,7 @@ async function generateNativeAgentReplyCore(input: {
     flowStatePrompt +
     schedulerAppendix +
     runtimeOwnedReplyGuard +
+    interactionBudgetAppendix +
     (turnPolicyAppendix
       ? `\n\n[OpenConduit — política de turno]\n${turnPolicyAppendix}`
       : "");

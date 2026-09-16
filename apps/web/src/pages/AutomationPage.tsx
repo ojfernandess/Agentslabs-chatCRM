@@ -459,6 +459,9 @@ type AgentFormFields = {
   inactivityEnabled: boolean;
   inactivityTimeout: number;
   inactivityFollowUpMax: number;
+  /** Controle de atendimento — limite de respostas automáticas por conversa (behaviorConfig.interactionLimit). */
+  interactionLimitEnabled: boolean;
+  interactionLimit: number;
   followUpMessage: string;
   escalationMode: string;
   escalationConditions: string;
@@ -533,6 +536,8 @@ function emptyAgentForm(): AgentFormFields {
     inactivityEnabled: false,
     inactivityTimeout: 30,
     inactivityFollowUpMax: 1,
+    interactionLimitEnabled: false,
+    interactionLimit: 10,
     followUpMessage: "",
     escalationMode: "keyword",
     escalationConditions: "",
@@ -890,6 +895,17 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
     inactivityEnabled: Boolean(inc.automationEnabled),
     inactivityTimeout: Number(inc.timeoutMinutes ?? 30),
     inactivityFollowUpMax: Number(inc.followUpMax ?? 0),
+    interactionLimitEnabled: (() => {
+      const il = beh.interactionLimit;
+      return Boolean(il && typeof il === "object" && (il as Record<string, unknown>).enabled === true);
+    })(),
+    interactionLimit: (() => {
+      const il = beh.interactionLimit;
+      const raw =
+        il && typeof il === "object" ? (il as Record<string, unknown>).limit : undefined;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 1 ? Math.min(500, Math.floor(n)) : 10;
+    })(),
     followUpMessage: String(
       inc.followUpMessage ?? (Array.isArray(inc.followUpMessages) ? inc.followUpMessages[0] ?? "" : ""),
     ),
@@ -1073,6 +1089,13 @@ function formToPayload(
       followUpMax: form.inactivityEnabled ? Math.max(1, form.inactivityFollowUpMax) : 0,
       followUpMessage: fu,
       followUpMessages: fu ? [fu] : [],
+    },
+    /** Controle de atendimento: limite de respostas automáticas por conversa (Interaction Budget). */
+    interactionLimit: {
+      enabled: form.interactionLimitEnabled,
+      limit: form.interactionLimitEnabled
+        ? Math.max(1, Math.min(500, Math.floor(form.interactionLimit || 10)))
+        : null,
     },
     voice: {
       nativeVoiceEnabled: form.nativeVoiceEnabled,
@@ -3940,6 +3963,47 @@ function AgentsTab({
                       />
                     </label>
                   </>
+                ) : null}
+              </div>
+
+              <div className="rounded-xl border border-ink-100 bg-ink-50/80 p-3 dark:border-ink-700 dark:bg-ink-800/40">
+                <div className="flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-100">
+                  <Clock className="h-4 w-4 text-brand-600" />
+                  {t("automationPage.interactionLimitSection")}
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={agentForm.interactionLimitEnabled}
+                    onChange={(e) =>
+                      setAgentForm((f) => ({ ...f, interactionLimitEnabled: e.target.checked }))
+                    }
+                  />
+                  {t("automationPage.interactionLimitToggle")}
+                </label>
+                <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.interactionLimitHelp")}</p>
+                {agentForm.interactionLimitEnabled ? (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                      {t("automationPage.interactionLimitField")}
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={agentForm.interactionLimit}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({
+                            ...f,
+                            interactionLimit: Math.max(1, Math.min(500, Number(e.target.value) || 10)),
+                          }))
+                        }
+                        className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
+                      />
+                    </label>
+                    <p className="self-end text-[11px] text-ink-500">
+                      {t("automationPage.interactionLimitUnit")}
+                    </p>
+                  </div>
                 ) : null}
               </div>
 

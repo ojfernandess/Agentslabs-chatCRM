@@ -38,6 +38,7 @@ import {
   parseEvolutionPlatformValue,
 } from "../lib/evolutionPlatform.js";
 import { EVOLUTION_GO_PLATFORM_KEY, parseEvolutionGoPlatformValue } from "../lib/evolutionGoPlatform.js";
+import { getMetaPolicyVersions, saveMetaPolicyVersions } from "../lib/metaPolicyConfig.js";
 import {
   HELP_CENTER_PLATFORM_KEY,
   parseHelpCenterConfig,
@@ -2120,5 +2121,108 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return value;
+  });
+
+  /**
+   * Meta Message Policy — versões da política/preços (dependência externa configurável).
+   * Fontes: https://business.whatsapp.com/policy · https://developers.facebook.com/docs/whatsapp/pricing/
+   */
+  const metaPolicyPutSchema = z.object({
+    metaPolicyVersion: z.string().max(255),
+    metaPricingVersion: z.string().max(255),
+    effectiveFrom: z.string().max(64).nullable(),
+    effectiveUntil: z.string().max(64).nullable(),
+    source: z.string().max(255),
+  });
+
+  app.get("/meta-policy", async () => {
+    return getMetaPolicyVersions();
+  });
+
+  app.put("/meta-policy", async (request, reply) => {
+    const parsed = metaPolicyPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    await saveMetaPolicyVersions(parsed.data);
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.meta_policy.upsert",
+      resourceType: "platform_setting",
+      resourceId: "meta_policy_versions",
+      metadata: { metaPricingVersion: parsed.data.metaPricingVersion },
+      ip: clientIp(request),
+    });
+    return parsed.data;
+  });
+
+  /** Tabela configurável de preços WhatsApp (rate cards oficiais da Meta — nunca hardcodar no código). */
+  const pricingRuleSchema = z.object({
+    organizationId: z.string().uuid().nullable().optional(),
+    market: z.string().min(1).max(80),
+    countryCode: z.string().min(1).max(8),
+    currency: z.string().min(1).max(8),
+    category: z.enum(["SERVICE", "UTILITY", "MARKETING", "AUTHENTICATION"]),
+    price: z.number().nonnegative(),
+    effectiveFrom: z.string().datetime({ offset: true }),
+    effectiveUntil: z.string().datetime({ offset: true }).nullable().optional(),
+    source: z.string().max(255).nullable().optional(),
+    version: z.string().max(64).nullable().optional(),
+  });
+
+  app.get("/whatsapp-pricing-rules", async () => {
+    const rules = await prisma.whatsappPricingRule.findMany({
+      orderBy: [{ countryCode: "asc" }, { category: "asc" }, { effectiveFrom: "desc" }],
+      take: 500,
+    });
+    return { rules };
+  });
+
+  app.post("/whatsapp-pricing-rules", async (request, reply) => {
+    const parsed = pricingRuleSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const d = parsed.data;
+    const rule = await prisma.whatsappPricingRule.create({
+      data: {
+        organizationId: d.organizationId ?? null,
+        market: d.market,
+        countryCode: d.countryCode.replace(/[^0-9]/g, ""),
+        currency: d.currency.toUpperCase(),
+        category: d.category,
+        price: d.price,
+        effectiveFrom: new Date(d.effectiveFrom),
+        effectiveUntil: d.effectiveUntil ? new Date(d.effectiveUntil) : null,
+        source: d.source ?? null,
+        version: d.version ?? null,
+      },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.whatsapp_pricing_rule.create",
+      resourceType: "whatsapp_pricing_rule",
+      resourceId: rule.id,
+      metadata: { market: rule.market, category: rule.category },
+      ip: clientIp(request),
+    });
+    return rule;
+  });
+
+  app.delete<{ Params: { id: string } }>("/whatsapp-pricing-rules/:id", async (request, reply) => {
+    const rule = await prisma.whatsappPricingRule.findUnique({ where: { id: request.params.id } });
+    if (!rule) {
+      return reply.status(404).send({ error: "Not Found", message: "Pricing rule not found", statusCode: 404 });
+    }
+    await prisma.whatsappPricingRule.delete({ where: { id: rule.id } });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.whatsapp_pricing_rule.delete",
+      resourceType: "whatsapp_pricing_rule",
+      resourceId: rule.id,
+      metadata: { market: rule.market, category: rule.category },
+      ip: clientIp(request),
+    });
+    return { ok: true };
   });
 }

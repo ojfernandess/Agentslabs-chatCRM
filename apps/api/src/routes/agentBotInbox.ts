@@ -13,6 +13,7 @@ import {
   callHumanBodySchema,
   callHumanForConversationForOrg,
 } from "../lib/conversationNativeToolActions.js";
+import { resetInteractionBudgetForConversation } from "../lib/interactionBudget.js";
 
 const patchConversationSchema = z.object({
   status: z.enum(["OPEN", "PENDING"]),
@@ -200,6 +201,11 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
         updatedAt: new Date(),
       },
     });
+
+    /** Devolver à fila do bot (HUMAN → AI): reinicia o Interaction Budget. */
+    if (parsed.data.status === "PENDING") {
+      await resetInteractionBudgetForConversation(bot.organizationId, conv.id);
+    }
 
     return updated;
   });

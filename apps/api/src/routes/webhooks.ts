@@ -17,6 +17,7 @@ import { maybeTranscribeInboundImageMessage } from "../lib/imageTranscription.js
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
+import { updateLedgerDeliveryStatus } from "../lib/messageBillingLedger.js";
 import { ensureConversationForChannelInbox } from "../lib/conversationRouting.js";
 import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
 import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
@@ -772,6 +773,12 @@ async function handleWhatsAppPost(
           conversation: { organizationId },
         },
         data: { status: status.status },
+      });
+      /** Cost Policy: cobrança da Meta baseia-se em ENTREGA — atualizar o ledger com o status real. */
+      void updateLedgerDeliveryStatus({
+        organizationId,
+        providerMessageId: status.waMessageId,
+        status: status.status,
       });
       if (targetMsg) {
         broadcastConversationUpdated(organizationId, targetMsg.conversationId);

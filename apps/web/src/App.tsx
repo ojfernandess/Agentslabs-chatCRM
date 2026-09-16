@@ -34,6 +34,7 @@ import { LegalPage } from "@/pages/legal/LegalPage";
 import { lazy, Suspense } from "react";
 
 const HelpRoutes = lazy(() => import("@/pages/help/HelpRoutes").then((m) => ({ default: m.HelpRoutes })));
+const WebChatPage = lazy(() => import("@/pages/WebChatPage"));
 import { isSuperAdminRole } from "@/lib/authRole";
 import { TenantAdminRoute } from "@/components/TenantAdminRoute";
 import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
@@ -130,6 +131,14 @@ export function App() {
   return (
     <Routes>
       <Route path="/csat/:token" element={<CsatPage />} />
+      <Route
+        path="/s/:token"
+        element={
+          <Suspense fallback={<div className="flex min-h-dvh items-center justify-center text-sm text-ink-500">…</div>}>
+            <WebChatPage />
+          </Suspense>
+        }
+      />
       <Route path="/chatbot/:publicId" element={<ChatbotEmbedPage />} />
       <Route path="/docs" element={<PublicApiDocsPage />} />
       <Route path="/login/reset" element={<ResetPasswordPage />} />

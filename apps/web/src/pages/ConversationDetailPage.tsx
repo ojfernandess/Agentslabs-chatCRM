@@ -59,7 +59,9 @@ import {
   PhoneCall,
   ShieldBan,
   ExternalLink,
+  Globe,
 } from "lucide-react";
+import { WebchatLinkModal } from "@/components/WebchatLinkModal";
 import clsx from "clsx";
 import { format, differenceInHours, differenceInMinutes, formatDistanceToNow } from "date-fns";
 import { motion, AnimatePresence, backdropVariants, modalVariants } from "@/components/Motion";
@@ -176,6 +178,8 @@ interface Message {
   status: string;
   sentAt: string;
   createdAt: string;
+  /** Canal de origem quando difere do canal da inbox (ex.: "WEBCHAT"). */
+  channel?: string | null;
   actorUser?: { id: string; name: string; displayName: string | null; showAgentNameInChat?: boolean } | null;
 }
 
@@ -395,6 +399,7 @@ export function ConversationDetailPage() {
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [cannedMenuOpen, setCannedMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [webchatModalOpen, setWebchatModalOpen] = useState(false);
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
   const [cannedResponses, setCannedResponses] = useState<CannedResponseRow[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -3937,6 +3942,15 @@ export function ConversationDetailPage() {
                     </>
                   )}
                   <div className="crm-bubble-meta mt-1.5 flex items-center justify-end gap-1 tabular-nums">
+                    {msg.channel === "WEBCHAT" ? (
+                      <span
+                        className="mr-0.5 inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide opacity-70"
+                        title={t("conversationDetail.webchatBadgeTitle")}
+                      >
+                        <Globe className="h-3 w-3" aria-hidden />
+                        {t("conversationDetail.webchatBadge")}
+                      </span>
+                    ) : null}
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
                       <span className="inline-flex items-center" title={msg.status}>
@@ -4398,6 +4412,17 @@ export function ConversationDetailPage() {
                   >
                     <PenLine className="h-4 w-4" />
                   </Link>
+                  {!emailWorkspaceMode ? (
+                    <motion.button
+                      type="button"
+                      onClick={() => setWebchatModalOpen(true)}
+                      title={t("webchatLink.title")}
+                      className="composer-tool-btn"
+                      whileTap={{ scale: 0.92 }}
+                    >
+                      <Globe className="h-4 w-4" />
+                    </motion.button>
+                  ) : null}
                 </div>
                 <motion.button
                   type="submit"
@@ -5231,6 +5256,17 @@ export function ConversationDetailPage() {
           await loadConversation();
         }}
       />
+      {conversation ? (
+        <WebchatLinkModal
+          open={webchatModalOpen}
+          conversationId={conversation.id}
+          onClose={() => setWebchatModalOpen(false)}
+          onSent={() => {
+            if (!isEmailLayout) stickToBottomRef.current = true;
+            void loadConversation();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

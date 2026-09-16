@@ -16,6 +16,8 @@ import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
+import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
+import { recordMessageLedgerEntry } from "./messageBillingLedger.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
@@ -131,6 +133,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
   pinnedConversationId?: string;
   /** Evita loop quando o envio veio de um fluxo CRM. */
   skipCrmFlowTrigger?: boolean;
+  /**
+   * Entrega pelo Web Chat externo (mesma conversa): não chama provider WhatsApp/Telegram/Email,
+   * grava a mensagem com `channel = "WEBCHAT"` e o cliente recebe via sessão pública do Web Chat.
+   */
+  deliveryChannelOverride?: "WEBCHAT";
 }): Promise<{ message: Message; conversation: Conversation }> {
   const {
     organizationId,
@@ -141,6 +148,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     pinnedConversationId,
     postSendConversationPolicy = "default",
     skipCrmFlowTrigger = false,
+    deliveryChannelOverride,
   } = options;
 
   const {
@@ -306,9 +314,22 @@ export async function deliverOutboundWhatsAppMessage(options: {
       providerKind === "twilio" ||
       providerKind == null);
 
-  if (!isPrivate && type !== "TEMPLATE" && enforceWhatsapp24hSession) {
+  if (!isPrivate && type !== "TEMPLATE" && enforceWhatsapp24hSession && !deliveryChannelOverride) {
     const sessionOpen = await isWhatsappSessionOpen(conversation.id);
     if (!sessionOpen) {
+      /** Message Policy Engine: registar decisão bloqueada no ledger (observabilidade; nunca quebra o fluxo). */
+      void recordMessageLedgerEntry({
+        organizationId,
+        conversationId: conversation.id,
+        contactId,
+        channel: "WHATSAPP",
+        provider: isMetaCloudWhatsapp ? "meta_cloud_api" : (providerKind ?? null),
+        category: "UNKNOWN",
+        billingStatus: "BLOCKED",
+        policyDecision: "REQUIRES_TEMPLATE",
+        policyReason: "Fora da janela de 24h — apenas templates aprovados",
+        recipientPhone: contact.phone,
+      });
       throw new Error("Outside 24-hour session window. Only template messages can be sent.");
     }
   }
@@ -386,7 +407,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
   let providerMsgId: string | undefined;
   /** Assunto resolvido no canal EMAIL — persistido no body para listagens/títulos. */
   let resolvedEmailSubject: string | null = null;
-  if (!isPrivate && inboxChannelType === "WHATSAPP") {
+  if (!isPrivate && !deliveryChannelOverride && inboxChannelType === "WHATSAPP") {
     try {
       const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
       if (provider) {
@@ -434,7 +455,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       log.error(err, "Failed to send message via WhatsApp provider");
       throw err instanceof Error ? err : new Error(String(err));
     }
-  } else if (!isPrivate && inboxChannelType === "TELEGRAM") {
+  } else if (!isPrivate && !deliveryChannelOverride && inboxChannelType === "TELEGRAM") {
     const cfg = inboxChannelConfig as ChannelNativeConfig | null;
     const token = cfg?.telegramBotToken?.trim();
     const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
@@ -476,6 +497,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   } else if (
     !isPrivate &&
+    !deliveryChannelOverride &&
     inboxChannelType === "EMAIL" &&
     (type === "TEXT" || type === "IMAGE" || type === "DOCUMENT")
   ) {
@@ -543,7 +565,9 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   }
 
-  const outboundStatus = isPrivate
+  const outboundStatus = deliveryChannelOverride
+    ? "SENT"
+    : isPrivate
     ? "SENT"
     : inboxChannelType === "WHATSAPP"
       ? providerMsgId
@@ -581,10 +605,49 @@ export async function deliverOutboundWhatsAppMessage(options: {
       mediaType: mediaType ?? (type === "AUDIO" ? "audio/*" : undefined),
       isPrivate: Boolean(isPrivate),
       providerMsgId,
+      channel: deliveryChannelOverride ?? null,
       status: outboundStatus,
       actorUserId: actor.kind === "user" ? actor.userId : null,
     },
   });
+
+  /** Cost Policy: ledger de mensagens (ESTIMATIVA — nunca cobrança oficial; fire-and-forget). */
+  if (!isPrivate) {
+    void (async () => {
+      try {
+        const policy = await evaluateWhatsappOutboundPolicy({
+          conversationId: conversation.id,
+          isTemplate: type === "TEMPLATE",
+          templateMetaCategory: templateRow?.metaCategory ?? null,
+          windowEnforced: enforceWhatsapp24hSession,
+          webchatDelivery: Boolean(deliveryChannelOverride),
+        });
+        await recordMessageLedgerEntry({
+          organizationId,
+          conversationId: conversation.id,
+          contactId,
+          messageId: message.id,
+          providerMessageId: providerMsgId ?? null,
+          channel: deliveryChannelOverride ?? inboxChannelType,
+          provider: deliveryChannelOverride
+            ? "opennexo_webchat"
+            : inboxChannelType === "WHATSAPP"
+              ? isMetaCloudWhatsapp
+                ? "meta_cloud_api"
+                : (providerKind ?? null)
+              : inboxChannelType.toLowerCase(),
+          category: deliveryChannelOverride ? "SERVICE" : policy.category,
+          templateId: type === "TEMPLATE" ? (templateRow?.id ?? null) : null,
+          billingStatus: outboundStatus === "FAILED" ? "FAILED" : "SENT",
+          policyDecision: policy.decision,
+          policyReason: policy.reason,
+          recipientPhone: contact.phone,
+        });
+      } catch (err) {
+        log.warn({ err, messageId: message.id }, "message billing ledger record failed");
+      }
+    })();
+  }
 
   const actorUserId = actor.kind === "user" ? actor.userId : undefined;
   const payload: Record<string, unknown> = {

@@ -9,6 +9,12 @@ import { parseAgentVoiceSettings, shouldSendVoiceReply } from "./agentVoiceSetti
 export { parseAgentVoiceSettings, shouldSendVoiceReply } from "./agentVoiceSettings.js";
 export type { AgentVoiceSettings } from "./agentVoiceSettings.js";
 
+export type AgentReplyDeliveryResult = {
+  kind: "audio" | "text";
+  /** Mensagem outbound persistida — status FAILED indica tentativa não entregue (não conta interação). */
+  message: Message;
+};
+
 export async function deliverAgentReplyMessage(options: {
   organizationId: string;
   botId: string;
@@ -18,12 +24,14 @@ export async function deliverAgentReplyMessage(options: {
   replyText: string;
   behaviorConfig: unknown;
   log: FastifyBaseLogger;
-}): Promise<"audio" | "text"> {
+}): Promise<AgentReplyDeliveryResult> {
+  /** Cliente escreveu pelo Web Chat → resposta entregue pelo Web Chat (sem provider WhatsApp). */
+  const webchatDelivery = options.inboundMessage.channel === "WEBCHAT";
   const settings = parseAgentVoiceSettings(options.behaviorConfig);
-  const useVoice = shouldSendVoiceReply(settings, options.inboundMessage);
+  const useVoice = !webchatDelivery && shouldSendVoiceReply(settings, options.inboundMessage);
 
-  async function sendAudioReply(mediaUrl: string, mediaType: string): Promise<"audio"> {
-    await deliverOutboundWhatsAppMessage({
+  async function sendAudioReply(mediaUrl: string, mediaType: string): Promise<AgentReplyDeliveryResult> {
+    const sent = await deliverOutboundWhatsAppMessage({
       organizationId: options.organizationId,
       data: {
         contactId: options.contact.id,
@@ -37,7 +45,7 @@ export async function deliverAgentReplyMessage(options: {
       log: options.log,
       newConversation: { status: "PENDING", assignedToId: null },
     });
-    return "audio";
+    return { kind: "audio", message: sent.message };
   }
 
   if (useVoice) {
@@ -79,7 +87,7 @@ export async function deliverAgentReplyMessage(options: {
     options.log.warn({ botId: options.botId }, "Voice reply requested but no TTS provider available; sending text");
   }
 
-  await deliverOutboundWhatsAppMessage({
+  const sent = await deliverOutboundWhatsAppMessage({
     organizationId: options.organizationId,
     data: {
       contactId: options.contact.id,
@@ -90,6 +98,7 @@ export async function deliverAgentReplyMessage(options: {
     actor: { kind: "agent_bot", botId: options.botId },
     log: options.log,
     newConversation: { status: "PENDING", assignedToId: null },
+    ...(webchatDelivery ? { deliveryChannelOverride: "WEBCHAT" as const } : {}),
   });
-  return "text";
+  return { kind: "text", message: sent.message };
 }

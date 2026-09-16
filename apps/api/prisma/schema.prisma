@@ -251,6 +251,10 @@ model Organization {
   mcpAccessTokens                McpAccessToken[]
   mcpAuditLogs                   McpAuditLog[]
   memberships                    OrganizationMembership[]
+  conversationInteractionBudgets ConversationInteractionBudget[]
+  webchatSessions                WebchatSession[]
+  messageBillingLedgers          MessageBillingLedgerEntry[]
+  whatsappPricingRules           WhatsappPricingRule[]
 
   @@map("organizations")
 }
@@ -1151,6 +1155,8 @@ model Conversation {
   reminders              Reminder[]
   intelligentTagSuggestions IntelligentTagSuggestion[]
   intelligentTaggingRuns    IntelligentTaggingRun[]
+  interactionBudget      ConversationInteractionBudget?
+  webchatSessions        WebchatSession[]
 
   @@index([organizationId])
   @@index([contactId])
@@ -1213,6 +1219,8 @@ model Message {
   /// Nota interna da equipa: não é enviada ao WhatsApp.
   isPrivate     Boolean          @default(false) @map("is_private")
   providerMsgId String?          @map("provider_msg_id")
+  /// Canal de origem/destino quando difere do canal da inbox (ex.: "WEBCHAT"). Null = canal da inbox.
+  channel       String?          @db.VarChar(24)
   status        MessageStatus    @default(SENT)
   sentAt        DateTime         @default(now()) @map("sent_at")
   createdAt     DateTime         @default(now()) @map("created_at")
@@ -1499,6 +1507,13 @@ model Settings {
   csatSurveyMessage String? @map("csat_survey_message") @db.Text
   /// Formato da avaliação na página pública: number | star | emoji.
   csatRatingType    String  @default("number") @map("csat_rating_type") @db.VarChar(16)
+
+  /// Web Chat externo: expiração dos links seguros (horas; 1–720).
+  webchatLinkExpirationHours Int     @default(24) @map("webchat_link_expiration_hours")
+  /// Mensagem de continuidade enviada ao cliente com o link ({{webchat_url}} obrigatório). Null = texto padrão.
+  webchatContinuityMessage   String? @map("webchat_continuity_message") @db.Text
+  /// Política ao gerar novo link com sessão ativa: "revoke" (padrão) ou "keep".
+  webchatRegeneratePolicy    String  @default("revoke") @map("webchat_regenerate_policy") @db.VarChar(16)
 
   /// Resolução automática por inatividade (regras ao estilo «fluxos de conversa»).
   autoResolveConversationsEnabled Boolean   @default(false) @map("auto_resolve_conversations_enabled")
@@ -2835,4 +2850,135 @@ model McpAuditLog {
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([tokenId, createdAt(sort: Desc)])
   @@map("mcp_audit_logs")
+}
+
+/// ————————————————————————————————————————————————————————————————
+/// Message Policy Engine + Interaction Budget + Cost Control + Web Chat
+/// ————————————————————————————————————————————————————————————————
+
+enum InteractionBudgetStatus {
+  ACTIVE
+  NEAR_LIMIT
+  LIMIT_REACHED
+  HUMAN_ACTIVE
+  RESET
+  DISABLED
+}
+
+/// Orçamento de interações do agente por conversa (canal-agnóstico).
+/// 1 resposta automática efetivamente enviada = 1 interação. Troca de canal NÃO reinicia o contador.
+model ConversationInteractionBudget {
+  id                String                  @id @default(uuid()) @db.Uuid
+  organizationId    String                  @map("organization_id") @db.Uuid
+  organization      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId    String                  @unique @map("conversation_id") @db.Uuid
+  conversation      Conversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agentBotId        String?                 @map("agent_bot_id") @db.Uuid
+  interactionCount  Int                     @default(0) @map("interaction_count")
+  interactionLimit  Int?                    @map("interaction_limit")
+  lastInteractionAt DateTime?               @map("last_interaction_at")
+  limitReachedAt    DateTime?               @map("limit_reached_at")
+  status            InteractionBudgetStatus @default(ACTIVE)
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @default(now()) @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("conversation_interaction_budgets")
+}
+
+enum WebchatSessionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+/// Sessão do Web Chat externo — token seguro vinculado à MESMA conversa (nunca cria conversa nova).
+model WebchatSession {
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @map("organization_id") @db.Uuid
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId  String               @map("conversation_id") @db.Uuid
+  conversation    Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contactId       String               @map("contact_id") @db.Uuid
+  /// Token aleatório não enumerável (base64url, 32 bytes). Nunca expor organization/conversation/contact na URL.
+  token           String               @unique @db.VarChar(96)
+  status          WebchatSessionStatus @default(ACTIVE)
+  expiresAt       DateTime             @map("expires_at")
+  revokedAt       DateTime?            @map("revoked_at")
+  /// AGENT | HUMAN | SYSTEM
+  createdBySource String               @default("AGENT") @map("created_by_source") @db.VarChar(16)
+  createdByUserId String?              @map("created_by_user_id") @db.Uuid
+  lastSeenAt      DateTime?            @map("last_seen_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@index([conversationId, status])
+  @@map("webchat_sessions")
+}
+
+/// Ledger de mensagens para controlo de custos (ESTIMATIVA — nunca cobrança oficial).
+/// Regras/preços da Meta são dependência externa configurável (whatsapp_pricing_rules + platform settings).
+model MessageBillingLedgerEntry {
+  id                String       @id @default(uuid()) @db.Uuid
+  organizationId    String       @map("organization_id") @db.Uuid
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversationId    String       @map("conversation_id") @db.Uuid
+  contactId         String?      @map("contact_id") @db.Uuid
+  messageId         String?      @unique @map("message_id") @db.Uuid
+  providerMessageId String?      @map("provider_message_id") @db.VarChar(255)
+  /// WHATSAPP | WEBCHAT | TELEGRAM | EMAIL | ...
+  channel           String       @db.VarChar(24)
+  /// meta_cloud_api | evolution | evolution_go | opennexo_webchat | ...
+  provider          String?      @db.VarChar(48)
+  /// SERVICE | UTILITY | MARKETING | AUTHENTICATION | UNKNOWN
+  messageCategory   String       @default("UNKNOWN") @map("message_category") @db.VarChar(24)
+  templateId        String?      @map("template_id") @db.Uuid
+  interactionNumber Int?         @map("interaction_number")
+  sentAt            DateTime     @default(now()) @map("sent_at")
+  deliveredAt       DateTime?    @map("delivered_at")
+  readAt            DateTime?    @map("read_at")
+  failedAt          DateTime?    @map("failed_at")
+  /// SENT | DELIVERED | READ | FAILED | BLOCKED — cobrança Meta baseia-se em ENTREGA, não em envio.
+  billingStatus     String       @default("SENT") @map("billing_status") @db.VarChar(24)
+  estimatedCost     Decimal?     @map("estimated_cost") @db.Decimal(12, 6)
+  currency          String?      @db.VarChar(8)
+  pricingVersion    String?      @map("pricing_version") @db.VarChar(64)
+  /// ALLOW | ALLOW_TEMPLATE | BLOCKED_WINDOW | SKIP_PROVIDER_WEBCHAT | ...
+  policyDecision    String?      @map("policy_decision") @db.VarChar(48)
+  policyReason      String?      @map("policy_reason") @db.VarChar(255)
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  @@index([organizationId, sentAt])
+  @@index([conversationId])
+  @@index([providerMessageId])
+  @@map("message_billing_ledger")
+}
+
+/// Tabela configurável de preços WhatsApp (fonte: rate cards oficiais da Meta).
+/// NÃO hardcodar preços/categorias/datas no código — a Meta pode alterar a política e a tabela.
+model WhatsappPricingRule {
+  id             String        @id @default(uuid()) @db.Uuid
+  /// Null = regra global da plataforma; preenchido = override por organização.
+  organizationId String?       @map("organization_id") @db.Uuid
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Mercado/país conforme regra vigente da Meta (ex.: "Brazil").
+  market         String        @db.VarChar(80)
+  /// Prefixo E.164 sem "+" (ex.: "55") usado para casar com o telefone do destinatário.
+  countryCode    String        @map("country_code") @db.VarChar(8)
+  currency       String        @db.VarChar(8)
+  /// SERVICE | UTILITY | MARKETING | AUTHENTICATION
+  category       String        @db.VarChar(24)
+  price          Decimal       @db.Decimal(12, 6)
+  effectiveFrom  DateTime      @map("effective_from")
+  effectiveUntil DateTime?     @map("effective_until")
+  /// URL/nota da fonte oficial (rate card Meta).
+  source         String?       @db.VarChar(255)
+  version        String?       @db.VarChar(64)
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([countryCode, category])
+  @@index([organizationId])
+  @@map("whatsapp_pricing_rules")
 }

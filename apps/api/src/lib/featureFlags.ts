@@ -98,6 +98,23 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "nvoip_whatsapp",
     defaultEnabled: false,
   },
+  /** Message Policy Engine + Interaction Limit + Cost Control + Web Chat. */
+  {
+    key: "agent_interaction_limit",
+    defaultEnabled: true,
+  },
+  {
+    key: "webchat",
+    defaultEnabled: true,
+  },
+  {
+    key: "whatsapp_message_policy",
+    defaultEnabled: true,
+  },
+  {
+    key: "cost_aware_messaging",
+    defaultEnabled: true,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

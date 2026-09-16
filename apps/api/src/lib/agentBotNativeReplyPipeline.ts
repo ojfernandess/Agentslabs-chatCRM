@@ -17,6 +17,14 @@ import {
 } from "./agent-engine/continuation/postCompletionFollowUp.js";
 import { replyShouldPreemptEscalationTransferMessage } from "./agent-engine/quote/quoteAvailabilityReply.js";
 import { broadcastConversationAgentTyping } from "./workspaceHub.js";
+import {
+  getInteractionBudgetState,
+  markInteractionBudgetHumanActive,
+  registerAgentInteraction,
+  type InteractionBudgetState,
+} from "./interactionBudget.js";
+import { callHumanForConversationForOrg } from "./conversationNativeToolActions.js";
+import { attachInteractionNumberToLedger } from "./messageBillingLedger.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
@@ -94,6 +102,84 @@ export async function runNativeAgentReplyAndDeliver(input: {
         stack: err instanceof Error ? err.stack : undefined,
       });
     }
+
+    /** Interaction Policy: gate ANTES da geração — nenhuma resposta automática após o limite. */
+    let budgetState: InteractionBudgetState | null = null;
+    try {
+      const profilePre = await prisma.automationAgentProfile.findUnique({
+        where: { botId: bot.id },
+        select: { behaviorConfig: true },
+      });
+      budgetState = await getInteractionBudgetState({
+        organizationId,
+        conversationId: conversation.id,
+        behaviorConfig: profilePre?.behaviorConfig,
+      });
+    } catch (err) {
+      log.warn({ err, conversationId: conversation.id }, "interaction budget state load failed");
+    }
+    if (budgetState?.enabled && budgetState.blocked) {
+      const convNow = await prisma.conversation.findFirst({
+        where: { id: conversation.id },
+        select: { awaitingHumanHandoff: true },
+      });
+      if (!convNow?.awaitingHumanHandoff) {
+        await callHumanForConversationForOrg(prisma, {
+          organizationId,
+          conversationId: conversation.id,
+          reason: `INTERACTION_LIMIT_REACHED — ${budgetState.count}/${budgetState.limit} interações (transferência automática)`,
+          userMessageSnippet: userMessage,
+          log,
+        });
+        await markInteractionBudgetHumanActive(conversation.id);
+      }
+      exLog.info(
+        { id: "interaction_budget", name: "Controle de atendimento" },
+        "Limite de interações atingido — resposta automática bloqueada; conversa em atendimento humano",
+        { output: { interactionCount: budgetState.count, interactionLimit: budgetState.limit } },
+      );
+      await exLog.completeSuccess();
+      return;
+    }
+
+    /** Regista 1 interação após resposta efetivamente enviada; ao atingir o limite → call_human (sem 11ª mensagem). */
+    const registerBudgetAfterDelivery = async (deliveredOk: boolean, messageId?: string): Promise<void> => {
+      if (!deliveredOk || !budgetState?.enabled || budgetState.limit == null) return;
+      try {
+        const r = await registerAgentInteraction({
+          organizationId,
+          conversationId: conversation.id,
+          agentBotId: bot.id,
+          limit: budgetState.limit,
+        });
+        if (messageId) {
+          await attachInteractionNumberToLedger({ messageId, interactionNumber: r.count });
+        }
+        if (r.limitReached) {
+          exLog.info(
+            { id: "interaction_budget", name: "Controle de atendimento" },
+            "INTERACTION_LIMIT_REACHED — transferência automática para atendimento humano (call_human)",
+            { output: { interactionCount: r.count, interactionLimit: r.limit, automatic: true } },
+          );
+          await callHumanForConversationForOrg(prisma, {
+            organizationId,
+            conversationId: conversation.id,
+            reason: `INTERACTION_LIMIT_REACHED — ${r.count}/${r.limit} interações (transferência automática)`,
+            userMessageSnippet: userMessage,
+            log,
+          });
+          await markInteractionBudgetHumanActive(conversation.id);
+        } else if (r.nearLimit) {
+          exLog.info(
+            { id: "interaction_budget", name: "Controle de atendimento" },
+            "INTERACTION_LIMIT_NEAR — modo economia ativo",
+            { output: { interactionCount: r.count, interactionLimit: r.limit, remaining: r.remaining } },
+          );
+        }
+      } catch (err) {
+        log.warn({ err, conversationId: conversation.id }, "interaction budget register failed");
+      }
+    };
 
     const replyResult = await withConversationAgentReplyLock(conversation.id, () =>
       generateNativeAgentReplyWithResult({
@@ -233,6 +319,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
         "Resposta entregue em chunks durante geração (streaming outbound)",
         { output: { chars: replyText.length } },
       );
+      await registerBudgetAfterDelivery(true);
       await prisma.automationInteraction
         .create({
           data: {
@@ -300,7 +387,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
       });
 
       if (!suppressAck) {
-        const deliveryKind = await deliverAgentReplyMessage({
+        const delivery = await deliverAgentReplyMessage({
           organizationId,
           botId: bot.id,
           conversation,
@@ -312,9 +399,11 @@ export async function runNativeAgentReplyAndDeliver(input: {
         });
         exLog.info(
           { id: "outbound", name: "Entrega" },
-          deliveryKind === "audio" ? "Resposta em áudio enviada" : "Mensagem outbound enviada",
-          { output: { chars: replyText.length, deliveryKind } },
+          delivery.kind === "audio" ? "Resposta em áudio enviada" : "Mensagem outbound enviada",
+          { output: { chars: replyText.length, deliveryKind: delivery.kind } },
         );
+        /** Só conta interação quando efetivamente enviada (tentativas FAILED não contam). */
+        await registerBudgetAfterDelivery(delivery.message.status !== "FAILED", delivery.message.id);
       } else {
         exLog.info(
           { id: "outbound", name: "Entrega" },

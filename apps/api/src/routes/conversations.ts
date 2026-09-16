@@ -18,6 +18,7 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
+import { resetInteractionBudgetForConversation } from "../lib/interactionBudget.js";
 import {
   computeAgentBotTriageActive,
   getAgentBotDispatchContextForInbox,
@@ -2336,6 +2337,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       const wasBotQueue = existing.status === "PENDING" && existing.assignedToId == null;
       const nowBotQueue = conversation.status === "PENDING" && conversation.assignedToId == null;
+      /** HUMAN → AI explícito: reinicia o Interaction Budget (novo ciclo de respostas automáticas). */
+      if (nowBotQueue && !wasBotQueue) {
+        await resetInteractionBudgetForConversation(organizationId, conversation.id);
+      }
       if (nowBotQueue && !wasBotQueue && !tenantSettings?.silentTransferToAgentBot) {
         const ch = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
         if (ch) {
