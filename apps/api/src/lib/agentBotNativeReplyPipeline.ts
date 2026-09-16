@@ -112,8 +112,9 @@ export async function runNativeAgentReplyAndDeliver(input: {
 
     /** Interaction Policy: gate ANTES da geração — nenhuma resposta automática após o limite. */
     let budgetState: InteractionBudgetState | null = null;
+    let profilePre: { behaviorConfig: unknown } | null = null;
     try {
-      const profilePre = await prisma.automationAgentProfile.findUnique({
+      profilePre = await prisma.automationAgentProfile.findUnique({
         where: { botId: bot.id },
         select: { behaviorConfig: true },
       });
