@@ -1,4 +1,5 @@
 import type { InboxChannelType } from "@prisma/client";
+import { telegramParticipantId } from "@openconduit/shared";
 
 /**
  * Estrutura de `channelConfig` inspirada no modelo de canais do Chatwoot (credenciais por inbox,
@@ -87,8 +88,5 @@ export type ChannelNativeConfig = WebsiteWidgetConfig & {
 
 export function telegramChatIdFromContactPhone(phone: string, channelType: InboxChannelType): string | null {
   if (channelType !== "TELEGRAM") return null;
-  const prefix = "oc|TELEGRAM|";
-  if (!phone.startsWith(prefix)) return null;
-  const id = phone.slice(prefix.length).trim();
-  return id.length > 0 ? id : null;
+  return telegramParticipantId(phone);
 }

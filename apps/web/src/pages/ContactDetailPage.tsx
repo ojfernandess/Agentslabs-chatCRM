@@ -43,7 +43,7 @@ import {
   downloadContactConversationHistory,
   hasExportableContactHistory,
 } from "@/lib/exportContactConversationHistory";
-import { formatContactPhoneForDisplay } from "@/lib/contactWebsiteDisplay";
+import { formatContactPhoneForDisplay, isChannelParticipantPhone, isTelegramContactPhone, telegramParticipantId } from "@/lib/contactWebsiteDisplay";
 
 interface TagItem {
   id: string;
@@ -220,18 +220,22 @@ export function ContactDetailPage() {
   }, [id]);
 
   const handleSave = async () => {
-    if (!id) return;
+    if (!id || !contact) return;
+    const channelContact = isChannelParticipantPhone(contact.phone);
     try {
-      const updated = await api.put<ContactDetail>(`/contacts/${id}`, {
+      const payload: Record<string, string | null | undefined> = {
         name: editName.trim(),
-        phone: editPhone.trim(),
         email: editEmail.trim() === "" ? null : editEmail.trim(),
         notes: editNotes.trim() === "" ? undefined : editNotes,
         company: editCompany.trim() === "" ? null : editCompany.trim(),
         document: editDocument.trim() === "" ? null : editDocument.trim(),
         city: editCity.trim() === "" ? null : editCity.trim(),
         website: editWebsite.trim() === "" ? null : editWebsite.trim(),
-      });
+      };
+      if (!channelContact) {
+        payload.phone = editPhone.trim();
+      }
+      const updated = await api.put<ContactDetail>(`/contacts/${id}`, payload);
       setContact(updated);
       setEditName(updated.name);
       setEditPhone(updated.phone);
@@ -352,6 +356,14 @@ export function ContactDetailPage() {
     );
   }
 
+  const isChannelContact = isChannelParticipantPhone(contact.phone);
+  const isTelegramContact = isTelegramContactPhone(contact.phone);
+  const telegramId = telegramParticipantId(contact.phone);
+  const phoneDisplayLabels = {
+    website: t("conversationDetail.channelLabelWebsite"),
+    telegram: t("conversationDetail.channelLabelTelegram"),
+  };
+
   const assignedTagIds = new Set(contact.tags.map((t) => t.tag.id));
   const availableTags = allTags.filter((t) => !assignedTagIds.has(t.id));
 
@@ -383,16 +395,10 @@ export function ContactDetailPage() {
               ) : null}
             </div>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-ink-400">
-              {formatContactPhoneForDisplay(
-                contact.phone,
-                t("conversationDetail.channelLabelWebsite"),
-              ) ? (
+              {formatContactPhoneForDisplay(contact.phone, phoneDisplayLabels) ? (
                 <span className="inline-flex items-center gap-1">
                   <Phone className="h-3.5 w-3.5" />{" "}
-                  {formatContactPhoneForDisplay(
-                    contact.phone,
-                    t("conversationDetail.channelLabelWebsite"),
-                  )}
+                  {formatContactPhoneForDisplay(contact.phone, phoneDisplayLabels)}
                 </span>
               ) : null}
               {contact.email ? (
@@ -635,7 +641,9 @@ export function ContactDetailPage() {
               transition={{ duration: 0.25 }}
             >
               <h2 className="mb-1 font-semibold text-gray-900 dark:text-ink-50">{t("contactEdit.title")}</h2>
-              <p className="mb-4 text-xs text-gray-500 dark:text-ink-400">{t("contactEdit.optionalHint")}</p>
+              <p className="mb-4 text-xs text-gray-500 dark:text-ink-400">
+                {isChannelContact ? t("contactEdit.optionalHintChannel") : t("contactEdit.optionalHint")}
+              </p>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
@@ -648,17 +656,35 @@ export function ContactDetailPage() {
                     className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
-                    {t("contactEdit.fieldPhone")} <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                  />
-                </div>
+                {isTelegramContact ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                      {t("contactEdit.fieldTelegramId")}
+                    </label>
+                    <input
+                      type="text"
+                      value={telegramId ?? ""}
+                      readOnly
+                      disabled
+                      className="mt-1 block w-full cursor-not-allowed rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-ink-700 dark:bg-ink-950/60 dark:text-ink-400"
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-ink-500">
+                      {t("contactEdit.fieldTelegramIdHint")}
+                    </p>
+                  </div>
+                ) : !isChannelContact ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                      {t("contactEdit.fieldPhone")} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                    />
+                  </div>
+                ) : null}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
                     {t("contactEdit.fieldEmail")}
@@ -736,7 +762,7 @@ export function ContactDetailPage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    disabled={!editName.trim() || !editPhone.trim()}
+                    disabled={!editName.trim() || (!isChannelContact && !editPhone.trim())}
                     onClick={() => void handleSave()}
                     className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
                   >

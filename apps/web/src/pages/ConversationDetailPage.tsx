@@ -158,7 +158,6 @@ import {
   isWebsiteContactPhone,
   formatContactPhoneForDisplay,
   parseWebsiteSiteMeta,
-  websitePhoneDisplay,
 } from "@/lib/contactWebsiteDisplay";
 import {
   timelineChannelLabel,
@@ -2179,7 +2178,10 @@ export function ConversationDetailPage() {
   const websiteSiteName =
     websiteSiteMeta.siteName || conversation.inbox?.name?.trim() || t("conversationDetail.channelLabelWebsite");
   const websiteSiteUrl = websiteSiteMeta.websiteUrl;
-  const contactPhoneDisplay = websitePhoneDisplay(conversation.contact.phone);
+  const contactPhoneDisplay = formatContactPhoneForDisplay(conversation.contact.phone, {
+    website: websiteSiteName,
+    telegram: t("conversationDetail.channelLabelTelegram"),
+  });
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
   ).emailFromAddress;

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
-import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, formatMessageBodyForPreview } from "@openconduit/shared";
+import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, formatMessageBodyForPreview, isChannelParticipantPhone } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
@@ -37,7 +37,14 @@ const createContactSchema = z.object({
 
 const updateContactSchema = z.object({
   name: z.string().min(1).max(255).optional(),
-  phone: z.string().min(7).max(16).optional(),
+  phone: z
+    .string()
+    .min(1)
+    .max(512)
+    .optional()
+    .refine((v) => v == null || isChannelParticipantPhone(v) || (v.length >= 7 && v.length <= 16), {
+      message: "Invalid phone number format",
+    }),
   notes: z.string().max(5000).optional(),
   email: z.string().max(255).nullable().optional(),
   accountId: z.string().uuid().nullable().optional(),
@@ -701,23 +708,40 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (parsed.data.phone !== undefined) {
-      const normalized = normalizePhoneE164(parsed.data.phone);
-      if (!normalized) {
-        return reply.status(400).send({ error: "Bad Request", message: "Invalid phone number format", statusCode: 400 });
-      }
-      if (normalized !== current.phone) {
-        const conflict = await prisma.contact.findFirst({
-          where: { organizationId, phone: normalized, NOT: { id: current.id } },
-        });
-        if (conflict) {
-          return reply.status(409).send({
-            error: "Conflict",
-            message: "Contact with this phone number already exists",
-            statusCode: 409,
+      const incoming = parsed.data.phone.trim();
+      if (isChannelParticipantPhone(current.phone)) {
+        if (incoming !== current.phone) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Cannot change channel participant identifier",
+            statusCode: 400,
           });
         }
+      } else if (isChannelParticipantPhone(incoming)) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Invalid phone number format",
+          statusCode: 400,
+        });
+      } else {
+        const normalized = normalizePhoneE164(incoming);
+        if (!normalized) {
+          return reply.status(400).send({ error: "Bad Request", message: "Invalid phone number format", statusCode: 400 });
+        }
+        if (normalized !== current.phone) {
+          const conflict = await prisma.contact.findFirst({
+            where: { organizationId, phone: normalized, NOT: { id: current.id } },
+          });
+          if (conflict) {
+            return reply.status(409).send({
+              error: "Conflict",
+              message: "Contact with this phone number already exists",
+              statusCode: 409,
+            });
+          }
+        }
+        data.phone = normalized;
       }
-      data.phone = normalized;
     }
 
     if (parsed.data.pipelineStageId) {
