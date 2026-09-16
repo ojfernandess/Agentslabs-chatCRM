@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   Loader2,
+  Lock,
   Mic,
   Paperclip,
   SendHorizonal,
@@ -15,6 +16,7 @@ import {
 import { VoicePreviewPanel, VoiceRecordingPanel } from "@/components/conversation/VoiceMessageComposer";
 import { useI18n } from "@/i18n/I18nProvider";
 import { brandAssetUrl } from "@/lib/brandingAssets";
+import { parseAudioTranscriptionBody, parseImageTranscriptionBody } from "@/lib/messagePreviewText";
 
 /**
  * Web Chat externo (/s/:token) — continuidade da MESMA conversa.
@@ -195,6 +197,14 @@ function WebchatOrgAvatar({
   );
 }
 
+function publicVisibleMessageBody(message: PublicMessage): string | null {
+  const body = message.body?.trim();
+  if (!body) return null;
+  if (message.type === "IMAGE" && parseImageTranscriptionBody(body)) return null;
+  if (message.type === "AUDIO" && parseAudioTranscriptionBody(body)) return null;
+  return body;
+}
+
 function MessageBubble({
   message,
   locale,
@@ -210,6 +220,7 @@ function MessageBubble({
 }) {
   const mine = message.direction === "INBOUND";
   const read = message.status === "READ" || message.status === "DELIVERED";
+  const visibleBody = publicVisibleMessageBody(message);
 
   return (
     <div className={clsx("flex gap-2", mine ? "justify-end" : "justify-start")}>
@@ -266,9 +277,9 @@ function MessageBubble({
             </a>
           ) : null}
 
-          {message.body ? <p className="mt-1 whitespace-pre-wrap break-words">{message.body}</p> : null}
+          {visibleBody ? <p className="mt-1 whitespace-pre-wrap break-words">{visibleBody}</p> : null}
 
-          {!message.body && !message.mediaUrl && message.type !== "TEXT" ? (
+          {!visibleBody && !message.mediaUrl && message.type !== "TEXT" ? (
             <p className="italic opacity-80">{t("webchat.mediaMessage")}</p>
           ) : null}
 
@@ -687,6 +698,13 @@ export default function WebChatPage() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold leading-tight">{orgName}</p>
             <p className="truncate text-[13px] leading-tight text-white/75">{headerSubtitle}</p>
+          </div>
+          <div
+            className="flex shrink-0 items-center gap-1 text-[10px] font-medium leading-tight text-white/90"
+            title={t("webchat.secureChat")}
+          >
+            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>{t("webchat.secureChat")}</span>
           </div>
         </div>
       </header>
