@@ -170,6 +170,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     return {
       ok: true,
       organizationName: resolved.organizationName,
+      organizationLogoUrl: resolved.organizationLogoUrl,
       agentName: resolved.agentBotName,
       expiresAt: resolved.session.expiresAt.toISOString(),
       humanActive: Boolean(conv?.awaitingHumanHandoff || conv?.assignedToId),

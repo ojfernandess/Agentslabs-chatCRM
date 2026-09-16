@@ -181,6 +181,7 @@ export type ResolveWebchatSessionResult =
       session: WebchatSession;
       conversation: { id: string; organizationId: string; contactId: string; inboxId: string };
       organizationName: string;
+      organizationLogoUrl: string | null;
       agentBotName: string | null;
     };
 
@@ -218,7 +219,10 @@ export async function resolveWebchatSessionByToken(token: string): Promise<Resol
 
   const settings = await prisma.settings.findUnique({
     where: { organizationId: session.organizationId },
-    select: { agentBot: { select: { name: true } } },
+    select: {
+      organizationLogoUrl: true,
+      agentBot: { select: { name: true } },
+    },
   });
 
   await prisma.webchatSession
@@ -235,6 +239,7 @@ export async function resolveWebchatSessionByToken(token: string): Promise<Resol
       inboxId: conversation.inboxId,
     },
     organizationName: conversation.organization.name,
+    organizationLogoUrl: settings?.organizationLogoUrl ?? null,
     agentBotName: settings?.agentBot?.name ?? null,
   };
 }
