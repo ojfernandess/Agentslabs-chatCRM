@@ -20,6 +20,11 @@ import {
 } from "@/components/inboxes/EmailInboxConfigFields";
 import { EmailInboundSetupPanel } from "@/components/inboxes/EmailInboundSetupPanel";
 import {
+  TelegramInboundSetupPanel,
+  TelegramSetupGuideHint,
+} from "@/components/inboxes/TelegramSetupGuide";
+import { isValidTelegramBotToken } from "@/lib/inboxTelegramConfig";
+import {
   buildInboxEmailChannelConfig,
 } from "@/lib/inboxEmailConfig";
 import {
@@ -30,15 +35,13 @@ import {
 } from "@/lib/inboxWhatsappConfig";
 import { whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 
+import { InboxChannelPickerIcon } from "@/components/inboxes/InboxChannelIcon";
 import {
   INBOX_CHANNEL_ORDER,
-  INBOX_CHANNEL_ICONS,
   type InboxChannelId,
 } from "@/lib/inboxChannelUi";
 
 export { INBOX_CHANNEL_ORDER, type InboxChannelId };
-
-const CHANNEL_ICONS = INBOX_CHANNEL_ICONS;
 
 type OrgUser = { id: string; name: string; email: string; role: string };
 
@@ -385,6 +388,17 @@ export function InboxCreateWizard({
         return;
       }
     }
+    if (channel === "TELEGRAM") {
+      const token = nativeCfg.telegramBotToken.trim();
+      if (!token) {
+        setError(t("inboxesPage.wizard.telegramInbox.validationTokenRequired"));
+        return;
+      }
+      if (!isValidTelegramBotToken(token)) {
+        setError(t("inboxesPage.wizard.telegramInbox.validationTokenInvalid"));
+        return;
+      }
+    }
     setError(null);
     setStep(3);
   };
@@ -518,12 +532,17 @@ export function InboxCreateWizard({
       )}
       {channel === "TELEGRAM" && (
         <label className="block">
-          <span className="mb-1 block text-xs text-ink-500">{t("inboxesPage.wizard.fieldTelegramBotToken")}</span>
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-ink-500">
+            {t("inboxesPage.wizard.fieldTelegramBotToken")}
+            <TelegramSetupGuideHint botToken={nativeCfg.telegramBotToken} />
+          </span>
           <input
             value={nativeCfg.telegramBotToken}
             onChange={(e) => updateCfg({ telegramBotToken: e.target.value })}
             className="input-field"
             autoComplete="off"
+            placeholder="123456789:ABCdefGHI…"
+            required
           />
         </label>
       )}
@@ -658,9 +677,7 @@ export function InboxCreateWizard({
                 </h3>
                 <p className="mb-6 text-sm text-ink-600 dark:text-ink-400">{t("inboxesPage.wizard.step1Subtitle")}</p>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {INBOX_CHANNEL_ORDER.map((ch) => {
-                    const Icon = CHANNEL_ICONS[ch];
-                    return (
+                  {INBOX_CHANNEL_ORDER.map((ch) => (
                       <button
                         key={ch}
                         type="button"
@@ -668,9 +685,7 @@ export function InboxCreateWizard({
                         className="card-surface flex flex-col items-start gap-2 border p-4 text-left transition hover:border-brand-400/50 hover:shadow-md dark:border-ink-600 dark:bg-ink-900/80"
                       >
                         <div className="flex w-full items-start justify-between gap-2">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400">
-                            <Icon className="h-5 w-5" />
-                          </div>
+                          <InboxChannelPickerIcon channel={ch} />
                           {channelBadge(ch)}
                         </div>
                         <span className="font-medium text-ink-900 dark:text-ink-100">
@@ -680,8 +695,7 @@ export function InboxCreateWizard({
                           {t(`inboxesPage.wizard.channels.${ch}.description`)}
                         </span>
                       </button>
-                    );
-                  })}
+                  ))}
                 </div>
               </div>
             )}
@@ -694,11 +708,13 @@ export function InboxCreateWizard({
                 }
               >
                 <h3 className="mb-1 text-xl font-semibold text-ink-900 dark:text-ink-50">
-                  {channel === "WEBSITE"
+                  {                  channel === "WEBSITE"
                     ? t("inboxesPage.wizard.websiteChannelTitle")
                     : channel === "EMAIL"
                       ? t("inboxesPage.wizard.emailInbox.step2Title")
-                      : t("inboxesPage.wizard.step2Title")}
+                      : channel === "TELEGRAM"
+                        ? t("inboxesPage.wizard.telegramInbox.step2Title")
+                        : t("inboxesPage.wizard.step2Title")}
                 </h3>
                 <p className="mb-2 text-sm text-ink-600 dark:text-ink-400">
                   {channel === "WEBSITE"
@@ -707,7 +723,9 @@ export function InboxCreateWizard({
                       ? t("inboxesPage.wizard.whatsappMeta.step2Subtitle")
                       : channel === "EMAIL"
                         ? t("inboxesPage.wizard.emailInbox.step2Subtitle")
-                        : t("inboxesPage.wizard.step2Subtitle")}
+                        : channel === "TELEGRAM"
+                          ? t("inboxesPage.wizard.telegramInbox.step2Subtitle")
+                          : t("inboxesPage.wizard.step2Subtitle")}
                 </p>
                 <div
                   className={`mb-4 rounded-lg px-3 py-2 text-xs ${
@@ -715,14 +733,18 @@ export function InboxCreateWizard({
                       ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
                       : channel === "EMAIL"
                         ? "border border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100"
-                        : "border border-brand-500/20 bg-brand-500/5 text-ink-800 dark:text-ink-200"
+                        : channel === "TELEGRAM"
+                          ? "border border-sky-500/30 bg-sky-500/10 text-sky-950 dark:text-sky-100"
+                          : "border border-brand-500/20 bg-brand-500/5 text-ink-800 dark:text-ink-200"
                   }`}
                 >
                   {channel === "WHATSAPP"
                     ? t("inboxesPage.wizard.channelNoteWhatsApp")
                     : channel === "EMAIL"
                       ? t("inboxesPage.wizard.emailInbox.channelNoteEmail")
-                      : t("inboxesPage.wizard.channelNoteNative")}
+                      : channel === "TELEGRAM"
+                        ? t("inboxesPage.wizard.telegramInbox.channelNoteTelegram")
+                        : t("inboxesPage.wizard.channelNoteNative")}
                 </div>
                 <label className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-400">
                   {t("inboxesPage.name")}
@@ -920,7 +942,9 @@ export function InboxCreateWizard({
                       ? t("inboxesPage.wizard.whatsappMeta.step4WhatsAppSubtitle")
                       : createdInbox.channelType === "EMAIL"
                         ? t("inboxesPage.wizard.emailInbox.step4Subtitle")
-                        : t("inboxesPage.wizard.step4Subtitle")}
+                        : createdInbox.channelType === "TELEGRAM"
+                          ? t("inboxesPage.wizard.telegramInbox.step4Subtitle")
+                          : t("inboxesPage.wizard.step4Subtitle")}
                 </p>
                 {createdInbox.channelType === "EMAIL" && createdInbox.ingestToken ? (
                   <div className="card-surface mb-6 border p-4 dark:border-ink-600">
@@ -977,7 +1001,26 @@ export function InboxCreateWizard({
                   </p>
                 ) : null}
 
-                {createdInbox.ingestToken && createdInbox.channelType !== "WHATSAPP" && createdInbox.channelType !== "EMAIL" ? (
+                {createdInbox.channelType === "TELEGRAM" && createdInbox.ingestToken ? (
+                  <div className="card-surface mb-6 border p-4 dark:border-ink-600">
+                    <div className="mb-3 flex items-center gap-2">
+                      <h4 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                        {t("inboxesPage.wizard.telegramInbox.step4Title")}
+                      </h4>
+                      <TelegramSetupGuideHint
+                        webhookUrl={`${nativeBase}/${createdInbox.ingestToken}/telegram`}
+                        botToken={nativeCfg.telegramBotToken}
+                        onCopy={copyText}
+                      />
+                    </div>
+                    <TelegramInboundSetupPanel
+                      webhookUrl={`${nativeBase}/${createdInbox.ingestToken}/telegram`}
+                      botToken={nativeCfg.telegramBotToken}
+                      onCopy={copyText}
+                    />
+                  </div>
+                ) : null}
+                {createdInbox.ingestToken && createdInbox.channelType !== "WHATSAPP" && createdInbox.channelType !== "EMAIL" && createdInbox.channelType !== "TELEGRAM" ? (
                   <div className="card-surface mb-6 space-y-4 border p-4 text-sm dark:border-ink-600">
                     <p className="text-xs text-ink-600 dark:text-ink-400">{t("inboxesPage.wizard.ingestNativeIntro")}</p>
                     {(createdInbox.channelType === "WEBSITE" || createdInbox.channelType === "API") && (
@@ -1039,27 +1082,6 @@ export function InboxCreateWizard({
                             className="btn-secondary px-2 py-1 text-xs"
                             onClick={() =>
                               void copyText(`${nativeBase}/${createdInbox.ingestToken}/instagram`)
-                            }
-                          >
-                            {t("inboxesPage.wizard.ingestCopy")}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {createdInbox.channelType === "TELEGRAM" && (
-                      <div>
-                        <p className="mb-1 text-xs font-semibold uppercase text-ink-500">
-                          {t("inboxesPage.wizard.ingestTelegramUrl")}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <code className="max-w-full flex-1 overflow-x-auto rounded border border-ink-200 bg-ink-50 px-2 py-1.5 text-xs dark:border-ink-700 dark:bg-ink-950 dark:text-emerald-200/90">
-                            {`${nativeBase}/${createdInbox.ingestToken}/telegram`}
-                          </code>
-                          <button
-                            type="button"
-                            className="btn-secondary px-2 py-1 text-xs"
-                            onClick={() =>
-                              void copyText(`${nativeBase}/${createdInbox.ingestToken}/telegram`)
                             }
                           >
                             {t("inboxesPage.wizard.ingestCopy")}

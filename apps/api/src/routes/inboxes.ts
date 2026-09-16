@@ -24,6 +24,7 @@ import {
   normalizeEmailInboxChannelConfig,
   resolveInboxEmailSmtpCredentials,
 } from "../lib/inboxEmailConfig.js";
+import { normalizeTelegramInboxChannelConfig } from "../lib/inboxTelegramConfig.js";
 import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
 import { syncInboxEmailNow } from "../lib/inboxEmailSyncJob.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
@@ -289,6 +290,13 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         }
       }
       channelConfig = prepared as Prisma.InputJsonValue;
+    } else if (channelType === InboxChannelType.TELEGRAM && body.channelConfig != null) {
+      try {
+        channelConfig = normalizeTelegramInboxChannelConfig(null, body.channelConfig) as Prisma.InputJsonValue;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Invalid Telegram channel config";
+        return reply.status(400).send({ error: "Bad Request", message: msg, statusCode: 400 });
+      }
     } else if (body.channelConfig != null && typeof body.channelConfig === "object") {
       channelConfig = body.channelConfig as Prisma.InputJsonValue;
     }
@@ -1005,6 +1013,16 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           inbox.channelConfig,
           p.channelConfig,
         ) as Prisma.InputJsonValue;
+      } else if (effectiveChannelType === InboxChannelType.TELEGRAM && p.channelConfig !== undefined) {
+        try {
+          data.channelConfig = normalizeTelegramInboxChannelConfig(
+            inbox.channelConfig,
+            p.channelConfig,
+          ) as Prisma.InputJsonValue;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Invalid Telegram channel config";
+          return reply.status(400).send({ error: "Bad Request", message: msg, statusCode: 400 });
+        }
       } else {
         data.channelConfig = p.channelConfig as Prisma.InputJsonValue;
       }

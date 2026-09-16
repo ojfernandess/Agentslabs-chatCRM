@@ -42,6 +42,15 @@ import {
 } from "@/components/inboxes/EmailInboxConfigFields";
 import { EmailInboundSetupPanel } from "@/components/inboxes/EmailInboundSetupPanel";
 import {
+  TelegramInboundSetupPanel,
+  TelegramSetupGuideHint,
+} from "@/components/inboxes/TelegramSetupGuide";
+import {
+  buildInboxTelegramChannelConfig,
+  MASKED_TELEGRAM_BOT_TOKEN,
+  parseInboxTelegramFromChannelConfig,
+} from "@/lib/inboxTelegramConfig";
+import {
   buildInboxEmailChannelConfig,
   MASKED_EMAIL_SECRET,
   parseInboxEmailFromChannelConfig,
@@ -156,6 +165,7 @@ export function InboxesPage() {
   const [emailTestError, setEmailTestError] = useState<string | null>(null);
   const [emailTestSentTo, setEmailTestSentTo] = useState<string | null>(null);
   const [editEmailForm, setEditEmailForm] = useState<EmailInboxFormState>(emptyEmailInboxForm());
+  const [editTelegramBotToken, setEditTelegramBotToken] = useState("");
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<InboxChannelFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<InboxStatusFilter>("ALL");
@@ -367,12 +377,14 @@ export function InboxesPage() {
     setEditEmailForm(
       row.channelType === "EMAIL" ? emailInboxFormFromChannelConfig(row.channelConfig) : emptyEmailInboxForm(),
     );
+    setEditTelegramBotToken("");
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditWebsiteWidget(null);
     setEditEmailForm(emptyEmailInboxForm());
+    setEditTelegramBotToken("");
     setWaTestResult(null);
     setEmailTestResult(null);
     setEmailTestError(null);
@@ -469,6 +481,9 @@ export function InboxesPage() {
         const merged = buildInboxEmailChannelConfig(prev, emailInboxFormToPatch(editEmailForm));
         Object.assign(prev, merged);
       }
+      if (editChannel === "TELEGRAM") {
+        Object.assign(prev, buildInboxTelegramChannelConfig(prev, { telegramBotToken: editTelegramBotToken }));
+      }
       const channelConfigPayload = Object.keys(prev).length > 0 ? prev : null;
 
       await api.patch(`/inboxes/${inboxId}`, {
@@ -481,6 +496,7 @@ export function InboxesPage() {
       setEditingId(null);
       setEditWebsiteWidget(null);
       setEditEmailForm(emptyEmailInboxForm());
+      setEditTelegramBotToken("");
       await load();
     } catch {
       window.alert(t("inboxesPage.editSaveFailed"));
@@ -687,6 +703,50 @@ export function InboxesPage() {
                               />
                             </div>
                           ) : null}
+                          {editChannel === "TELEGRAM" ? (
+                            <div className="mb-3 max-w-2xl rounded-lg border border-sky-200 bg-sky-50/50 p-3 dark:border-sky-900/40 dark:bg-sky-950/20">
+                              <div className="mb-1 flex items-center gap-1.5">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
+                                  {t("inboxesPage.wizard.telegramInbox.editSectionTitle")}
+                                </p>
+                                <TelegramSetupGuideHint
+                                  webhookUrl={
+                                    row.ingestToken && basePublicNative
+                                      ? `${basePublicNative}/${row.ingestToken}/telegram`
+                                      : undefined
+                                  }
+                                  botToken={editTelegramBotToken}
+                                  onCopy={copyUrl}
+                                />
+                              </div>
+                              <p className="mb-3 text-[11px] text-gray-600 dark:text-ink-400">
+                                {t("inboxesPage.wizard.telegramInbox.editSectionHint")}
+                              </p>
+                              <label className="block">
+                                <span className="mb-1 block text-xs text-ink-500">
+                                  {t("inboxesPage.wizard.fieldTelegramBotToken")}
+                                </span>
+                                <input
+                                  value={editTelegramBotToken}
+                                  onChange={(e) => setEditTelegramBotToken(e.target.value)}
+                                  className="input-field max-w-md"
+                                  autoComplete="off"
+                                  placeholder={
+                                    parseInboxTelegramFromChannelConfig(row.channelConfig).telegramBotToken ===
+                                    MASKED_TELEGRAM_BOT_TOKEN
+                                      ? MASKED_TELEGRAM_BOT_TOKEN
+                                      : "123456789:ABCdefGHI…"
+                                  }
+                                />
+                                {parseInboxTelegramFromChannelConfig(row.channelConfig).telegramBotToken ===
+                                MASKED_TELEGRAM_BOT_TOKEN ? (
+                                  <p className="mt-1 text-[11px] text-ink-500">
+                                    {t("inboxesPage.wizard.telegramInbox.tokenUpdateHint")}
+                                  </p>
+                                ) : null}
+                              </label>
+                            </div>
+                          ) : null}
                           <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-ink-400">
                             {t("inboxesPage.agentBotField")}
                           </label>
@@ -772,7 +832,29 @@ export function InboxesPage() {
                             />
                           </>
                         ) : null}
-                        {row.ingestToken && row.channelType !== "WHATSAPP" && row.channelType !== "EMAIL" && basePublicNative ? (
+                        {row.channelType === "TELEGRAM" && row.ingestToken && basePublicNative ? (
+                          <>
+                            <div className="mb-1 flex items-center gap-1.5">
+                              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
+                                {t("inboxesPage.wizard.telegramInbox.step4Title")}
+                              </h4>
+                              <TelegramSetupGuideHint
+                                webhookUrl={`${basePublicNative}/${row.ingestToken}/telegram`}
+                                onCopy={copyUrl}
+                              />
+                            </div>
+                            {!inboxIsChannelReady(row.channelType, row.channelConfig, row.ingestToken) ? (
+                              <p className="mb-2 text-xs text-amber-800/90 dark:text-amber-200/85">
+                                {t("inboxesPage.wizard.telegramInbox.inboxStatusNotConfigured")}
+                              </p>
+                            ) : null}
+                            <TelegramInboundSetupPanel
+                              webhookUrl={`${basePublicNative}/${row.ingestToken}/telegram`}
+                              onCopy={copyUrl}
+                            />
+                          </>
+                        ) : null}
+                        {row.ingestToken && row.channelType !== "WHATSAPP" && row.channelType !== "EMAIL" && row.channelType !== "TELEGRAM" && basePublicNative ? (
                           <>
                             <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
                               {t("inboxesPage.ingestNativeSection")}
@@ -822,21 +904,23 @@ export function InboxesPage() {
                                   </button>
                                 </div>
                               </li>
-                              <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                <span className="font-medium text-gray-700 dark:text-ink-200">Telegram</span>
-                                <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
-                                  <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
-                                    {`${basePublicInbox}/${row.ingestToken}/telegram`}
-                                  </code>
-                                  <button
-                                    type="button"
-                                    className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
-                                    onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/telegram`)}
-                                  >
-                                    {t("inboxesPage.wizard.ingestCopy")}
-                                  </button>
-                                </div>
-                              </li>
+                              {row.channelType !== "TELEGRAM" ? (
+                                <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                  <span className="font-medium text-gray-700 dark:text-ink-200">Telegram</span>
+                                  <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">
+                                    <code className="max-w-[min(100%,28rem)] truncate rounded bg-white px-2 py-0.5 dark:bg-ink-950">
+                                      {`${basePublicInbox}/${row.ingestToken}/telegram`}
+                                    </code>
+                                    <button
+                                      type="button"
+                                      className="shrink-0 text-brand-600 hover:underline dark:text-brand-400"
+                                      onClick={() => void copyUrl(`${basePublicInbox}/${row.ingestToken}/telegram`)}
+                                    >
+                                      {t("inboxesPage.wizard.ingestCopy")}
+                                    </button>
+                                  </div>
+                                </li>
+                              ) : null}
                               <li className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                 <span className="font-medium text-gray-700 dark:text-ink-200">Twilio</span>
                                 <div className="flex min-w-0 flex-1 items-center gap-2 sm:justify-end">

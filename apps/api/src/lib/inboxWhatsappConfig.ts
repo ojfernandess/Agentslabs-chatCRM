@@ -4,6 +4,7 @@ import { encrypt } from "./encryption.js";
 import { generateWhatsappWebhookVerifyToken } from "./whatsappWebhookVerify.js";
 import { webhookUrlForInbox } from "../config.js";
 import { maskEmailChannelConfigForClient } from "./inboxEmailConfig.js";
+import { maskTelegramChannelConfigForClient } from "./inboxTelegramConfig.js";
 
 export const MASKED_WHATSAPP_SECRET = "••••••••";
 
@@ -117,7 +118,8 @@ export function maskWhatsappChannelConfigForClient(cfg: unknown): unknown {
 export function maskInboxRowChannelConfig<T extends { channelConfig?: unknown }>(row: T): T {
   if (row.channelConfig == null) return row;
   const maskedWhatsapp = maskWhatsappChannelConfigForClient(row.channelConfig);
-  return { ...row, channelConfig: maskEmailChannelConfigForClient(maskedWhatsapp) };
+  const maskedEmail = maskEmailChannelConfigForClient(maskedWhatsapp);
+  return { ...row, channelConfig: maskTelegramChannelConfigForClient(maskedEmail) };
 }
 
 /** Credenciais da caixa; se a caixa não tiver provider, usa Settings (legado). */

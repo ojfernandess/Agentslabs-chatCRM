@@ -34,6 +34,10 @@ import {
   parseInboxEmailFromChannelConfig,
 } from "@/lib/inboxEmailConfig";
 import {
+  isInboxTelegramConfigured,
+  parseInboxTelegramFromChannelConfig,
+} from "@/lib/inboxTelegramConfig";
+import {
   isInboxWhatsappConfigured,
   parseInboxWhatsappFromChannelConfig,
 } from "@/lib/inboxWhatsappConfig";
@@ -154,6 +158,9 @@ export function inboxIsChannelReady(
   }
   if (channelType === "EMAIL") {
     return isInboxEmailConfigured(parseInboxEmailFromChannelConfig(channelConfig));
+  }
+  if (channelType === "TELEGRAM") {
+    return isInboxTelegramConfigured(parseInboxTelegramFromChannelConfig(channelConfig));
   }
   return Boolean(ingestToken);
 }
