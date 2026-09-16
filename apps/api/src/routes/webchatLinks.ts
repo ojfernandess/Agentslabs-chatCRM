@@ -27,6 +27,10 @@ const generateBodySchema = z.object({
   regenerate: z.boolean().optional(),
 });
 
+const sendLinkBodySchema = z.object({
+  regenerate: z.boolean().optional(),
+});
+
 export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -98,6 +102,7 @@ export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>("/conversations/:id/link/send", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    const parsedSend = sendLinkBodySchema.safeParse(request.body ?? {});
     const conv = await loadConversationForOrg(organizationId, request.params.id);
     if (!conv) {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
@@ -108,6 +113,8 @@ export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
       conversationId: conv.id,
       createdBySource: "HUMAN",
       createdByUserId: request.user.id,
+      regenerate: parsedSend.success && parsedSend.data.regenerate === true,
+      resetClientBinding: true,
     });
     if (!r.ok) {
       const status = r.code === "FEATURE_DISABLED" ? 403 : 404;

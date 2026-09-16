@@ -91,6 +91,13 @@ export async function getActiveWebchatSessionForConversation(
   return session;
 }
 
+export async function resetWebchatClientBinding(sessionId: string): Promise<void> {
+  await prisma.webchatSession.updateMany({
+    where: { id: sessionId, status: "ACTIVE" },
+    data: { clientSessionHash: null, claimedAt: null, updatedAt: new Date() },
+  });
+}
+
 /**
  * Gera (ou reutiliza) o link seguro do Web Chat para a conversa.
  * Reutiliza sessão ACTIVE válida por padrão — evita múltiplos tokens desnecessários a cada clique.
@@ -102,6 +109,8 @@ export async function generateWebchatLinkForConversation(params: {
   createdByUserId?: string | null;
   /** true força novo token; a política da organização decide se o anterior é revogado ou mantido. */
   regenerate?: boolean;
+  /** Limpa o vínculo do dispositivo — usar ao enviar o link ao cliente para permitir nova abertura. */
+  resetClientBinding?: boolean;
 }): Promise<GenerateWebchatLinkResult> {
   const { organizationId, conversationId } = params;
 
@@ -121,7 +130,18 @@ export async function generateWebchatLinkForConversation(params: {
 
   const existing = await getActiveWebchatSessionForConversation(organizationId, conversationId);
   if (existing && !params.regenerate) {
-    return { ok: true, session: existing, url: webchatPublicUrl(existing.token), reused: true };
+    if (params.resetClientBinding) {
+      await resetWebchatClientBinding(existing.id);
+    }
+    return {
+      ok: true,
+      session: {
+        ...existing,
+        ...(params.resetClientBinding ? { clientSessionHash: null, claimedAt: null } : {}),
+      },
+      url: webchatPublicUrl(existing.token),
+      reused: true,
+    };
   }
   if (existing && params.regenerate && settings.regeneratePolicy === "revoke") {
     await prisma.webchatSession
@@ -316,6 +336,7 @@ export async function enrichReplyWithWebchatLink(params: {
     organizationId: params.organizationId,
     conversationId: params.conversationId,
     createdBySource: "AGENT",
+    resetClientBinding: true,
   });
   if (!link.ok) return { replyText: params.replyText, url: null };
   if (replyContainsWebchatUrl(trimmed, link.url)) return { replyText: params.replyText, url: link.url };
@@ -340,6 +361,7 @@ export async function sendWebchatContinuityLinkToContact(params: {
     organizationId: params.organizationId,
     conversationId: params.conversationId,
     createdBySource: "AGENT",
+    resetClientBinding: true,
   });
   if (!link.ok) return { sent: false };
 

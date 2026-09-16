@@ -78,9 +78,7 @@ function webchatAuthHeaders(token: string, extra?: HeadersInit): HeadersInit {
 function parseSessionErrorCode(status: number, data: { error?: string } | null): SessionErrorCode | null {
   if (status === 404) return "NOT_FOUND";
   if (status === 403) {
-    if (data?.error === "SESSION_CLAIMED" || data?.error === "CLIENT_SESSION_REQUIRED") {
-      return "SESSION_CLAIMED";
-    }
+    if (data?.error === "SESSION_CLAIMED") return "SESSION_CLAIMED";
     return null;
   }
   if (status === 410) {
