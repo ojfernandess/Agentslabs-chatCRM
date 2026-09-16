@@ -1666,6 +1666,20 @@ export function AutomationPage() {
     }
   };
 
+  const deleteOrphanBot = async (botId: string) => {
+    setLoading(true);
+    try {
+      await api.delete(`/bots/${botId}`);
+      await loadBots();
+      await loadAgentProfiles();
+      await loadDashboard();
+    } catch {
+      setError("load_failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const installToolPreset = async (presetKey: string) => {
     setLoading(true);
     setError("");
@@ -1933,6 +1947,7 @@ export function AutomationPage() {
             onConfigureOrphan={openConfigureOrphanBot}
             onSaveModal={() => void saveAgentModal()}
             onDeleteProfile={deleteAgentProfile}
+            onDeleteOrphanBot={deleteOrphanBot}
             onOpenToolsTab={() => {
               setAgentModalOpen(false);
               setTab("tools");
@@ -2166,6 +2181,7 @@ function AgentsTab({
   onConfigureOrphan,
   onSaveModal,
   onDeleteProfile,
+  onDeleteOrphanBot,
   onOpenToolsTab,
   applyPromptModulesSelection,
   onOpenKnowledgeTab,
@@ -2192,6 +2208,7 @@ function AgentsTab({
   onConfigureOrphan: (botId: string) => void;
   onSaveModal: () => void;
   onDeleteProfile: (botId: string, options?: { alsoDeleteBot?: boolean }) => void;
+  onDeleteOrphanBot: (botId: string) => void;
   onOpenToolsTab: () => void;
   applyPromptModulesSelection: (nextPromptModuleIds: string[]) => void;
   onOpenKnowledgeTab: () => void;
@@ -2227,6 +2244,7 @@ function AgentsTab({
   } | null>(null);
   const [deleteAgentTarget, setDeleteAgentTarget] = useState<AgentProfileRow | null>(null);
   const [deleteAgentAlsoDeleteBot, setDeleteAgentAlsoDeleteBot] = useState(false);
+  const [deleteOrphanTarget, setDeleteOrphanTarget] = useState<BotRow | null>(null);
   const suggestLocaleApi = suggestionLocale === "en" ? "en" : "pt-BR";
 
   const openAgentConnections = (row: AgentProfileRow) => {
@@ -3440,13 +3458,24 @@ function AgentsTab({
                     <p className="text-xs text-amber-800 dark:text-amber-200">{t("automationPage.agentExternalWebhookWarning")}</p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onConfigureOrphan(b.id)}
-                  className="rounded-lg border border-brand-500 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-600 dark:text-brand-300 dark:hover:bg-brand-950/50"
-                >
-                  {t("automationPage.agentConfigureAutomation")}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onConfigureOrphan(b.id)}
+                    className="rounded-lg border border-brand-500 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-600 dark:text-brand-300 dark:hover:bg-brand-950/50"
+                  >
+                    {t("automationPage.agentConfigureAutomation")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteOrphanTarget(b)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
+                    title={t("automationPage.agentDeleteOrphanBotAction")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t("automationPage.agentDeleteOrphanBotAction")}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -4569,6 +4598,61 @@ function AgentsTab({
                 className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
               >
                 {t("common.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteOrphanTarget ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink-900/45 backdrop-blur-sm"
+            onClick={() => setDeleteOrphanTarget(null)}
+            aria-label={t("common.close")}
+          />
+          <div
+            role="alertdialog"
+            aria-labelledby="delete-orphan-bot-title"
+            aria-describedby="delete-orphan-bot-desc"
+            className="relative z-10 w-full max-w-md rounded-2xl border border-ink-200 bg-white p-5 shadow-2xl dark:border-ink-700 dark:bg-ink-950"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 id="delete-orphan-bot-title" className="text-sm font-bold text-ink-900 dark:text-ink-50">
+                {t("automationPage.agentDeleteOrphanBotTitle")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeleteOrphanTarget(null)}
+                className="rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p id="delete-orphan-bot-desc" className="mt-3 text-sm text-ink-700 dark:text-ink-200">
+              {t("automationPage.agentDeleteOrphanBotBody")}
+            </p>
+            <p className="mt-2 text-xs font-medium text-ink-600 dark:text-ink-400">{deleteOrphanTarget.name}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteOrphanTarget(null)}
+                className="rounded-lg border border-ink-200 px-4 py-2 text-sm font-semibold dark:border-ink-600"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  const target = deleteOrphanTarget;
+                  setDeleteOrphanTarget(null);
+                  void onDeleteOrphanBot(target.id);
+                }}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {t("automationPage.agentDeleteOrphanBotConfirm")}
               </button>
             </div>
           </div>

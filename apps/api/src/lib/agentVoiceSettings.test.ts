@@ -95,6 +95,21 @@ test("shouldSendVoiceReply respects native, inbound audio and ElevenLabs overrid
   assert.equal(shouldSendVoiceReply({ ...base, voiceResponsePercent: 0 }, { type: "TEXT" }), false);
 });
 
+test("parseAgentVoiceSettings respects explicit nativeVoiceEnabled false over legacy percent", () => {
+  const s = parseAgentVoiceSettings({
+    voice: {
+      nativeVoiceEnabled: false,
+      voiceResponsePercent: 100,
+      replyWithAudioOnInboundAudio: false,
+    },
+  });
+  assert.equal(s.nativeVoiceEnabled, false);
+  assert.equal(
+    shouldSendVoiceReply(s, { type: "TEXT" }),
+    false,
+  );
+});
+
 test("shouldSendVoiceReply ignores inbound-only mode when native voice is enabled", () => {
   assert.equal(
     shouldSendVoiceReply(

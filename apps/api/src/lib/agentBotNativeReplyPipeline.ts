@@ -20,11 +20,18 @@ import { broadcastConversationAgentTyping } from "./workspaceHub.js";
 import {
   getInteractionBudgetState,
   markInteractionBudgetHumanActive,
+  parseInteractionLimitFromBehavior,
   registerAgentInteraction,
+  shouldAppendWebchatLinkOnReply,
   type InteractionBudgetState,
 } from "./interactionBudget.js";
 import { callHumanForConversationForOrg } from "./conversationNativeToolActions.js";
 import { attachInteractionNumberToLedger } from "./messageBillingLedger.js";
+import {
+  enrichReplyWithWebchatLink,
+  replyContainsWebchatUrl,
+  sendWebchatContinuityLinkToContact,
+} from "./webchatSession.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
@@ -143,7 +150,29 @@ export async function runNativeAgentReplyAndDeliver(input: {
     }
 
     /** Regista 1 interação após resposta efetivamente enviada; ao atingir o limite → call_human (sem 11ª mensagem). */
-    const registerBudgetAfterDelivery = async (deliveredOk: boolean, messageId?: string): Promise<void> => {
+    const maybeEnrichReplyForWebchat = async (
+      replyText: string,
+      behaviorConfig: unknown,
+    ): Promise<string> => {
+      if (!shouldAppendWebchatLinkOnReply(behaviorConfig, budgetState)) return replyText;
+      try {
+        const enriched = await enrichReplyWithWebchatLink({
+          organizationId,
+          conversationId: conversation.id,
+          replyText,
+        });
+        return enriched.replyText;
+      } catch (err) {
+        log.warn({ err, conversationId: conversation.id }, "webchat link enrich failed");
+        return replyText;
+      }
+    };
+
+    const registerBudgetAfterDelivery = async (
+      deliveredOk: boolean,
+      messageId?: string,
+      deliveredBody?: string,
+    ): Promise<void> => {
       if (!deliveredOk || !budgetState?.enabled || budgetState.limit == null) return;
       try {
         const r = await registerAgentInteraction({
@@ -161,6 +190,24 @@ export async function runNativeAgentReplyAndDeliver(input: {
             "INTERACTION_LIMIT_REACHED — transferência automática para atendimento humano (call_human)",
             { output: { interactionCount: r.count, interactionLimit: r.limit, automatic: true } },
           );
+          const cfg = parseInteractionLimitFromBehavior(profilePre?.behaviorConfig);
+          if (
+            cfg.offerWebchatOnLimit &&
+            deliveredBody &&
+            !replyContainsWebchatUrl(deliveredBody)
+          ) {
+            try {
+              await sendWebchatContinuityLinkToContact({
+                organizationId,
+                conversationId: conversation.id,
+                contactId: contact.id,
+                botId: bot.id,
+                log,
+              });
+            } catch (err) {
+              log.warn({ err, conversationId: conversation.id }, "webchat continuity fallback send failed");
+            }
+          }
           await callHumanForConversationForOrg(prisma, {
             organizationId,
             conversationId: conversation.id,
@@ -214,6 +261,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
       const deliverQuoteHandoff = replyShouldPreemptEscalationTransferMessage(replyText);
 
       if (deliverQuoteHandoff && replyText.trim()) {
+        const quoteReplyText = await maybeEnrichReplyForWebchat(replyText, profileEsc?.behaviorConfig);
         try {
           await deliverAgentReplyMessage({
             organizationId,
@@ -221,7 +269,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
             conversation,
             contact,
             inboundMessage: message,
-            replyText,
+            replyText: quoteReplyText,
             behaviorConfig: profileEsc?.behaviorConfig,
             log,
           });
@@ -235,7 +283,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
           callHumanOk
             ? "Resposta pós call_human enviada ao cliente (handoff humano)"
             : "Modelo C6 Escolha Confirm enviado ao cliente (handoff humano)",
-          { output: { chars: replyText.length, skippedEscalationMessage: Boolean(transferConfigured) } },
+          { output: { chars: quoteReplyText.length, skippedEscalationMessage: Boolean(transferConfigured) } },
         );
         await prisma.automationInteraction
           .create({
@@ -244,16 +292,18 @@ export async function runNativeAgentReplyAndDeliver(input: {
               botId: bot.id,
               conversationId: conversation.id,
               userMessage,
-              assistantMessage: replyText,
+              assistantMessage: quoteReplyText,
               responseType: "native_fallback",
             },
           })
           .catch(() => {});
+        await registerBudgetAfterDelivery(true, undefined, quoteReplyText);
         await exLog.completeSuccess();
         return;
       }
 
       if (transferConfigured) {
+        const transferBody = await maybeEnrichReplyForWebchat(transferConfigured, profileEsc?.behaviorConfig);
         try {
           await deliverOutboundWhatsAppMessage({
             organizationId,
@@ -261,7 +311,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
               contactId: contact.id,
               conversationId: conversation.id,
               type: "TEXT",
-              body: transferConfigured,
+              body: transferBody,
             },
             actor: { kind: "agent_bot", botId: bot.id },
             log,
@@ -275,7 +325,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
         exLog.info(
           { id: "outbound", name: "Resposta" },
           "Transferência para humano — mensagem das regras de escalonamento enviada ao cliente",
-          { output: { chars: transferConfigured.length, modelReplyChars: replyText.length } },
+          { output: { chars: transferBody.length, modelReplyChars: replyText.length } },
         );
         await prisma.automationInteraction
           .create({
@@ -284,13 +334,28 @@ export async function runNativeAgentReplyAndDeliver(input: {
               botId: bot.id,
               conversationId: conversation.id,
               userMessage,
-              assistantMessage: transferConfigured,
+              assistantMessage: transferBody,
               responseType: "native_fallback",
             },
           })
           .catch(() => {});
+        await registerBudgetAfterDelivery(true, undefined, transferBody);
         await exLog.completeSuccess();
         return;
+      }
+      if (shouldAppendWebchatLinkOnReply(profileEsc?.behaviorConfig, budgetState)) {
+        try {
+          await sendWebchatContinuityLinkToContact({
+            organizationId,
+            conversationId: conversation.id,
+            contactId: contact.id,
+            botId: bot.id,
+            log,
+            skipIfBodyContains: replyText,
+          });
+        } catch (err) {
+          log.warn({ err, conversationId: conversation.id }, "webchat continuity send on handoff failed");
+        }
       }
       exLog.info(
         { id: "outbound", name: "Resposta" },
@@ -319,7 +384,20 @@ export async function runNativeAgentReplyAndDeliver(input: {
         "Resposta entregue em chunks durante geração (streaming outbound)",
         { output: { chars: replyText.length } },
       );
-      await registerBudgetAfterDelivery(true);
+      await registerBudgetAfterDelivery(true, undefined, replyText);
+      if (shouldAppendWebchatLinkOnReply(behaviorConfig, budgetState) && !replyContainsWebchatUrl(replyText)) {
+        try {
+          await sendWebchatContinuityLinkToContact({
+            organizationId,
+            conversationId: conversation.id,
+            contactId: contact.id,
+            botId: bot.id,
+            log,
+          });
+        } catch (err) {
+          log.warn({ err, conversationId: conversation.id }, "webchat continuity send after stream failed");
+        }
+      }
       await prisma.automationInteraction
         .create({
           data: {
@@ -387,23 +465,28 @@ export async function runNativeAgentReplyAndDeliver(input: {
       });
 
       if (!suppressAck) {
+        const enrichedReplyText = await maybeEnrichReplyForWebchat(replyText, behaviorConfig);
         const delivery = await deliverAgentReplyMessage({
           organizationId,
           botId: bot.id,
           conversation,
           contact,
           inboundMessage: message,
-          replyText,
+          replyText: enrichedReplyText,
           behaviorConfig,
           log,
         });
         exLog.info(
           { id: "outbound", name: "Entrega" },
           delivery.kind === "audio" ? "Resposta em áudio enviada" : "Mensagem outbound enviada",
-          { output: { chars: replyText.length, deliveryKind: delivery.kind } },
+          { output: { chars: enrichedReplyText.length, deliveryKind: delivery.kind } },
         );
         /** Só conta interação quando efetivamente enviada (tentativas FAILED não contam). */
-        await registerBudgetAfterDelivery(delivery.message.status !== "FAILED", delivery.message.id);
+        await registerBudgetAfterDelivery(
+          delivery.message.status !== "FAILED",
+          delivery.message.id,
+          enrichedReplyText,
+        );
       } else {
         exLog.info(
           { id: "outbound", name: "Entrega" },

@@ -61,6 +61,17 @@ const DISABLED_STATE: InteractionBudgetState = {
   nearLimit: false,
 };
 
+/** Próxima resposta enviada atinge o limite ou já estamos em nearLimit. */
+export function shouldAppendWebchatLinkOnReply(
+  behaviorConfig: unknown,
+  budgetState: InteractionBudgetState | null,
+): boolean {
+  const cfg = parseInteractionLimitFromBehavior(behaviorConfig);
+  if (!cfg.offerWebchatOnLimit || !budgetState?.enabled || budgetState.limit == null) return false;
+  if (budgetState.blocked) return false;
+  return budgetState.nearLimit || budgetState.count + 1 >= budgetState.limit;
+}
+
 /** Deriva estado puro a partir de count/limit (testável sem BD). */
 export function deriveBudgetStatus(count: number, limit: number): InteractionBudgetStatus {
   if (count >= limit) return "LIMIT_REACHED";

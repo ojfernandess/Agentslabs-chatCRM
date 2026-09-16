@@ -951,6 +951,11 @@ export const messages = {
       agentDeleteProfileConfirmAction: "Remover",
       agentsOrphanTitle: "Bots sem perfil de automação",
       agentConfigureAutomation: "Configurar automação",
+      agentDeleteOrphanBotTitle: "Eliminar bot",
+      agentDeleteOrphanBotBody:
+        "Este bot não tem perfil de automação. A eliminação é permanente e remove também ferramentas e execuções associadas.",
+      agentDeleteOrphanBotAction: "Eliminar bot",
+      agentDeleteOrphanBotConfirm: "Eliminar",
       agentTool_knowledge_search: "buscar_conhecimento",
       agentTool_list_teams: "listar_equipas",
       agentTool_list_pipeline_stages: "listar_etapas_funil",
@@ -7403,6 +7408,11 @@ export const messages = {
       agentDeleteProfileConfirmAction: "Remove",
       agentsOrphanTitle: "Bots without an automation profile",
       agentConfigureAutomation: "Configure automation",
+      agentDeleteOrphanBotTitle: "Delete bot",
+      agentDeleteOrphanBotBody:
+        "This bot has no automation profile. Deletion is permanent and also removes associated tools and executions.",
+      agentDeleteOrphanBotAction: "Delete bot",
+      agentDeleteOrphanBotConfirm: "Delete",
       agentTool_knowledge_search: "knowledge_search",
       agentTool_list_teams: "list_teams",
       agentTool_list_pipeline_stages: "list_pipeline_stages",

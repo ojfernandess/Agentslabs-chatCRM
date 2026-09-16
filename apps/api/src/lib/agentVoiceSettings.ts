@@ -45,7 +45,10 @@ export function parseAgentVoiceSettings(behaviorConfig: unknown): AgentVoiceSett
   return {
     nativeVoiceEnabled:
       v.nativeVoiceEnabled === true ||
-      (!elevenLabsEnabled && legacyPercent > 0 && v.replyWithAudioOnInboundAudio !== true),
+      (v.nativeVoiceEnabled !== false &&
+        !elevenLabsEnabled &&
+        legacyPercent > 0 &&
+        v.replyWithAudioOnInboundAudio !== true),
     nativeVoiceResponsePercent,
     inboundAudioResponsePercent: clampPercent(v.inboundAudioResponsePercent, 100),
     elevenLabsEnabled,

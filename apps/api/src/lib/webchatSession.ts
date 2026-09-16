@@ -38,6 +38,11 @@ export function buildWebchatContinuityBody(templateText: string | null | undefin
   return `${base}\n\n${url}`;
 }
 
+export function replyContainsWebchatUrl(text: string, url?: string | null): boolean {
+  if (url && text.includes(url)) return true;
+  return /\/s\/[A-Za-z0-9_-]{8,}/.test(text);
+}
+
 export type GenerateWebchatLinkResult =
   | {
       ok: true;
@@ -242,4 +247,77 @@ export async function resolveWebchatSessionByToken(token: string): Promise<Resol
     organizationLogoUrl: settings?.organizationLogoUrl ?? null,
     agentBotName: settings?.agentBot?.name ?? null,
   };
+}
+
+/** Acrescenta o link do Web Chat ao texto da resposta quando ainda não presente. */
+export async function enrichReplyWithWebchatLink(params: {
+  organizationId: string;
+  conversationId: string;
+  replyText: string;
+}): Promise<{ replyText: string; url: string | null }> {
+  const trimmed = params.replyText.trim();
+  const link = await generateWebchatLinkForConversation({
+    organizationId: params.organizationId,
+    conversationId: params.conversationId,
+    createdBySource: "AGENT",
+  });
+  if (!link.ok) return { replyText: params.replyText, url: null };
+  if (replyContainsWebchatUrl(trimmed, link.url)) return { replyText: params.replyText, url: link.url };
+  const settings = await orgWebchatSettings(params.organizationId);
+  const continuity = buildWebchatContinuityBody(settings.continuityMessage, link.url);
+  return { replyText: trimmed ? `${trimmed}\n\n${continuity}` : continuity, url: link.url };
+}
+
+/** Envia a mensagem de continuidade do Web Chat ao contacto (fallback quando o modelo não inclui o link). */
+export async function sendWebchatContinuityLinkToContact(params: {
+  organizationId: string;
+  conversationId: string;
+  contactId: string;
+  botId: string;
+  log: import("fastify").FastifyBaseLogger;
+  skipIfBodyContains?: string;
+}): Promise<{ sent: boolean; url?: string; messageId?: string }> {
+  if (params.skipIfBodyContains && replyContainsWebchatUrl(params.skipIfBodyContains)) {
+    return { sent: false };
+  }
+  const link = await generateWebchatLinkForConversation({
+    organizationId: params.organizationId,
+    conversationId: params.conversationId,
+    createdBySource: "AGENT",
+  });
+  if (!link.ok) return { sent: false };
+
+  const settings = await orgWebchatSettings(params.organizationId);
+  const body = buildWebchatContinuityBody(settings.continuityMessage, link.url);
+
+  const { deliverOutboundWhatsAppMessage } = await import("./outboundMessage.js");
+  const sent = await deliverOutboundWhatsAppMessage({
+    organizationId: params.organizationId,
+    data: {
+      contactId: params.contactId,
+      conversationId: params.conversationId,
+      type: "TEXT",
+      body,
+    },
+    actor: { kind: "agent_bot", botId: params.botId },
+    log: params.log,
+    newConversation: { status: "PENDING", assignedToId: null },
+  });
+
+  await appendTimelineEvent({
+    organizationId: params.organizationId,
+    subjectType: "CONTACT",
+    subjectId: params.contactId,
+    eventType: "webchat.link_sent",
+    channel: "webchat",
+    payload: {
+      conversationId: params.conversationId,
+      sentByBotId: params.botId,
+      expiresAt: link.session.expiresAt.toISOString(),
+      automatic: true,
+    } as Prisma.InputJsonValue,
+    sourceId: sent.message.id,
+  }).catch(() => {});
+
+  return { sent: true, url: link.url, messageId: sent.message.id };
 }
