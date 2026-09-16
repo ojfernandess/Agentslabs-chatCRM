@@ -49,6 +49,8 @@ type SessionErrorCode = "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED" | "S
 
 const POLL_INTERVAL_MS = 3500;
 const WEBCHAT_CLIENT_SESSION_PREFIX = "webchat_client_session:";
+/** Cache em memória — mesmo segredo por aba quando localStorage falha (ex.: WhatsApp in-app). */
+const webchatClientSessionCache = new Map<string, string>();
 const QUICK_EMOJIS = ["😊", "👍", "🙏", "❤️", "😅", "🎉"];
 const WEBCHAT_VIEWPORT =
   "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content";
@@ -56,23 +58,32 @@ const DRAFT_MIN_HEIGHT_PX = 40;
 const DRAFT_MAX_HEIGHT_PX = 132;
 
 function getOrCreateWebchatClientSession(token: string): string {
-  const key = `${WEBCHAT_CLIENT_SESSION_PREFIX}${token}`;
+  const trimmedToken = token.trim();
+  if (!trimmedToken) return crypto.randomUUID();
+
+  const cached = webchatClientSessionCache.get(trimmedToken);
+  if (cached) return cached;
+
+  const key = `${WEBCHAT_CLIENT_SESSION_PREFIX}${trimmedToken}`;
   try {
     const existing = localStorage.getItem(key);
-    if (existing?.trim()) return existing.trim();
+    if (existing?.trim()) {
+      webchatClientSessionCache.set(trimmedToken, existing.trim());
+      return existing.trim();
+    }
     const secret = crypto.randomUUID();
-    localStorage.setItem(key, secret);
+    try {
+      localStorage.setItem(key, secret);
+    } catch {
+      /* persistência indisponível — segredo fica só no cache da aba */
+    }
+    webchatClientSessionCache.set(trimmedToken, secret);
     return secret;
   } catch {
-    return crypto.randomUUID();
+    const secret = crypto.randomUUID();
+    webchatClientSessionCache.set(trimmedToken, secret);
+    return secret;
   }
-}
-
-function webchatAuthHeaders(token: string, extra?: HeadersInit): HeadersInit {
-  return {
-    ...extra,
-    "X-Webchat-Client-Session": getOrCreateWebchatClientSession(token),
-  };
 }
 
 function parseSessionErrorCode(status: number, data: { error?: string } | null): SessionErrorCode | null {
@@ -353,6 +364,24 @@ export default function WebChatPage() {
   const lastCreatedAtRef = useRef<string | null>(null);
   const stickToBottomRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const clientSessionRef = useRef<string | null>(null);
+
+  const webchatAuthHeaders = useCallback(
+    (extra?: HeadersInit): HeadersInit => {
+      if (!clientSessionRef.current) {
+        clientSessionRef.current = getOrCreateWebchatClientSession(token);
+      }
+      return {
+        ...extra,
+        "X-Webchat-Client-Session": clientSessionRef.current,
+      };
+    },
+    [token],
+  );
+
+  useEffect(() => {
+    clientSessionRef.current = null;
+  }, [token]);
 
   useWebchatMobileShell(!sessionError);
 
@@ -430,7 +459,7 @@ export default function WebChatPage() {
     async (payload: Record<string, unknown>) => {
       const res = await fetch(`${base}/messages`, {
         method: "POST",
-        headers: webchatAuthHeaders(token, { "Content-Type": "application/json" }),
+        headers: webchatAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
       if (res.status === 410 || res.status === 403) {
@@ -448,7 +477,7 @@ export default function WebChatPage() {
       mergeMessages([data.message]);
       return data.message;
     },
-    [base, mergeMessages, token],
+    [base, mergeMessages, webchatAuthHeaders],
   );
 
   const uploadFile = useCallback(
@@ -457,7 +486,7 @@ export default function WebChatPage() {
       form.append("file", file, filename);
       const res = await fetch(`${base}/${audio ? "upload-audio" : "upload-media"}`, {
         method: "POST",
-        headers: webchatAuthHeaders(token),
+        headers: webchatAuthHeaders(),
         body: form,
       });
       if (res.status === 403 || res.status === 410) {
@@ -469,7 +498,7 @@ export default function WebChatPage() {
       if (!res.ok) throw new Error("upload failed");
       return (await res.json()) as { mediaUrl: string; mimeType: string };
     },
-    [base, token],
+    [base, webchatAuthHeaders],
   );
 
   useEffect(() => {
@@ -477,7 +506,7 @@ export default function WebChatPage() {
     stickToBottomRef.current = true;
     void (async () => {
       try {
-        const sres = await fetch(`${base}/session`, { headers: webchatAuthHeaders(token) });
+        const sres = await fetch(`${base}/session`, { headers: webchatAuthHeaders() });
         if (!sres.ok) {
           const data = (await sres.json().catch(() => null)) as { error?: string } | null;
           const code = parseSessionErrorCode(sres.status, data);
@@ -485,7 +514,7 @@ export default function WebChatPage() {
           return;
         }
         const sdata = (await sres.json()) as SessionInfo & { humanActive: boolean; assigneeName?: string | null };
-        const mres = await fetch(`${base}/messages`, { headers: webchatAuthHeaders(token) });
+        const mres = await fetch(`${base}/messages`, { headers: webchatAuthHeaders() });
         if (mres.status === 403 || mres.status === 410) {
           const data = (await mres.json().catch(() => null)) as { error?: string } | null;
           const code = parseSessionErrorCode(mres.status, data);
@@ -512,7 +541,7 @@ export default function WebChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [base, mergeMessages, token]);
+  }, [base, mergeMessages, webchatAuthHeaders]);
 
   useEffect(() => {
     if (!session || sessionError) return;
@@ -522,7 +551,7 @@ export default function WebChatPage() {
           const since = lastCreatedAtRef.current;
           const res = await fetch(
             `${base}/messages${since ? `?since=${encodeURIComponent(since)}` : ""}`,
-            { headers: webchatAuthHeaders(token) },
+            { headers: webchatAuthHeaders() },
           );
           if (!res.ok) {
             if (res.status === 410 || res.status === 403) {
@@ -550,7 +579,7 @@ export default function WebChatPage() {
       })();
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [base, session, sessionError, mergeMessages, token]);
+  }, [base, session, sessionError, mergeMessages, webchatAuthHeaders]);
 
   useEffect(() => {
     const onOnline = () => setConnection((c) => (c === "OFFLINE" ? "RECONNECTING" : c));

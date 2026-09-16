@@ -85,6 +85,7 @@ export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
       createdBySource: "HUMAN",
       createdByUserId: request.user.id,
       regenerate: parsed.data.regenerate === true,
+      resetClientBinding: parsed.data.regenerate === true,
     });
     if (!r.ok) {
       const status = r.code === "FEATURE_DISABLED" ? 403 : 404;
@@ -113,7 +114,7 @@ export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
       conversationId: conv.id,
       createdBySource: "HUMAN",
       createdByUserId: request.user.id,
-      regenerate: parsedSend.success && parsedSend.data.regenerate === true,
+      regenerate: true,
       resetClientBinding: true,
     });
     if (!r.ok) {

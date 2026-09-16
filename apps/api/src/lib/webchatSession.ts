@@ -143,13 +143,12 @@ export async function generateWebchatLinkForConversation(params: {
       reused: true,
     };
   }
-  if (existing && params.regenerate && settings.regeneratePolicy === "revoke") {
-    await prisma.webchatSession
-      .update({
-        where: { id: existing.id },
-        data: { status: "REVOKED", revokedAt: new Date(), updatedAt: new Date() },
-      })
-      .catch(() => {});
+
+  if (params.regenerate) {
+    await prisma.webchatSession.updateMany({
+      where: { organizationId, conversationId, status: "ACTIVE" },
+      data: { status: "REVOKED", revokedAt: new Date(), updatedAt: new Date() },
+    });
   }
 
   const expiresAt = new Date(Date.now() + settings.expirationHours * 60 * 60 * 1000);
@@ -361,6 +360,7 @@ export async function sendWebchatContinuityLinkToContact(params: {
     organizationId: params.organizationId,
     conversationId: params.conversationId,
     createdBySource: "AGENT",
+    regenerate: true,
     resetClientBinding: true,
   });
   if (!link.ok) return { sent: false };

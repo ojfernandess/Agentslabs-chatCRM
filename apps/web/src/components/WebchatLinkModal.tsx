@@ -95,7 +95,7 @@ export function WebchatLinkModal({
     setSending(true);
     setError(null);
     try {
-      await api.post(`/webchat/conversations/${conversationId}/link/send`, {});
+      await api.post(`/webchat/conversations/${conversationId}/link/send`, { regenerate: true });
       setSentOk(true);
       onSent?.();
     } catch (err) {
