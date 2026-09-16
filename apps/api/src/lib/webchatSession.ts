@@ -202,6 +202,11 @@ export function hashWebchatClientSession(secret: string): string {
   return createHash("sha256").update(secret.trim()).digest("hex");
 }
 
+/** Histórico liberado somente após o contacto enviar a primeira mensagem (claim da sessão). */
+export function isWebchatHistoryUnlocked(session: Pick<WebchatSession, "clientSessionHash">): boolean {
+  return Boolean(session.clientSessionHash);
+}
+
 function clientSessionHashesMatch(stored: string, computed: string): boolean {
   if (stored.length !== computed.length) return false;
   try {

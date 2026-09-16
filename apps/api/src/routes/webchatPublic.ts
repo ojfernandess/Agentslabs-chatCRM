@@ -2,7 +2,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { MessageType } from "@prisma/client";
 import { prisma } from "../db.js";
-import { resolveWebchatSessionByToken, type WebchatClientBindingMode } from "../lib/webchatSession.js";
+import {
+  isWebchatHistoryUnlocked,
+  resolveWebchatSessionByToken,
+  type WebchatClientBindingMode,
+} from "../lib/webchatSession.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
@@ -201,7 +205,10 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     const resolved = await resolvePublicWebchatSession(request, request.params.token, "read");
     if (!resolved.ok) return sessionError(reply, resolved.code);
 
-    const presence = await loadWebchatPresence(resolved.conversation.id);
+    const messagesUnlocked = isWebchatHistoryUnlocked(resolved.session);
+    const presence = messagesUnlocked
+      ? await loadWebchatPresence(resolved.conversation.id)
+      : { humanActive: false, assigneeName: null, conversationStatus: "OPEN" as const };
 
     return {
       ok: true,
@@ -209,6 +216,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       organizationLogoUrl: resolved.organizationLogoUrl,
       agentName: resolved.agentBotName,
       expiresAt: resolved.session.expiresAt.toISOString(),
+      messagesUnlocked,
       humanActive: presence.humanActive,
       assigneeName: presence.assigneeName,
       conversationStatus: presence.conversationStatus,
@@ -224,6 +232,17 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       }
       const resolved = await resolvePublicWebchatSession(request, request.params.token, "read");
       if (!resolved.ok) return sessionError(reply, resolved.code);
+
+      const messagesUnlocked = isWebchatHistoryUnlocked(resolved.session);
+      if (!messagesUnlocked) {
+        return {
+          ok: true,
+          messages: [],
+          messagesUnlocked: false,
+          humanActive: false,
+          assigneeName: null,
+        };
+      }
 
       const q = listQuerySchema.safeParse(request.query ?? {});
       const since = q.success && q.data.since ? new Date(q.data.since) : null;
@@ -268,6 +287,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       return {
         ok: true,
         messages: rows.map(toPublicMessage),
+        messagesUnlocked: true,
         humanActive: presence.humanActive,
         assigneeName: presence.assigneeName,
       };
@@ -393,6 +413,6 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       log: request.log,
     });
 
-    return { ok: true, message: toPublicMessage(message) };
+    return { ok: true, messagesUnlocked: true, message: toPublicMessage(message) };
   });
 }

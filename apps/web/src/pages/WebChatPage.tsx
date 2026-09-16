@@ -42,6 +42,7 @@ type SessionInfo = {
   assigneeName: string | null;
   expiresAt: string;
   humanActive: boolean;
+  messagesUnlocked?: boolean;
 };
 
 type ConnectionState = "CONNECTING" | "CONNECTED" | "RECONNECTING" | "OFFLINE";
@@ -350,6 +351,7 @@ export default function WebChatPage() {
   const [uploading, setUploading] = useState(false);
   const [humanActive, setHumanActive] = useState(false);
   const [assigneeName, setAssigneeName] = useState<string | null>(null);
+  const [messagesUnlocked, setMessagesUnlocked] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -365,6 +367,7 @@ export default function WebChatPage() {
   const stickToBottomRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const clientSessionRef = useRef<string | null>(null);
+  const messagesUnlockedRef = useRef(false);
 
   const webchatAuthHeaders = useCallback(
     (extra?: HeadersInit): HeadersInit => {
@@ -381,6 +384,8 @@ export default function WebChatPage() {
 
   useEffect(() => {
     clientSessionRef.current = null;
+    messagesUnlockedRef.current = false;
+    setMessagesUnlocked(false);
   }, [token]);
 
   useWebchatMobileShell(!sessionError);
@@ -455,6 +460,30 @@ export default function WebChatPage() {
     });
   }, []);
 
+  useEffect(() => {
+    messagesUnlockedRef.current = messagesUnlocked;
+  }, [messagesUnlocked]);
+
+  const reloadMessageHistory = useCallback(async () => {
+    const res = await fetch(`${base}/messages`, { headers: webchatAuthHeaders() });
+    if (!res.ok) return false;
+    const data = (await res.json()) as {
+      messages: PublicMessage[];
+      messagesUnlocked?: boolean;
+      humanActive: boolean;
+      assigneeName?: string | null;
+    };
+    const unlocked = data.messagesUnlocked !== false;
+    messagesUnlockedRef.current = unlocked;
+    setMessagesUnlocked(unlocked);
+    setMessages(data.messages);
+    lastCreatedAtRef.current = data.messages[data.messages.length - 1]?.createdAt ?? null;
+    setHumanActive(Boolean(data.humanActive));
+    if (data.assigneeName !== undefined) setAssigneeName(data.assigneeName);
+    stickToBottomRef.current = true;
+    return true;
+  }, [base, webchatAuthHeaders]);
+
   const postMessage = useCallback(
     async (payload: Record<string, unknown>) => {
       const res = await fetch(`${base}/messages`, {
@@ -472,12 +501,18 @@ export default function WebChatPage() {
         setConnection("RECONNECTING");
         return null;
       }
-      const data = (await res.json()) as { message: PublicMessage };
-      stickToBottomRef.current = true;
-      mergeMessages([data.message]);
+      const data = (await res.json()) as { message: PublicMessage; messagesUnlocked?: boolean };
+      if (!messagesUnlockedRef.current) {
+        messagesUnlockedRef.current = true;
+        setMessagesUnlocked(true);
+        await reloadMessageHistory();
+      } else {
+        stickToBottomRef.current = true;
+        mergeMessages([data.message]);
+      }
       return data.message;
     },
-    [base, mergeMessages, webchatAuthHeaders],
+    [base, mergeMessages, reloadMessageHistory, webchatAuthHeaders],
   );
 
   const uploadFile = useCallback(
@@ -513,7 +548,11 @@ export default function WebChatPage() {
           if (!cancelled && code) setSessionError(code);
           return;
         }
-        const sdata = (await sres.json()) as SessionInfo & { humanActive: boolean; assigneeName?: string | null };
+        const sdata = (await sres.json()) as SessionInfo & {
+          humanActive: boolean;
+          assigneeName?: string | null;
+          messagesUnlocked?: boolean;
+        };
         const mres = await fetch(`${base}/messages`, { headers: webchatAuthHeaders() });
         if (mres.status === 403 || mres.status === 410) {
           const data = (await mres.json().catch(() => null)) as { error?: string } | null;
@@ -526,13 +565,20 @@ export default function WebChatPage() {
               messages: PublicMessage[];
               humanActive: boolean;
               assigneeName?: string | null;
+              messagesUnlocked?: boolean;
             })
-          : { messages: [], humanActive: false, assigneeName: null };
+          : { messages: [], humanActive: false, assigneeName: null, messagesUnlocked: false };
         if (cancelled) return;
+        const unlocked = Boolean(sdata.messagesUnlocked ?? mdata.messagesUnlocked);
+        messagesUnlockedRef.current = unlocked;
+        setMessagesUnlocked(unlocked);
         setSession(sdata);
-        setHumanActive(Boolean(sdata.humanActive || mdata.humanActive));
-        setAssigneeName(sdata.assigneeName ?? mdata.assigneeName ?? null);
-        mergeMessages(mdata.messages);
+        setHumanActive(unlocked && Boolean(sdata.humanActive || mdata.humanActive));
+        setAssigneeName(unlocked ? (sdata.assigneeName ?? mdata.assigneeName ?? null) : null);
+        setMessages(unlocked ? mdata.messages : []);
+        if (unlocked && mdata.messages.length > 0) {
+          lastCreatedAtRef.current = mdata.messages[mdata.messages.length - 1]?.createdAt ?? null;
+        }
         setConnection("CONNECTED");
       } catch {
         if (!cancelled) setConnection(navigator.onLine ? "RECONNECTING" : "OFFLINE");
@@ -544,7 +590,7 @@ export default function WebChatPage() {
   }, [base, mergeMessages, webchatAuthHeaders]);
 
   useEffect(() => {
-    if (!session || sessionError) return;
+    if (!session || sessionError || !messagesUnlocked) return;
     const timer = window.setInterval(() => {
       void (async () => {
         try {
@@ -579,7 +625,7 @@ export default function WebChatPage() {
       })();
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [base, session, sessionError, mergeMessages, webchatAuthHeaders]);
+  }, [base, session, sessionError, messagesUnlocked, mergeMessages, webchatAuthHeaders]);
 
   useEffect(() => {
     const onOnline = () => setConnection((c) => (c === "OFFLINE" ? "RECONNECTING" : c));
@@ -813,7 +859,9 @@ export default function WebChatPage() {
           </div>
         ))}
         {messages.length === 0 && connection === "CONNECTED" ? (
-          <p className="py-10 text-center text-sm text-gray-500">{t("webchat.emptyState")}</p>
+          <p className="py-10 text-center text-sm text-gray-500">
+            {messagesUnlocked ? t("webchat.emptyState") : t("webchat.lockedHistory")}
+          </p>
         ) : null}
         <div ref={messagesEndRef} aria-hidden className="h-px shrink-0" />
       </div>
