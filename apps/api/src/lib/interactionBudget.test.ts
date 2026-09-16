@@ -10,38 +10,61 @@ import {
 
 describe("parseInteractionLimitFromBehavior", () => {
   it("returns disabled for missing/invalid behavior config", () => {
-    assert.deepEqual(parseInteractionLimitFromBehavior(null), { enabled: false, limit: null });
-    assert.deepEqual(parseInteractionLimitFromBehavior(undefined), { enabled: false, limit: null });
-    assert.deepEqual(parseInteractionLimitFromBehavior("x"), { enabled: false, limit: null });
-    assert.deepEqual(parseInteractionLimitFromBehavior({}), { enabled: false, limit: null });
+    assert.deepEqual(parseInteractionLimitFromBehavior(null), {
+      enabled: false,
+      limit: null,
+      offerWebchatOnLimit: false,
+    });
+    assert.deepEqual(parseInteractionLimitFromBehavior(undefined), {
+      enabled: false,
+      limit: null,
+      offerWebchatOnLimit: false,
+    });
+    assert.deepEqual(parseInteractionLimitFromBehavior("x"), {
+      enabled: false,
+      limit: null,
+      offerWebchatOnLimit: false,
+    });
+    assert.deepEqual(parseInteractionLimitFromBehavior({}), {
+      enabled: false,
+      limit: null,
+      offerWebchatOnLimit: false,
+    });
     assert.deepEqual(parseInteractionLimitFromBehavior({ interactionLimit: "10" }), {
       enabled: false,
       limit: null,
+      offerWebchatOnLimit: false,
     });
   });
 
   it("returns disabled when toggle is off even with a limit set (interaction_limit = null)", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: false, limit: 10 } }),
-      { enabled: false, limit: null },
+      { enabled: false, limit: null, offerWebchatOnLimit: false },
     );
   });
 
   it("returns disabled when enabled but the limit is invalid", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true, limit: "dez" } }),
-      { enabled: false, limit: null },
+      { enabled: false, limit: null, offerWebchatOnLimit: false },
     );
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true } }),
-      { enabled: false, limit: null },
+      { enabled: false, limit: null, offerWebchatOnLimit: false },
     );
   });
 
   it("parses the configured limit (Editar Agente → Controle de atendimento)", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true, limit: 10 } }),
-      { enabled: true, limit: 10 },
+      { enabled: true, limit: 10, offerWebchatOnLimit: false },
+    );
+    assert.deepEqual(
+      parseInteractionLimitFromBehavior({
+        interactionLimit: { enabled: true, limit: 10, offerWebchatOnLimit: true },
+      }),
+      { enabled: true, limit: 10, offerWebchatOnLimit: true },
     );
   });
 
@@ -126,7 +149,16 @@ describe("buildInteractionBudgetPromptAppendix — Modo Economia (spec §34)", (
     assert.ok(appendix.includes('"interaction_count":7'));
     assert.ok(appendix.includes('"interaction_limit":10'));
     assert.ok(appendix.includes('"remaining_interactions":3'));
-    assert.ok(appendix.includes("generate_webchat_link"));
+    assert.ok(!appendix.includes("generate_webchat_link"));
+  });
+
+  it("instructs sending the Web Chat link only when offerWebchatOnLimit is enabled", () => {
+    const appendix = buildInteractionBudgetPromptAppendix(state(7, 10), {
+      offerWebchatOnLimit: true,
+      webchatUrl: "https://chat.example.com/s/abc",
+    });
+    assert.ok(appendix.includes("https://chat.example.com/s/abc"));
+    assert.ok(appendix.includes("Web Chat"));
   });
 
   it("instructs the agent to hand off on the LAST allowed reply (remaining = 1)", () => {

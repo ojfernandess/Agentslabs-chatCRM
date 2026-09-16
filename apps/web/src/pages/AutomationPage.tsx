@@ -462,6 +462,7 @@ type AgentFormFields = {
   /** Controle de atendimento — limite de respostas automáticas por conversa (behaviorConfig.interactionLimit). */
   interactionLimitEnabled: boolean;
   interactionLimit: number;
+  offerWebchatOnLimit: boolean;
   followUpMessage: string;
   escalationMode: string;
   escalationConditions: string;
@@ -538,6 +539,7 @@ function emptyAgentForm(): AgentFormFields {
     inactivityFollowUpMax: 1,
     interactionLimitEnabled: false,
     interactionLimit: 10,
+    offerWebchatOnLimit: false,
     followUpMessage: "",
     escalationMode: "keyword",
     escalationConditions: "",
@@ -906,6 +908,12 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
       const n = Number(raw);
       return Number.isFinite(n) && n >= 1 ? Math.min(500, Math.floor(n)) : 10;
     })(),
+    offerWebchatOnLimit: (() => {
+      const il = beh.interactionLimit;
+      return Boolean(
+        il && typeof il === "object" && (il as Record<string, unknown>).offerWebchatOnLimit === true,
+      );
+    })(),
     followUpMessage: String(
       inc.followUpMessage ?? (Array.isArray(inc.followUpMessages) ? inc.followUpMessages[0] ?? "" : ""),
     ),
@@ -1096,6 +1104,7 @@ function formToPayload(
       limit: form.interactionLimitEnabled
         ? Math.max(1, Math.min(500, Math.floor(form.interactionLimit || 10)))
         : null,
+      offerWebchatOnLimit: form.interactionLimitEnabled && form.offerWebchatOnLimit,
     },
     voice: {
       nativeVoiceEnabled: form.nativeVoiceEnabled,
@@ -4004,6 +4013,26 @@ function AgentsTab({
                       {t("automationPage.interactionLimitUnit")}
                     </p>
                   </div>
+                ) : null}
+                {agentForm.interactionLimitEnabled ? (
+                  <>
+                    <label className="mt-3 flex items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={agentForm.offerWebchatOnLimit}
+                        onChange={(e) =>
+                          setAgentForm((f) => ({ ...f, offerWebchatOnLimit: e.target.checked }))
+                        }
+                      />
+                      <span>
+                        {t("automationPage.offerWebchatOnLimitToggle")}
+                        <span className="mt-0.5 block text-[11px] text-ink-500">
+                          {t("automationPage.offerWebchatOnLimitHelp")}
+                        </span>
+                      </span>
+                    </label>
+                  </>
                 ) : null}
               </div>
 

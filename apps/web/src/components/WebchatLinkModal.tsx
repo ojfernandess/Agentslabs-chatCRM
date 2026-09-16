@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, Copy, Globe, Loader2, RefreshCcw, Send, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion, backdropVariants, modalVariants } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -7,12 +8,22 @@ import { api, ApiError } from "@/lib/api";
 /**
  * «Continuar no Web Chat» — modal compacto do atendente dentro da conversa.
  * O link é sempre gerado pelo backend (generate_webchat_link); a URL nunca é montada no frontend.
+ * Renderizado em portal no document.body para não ficar clipado pelo overflow da conversa.
  */
 
 type ActiveLink = {
   url: string;
-  expiresAt: string;
+  expiresAt: string | null;
 };
+
+function pickGeneratedLink(raw: unknown): ActiveLink | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const url = typeof o.url === "string" && o.url.trim() ? o.url.trim() : null;
+  if (!url) return null;
+  const expiresAt = typeof o.expiresAt === "string" && o.expiresAt ? o.expiresAt : null;
+  return { url, expiresAt };
+}
 
 export function WebchatLinkModal({
   open,
@@ -25,7 +36,8 @@ export function WebchatLinkModal({
   onClose: () => void;
   onSent?: () => void;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, locale } = useI18n();
+  const localeTag = locale === "pt-BR" ? "pt-BR" : "en";
   const [loading, setLoading] = useState(false);
   const [link, setLink] = useState<ActiveLink | null>(null);
   const [reused, setReused] = useState(false);
@@ -40,12 +52,16 @@ export function WebchatLinkModal({
       setError(null);
       setSentOk(false);
       try {
-        const r = await api.post<{ url: string; expiresAt: string; reused: boolean }>(
-          `/webchat/conversations/${conversationId}/link`,
-          { regenerate },
-        );
-        setLink({ url: r.url, expiresAt: r.expiresAt });
-        setReused(r.reused);
+        const r = await api.post<unknown>(`/webchat/conversations/${conversationId}/link`, {
+          regenerate,
+        });
+        const picked = pickGeneratedLink(r);
+        if (!picked) {
+          setError(t("webchatLink.genericError"));
+          return;
+        }
+        setLink(picked);
+        setReused(Boolean((r as { reused?: boolean }).reused));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : t("webchatLink.genericError"));
       } finally {
@@ -60,6 +76,7 @@ export function WebchatLinkModal({
     setCopied(false);
     setSentOk(false);
     setLink(null);
+    setError(null);
     void generate(false);
   }, [open, generate]);
 
@@ -102,20 +119,23 @@ export function WebchatLinkModal({
     }
   }, [conversationId, t]);
 
-  const expiresLabel = link
-    ? new Date(link.expiresAt).toLocaleString(dateLocale?.code ?? undefined, {
-        day: "2-digit",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "";
+  const expiresLabel =
+    link?.expiresAt && !Number.isNaN(new Date(link.expiresAt).getTime())
+      ? new Date(link.expiresAt).toLocaleString(localeTag, {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
           variants={backdropVariants}
           initial="hidden"
           animate="visible"
@@ -133,7 +153,7 @@ export function WebchatLinkModal({
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                  <Globe className="h-4.5 w-4.5" />
+                  <Globe className="h-4 w-4" />
                 </span>
                 <div>
                   <h2 className="text-sm font-bold text-ink-900 dark:text-ink-100">
@@ -153,17 +173,19 @@ export function WebchatLinkModal({
             </div>
 
             <div className="mt-4 space-y-3">
-              {loading ? (
+              {loading && !link ? (
                 <div className="flex items-center justify-center gap-2 rounded-xl border border-ink-200 py-6 text-sm text-ink-500 dark:border-ink-700">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {t("webchatLink.generating")}
                 </div>
-              ) : link ? (
+              ) : null}
+
+              {link ? (
                 <>
                   <div className="rounded-xl border border-ink-200 bg-ink-50 px-3 py-2.5 dark:border-ink-700 dark:bg-ink-950">
                     <p className="break-all font-mono text-xs text-ink-800 dark:text-ink-200">{link.url}</p>
                     <p className="mt-1.5 text-[11px] text-ink-500">
-                      {t("webchatLink.expiresAt")}: {expiresLabel}
+                      {expiresLabel ? `${t("webchatLink.expiresAt")}: ${expiresLabel}` : t("webchatLink.expiresUnknown")}
                       {reused ? ` · ${t("webchatLink.reusedNote")}` : ""}
                     </p>
                   </div>
@@ -174,6 +196,10 @@ export function WebchatLinkModal({
                     </p>
                   ) : null}
                 </>
+              ) : !loading && !error ? (
+                <p className="rounded-xl border border-ink-200 px-3 py-4 text-center text-xs text-ink-500 dark:border-ink-700">
+                  {t("webchatLink.emptyLink")}
+                </p>
               ) : null}
 
               {error ? (
@@ -230,6 +256,7 @@ export function WebchatLinkModal({
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

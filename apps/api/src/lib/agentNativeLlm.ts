@@ -855,23 +855,29 @@ export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlag
   const base = defaultNativeTools();
   if (!behavior || typeof behavior !== "object") return base;
   const b = behavior as Record<string, unknown>;
+  const interactionLimit = parseInteractionLimitFromBehavior(behavior);
+  const withWebchat: NativeToolsFlags = {
+    ...base,
+    generate_webchat_link:
+      base.generate_webchat_link || (interactionLimit.enabled && interactionLimit.offerWebchatOnLimit),
+  };
   const raw = b.nativeTools;
-  if (!raw || typeof raw !== "object") return base;
+  if (!raw || typeof raw !== "object") return withWebchat;
   const n = raw as Record<string, unknown>;
   const flag = (key: string, def: boolean): boolean => (key in n ? n[key] === true : def);
   const assignOn = flag("assign_team_to_conversation", false);
   const transferOn = flag("transfer_to_team", false);
-  /** Web Chat: disponível quando ativado nas tools OU quando o limite de interações está ativo
-   * (o agente precisa poder oferecer continuidade pelo Web Chat perto do limite). */
-  const interactionLimitOn = parseInteractionLimitFromBehavior(behavior).enabled;
+  /** Web Chat: disponível quando ativado nas tools OU quando o limite pede envio do link. */
   return {
-    knowledge_search: flag("knowledge_search", base.knowledge_search),
+    knowledge_search: flag("knowledge_search", withWebchat.knowledge_search),
     transfer_to_team: assignOn || transferOn,
     list_teams: flag("list_teams", false) || assignOn || transferOn,
-    call_human: flag("call_human", base.call_human),
-    assign_contact_tags: flag("assign_contact_tags", base.assign_contact_tags),
-    set_conversation_status: flag("set_conversation_status", base.set_conversation_status),
-    generate_webchat_link: flag("generate_webchat_link", base.generate_webchat_link) || interactionLimitOn,
+    call_human: flag("call_human", withWebchat.call_human),
+    assign_contact_tags: flag("assign_contact_tags", withWebchat.assign_contact_tags),
+    set_conversation_status: flag("set_conversation_status", withWebchat.set_conversation_status),
+    generate_webchat_link:
+      flag("generate_webchat_link", withWebchat.generate_webchat_link) ||
+      (interactionLimit.enabled && interactionLimit.offerWebchatOnLimit),
   };
 }
 

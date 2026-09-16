@@ -27,6 +27,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { BillingSettingsPanel } from "@/pages/settings/BillingSettingsPanel";
+import { WhatsappOrgPolicyPanel } from "@/pages/settings/WhatsappOrgPolicyPanel";
 import { WavoipIntegrationSettings } from "@/pages/settings/WavoipIntegrationSettings";
 import { ThreeCxIntegrationSettings } from "@/pages/settings/ThreeCxIntegrationSettings";
 import { NvoipIntegrationSettings } from "@/pages/settings/NvoipIntegrationSettings";
@@ -3214,8 +3215,9 @@ export function SettingsPage() {
               )}
 
               {section === "billing" && isAdmin && (
-                <motion.div variants={staggerItem}>
+                <motion.div variants={staggerItem} className="space-y-6">
                   <BillingSettingsPanel />
+                  <WhatsappOrgPolicyPanel />
                 </motion.div>
               )}
 

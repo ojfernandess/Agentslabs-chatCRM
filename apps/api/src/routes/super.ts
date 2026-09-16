@@ -2133,6 +2133,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     effectiveFrom: z.string().max(64).nullable(),
     effectiveUntil: z.string().max(64).nullable(),
     source: z.string().max(255),
+    serviceFreeMessagesPerNumberPerMonth: z.number().int().nonnegative().nullable().optional(),
   });
 
   app.get("/meta-policy", async () => {
@@ -2144,7 +2145,15 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
-    await saveMetaPolicyVersions(parsed.data);
+    const current = await getMetaPolicyVersions();
+    const next = {
+      ...parsed.data,
+      serviceFreeMessagesPerNumberPerMonth:
+        parsed.data.serviceFreeMessagesPerNumberPerMonth !== undefined
+          ? parsed.data.serviceFreeMessagesPerNumberPerMonth
+          : current.serviceFreeMessagesPerNumberPerMonth,
+    };
+    await saveMetaPolicyVersions(next);
     await safeAudit(request, {
       actorUserId: request.user.id,
       action: "super.meta_policy.upsert",
@@ -2153,7 +2162,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       metadata: { metaPricingVersion: parsed.data.metaPricingVersion },
       ip: clientIp(request),
     });
-    return parsed.data;
+    return next;
   });
 
   /** Tabela configurável de preços WhatsApp (rate cards oficiais da Meta — nunca hardcodar no código). */

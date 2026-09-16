@@ -19,11 +19,13 @@ export type InteractionLimitConfig = {
   enabled: boolean;
   /** null quando desativado — comportamento atual permanece igual. */
   limit: number | null;
+  /** Ao aproximar-se do limite, o agente deve enviar o link do Web Chat (não gera 11ª mensagem). */
+  offerWebchatOnLimit: boolean;
 };
 
 /** Lê `behaviorConfig.interactionLimit` do perfil do agente (Editar Agente → Controle de atendimento). */
 export function parseInteractionLimitFromBehavior(behavior: unknown): InteractionLimitConfig {
-  const off: InteractionLimitConfig = { enabled: false, limit: null };
+  const off: InteractionLimitConfig = { enabled: false, limit: null, offerWebchatOnLimit: false };
   if (!behavior || typeof behavior !== "object") return off;
   const raw = (behavior as Record<string, unknown>).interactionLimit;
   if (!raw || typeof raw !== "object") return off;
@@ -35,7 +37,7 @@ export function parseInteractionLimitFromBehavior(behavior: unknown): Interactio
       ? Math.max(1, Math.min(500, Math.floor(limitRaw)))
       : null;
   if (!enabled || limit == null) return off;
-  return { enabled: true, limit };
+  return { enabled: true, limit, offerWebchatOnLimit: o.offerWebchatOnLimit === true };
 }
 
 export type InteractionBudgetState = {
@@ -198,7 +200,10 @@ export async function resetInteractionBudgetForConversation(
  * Appendix de contexto de runtime (Cost-Aware Messaging / Modo Economia).
  * Fornece os dados como metadata ao agente sem modificar o comportamento de forma invasiva.
  */
-export function buildInteractionBudgetPromptAppendix(state: InteractionBudgetState): string {
+export function buildInteractionBudgetPromptAppendix(
+  state: InteractionBudgetState,
+  options?: { offerWebchatOnLimit?: boolean; webchatUrl?: string | null },
+): string {
   if (!state.enabled || state.limit == null || state.remaining == null) return "";
   if (!state.nearLimit && !state.blocked) return "";
   const meta = JSON.stringify({
@@ -214,8 +219,21 @@ export function buildInteractionBudgetPromptAppendix(state: InteractionBudgetSta
     "Esta conversa está próxima do limite de respostas automáticas. Orientações:",
     "- consolide as informações e evite respostas fragmentadas ou múltiplas mensagens consecutivas;",
     "- evite perguntas desnecessárias; resolva a solicitação na menor quantidade razoável de mensagens;",
-    "- se fizer sentido, ofereça continuidade pelo atendimento online usando a ferramenta generate_webchat_link (nunca invente a URL — use exatamente a URL retornada pela ferramenta).",
   ];
+  if (options?.offerWebchatOnLimit) {
+    lines.push(
+      "- envie o link do Web Chat nesta resposta para o cliente continuar a mesma conversa pelo atendimento online;",
+    );
+    if (options.webchatUrl) {
+      lines.push(
+        `- URL já gerada pelo sistema (nunca invente outra; use exatamente esta): ${options.webchatUrl}`,
+      );
+    } else {
+      lines.push(
+        "- use a ferramenta generate_webchat_link e inclua exatamente a URL retornada (nunca invente a URL).",
+      );
+    }
+  }
   if (state.remaining === 1) {
     lines.push(
       "- ATENÇÃO: esta é a ÚLTIMA resposta automática permitida. Encerre informando que vai encaminhar o atendimento para a equipe humana (ex.: \"Vou encaminhar você para nossa equipe para continuar o atendimento.\"). NÃO prometa responder novamente.",
@@ -234,7 +252,24 @@ export async function buildInteractionBudgetPromptAppendixForConversation(params
   if (!cfg.enabled) return "";
   try {
     const state = await getInteractionBudgetState(params);
-    return buildInteractionBudgetPromptAppendix(state);
+    let webchatUrl: string | null = null;
+    if (cfg.offerWebchatOnLimit && state.nearLimit) {
+      try {
+        const { generateWebchatLinkForConversation } = await import("./webchatSession.js");
+        const r = await generateWebchatLinkForConversation({
+          organizationId: params.organizationId,
+          conversationId: params.conversationId,
+          createdBySource: "AGENT",
+        });
+        if (r.ok) webchatUrl = r.url;
+      } catch {
+        webchatUrl = null;
+      }
+    }
+    return buildInteractionBudgetPromptAppendix(state, {
+      offerWebchatOnLimit: cfg.offerWebchatOnLimit,
+      webchatUrl,
+    });
   } catch {
     return "";
   }

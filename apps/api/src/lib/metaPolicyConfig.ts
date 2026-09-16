@@ -14,6 +14,8 @@ export type MetaPolicyVersions = {
   effectiveFrom: string | null;
   effectiveUntil: string | null;
   source: string;
+  /** Franquia Service configurável (nunca hardcoded). null = informação ainda não disponível. */
+  serviceFreeMessagesPerNumberPerMonth: number | null;
 };
 
 export const DEFAULT_META_POLICY_VERSIONS: MetaPolicyVersions = {
@@ -22,6 +24,7 @@ export const DEFAULT_META_POLICY_VERSIONS: MetaPolicyVersions = {
   effectiveFrom: null,
   effectiveUntil: null,
   source: "https://business.whatsapp.com/policy",
+  serviceFreeMessagesPerNumberPerMonth: null,
 };
 
 function str(v: unknown, fallback: string): string {
@@ -41,6 +44,15 @@ export function parseMetaPolicyVersions(value: unknown): MetaPolicyVersions {
     effectiveFrom: strOrNull(o.effectiveFrom),
     effectiveUntil: strOrNull(o.effectiveUntil),
     source: str(o.source, DEFAULT_META_POLICY_VERSIONS.source),
+    serviceFreeMessagesPerNumberPerMonth: (() => {
+      const n = o.serviceFreeMessagesPerNumberPerMonth;
+      if (typeof n === "number" && Number.isFinite(n) && n >= 0) return Math.floor(n);
+      if (typeof n === "string" && n.trim() && Number.isFinite(Number(n))) {
+        const v = Math.floor(Number(n));
+        return v >= 0 ? v : null;
+      }
+      return null;
+    })(),
   };
 }
 
