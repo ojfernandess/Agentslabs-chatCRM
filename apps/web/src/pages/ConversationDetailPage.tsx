@@ -158,6 +158,7 @@ import {
   isWebsiteContactPhone,
   formatContactPhoneForDisplay,
   parseWebsiteSiteMeta,
+  resolveContactDialPhone,
 } from "@/lib/contactWebsiteDisplay";
 import {
   timelineChannelLabel,
@@ -276,6 +277,7 @@ interface ConversationDetail {
     id: string;
     name: string;
     phone: string;
+    mobilePhone?: string | null;
     email?: string | null;
     notes?: string | null;
     lifecycleStage?: string | null;
@@ -2178,9 +2180,21 @@ export function ConversationDetailPage() {
   const websiteSiteName =
     websiteSiteMeta.siteName || conversation.inbox?.name?.trim() || t("conversationDetail.channelLabelWebsite");
   const websiteSiteUrl = websiteSiteMeta.websiteUrl;
-  const contactPhoneDisplay = formatContactPhoneForDisplay(conversation.contact.phone, {
-    website: websiteSiteName,
-    telegram: t("conversationDetail.channelLabelTelegram"),
+  const contactPhoneDisplay = formatContactPhoneForDisplay(
+    {
+      phone: conversation.contact.phone,
+      mobilePhone: conversation.contact.mobilePhone,
+      notes: conversation.contact.notes,
+    },
+    {
+      website: websiteSiteName,
+      telegram: t("conversationDetail.channelLabelTelegram"),
+    },
+  );
+  const contactDialPhone = resolveContactDialPhone({
+    phone: conversation.contact.phone,
+    mobilePhone: conversation.contact.mobilePhone,
+    notes: conversation.contact.notes,
   });
   const inboxFromAddress = parseInboxEmailFromChannelConfig(
     (conversation.inbox as { channelConfig?: unknown } | undefined)?.channelConfig,
@@ -3482,9 +3496,9 @@ export function ConversationDetailPage() {
                         : "flex-wrap",
                     )}
                   >
-                    {!isWebsiteInbox && contactPhoneDisplay ? (
+                    {!isWebsiteInbox && contactDialPhone ? (
                       <TelephonyCallButton
-                        phone={contactPhoneDisplay}
+                        phone={contactDialPhone}
                         inboxId={conversation.inbox?.id}
                         conversationId={conversation.id}
                         contactId={conversation.contact.id}

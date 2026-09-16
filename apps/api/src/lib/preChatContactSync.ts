@@ -46,6 +46,7 @@ export function applyPreChatFormToContact(input: {
   name?: string;
   email?: string;
   notes?: string;
+  mobilePhone?: string;
 } {
   const formData = input.preChatFormData ?? {};
   const mergedData: Record<string, string> = { ...formData };
@@ -53,7 +54,7 @@ export function applyPreChatFormToContact(input: {
   if (input.email?.trim()) mergedData.email = input.email.trim();
   if (input.visitorPhone?.trim()) mergedData.phone = input.visitorPhone.trim();
 
-  const updates: { name?: string; email?: string; notes?: string } = {};
+  const updates: { name?: string; email?: string; notes?: string; mobilePhone?: string } = {};
 
   const name = pickPreChatValue(mergedData, PRE_CHAT_NAME_KEYS);
   if (name) updates.name = name;
@@ -62,11 +63,10 @@ export function applyPreChatFormToContact(input: {
   if (email) updates.email = email;
 
   const phone = pickPreChatValue(mergedData, PRE_CHAT_PHONE_KEYS);
+  if (phone) updates.mobilePhone = phone;
+
   const customNotes = formatPreChatNotes(mergedData);
-  const noteParts: string[] = [];
-  if (phone) noteParts.push(`Telefone: ${phone}`);
-  if (customNotes) noteParts.push(customNotes);
-  if (noteParts.length) updates.notes = noteParts.join("\n");
+  if (customNotes) updates.notes = customNotes;
 
   return updates;
 }

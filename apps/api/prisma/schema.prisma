@@ -698,6 +698,8 @@ model InboxEmailFolder {
 model Contact {
   id                String    @id @default(uuid()) @db.Uuid
   phone             String
+  /// Telefone real opcional (E.164) para contactos cujo `phone` é chave de canal (oc|TELEGRAM|…, oc|WEBSITE|…).
+  mobilePhone       String?   @map("mobile_phone") @db.VarChar(32)
   name              String
   email             String?
   notes             String?   @db.Text

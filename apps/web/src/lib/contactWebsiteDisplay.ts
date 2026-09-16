@@ -4,12 +4,16 @@ export {
   isChannelParticipantPhone,
   isTelegramContactPhone,
   telegramParticipantId,
+  extractContactMobilePhoneFromNotes,
+  resolveContactMobilePhone,
+  resolveContactDialPhone,
 } from "@openconduit/shared";
 
 import {
   isChannelParticipantPhone,
   isTelegramContactPhone,
   parseChannelParticipantPhone,
+  resolveContactMobilePhone,
   telegramParticipantId,
   WEBSITE_PHONE_PREFIX,
 } from "@openconduit/shared";
@@ -37,12 +41,28 @@ export type ContactPhoneDisplayLabels = {
   telegram?: string;
 };
 
-/** Telefone para listagens: visitantes/canais mostram rótulo legível em vez do id interno. */
+export type ContactPhoneDisplayInput = {
+  phone: string | null | undefined;
+  mobilePhone?: string | null;
+  notes?: string | null;
+};
+
+/** Telefone para listagens: prioriza celular real; senão rótulo legível do canal. */
 export function formatContactPhoneForDisplay(
-  phone: string | null | undefined,
+  phoneOrContact: string | ContactPhoneDisplayInput | null | undefined,
   siteOrLabels: string | ContactPhoneDisplayLabels = "Site",
 ): string | null {
+  const contact: ContactPhoneDisplayInput =
+    phoneOrContact != null && typeof phoneOrContact === "object"
+      ? phoneOrContact
+      : { phone: phoneOrContact ?? "" };
+
+  const mobile = resolveContactMobilePhone(contact);
+  if (mobile) return mobile;
+
+  const phone = contact.phone;
   if (!phone) return null;
+
   const labels: ContactPhoneDisplayLabels =
     typeof siteOrLabels === "string" ? { website: siteOrLabels } : siteOrLabels;
 

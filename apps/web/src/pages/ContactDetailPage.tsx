@@ -43,7 +43,7 @@ import {
   downloadContactConversationHistory,
   hasExportableContactHistory,
 } from "@/lib/exportContactConversationHistory";
-import { formatContactPhoneForDisplay, isChannelParticipantPhone, isTelegramContactPhone, telegramParticipantId } from "@/lib/contactWebsiteDisplay";
+import { formatContactPhoneForDisplay, isChannelParticipantPhone, isTelegramContactPhone, resolveContactMobilePhone, telegramParticipantId } from "@/lib/contactWebsiteDisplay";
 
 interface TagItem {
   id: string;
@@ -73,6 +73,7 @@ interface ContactDetail {
   id: string;
   name: string;
   phone: string;
+  mobilePhone?: string | null;
   email: string | null;
   profilePictureUrl: string | null;
   lifecycleStage: string | null;
@@ -131,6 +132,7 @@ export function ContactDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editMobilePhone, setEditMobilePhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editCompany, setEditCompany] = useState("");
   const [editDocument, setEditDocument] = useState("");
@@ -198,6 +200,7 @@ export function ContactDetailPage() {
         setContact(data);
         setEditName(data.name);
         setEditPhone(data.phone);
+        setEditMobilePhone(resolveContactMobilePhone(data) ?? "");
         setEditEmail(data.email ?? "");
         setEditCompany(data.account?.name ?? "");
         setEditDocument(
@@ -234,11 +237,14 @@ export function ContactDetailPage() {
       };
       if (!channelContact) {
         payload.phone = editPhone.trim();
+      } else {
+        payload.mobilePhone = editMobilePhone.trim() === "" ? null : editMobilePhone.trim();
       }
       const updated = await api.put<ContactDetail>(`/contacts/${id}`, payload);
       setContact(updated);
       setEditName(updated.name);
       setEditPhone(updated.phone);
+      setEditMobilePhone(resolveContactMobilePhone(updated) ?? "");
       setEditEmail(updated.email ?? "");
       setEditCompany(updated.account?.name ?? "");
       setEditDocument(
@@ -395,10 +401,16 @@ export function ContactDetailPage() {
               ) : null}
             </div>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 dark:text-ink-400">
-              {formatContactPhoneForDisplay(contact.phone, phoneDisplayLabels) ? (
+              {formatContactPhoneForDisplay(
+                { phone: contact.phone, mobilePhone: contact.mobilePhone, notes: contact.notes },
+                phoneDisplayLabels,
+              ) ? (
                 <span className="inline-flex items-center gap-1">
                   <Phone className="h-3.5 w-3.5" />{" "}
-                  {formatContactPhoneForDisplay(contact.phone, phoneDisplayLabels)}
+                  {formatContactPhoneForDisplay(
+                    { phone: contact.phone, mobilePhone: contact.mobilePhone, notes: contact.notes },
+                    phoneDisplayLabels,
+                  )}
                 </span>
               ) : null}
               {contact.email ? (
@@ -681,6 +693,23 @@ export function ContactDetailPage() {
                       type="tel"
                       value={editPhone}
                       onChange={(e) => setEditPhone(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                    />
+                  </div>
+                ) : null}
+                {isChannelContact ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-ink-300">
+                      {t("contactEdit.fieldPhone")}{" "}
+                      <span className="font-normal text-gray-400 dark:text-ink-500">
+                        ({t("contactEdit.optionalLabel")})
+                      </span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={editMobilePhone}
+                      onChange={(e) => setEditMobilePhone(e.target.value)}
+                      placeholder={t("contactEdit.placeholderOptional")}
                       className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                     />
                   </div>

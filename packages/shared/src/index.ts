@@ -11,6 +11,7 @@ export * from "./emailRecipients.js";
 export * from "./systemLogoUrl.js";
 export * from "./contactWebsiteDisplay.js";
 export * from "./contactChannelParticipant.js";
+export * from "./contactReachablePhone.js";
 export * from "./legalVersions.js";
 export * from "./billingReminderEmailTemplate.js";
 export * from "./paymentConfirmationEmailTemplate.js";

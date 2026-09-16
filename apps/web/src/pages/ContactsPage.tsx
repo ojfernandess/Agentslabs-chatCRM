@@ -47,8 +47,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
 import {
   formatContactPhoneForDisplay,
-  isChannelParticipantPhone,
-  isWebsiteContactPhone,
+  resolveContactDialPhone,
 } from "@/lib/contactWebsiteDisplay";
 
 interface TagItem {
@@ -70,6 +69,7 @@ interface ContactListRow {
   id: string;
   name: string;
   phone: string;
+  mobilePhone?: string | null;
   email: string | null;
   profilePictureUrl: string | null;
   optedIn: boolean;
@@ -901,16 +901,22 @@ export function ContactsPage() {
                               </div>
                               <div className="min-w-0">
                                 <p className="truncate font-semibold text-slate-900 dark:text-ink-50">{contact.name}</p>
-                                {formatContactPhoneForDisplay(contact.phone, {
-                                  website: t("conversationDetail.channelLabelWebsite"),
-                                  telegram: t("conversationDetail.channelLabelTelegram"),
-                                }) ? (
+                                {formatContactPhoneForDisplay(
+                                  { phone: contact.phone, mobilePhone: contact.mobilePhone },
+                                  {
+                                    website: t("conversationDetail.channelLabelWebsite"),
+                                    telegram: t("conversationDetail.channelLabelTelegram"),
+                                  },
+                                ) ? (
                                   <span className="flex items-center gap-1 text-xs text-slate-500 dark:text-ink-400">
                                     <Phone className="h-3 w-3 shrink-0" />
-                                    {formatContactPhoneForDisplay(contact.phone, {
-                                      website: t("conversationDetail.channelLabelWebsite"),
-                                      telegram: t("conversationDetail.channelLabelTelegram"),
-                                    })}
+                                    {formatContactPhoneForDisplay(
+                                      { phone: contact.phone, mobilePhone: contact.mobilePhone },
+                                      {
+                                        website: t("conversationDetail.channelLabelWebsite"),
+                                        telegram: t("conversationDetail.channelLabelTelegram"),
+                                      },
+                                    )}
                                   </span>
                                 ) : null}
                               </div>
@@ -1144,9 +1150,9 @@ export function ContactsPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex flex-nowrap items-center gap-0.5">
-                              {!isWebsiteContactPhone(contact.phone) && !isChannelParticipantPhone(contact.phone) ? (
+                              {resolveContactDialPhone(contact) ? (
                                 <TelephonyCallButton
-                                  phone={contact.phone}
+                                  phone={resolveContactDialPhone(contact)!}
                                   contactId={contact.id}
                                   iconOnly
                                   stopPropagation

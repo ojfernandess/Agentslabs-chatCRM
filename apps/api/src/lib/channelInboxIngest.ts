@@ -15,11 +15,16 @@ import { tryAutoAssignInboxConversation } from "./inboxAutoAssignment.js";
 import { fireCrmFlowTriggers } from "./crmFlowHooks.js";
 import { scheduleIntelligentTaggingDuringConversation } from "./intelligent-tagging/service.js";
 import { applyPreChatFormToContact, mergeContactNotes } from "./preChatContactSync.js";
-import { isUuidLike } from "@openconduit/shared";
+import { isUuidLike, normalizePhoneE164 } from "@openconduit/shared";
 import { nextWebsiteVisitorLabel } from "./websiteVisitorContacts.js";
 
 export function newIngestToken(): string {
   return randomBytes(32).toString("hex");
+}
+
+function normalizeOptionalMobilePhone(raw: string | null | undefined): string | undefined {
+  if (!raw?.trim()) return undefined;
+  return normalizePhoneE164(raw.trim()) ?? undefined;
 }
 
 /** Normaliza identificador do participante (e-mail sempre em minúsculas). */
@@ -129,6 +134,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
       data: {
         organizationId,
         phone,
+        mobilePhone: normalizeOptionalMobilePhone(preChatUpdates.mobilePhone ?? visitorPhone),
         name: displayName,
         email:
           preChatUpdates.email?.trim() ||
@@ -139,7 +145,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
       },
     });
   } else {
-    const updates: { email?: string; name?: string; notes?: string } = {};
+    const updates: { email?: string; name?: string; notes?: string; mobilePhone?: string } = {};
     if (preChatUpdates.email?.trim()) updates.email = preChatUpdates.email.trim();
     else if (email?.trim() && !contact.email) updates.email = email.trim();
 
@@ -150,11 +156,13 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
 
     if (preChatUpdates.notes) {
       updates.notes = mergeContactNotes(contact.notes, preChatUpdates.notes);
-    } else if (visitorPhone?.trim()) {
-      const noteLine = `Telefone: ${visitorPhone.trim()}`;
-      if (!contact.notes?.includes(visitorPhone.trim())) {
-        updates.notes = contact.notes ? `${contact.notes}\n${noteLine}` : noteLine;
-      }
+    }
+
+    const nextMobile =
+      normalizeOptionalMobilePhone(preChatUpdates.mobilePhone) ??
+      normalizeOptionalMobilePhone(visitorPhone);
+    if (nextMobile && nextMobile !== contact.mobilePhone) {
+      updates.mobilePhone = nextMobile;
     }
 
     if (Object.keys(updates).length > 0) {

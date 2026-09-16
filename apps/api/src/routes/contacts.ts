@@ -60,6 +60,7 @@ const updateContactSchema = z.object({
   assignedToId: z.string().uuid().nullable().optional(),
   optedIn: z.boolean().optional(),
   isBlocked: z.boolean().optional(),
+  mobilePhone: z.string().max(32).nullable().optional(),
 });
 
 async function findOrCreateAccountByName(
@@ -128,6 +129,7 @@ type ContactListRow = {
   id: string;
   name: string;
   phone: string;
+  mobilePhone: string | null;
   email: string | null;
   profilePictureUrl: string | null;
   optedIn: boolean;
@@ -220,6 +222,7 @@ function mapContactListRow(
     id: string;
     name: string;
     phone: string;
+    mobilePhone: string | null;
     email: string | null;
     profilePictureUrl: string | null;
     optedIn: boolean;
@@ -252,6 +255,7 @@ function mapContactListRow(
     id: c.id,
     name: c.name,
     phone: c.phone,
+    mobilePhone: c.mobilePhone,
     email: c.email,
     profilePictureUrl: c.profilePictureUrl,
     optedIn: c.optedIn,
@@ -299,6 +303,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       where.OR = [
         { name: { contains: q, mode: "insensitive" } },
         { phone: { contains: q } },
+        { mobilePhone: { contains: q } },
         { email: { contains: q, mode: "insensitive" } },
         { account: { name: { contains: q, mode: "insensitive" } } },
       ];
@@ -741,6 +746,22 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           }
         }
         data.phone = normalized;
+      }
+    }
+
+    if (parsed.data.mobilePhone !== undefined) {
+      if (parsed.data.mobilePhone === null || parsed.data.mobilePhone.trim() === "") {
+        data.mobilePhone = null;
+      } else {
+        const normalizedMobile = normalizePhoneE164(parsed.data.mobilePhone.trim());
+        if (!normalizedMobile) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Invalid mobile phone number format",
+            statusCode: 400,
+          });
+        }
+        data.mobilePhone = normalizedMobile;
       }
     }
 

@@ -5149,7 +5149,8 @@ export const messages = {
     contactEdit: {
       title: "Editar contato",
       optionalHint: "Telefone e nome são obrigatórios. Os outros campos são opcionais.",
-      optionalHintChannel: "Nome é obrigatório. O identificador do canal não pode ser alterado.",
+      optionalHintChannel: "Nome é obrigatório. Telefone e identificador do canal são opcionais.",
+      optionalLabel: "opcional",
       fieldName: "Nome",
       fieldPhone: "Telefone",
       fieldTelegramId: "ID do Telegram",
@@ -11645,7 +11646,8 @@ export const messages = {
     contactEdit: {
       title: "Edit contact",
       optionalHint: "Phone and name are required. All other fields are optional.",
-      optionalHintChannel: "Name is required. The channel identifier cannot be changed.",
+      optionalHintChannel: "Name is required. Phone and channel identifier are optional.",
+      optionalLabel: "optional",
       fieldName: "Name",
       fieldPhone: "Phone",
       fieldTelegramId: "Telegram ID",
