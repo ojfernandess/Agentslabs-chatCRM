@@ -61,15 +61,21 @@ const DISABLED_STATE: InteractionBudgetState = {
   nearLimit: false,
 };
 
-/** Próxima resposta enviada atinge o limite ou já estamos em nearLimit. */
+/** Próxima resposta enviada consome a última interação permitida (antes da transferência). */
+export function isLastAllowedAgentReply(budgetState: InteractionBudgetState | null): boolean {
+  if (!budgetState?.enabled || budgetState.limit == null) return false;
+  if (budgetState.blocked) return false;
+  return budgetState.count + 1 >= budgetState.limit;
+}
+
+/** Envia link do Web Chat apenas na última resposta automática, quando a opção está activa. */
 export function shouldAppendWebchatLinkOnReply(
   behaviorConfig: unknown,
   budgetState: InteractionBudgetState | null,
 ): boolean {
   const cfg = parseInteractionLimitFromBehavior(behaviorConfig);
-  if (!cfg.offerWebchatOnLimit || !budgetState?.enabled || budgetState.limit == null) return false;
-  if (budgetState.blocked) return false;
-  return budgetState.nearLimit || budgetState.count + 1 >= budgetState.limit;
+  if (!cfg.offerWebchatOnLimit) return false;
+  return isLastAllowedAgentReply(budgetState);
 }
 
 /** Deriva estado puro a partir de count/limit (testável sem BD). */
@@ -231,7 +237,7 @@ export function buildInteractionBudgetPromptAppendix(
     "- consolide as informações e evite respostas fragmentadas ou múltiplas mensagens consecutivas;",
     "- evite perguntas desnecessárias; resolva a solicitação na menor quantidade razoável de mensagens;",
   ];
-  if (options?.offerWebchatOnLimit) {
+  if (options?.offerWebchatOnLimit && state.remaining === 1) {
     lines.push(
       "- envie o link do Web Chat nesta resposta para o cliente continuar a mesma conversa pelo atendimento online;",
     );
@@ -264,7 +270,8 @@ export async function buildInteractionBudgetPromptAppendixForConversation(params
   try {
     const state = await getInteractionBudgetState(params);
     let webchatUrl: string | null = null;
-    if (cfg.offerWebchatOnLimit && state.nearLimit) {
+    const offerWebchatOnLastReply = cfg.offerWebchatOnLimit && state.remaining === 1;
+    if (offerWebchatOnLastReply) {
       try {
         const { generateWebchatLinkForConversation } = await import("./webchatSession.js");
         const r = await generateWebchatLinkForConversation({
@@ -278,7 +285,7 @@ export async function buildInteractionBudgetPromptAppendixForConversation(params
       }
     }
     return buildInteractionBudgetPromptAppendix(state, {
-      offerWebchatOnLimit: cfg.offerWebchatOnLimit,
+      offerWebchatOnLimit: offerWebchatOnLastReply,
       webchatUrl,
     });
   } catch {

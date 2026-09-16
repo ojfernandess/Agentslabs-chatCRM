@@ -5,6 +5,7 @@ import {
   parseInteractionLimitFromBehavior,
   deriveBudgetStatus,
   buildInteractionBudgetPromptAppendix,
+  shouldAppendWebchatLinkOnReply,
   type InteractionBudgetState,
 } from "./interactionBudget.js";
 
@@ -152,13 +153,19 @@ describe("buildInteractionBudgetPromptAppendix — Modo Economia (spec §34)", (
     assert.ok(!appendix.includes("generate_webchat_link"));
   });
 
-  it("instructs sending the Web Chat link only when offerWebchatOnLimit is enabled", () => {
-    const appendix = buildInteractionBudgetPromptAppendix(state(7, 10), {
+  it("instructs sending the Web Chat link only on the last allowed reply", () => {
+    const nearLimit = buildInteractionBudgetPromptAppendix(state(7, 10), {
       offerWebchatOnLimit: true,
       webchatUrl: "https://chat.example.com/s/abc",
     });
-    assert.ok(appendix.includes("https://chat.example.com/s/abc"));
-    assert.ok(appendix.includes("Web Chat"));
+    assert.ok(!nearLimit.includes("https://chat.example.com/s/abc"));
+
+    const lastReply = buildInteractionBudgetPromptAppendix(state(9, 10), {
+      offerWebchatOnLimit: true,
+      webchatUrl: "https://chat.example.com/s/abc",
+    });
+    assert.ok(lastReply.includes("https://chat.example.com/s/abc"));
+    assert.ok(lastReply.includes("Web Chat"));
   });
 
   it("instructs the agent to hand off on the LAST allowed reply (remaining = 1)", () => {
@@ -170,5 +177,39 @@ describe("buildInteractionBudgetPromptAppendix — Modo Economia (spec §34)", (
   it("does not tell the agent it is the last reply when remaining > 1", () => {
     const appendix = buildInteractionBudgetPromptAppendix(state(7, 10));
     assert.ok(!appendix.includes("ÚLTIMA resposta automática"));
+  });
+});
+
+describe("shouldAppendWebchatLinkOnReply", () => {
+  const behavior = {
+    interactionLimit: { enabled: true, limit: 10, offerWebchatOnLimit: true },
+  };
+  const budget = (count: number, limit: number): InteractionBudgetState => ({
+    enabled: true,
+    count,
+    limit,
+    remaining: Math.max(0, limit - count),
+    status: deriveBudgetStatus(count, limit),
+    blocked: count >= limit,
+    nearLimit: limit - count <= INTERACTION_NEAR_LIMIT_THRESHOLD && count < limit,
+  });
+
+  it("returns false before the last allowed reply, even in nearLimit", () => {
+    assert.equal(shouldAppendWebchatLinkOnReply(behavior, budget(7, 10)), false);
+    assert.equal(shouldAppendWebchatLinkOnReply(behavior, budget(8, 10)), false);
+  });
+
+  it("returns true only when the next reply reaches the limit", () => {
+    assert.equal(shouldAppendWebchatLinkOnReply(behavior, budget(9, 10)), true);
+  });
+
+  it("returns false when offerWebchatOnLimit is disabled", () => {
+    assert.equal(
+      shouldAppendWebchatLinkOnReply(
+        { interactionLimit: { enabled: true, limit: 10, offerWebchatOnLimit: false } },
+        budget(9, 10),
+      ),
+      false,
+    );
   });
 });
