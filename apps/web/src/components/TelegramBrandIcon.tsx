@@ -1,4 +1,4 @@
-/** Logo oficial Telegram — círculo #229ED9 + avião branco (viewBox 24×24, escala nítida). */
+/** Logo Telegram — squircle #229ED9 + avião branco (estilo app icon, com margem interna). */
 export function TelegramBrandIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -8,9 +8,10 @@ export function TelegramBrandIcon({ className }: { className?: string }) {
       focusable="false"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <circle cx="12" cy="12" r="12" fill="#229ED9" />
+      <rect width="24" height="24" rx="5.4" fill="#229ED9" />
       <path
         fill="#FFFFFF"
+        transform="translate(12 12) scale(0.66) translate(-12 -12)"
         d="M8.124 11.838c3.378-1.47 5.628-2.44 6.75-2.91 3.21-1.34 3.882-1.572 4.318-1.578.106-.002.342.025.495.15.13.105.166.247.183.347.017.1.038.328.021.506-.095 1.002-.507 3.432-.717 4.556-.09.474-.267.633-.438.648-.372.032-.654-.246-1.014-.482-.564-.37-.883-.601-1.43-.962-.633-.417-.223-.646.138-1.02.094-.098 1.732-1.588 1.764-1.724.004-.017.008-.079-.03-.112-.038-.033-.092-.022-.132-.013-.056.013-.952.605-2.688 1.772-.254.175-.485.26-.694.255-.228-.004-.668-.128-.994-.234-.401-.13-.722-.198-.692-.42.016-.115.174-.233.476-.354 1.866-.813 3.11-1.348 3.732-1.608 1.778-.741 2.148-.87 2.39-.874z"
       />
     </svg>
