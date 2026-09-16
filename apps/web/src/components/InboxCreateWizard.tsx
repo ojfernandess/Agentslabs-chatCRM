@@ -1017,6 +1017,7 @@ export function InboxCreateWizard({
                       webhookUrl={`${nativeBase}/${createdInbox.ingestToken}/telegram`}
                       botToken={nativeCfg.telegramBotToken}
                       onCopy={copyText}
+                      inboxId={createdInbox.id}
                     />
                   </div>
                 ) : null}

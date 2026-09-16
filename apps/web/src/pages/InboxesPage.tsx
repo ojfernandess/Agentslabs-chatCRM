@@ -716,6 +716,14 @@ export function InboxesPage() {
                                       : undefined
                                   }
                                   botToken={editTelegramBotToken}
+                                  inboxId={row.id}
+                                  draftChannelConfig={
+                                    editTelegramBotToken.trim()
+                                      ? buildInboxTelegramChannelConfig(row.channelConfig, {
+                                          telegramBotToken: editTelegramBotToken,
+                                        })
+                                      : undefined
+                                  }
                                   onCopy={copyUrl}
                                 />
                               </div>
@@ -840,6 +848,7 @@ export function InboxesPage() {
                               </h4>
                               <TelegramSetupGuideHint
                                 webhookUrl={`${basePublicNative}/${row.ingestToken}/telegram`}
+                                inboxId={row.id}
                                 onCopy={copyUrl}
                               />
                             </div>
@@ -851,6 +860,7 @@ export function InboxesPage() {
                             <TelegramInboundSetupPanel
                               webhookUrl={`${basePublicNative}/${row.ingestToken}/telegram`}
                               onCopy={copyUrl}
+                              inboxId={row.id}
                             />
                           </>
                         ) : null}

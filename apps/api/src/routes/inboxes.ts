@@ -25,6 +25,12 @@ import {
   resolveInboxEmailSmtpCredentials,
 } from "../lib/inboxEmailConfig.js";
 import { normalizeTelegramInboxChannelConfig } from "../lib/inboxTelegramConfig.js";
+import {
+  fetchTelegramWebhookStatus,
+  registerTelegramInboxWebhook,
+  resolveTelegramBotTokenForInbox,
+} from "../lib/telegramBotApi.js";
+import { channelNativeTelegramUrl } from "../config.js";
 import { testInboxSmtpConnection } from "../lib/inboxEmailSmtp.js";
 import { syncInboxEmailNow } from "../lib/inboxEmailSyncJob.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
@@ -73,6 +79,11 @@ const testWhatsappConnectionSchema = z.object({
 
 const testEmailConnectionSchema = z.object({
   channelConfig: z.record(z.unknown()).optional(),
+});
+
+const telegramWebhookActionSchema = z.object({
+  channelConfig: z.record(z.unknown()).optional(),
+  dropPendingUpdates: z.boolean().optional(),
 });
 
 const agentBotIdField = z.union([z.string().uuid(), z.null()]).optional();
@@ -565,6 +576,133 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
       const result = await testInboxSmtpConnection(creds);
       return { connected: result.connected, error: result.error ?? null, sentTo: result.sentTo ?? null };
+    },
+  );
+
+  async function loadTelegramInboxContext(
+    organizationId: string,
+    inboxId: string,
+    reply: FastifyReply,
+  ): Promise<{ id: string; ingestToken: string; channelConfig: unknown } | null> {
+    const inbox = await prisma.inbox.findFirst({
+      where: { id: inboxId, organizationId },
+      select: { id: true, channelType: true, ingestToken: true, channelConfig: true },
+    });
+    if (!inbox) {
+      reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
+      return null;
+    }
+    if (inbox.channelType !== InboxChannelType.TELEGRAM) {
+      reply.status(400).send({
+        error: "Bad Request",
+        message: "Inbox is not a Telegram channel",
+        statusCode: 400,
+      });
+      return null;
+    }
+    if (!inbox.ingestToken?.trim()) {
+      reply.status(400).send({
+        error: "Bad Request",
+        message: "Inbox ingest token is missing",
+        statusCode: 400,
+      });
+      return null;
+    }
+    return { id: inbox.id, ingestToken: inbox.ingestToken, channelConfig: inbox.channelConfig };
+  }
+
+  app.get<{ Params: { id: string } }>(
+    "/:id/telegram-webhook-status",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const inbox = await loadTelegramInboxContext(organizationId, request.params.id, reply);
+      if (!inbox) return;
+
+      const botToken = resolveTelegramBotTokenForInbox(inbox.channelConfig);
+      if (!botToken) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Telegram bot token is not configured",
+          statusCode: 400,
+        });
+      }
+
+      const expectedUrl = channelNativeTelegramUrl(inbox.ingestToken);
+      const status = await fetchTelegramWebhookStatus({
+        botToken,
+        expectedUrl,
+        log: request.log,
+      });
+      return status;
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/:id/register-telegram-webhook",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const inbox = await loadTelegramInboxContext(organizationId, request.params.id, reply);
+      if (!inbox) return;
+
+      const parsed = telegramWebhookActionSchema.safeParse(request.body ?? {});
+      const botToken = resolveTelegramBotTokenForInbox(
+        inbox.channelConfig,
+        parsed.success ? parsed.data.channelConfig : undefined,
+      );
+      if (!botToken) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Telegram bot token is not configured",
+          statusCode: 400,
+        });
+      }
+
+      const webhookUrl = channelNativeTelegramUrl(inbox.ingestToken);
+      const registered = await registerTelegramInboxWebhook({
+        botToken,
+        webhookUrl,
+        log: request.log,
+        dropPendingUpdates: parsed.success ? parsed.data.dropPendingUpdates : false,
+      });
+      if (!registered.ok) {
+        return reply.status(422).send({
+          error: "Unprocessable Entity",
+          message: registered.error,
+          statusCode: 422,
+        });
+      }
+
+      const base =
+        inbox.channelConfig && typeof inbox.channelConfig === "object" && !Array.isArray(inbox.channelConfig)
+          ? { ...(inbox.channelConfig as Record<string, unknown>) }
+          : {};
+      base.telegramWebhookUrl = webhookUrl;
+      base.telegramWebhookRegisteredAt = new Date().toISOString();
+      await prisma.inbox.update({
+        where: { id: inbox.id },
+        data: { channelConfig: base as Prisma.InputJsonValue },
+      });
+
+      const status = await fetchTelegramWebhookStatus({
+        botToken,
+        expectedUrl: webhookUrl,
+        log: request.log,
+      });
+
+      return {
+        ok: true,
+        webhookUrl,
+        registered: status.matches,
+        telegramUrl: status.telegramUrl,
+        pendingUpdateCount: status.pendingUpdateCount,
+        lastErrorMessage: status.lastErrorMessage,
+      };
     },
   );
 
