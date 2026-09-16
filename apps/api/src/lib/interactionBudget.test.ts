@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   INTERACTION_NEAR_LIMIT_THRESHOLD,
   parseInteractionLimitFromBehavior,
+  interactionLimitAppliesToInbox,
   deriveBudgetStatus,
   buildInteractionBudgetPromptAppendix,
   shouldAppendWebchatLinkOnReply,
@@ -15,57 +16,62 @@ describe("parseInteractionLimitFromBehavior", () => {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior(undefined), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior("x"), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior({}), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior({ interactionLimit: "10" }), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      inboxIds: [],
     });
   });
 
   it("returns disabled when toggle is off even with a limit set (interaction_limit = null)", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: false, limit: 10 } }),
-      { enabled: false, limit: null, offerWebchatOnLimit: false },
+      { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] },
     );
   });
 
   it("returns disabled when enabled but the limit is invalid", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true, limit: "dez" } }),
-      { enabled: false, limit: null, offerWebchatOnLimit: false },
+      { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] },
     );
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true } }),
-      { enabled: false, limit: null, offerWebchatOnLimit: false },
+      { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] },
     );
   });
 
   it("parses the configured limit (Editar Agente → Controle de atendimento)", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true, limit: 10 } }),
-      { enabled: true, limit: 10, offerWebchatOnLimit: false },
+      { enabled: true, limit: 10, offerWebchatOnLimit: false, inboxIds: [] },
     );
     assert.deepEqual(
       parseInteractionLimitFromBehavior({
         interactionLimit: { enabled: true, limit: 10, offerWebchatOnLimit: true },
       }),
-      { enabled: true, limit: 10, offerWebchatOnLimit: true },
+      { enabled: true, limit: 10, offerWebchatOnLimit: true, inboxIds: [] },
     );
   });
 
@@ -82,6 +88,37 @@ describe("parseInteractionLimitFromBehavior", () => {
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true, limit: 10.9 } }).limit,
       10,
     );
+  });
+});
+
+describe("interactionLimitAppliesToInbox", () => {
+  const cfg = (inboxIds: string[]) => ({
+    enabled: true,
+    limit: 10,
+    offerWebchatOnLimit: false,
+    inboxIds,
+  });
+
+  it("applies to all inboxes when inboxIds is empty (legacy)", () => {
+    assert.equal(interactionLimitAppliesToInbox(cfg([]), "inbox-a"), true);
+    assert.equal(interactionLimitAppliesToInbox(cfg([]), null), true);
+  });
+
+  it("applies only to selected inboxes", () => {
+    assert.equal(interactionLimitAppliesToInbox(cfg(["inbox-a"]), "inbox-a"), true);
+    assert.equal(interactionLimitAppliesToInbox(cfg(["inbox-a"]), "inbox-b"), false);
+    assert.equal(interactionLimitAppliesToInbox(cfg(["inbox-a"]), null), false);
+  });
+
+  it("parses inboxIds from behavior config", () => {
+    const parsed = parseInteractionLimitFromBehavior({
+      interactionLimit: {
+        enabled: true,
+        limit: 10,
+        inboxIds: ["a", "", 1, "b"],
+      },
+    });
+    assert.deepEqual(parsed.inboxIds, ["a", "b"]);
   });
 });
 

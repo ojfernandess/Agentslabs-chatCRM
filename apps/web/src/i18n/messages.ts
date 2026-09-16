@@ -374,6 +374,11 @@ export const messages = {
         "Limita a quantidade de respostas automáticas do agente durante uma conversa. Ao atingir o limite, o atendimento é transferido automaticamente para um atendente humano.",
       interactionLimitField: "Limite de interações",
       interactionLimitUnit: "mensagens",
+      interactionLimitInboxesLabel: "Caixas de entrada (WhatsApp Meta Cloud API)",
+      interactionLimitInboxesHelp:
+        "Marque as caixas onde o limite se aplica. Se nenhuma for marcada, mantém o comportamento anterior (todas as caixas).",
+      interactionLimitInboxesEmpty:
+        "Nenhuma caixa WhatsApp Meta Cloud API configurada. Crie ou configure uma caixa em Caixas de entrada.",
       offerWebchatOnLimitToggle: "Ao atingir o limite, enviar link do Web Chat",
       offerWebchatOnLimitHelp:
         "O agente inclui o link seguro na última resposta automática para o cliente continuar a mesma conversa pelo atendimento online. Não gera uma mensagem extra depois do limite.",
@@ -6878,6 +6883,11 @@ export const messages = {
         "Limits the number of automatic agent replies during a conversation. When the limit is reached, the conversation is automatically handed off to a human agent.",
       interactionLimitField: "Interaction limit",
       interactionLimitUnit: "messages",
+      interactionLimitInboxesLabel: "Inboxes (WhatsApp Meta Cloud API)",
+      interactionLimitInboxesHelp:
+        "Select inboxes where the limit applies. If none are selected, previous behavior is kept (all inboxes).",
+      interactionLimitInboxesEmpty:
+        "No configured WhatsApp Meta Cloud API inbox. Create or configure one under Inboxes.",
       offerWebchatOnLimitToggle: "When the limit is reached, send the Web Chat link",
       offerWebchatOnLimitHelp:
         "The agent includes the secure link in the last automatic reply so the customer can continue the same conversation online. It does not send an extra message after the limit.",

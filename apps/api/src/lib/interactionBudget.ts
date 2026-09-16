@@ -21,11 +21,13 @@ export type InteractionLimitConfig = {
   limit: number | null;
   /** Ao aproximar-se do limite, o agente deve enviar o link do Web Chat (não gera 11ª mensagem). */
   offerWebchatOnLimit: boolean;
+  /** Caixas WhatsApp Meta Cloud API selecionadas; vazio = todas (legado). */
+  inboxIds: string[];
 };
 
 /** Lê `behaviorConfig.interactionLimit` do perfil do agente (Editar Agente → Controle de atendimento). */
 export function parseInteractionLimitFromBehavior(behavior: unknown): InteractionLimitConfig {
-  const off: InteractionLimitConfig = { enabled: false, limit: null, offerWebchatOnLimit: false };
+  const off: InteractionLimitConfig = { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] };
   if (!behavior || typeof behavior !== "object") return off;
   const raw = (behavior as Record<string, unknown>).interactionLimit;
   if (!raw || typeof raw !== "object") return off;
@@ -36,8 +38,22 @@ export function parseInteractionLimitFromBehavior(behavior: unknown): Interactio
     typeof limitRaw === "number" && Number.isFinite(limitRaw)
       ? Math.max(1, Math.min(500, Math.floor(limitRaw)))
       : null;
+  const inboxIds = Array.isArray(o.inboxIds)
+    ? o.inboxIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    : [];
   if (!enabled || limit == null) return off;
-  return { enabled: true, limit, offerWebchatOnLimit: o.offerWebchatOnLimit === true };
+  return { enabled: true, limit, offerWebchatOnLimit: o.offerWebchatOnLimit === true, inboxIds };
+}
+
+/** Limite activo nesta conversa — vazio em inboxIds mantém comportamento legado (todas as caixas). */
+export function interactionLimitAppliesToInbox(
+  config: InteractionLimitConfig,
+  inboxId: string | null | undefined,
+): boolean {
+  if (!config.enabled) return false;
+  if (config.inboxIds.length === 0) return true;
+  if (!inboxId?.trim()) return false;
+  return config.inboxIds.includes(inboxId);
 }
 
 export type InteractionBudgetState = {
@@ -98,9 +114,11 @@ export async function getInteractionBudgetState(params: {
   organizationId: string;
   conversationId: string;
   behaviorConfig: unknown;
+  inboxId?: string | null;
 }): Promise<InteractionBudgetState> {
   const cfg = parseInteractionLimitFromBehavior(params.behaviorConfig);
   if (!cfg.enabled || cfg.limit == null) return DISABLED_STATE;
+  if (!interactionLimitAppliesToInbox(cfg, params.inboxId)) return DISABLED_STATE;
   if (!(await interactionLimitFeatureEnabled(params.organizationId))) return DISABLED_STATE;
 
   const row = await prisma.conversationInteractionBudget.findUnique({
@@ -264,9 +282,10 @@ export async function buildInteractionBudgetPromptAppendixForConversation(params
   organizationId: string;
   conversationId: string;
   behaviorConfig: unknown;
+  inboxId?: string | null;
 }): Promise<string> {
   const cfg = parseInteractionLimitFromBehavior(params.behaviorConfig);
-  if (!cfg.enabled) return "";
+  if (!cfg.enabled || !interactionLimitAppliesToInbox(cfg, params.inboxId)) return "";
   try {
     const state = await getInteractionBudgetState(params);
     let webchatUrl: string | null = null;

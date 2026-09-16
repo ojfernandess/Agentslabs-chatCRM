@@ -32,6 +32,7 @@ import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog
 import {
   buildInteractionBudgetPromptAppendixForConversation,
   parseInteractionLimitFromBehavior,
+  interactionLimitAppliesToInbox,
 } from "./interactionBudget.js";
 import { generateWebchatLinkForConversation } from "./webchatSession.js";
 import {
@@ -851,15 +852,17 @@ function applyConnectedTagNativeToolFlags(flags: NativeToolsFlags, behavior: unk
   return next;
 }
 
-export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlags {
+export function parseNativeToolsFromBehavior(behavior: unknown, inboxId?: string | null): NativeToolsFlags {
   const base = defaultNativeTools();
   if (!behavior || typeof behavior !== "object") return base;
   const b = behavior as Record<string, unknown>;
   const interactionLimit = parseInteractionLimitFromBehavior(behavior);
+  const limitActiveForInbox = interactionLimitAppliesToInbox(interactionLimit, inboxId);
   const withWebchat: NativeToolsFlags = {
     ...base,
     generate_webchat_link:
-      base.generate_webchat_link || (interactionLimit.enabled && interactionLimit.offerWebchatOnLimit),
+      base.generate_webchat_link ||
+      (limitActiveForInbox && interactionLimit.offerWebchatOnLimit),
   };
   const raw = b.nativeTools;
   if (!raw || typeof raw !== "object") return withWebchat;
@@ -877,7 +880,7 @@ export function parseNativeToolsFromBehavior(behavior: unknown): NativeToolsFlag
     set_conversation_status: flag("set_conversation_status", withWebchat.set_conversation_status),
     generate_webchat_link:
       flag("generate_webchat_link", withWebchat.generate_webchat_link) ||
-      (interactionLimit.enabled && interactionLimit.offerWebchatOnLimit),
+      (limitActiveForInbox && interactionLimit.offerWebchatOnLimit),
   };
 }
 
@@ -1319,7 +1322,7 @@ export async function invokeSingleNativeAgentTool(input: {
     userMessage,
   } = input;
   const argsJson = JSON.stringify(args);
-  const flags = parseNativeToolsFromBehavior(behaviorConfig);
+  const flags = parseNativeToolsFromBehavior(behaviorConfig, input.conversation.inboxId);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(behaviorConfig);
 
   const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(behaviorConfig);
@@ -1865,7 +1868,10 @@ async function generateNativeAgentReplyCore(input: {
   systemInstructions = applyAgentPlaybookToSystemInstructions(systemInstructions, pbNested);
 
   let flags = applyConnectedTagNativeToolFlags(
-    applyFallbackNativeToolFlags(parseNativeToolsFromBehavior(profile.behaviorConfig), instructionFallbacks),
+    applyFallbackNativeToolFlags(
+      parseNativeToolsFromBehavior(profile.behaviorConfig, conversation.inboxId),
+      instructionFallbacks,
+    ),
     profile.behaviorConfig,
   );
   const apiBaseUrl = resolveLlmApiBaseUrl(provider, llmString(llm, "apiBaseUrl"), config);
@@ -2545,6 +2551,7 @@ async function generateNativeAgentReplyCore(input: {
       organizationId,
       conversationId: conversation.id,
       behaviorConfig: behaviorConfigObj,
+      inboxId: conversation.inboxId,
     });
   } catch {
     interactionBudgetAppendix = "";

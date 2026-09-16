@@ -122,6 +122,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
         organizationId,
         conversationId: conversation.id,
         behaviorConfig: profilePre?.behaviorConfig,
+        inboxId: conversation.inboxId,
       });
     } catch (err) {
       log.warn({ err, conversationId: conversation.id }, "interaction budget state load failed");

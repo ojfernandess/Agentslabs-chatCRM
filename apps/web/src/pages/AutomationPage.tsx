@@ -27,6 +27,12 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin, isSuperAdminRole } from "@/lib/authRole";
 import { api, ApiError } from "@/lib/api";
+import {
+  isInboxWhatsappConfigured,
+  isWhatsAppCloudApiProvider,
+  parseInboxWhatsappFromChannelConfig,
+} from "@/lib/inboxWhatsappConfig";
+import { whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 import { AutomationToolsHub } from "@/pages/automation/AutomationToolsHub";
 import { AutomationPromptsHub } from "@/pages/automation/AutomationPromptsHub";
 import { AutomationKnowledgeHub } from "@/pages/automation/AutomationKnowledgeHub";
@@ -462,6 +468,7 @@ type AgentFormFields = {
   /** Controle de atendimento — limite de respostas automáticas por conversa (behaviorConfig.interactionLimit). */
   interactionLimitEnabled: boolean;
   interactionLimit: number;
+  interactionLimitInboxIds: string[];
   offerWebchatOnLimit: boolean;
   followUpMessage: string;
   escalationMode: string;
@@ -539,6 +546,7 @@ function emptyAgentForm(): AgentFormFields {
     inactivityFollowUpMax: 1,
     interactionLimitEnabled: false,
     interactionLimit: 10,
+    interactionLimitInboxIds: [],
     offerWebchatOnLimit: false,
     followUpMessage: "",
     escalationMode: "keyword",
@@ -914,6 +922,14 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
         il && typeof il === "object" && (il as Record<string, unknown>).offerWebchatOnLimit === true,
       );
     })(),
+    interactionLimitInboxIds: (() => {
+      const il = beh.interactionLimit;
+      if (!il || typeof il !== "object") return [] as string[];
+      const raw = (il as Record<string, unknown>).inboxIds;
+      return Array.isArray(raw)
+        ? raw.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+        : [];
+    })(),
     followUpMessage: String(
       inc.followUpMessage ?? (Array.isArray(inc.followUpMessages) ? inc.followUpMessages[0] ?? "" : ""),
     ),
@@ -1105,6 +1121,7 @@ function formToPayload(
         ? Math.max(1, Math.min(500, Math.floor(form.interactionLimit || 10)))
         : null,
       offerWebchatOnLimit: form.interactionLimitEnabled && form.offerWebchatOnLimit,
+      inboxIds: form.interactionLimitEnabled ? form.interactionLimitInboxIds : [],
     },
     voice: {
       nativeVoiceEnabled: form.nativeVoiceEnabled,
@@ -1350,6 +1367,9 @@ export function AutomationPage() {
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
+  const [metaCloudInboxes, setMetaCloudInboxes] = useState<
+    Array<{ id: string; name: string; provider: string }>
+  >([]);
 
   const canAccess = tenantAdmin || pilotAccessEnabled;
   const pilotView = pilotAccessEnabled && !tenantAdmin;
@@ -1420,6 +1440,30 @@ export function AutomationPage() {
     setBots(res.data);
   }, []);
 
+  const loadMetaCloudInboxes = useCallback(async () => {
+    try {
+      const res = await api.get<{
+        data: Array<{ id: string; name: string; channelType: string; channelConfig?: unknown }>;
+      }>("/inboxes");
+      const filtered = (res.data ?? [])
+        .filter((row) => {
+          if (row.channelType !== "WHATSAPP") return false;
+          const wa = parseInboxWhatsappFromChannelConfig(row.channelConfig);
+          return (
+            isWhatsAppCloudApiProvider(wa.whatsappProvider ?? "") && isInboxWhatsappConfigured(wa)
+          );
+        })
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          provider: parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappProvider ?? "meta",
+        }));
+      setMetaCloudInboxes(filtered);
+    } catch {
+      setMetaCloudInboxes([]);
+    }
+  }, []);
+
   const loadAgentProfiles = useCallback(async () => {
     const res = await api.get<{ data: AgentProfileRow[] }>("/automation/agent-profiles");
     setAgentProfiles(res.data);
@@ -1483,6 +1527,7 @@ export function AutomationPage() {
         if (tab === "agents") {
           await loadBots();
           await loadAgentProfiles();
+          await loadMetaCloudInboxes();
           await loadPrompts();
           await loadTools();
           await loadKnowledge();
@@ -1522,6 +1567,7 @@ export function AutomationPage() {
     loadKnowledge,
     loadBots,
     loadAgentProfiles,
+    loadMetaCloudInboxes,
     loadTools,
     loadToolPresets,
     loadPrompts,
@@ -1967,6 +2013,7 @@ export function AutomationPage() {
             showSuggestErrorDetails={
               isTenantAdmin(user?.role, user?.actingOrganizationId) || isSuperAdminRole(user?.role)
             }
+            metaCloudInboxes={metaCloudInboxes}
           />
         ) : null}
 
@@ -2191,6 +2238,7 @@ function AgentsTab({
   suggestionLocale,
   uiLocale,
   showSuggestErrorDetails,
+  metaCloudInboxes,
 }: {
   t: Translate;
   loading: boolean;
@@ -2218,6 +2266,7 @@ function AgentsTab({
   suggestionLocale: string;
   uiLocale: "pt" | "en";
   showSuggestErrorDetails: boolean;
+  metaCloudInboxes: Array<{ id: string; name: string; provider: string }>;
 }) {
   const promptUserCoreRef = useRef<HTMLTextAreaElement | null>(null);
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
@@ -4041,6 +4090,53 @@ function AgentsTab({
                     <p className="self-end text-[11px] text-ink-500">
                       {t("automationPage.interactionLimitUnit")}
                     </p>
+                  </div>
+                ) : null}
+                {agentForm.interactionLimitEnabled ? (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-medium text-ink-700 dark:text-ink-300">
+                      {t("automationPage.interactionLimitInboxesLabel")}
+                    </p>
+                    <p className="text-[11px] text-ink-500">
+                      {t("automationPage.interactionLimitInboxesHelp")}
+                    </p>
+                    {metaCloudInboxes.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-ink-200 px-3 py-2 text-[11px] text-ink-500 dark:border-ink-700">
+                        {t("automationPage.interactionLimitInboxesEmpty")}
+                      </p>
+                    ) : (
+                      <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-ink-200 bg-white p-2 dark:border-ink-700 dark:bg-ink-950/40">
+                        {metaCloudInboxes.map((inbox) => {
+                          const checked = agentForm.interactionLimitInboxIds.includes(inbox.id);
+                          return (
+                            <label
+                              key={inbox.id}
+                              className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-ink-50 dark:hover:bg-ink-900/60"
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={checked}
+                                onChange={() =>
+                                  setAgentForm((f) => {
+                                    const next = new Set(f.interactionLimitInboxIds);
+                                    if (next.has(inbox.id)) next.delete(inbox.id);
+                                    else next.add(inbox.id);
+                                    return { ...f, interactionLimitInboxIds: [...next] };
+                                  })
+                                }
+                              />
+                              <span>
+                                <span className="font-medium text-ink-800 dark:text-ink-100">{inbox.name}</span>
+                                <span className="mt-0.5 block text-[11px] text-ink-500">
+                                  {whatsappProviderLabel(inbox.provider)}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ) : null}
                 {agentForm.interactionLimitEnabled ? (
