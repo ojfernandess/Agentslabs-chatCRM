@@ -39,14 +39,14 @@ export function InboxChannelIcon({ channelType, size = "md", className }: Props)
         "flex shrink-0 items-center justify-center rounded-2xl shadow-sm",
         s.box,
         fullColorBrand
-          ? "overflow-hidden ring-2 ring-ink-200/90 dark:ring-ink-700/80"
+          ? "overflow-hidden p-0 leading-none"
           : clsx("text-white ring-2", styles?.bg ?? "bg-slate-500", styles?.ring ?? "ring-slate-200"),
         className,
       )}
     >
       <Icon
         className={clsx(
-          fullColorBrand ? "h-full w-full" : s.icon,
+          fullColorBrand ? "block h-full w-full shrink-0" : s.icon,
           "relative z-[1]",
           monoGlyphOnSolid ? "[&_path]:!fill-white [&_circle]:!fill-white" : fullColorBrand ? "" : "text-white",
         )}
@@ -60,8 +60,8 @@ export function InboxChannelPickerIcon({ channel }: { channel: InboxChannelId })
   const Icon = INBOX_CHANNEL_ICONS[channel];
   if (channel === "TELEGRAM") {
     return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg">
-        <Icon className="h-10 w-10" />
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg leading-none">
+        <Icon className="block h-10 w-10 shrink-0" />
       </div>
     );
   }
