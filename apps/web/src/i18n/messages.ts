@@ -6392,6 +6392,18 @@ export const messages = {
       billingStripeModeLive: "Produção (live)",
       billingStripeModeTest: "Teste (sandbox)",
       billingStripeModeUnknown: "Desconhecido",
+      billingMercadoPagoModeTitle: "Modo Mercado Pago (sandbox vs produção)",
+      billingMercadoPagoModeHint:
+        "Escolha o ambiente activo para checkout Pix e sincronização de planos. Use credenciais TEST- no sandbox e APP_USR- em produção.",
+      billingMercadoPagoModeSandbox: "Sandbox (teste)",
+      billingMercadoPagoModeProduction: "Produção",
+      billingMercadoPagoModeSave: "Guardar modo Mercado Pago",
+      billingMercadoPagoModeSaved: "Modo Mercado Pago actualizado.",
+      billingMercadoPagoModeSaveError: "Não foi possível guardar o modo Mercado Pago.",
+      billingMercadoPagoActiveToken: "Token activo (mascarado)",
+      billingMercadoPagoDetectedTokenMode: "Tipo detectado no token",
+      billingMercadoPagoModeMismatch:
+        "O token activo não corresponde ao modo seleccionado. Defina MERCADOPAGO_SANDBOX_ACCESS_TOKEN (TEST-) ou MERCADOPAGO_PRODUCTION_ACCESS_TOKEN (APP_USR-) no .env.",
       billingResetStripeHint:
         "Ao mudar STRIPE_SECRET_KEY de teste para produção, limpe os IDs antigos guardados na base de dados e atualize os Stripe Price IDs dos planos com IDs live.",
       billingResetStripeClearPlans: "Limpar também Stripe Product/Price IDs dos planos",
@@ -13026,6 +13038,18 @@ export const messages = {
       billingStripeModeLive: "Production (live)",
       billingStripeModeTest: "Test (sandbox)",
       billingStripeModeUnknown: "Unknown",
+      billingMercadoPagoModeTitle: "Mercado Pago mode (sandbox vs production)",
+      billingMercadoPagoModeHint:
+        "Choose the active environment for Pix checkout and plan sync. Use TEST- credentials in sandbox and APP_USR- in production.",
+      billingMercadoPagoModeSandbox: "Sandbox (test)",
+      billingMercadoPagoModeProduction: "Production",
+      billingMercadoPagoModeSave: "Save Mercado Pago mode",
+      billingMercadoPagoModeSaved: "Mercado Pago mode updated.",
+      billingMercadoPagoModeSaveError: "Could not save Mercado Pago mode.",
+      billingMercadoPagoActiveToken: "Active token (masked)",
+      billingMercadoPagoDetectedTokenMode: "Detected token type",
+      billingMercadoPagoModeMismatch:
+        "The active token does not match the selected mode. Set MERCADOPAGO_SANDBOX_ACCESS_TOKEN (TEST-) or MERCADOPAGO_PRODUCTION_ACCESS_TOKEN (APP_USR-) in .env.",
       billingResetStripeHint:
         "When switching STRIPE_SECRET_KEY from test to live, clear stale IDs in the database and update plan Stripe Price IDs with live values.",
       billingResetStripeClearPlans: "Also clear Stripe Product/Price IDs on plans",

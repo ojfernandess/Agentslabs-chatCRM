@@ -14,8 +14,8 @@ import {
 import {
   mercadoPagoRequest,
   resolveMercadoPagoAccessTokenForBilling,
-  resolvePlatformMercadoPagoAccessToken,
 } from "./mercadoPagoClient.js";
+import { resolvePlatformMercadoPagoAccessToken } from "../mercadoPagoBillingSettings.js";
 import { verifyMercadoPagoWebhookSignature } from "./mercadoPagoWebhookSignature.js";
 
 export class MercadoPagoWebhookError extends Error {
@@ -120,7 +120,7 @@ async function handlePaymentWebhook(paymentId: string, action: string): Promise<
 
   let accessToken = organizationId
     ? await resolveAccessTokenForOrganization(organizationId)
-    : resolvePlatformMercadoPagoAccessToken();
+    : await resolvePlatformMercadoPagoAccessToken();
 
   let payment = await getMercadoPagoPayment(accessToken, paymentId);
 
@@ -158,7 +158,7 @@ async function handlePreapprovalWebhook(preapprovalId: string, action: string): 
 
   let accessToken = organizationIdHint
     ? await resolveAccessTokenForOrganization(organizationIdHint)
-    : resolvePlatformMercadoPagoAccessToken();
+    : await resolvePlatformMercadoPagoAccessToken();
 
   let preapproval = await mercadoPagoRequest<MercadoPagoPreapprovalSnapshot>({
     accessToken,

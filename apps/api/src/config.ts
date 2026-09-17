@@ -269,6 +269,10 @@ export const config = {
   /** Mercado Pago — billing SaaS (access token só no servidor). */
   mercadopagoAccessToken: optionalSecretEnv("MERCADOPAGO_ACCESS_TOKEN"),
   mercadopagoPublicKey: optionalSecretEnv("MERCADOPAGO_PUBLIC_KEY"),
+  mercadopagoSandboxAccessToken: optionalSecretEnv("MERCADOPAGO_SANDBOX_ACCESS_TOKEN"),
+  mercadopagoSandboxPublicKey: optionalSecretEnv("MERCADOPAGO_SANDBOX_PUBLIC_KEY"),
+  mercadopagoProductionAccessToken: optionalSecretEnv("MERCADOPAGO_PRODUCTION_ACCESS_TOKEN"),
+  mercadopagoProductionPublicKey: optionalSecretEnv("MERCADOPAGO_PRODUCTION_PUBLIC_KEY"),
   mercadopagoWebhookSecret: optionalSecretEnv("MERCADOPAGO_WEBHOOK_SECRET"),
   mercadopagoClientId: optionalSecretEnv("MERCADOPAGO_CLIENT_ID"),
   mercadopagoClientSecret: optionalSecretEnv("MERCADOPAGO_CLIENT_SECRET"),
@@ -290,10 +294,19 @@ export function isStripeBillingConfigured(): boolean {
 
 /** Mercado Pago configurado na plataforma (Fase 0 — credenciais globais). */
 export function isMercadoPagoBillingConfigured(): boolean {
-  return Boolean(config.mercadopagoAccessToken);
+  return Boolean(
+    config.mercadopagoAccessToken ||
+      config.mercadopagoSandboxAccessToken ||
+      config.mercadopagoProductionAccessToken,
+  );
 }
 
 /** Mercado Pago pronto para receber webhooks (token + secret para validar assinatura). */
 export function isMercadoPagoWebhookConfigured(): boolean {
-  return Boolean(config.mercadopagoAccessToken && config.mercadopagoWebhookSecret);
+  return Boolean(
+    (config.mercadopagoAccessToken ||
+      config.mercadopagoSandboxAccessToken ||
+      config.mercadopagoProductionAccessToken) &&
+      config.mercadopagoWebhookSecret,
+  );
 }

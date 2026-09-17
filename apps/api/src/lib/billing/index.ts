@@ -33,6 +33,7 @@ export {
 export * from "./paymentWebhookEvents.js";
 export * from "./paymentProviderConfig.js";
 export * from "./MercadoPagoConnectionService.js";
+export * from "./mercadoPagoBillingSettings.js";
 export * from "./mercadopago/mercadoPagoClient.js";
 export * from "./mercadopago/MercadoPagoPlanService.js";
 export * from "./mercadopago/MercadoPagoCheckoutService.js";

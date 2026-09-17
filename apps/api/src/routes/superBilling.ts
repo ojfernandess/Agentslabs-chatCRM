@@ -34,6 +34,7 @@ import {
   getSuperBillingProviderDiagnostics,
   testSuperBillingProviderConnectivity,
 } from "../lib/billing/superBillingProviderDiagnostics.js";
+import { patchMercadoPagoBillingPlatformSettings } from "../lib/billing/mercadoPagoBillingSettings.js";
 import { isMercadoPagoBillingConfigured } from "../config.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
@@ -125,6 +126,10 @@ const sendPaymentReminderSchema = z.object({
 
 const testPaymentProviderSchema = z.object({
   provider: z.enum(["stripe", "mercadopago", "all"]).optional().default("all"),
+});
+
+const mercadoPagoModeSchema = z.object({
+  mode: z.enum(["sandbox", "production"]),
 });
 
 function serializePlan(plan: {
@@ -227,6 +232,29 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return test;
+  });
+
+  app.patch("/payment-providers/mercadopago", async (request, reply) => {
+    const parsed = mercadoPagoModeSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const settings = await patchMercadoPagoBillingPlatformSettings({ mode: parsed.data.mode });
+    const diagnostics = await getSuperBillingProviderDiagnostics();
+
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.mercadopago_mode.update",
+      resourceType: "billing_settings",
+      metadata: { mode: settings.mode },
+      ip: clientIp(request),
+    });
+
+    return {
+      settings,
+      billingMode: diagnostics.mercadopago.billingMode,
+    };
   });
 
   app.post("/reset-stripe-bindings", async (request, reply) => {

@@ -6,6 +6,10 @@ import {
   resolveMercadoPagoAccessToken,
 } from "../../MercadoPagoConnectionService.js";
 import {
+  getMercadoPagoBillingPlatformSettings,
+  resolveMercadoPagoPublicKeyForMode,
+} from "../../mercadoPagoBillingSettings.js";
+import {
   MERCADOPAGO_BILLING_CAPABILITIES,
   type BillingProvider,
   type BillingProviderConfigSlice,
@@ -50,10 +54,12 @@ export const mercadoPagoBillingProvider: BillingProvider = {
     const platformConfigured = isMercadoPagoBillingConfigured();
     const conn = ctx?.organizationId ? await resolveOrgConnection(ctx.organizationId) : null;
     const orgConnected = isMercadoPagoConnectedForOrganizationSync(conn);
+    const mpSettings = await getMercadoPagoBillingPlatformSettings();
+    const platformPublishableKey = resolveMercadoPagoPublicKeyForMode(mpSettings.mode) || config.mercadopagoPublicKey || null;
     return {
       configured: platformConfigured || orgConnected,
       connected: platformConfigured || orgConnected,
-      publishableKey: conn?.publicKey?.trim() || config.mercadopagoPublicKey || null,
+      publishableKey: conn?.publicKey?.trim() || platformPublishableKey,
       capabilities: MERCADOPAGO_BILLING_CAPABILITIES,
     };
   },

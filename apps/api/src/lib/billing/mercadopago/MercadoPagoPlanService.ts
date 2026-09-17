@@ -2,11 +2,11 @@ import type { Plan } from "@prisma/client";
 import { prisma } from "../../../db.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
+import { resolvePlatformMercadoPagoAccessToken } from "../mercadoPagoBillingSettings.js";
 import {
   mercadoPagoPlanBackUrl,
   mercadoPagoRequest,
   MercadoPagoApiError,
-  resolvePlatformMercadoPagoAccessToken,
 } from "./mercadoPagoClient.js";
 
 type MercadoPagoPreapprovalPlan = {
@@ -63,7 +63,7 @@ async function resolveAccessTokenForPlan(plan: Pick<Plan, "organizationId">): Pr
     const orgToken = await resolveMercadoPagoAccessToken(plan.organizationId);
     if (orgToken) return orgToken;
   }
-  return resolvePlatformMercadoPagoAccessToken();
+  return await resolvePlatformMercadoPagoAccessToken();
 }
 
 export async function getMercadoPagoPreapprovalPlan(

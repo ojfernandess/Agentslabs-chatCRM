@@ -8,11 +8,10 @@ import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { syncSubscriptionSnapshot } from "../subscriptionSync.js";
 import {
-  mercadoPagoRequest,
-  resolveMercadoPagoAccessTokenForBilling,
-  isMercadoPagoSandboxAccessToken,
+  isMercadoPagoSandboxBillingMode,
   resolveMercadoPagoSandboxPayerEmail,
-} from "./mercadoPagoClient.js";
+} from "../mercadoPagoBillingSettings.js";
+import { mercadoPagoRequest, resolveMercadoPagoAccessTokenForBilling } from "./mercadoPagoClient.js";
 import type { CheckoutPixDetails } from "../providers/types.js";
 import type { CreateMercadoPagoCheckoutInput } from "./MercadoPagoCheckoutService.js";
 
@@ -118,7 +117,7 @@ export async function createMercadoPagoPixCheckout(
 ): Promise<MercadoPagoPixCheckoutResult> {
   const accessToken = await resolveAccessTokenForCheckout(input.organizationId, plan.organizationId);
   let payerEmail = await resolvePayerEmail(input.organizationId);
-  if (isMercadoPagoSandboxAccessToken(accessToken)) {
+  if (await isMercadoPagoSandboxBillingMode()) {
     payerEmail = resolveMercadoPagoSandboxPayerEmail(payerEmail);
   }
   const payer = buildMercadoPagoPixPayer(payerEmail, input.payerIdentificationNumber);

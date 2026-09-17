@@ -8,6 +8,11 @@ import {
   isStripeBillingConfigured,
 } from "../../config.js";
 import { mercadoPagoOAuthRedirectUri } from "./MercadoPagoConnectionService.js";
+import {
+  getMercadoPagoBillingModeDiagnostics,
+  getMercadoPagoBillingPlatformSettings,
+  resolvePlatformMercadoPagoAccessToken,
+} from "./mercadoPagoBillingSettings.js";
 import { mercadoPagoRequest } from "./mercadopago/mercadoPagoClient.js";
 import { getStripeClient } from "./stripeClient.js";
 import { getStripeKeyMode, type StripeKeyMode } from "./stripeErrors.js";
@@ -86,11 +91,12 @@ export async function getSuperBillingProviderDiagnostics() {
   const oauthRedirectUri = mercadoPagoOAuthRedirectUri();
   const mpOAuthConfigured = Boolean(config.mercadopagoClientId && config.mercadopagoClientSecret);
 
-  const [stripeWebhook, mpWebhook, mpConnectedOrgs, mpTotalOrgs] = await Promise.all([
+  const [stripeWebhook, mpWebhook, mpConnectedOrgs, mpTotalOrgs, mpBillingMode] = await Promise.all([
     webhookStats("stripe", stripeWebhookUrl, isStripeBillingConfigured()),
     webhookStats("mercadopago", mpWebhookUrl, isMercadoPagoWebhookConfigured()),
     prisma.paymentProviderConnection.count({ where: { provider: "mercadopago", status: "connected" } }),
     prisma.paymentProviderConnection.count({ where: { provider: "mercadopago" } }),
+    getMercadoPagoBillingModeDiagnostics(),
   ]);
 
   return {
@@ -119,7 +125,12 @@ export async function getSuperBillingProviderDiagnostics() {
       oauthConfigured: mpOAuthConfigured,
       oauthRedirectUri,
       orgConnections: { connected: mpConnectedOrgs, total: mpTotalOrgs },
+      billingMode: mpBillingMode,
       env: [
+        envRow("MERCADOPAGO_SANDBOX_ACCESS_TOKEN", config.mercadopagoSandboxAccessToken, true),
+        envRow("MERCADOPAGO_SANDBOX_PUBLIC_KEY", config.mercadopagoSandboxPublicKey, false),
+        envRow("MERCADOPAGO_PRODUCTION_ACCESS_TOKEN", config.mercadopagoProductionAccessToken, true),
+        envRow("MERCADOPAGO_PRODUCTION_PUBLIC_KEY", config.mercadopagoProductionPublicKey, false),
         envRow("MERCADOPAGO_ACCESS_TOKEN", config.mercadopagoAccessToken, true),
         envRow("MERCADOPAGO_PUBLIC_KEY", config.mercadopagoPublicKey, false),
         envRow("MERCADOPAGO_WEBHOOK_SECRET", config.mercadopagoWebhookSecret, true),
@@ -172,16 +183,18 @@ export async function testSuperBillingProviderConnectivity(
   }
 
   if (provider === "mercadopago" || provider === "all") {
-    if (!config.mercadopagoAccessToken.trim()) {
+    if (!isMercadoPagoBillingConfigured()) {
       results.mercadopago = {
         ok: false,
-        message: "MERCADOPAGO_ACCESS_TOKEN is not configured",
+        message: "Mercado Pago access token is not configured",
         testedAt,
       };
     } else {
       try {
+        const settings = await getMercadoPagoBillingPlatformSettings();
+        const accessToken = await resolvePlatformMercadoPagoAccessToken();
         const profile = await mercadoPagoRequest<{ id?: number; nickname?: string }>({
-          accessToken: config.mercadopagoAccessToken,
+          accessToken,
           method: "GET",
           path: "/users/me",
         });
@@ -189,7 +202,11 @@ export async function testSuperBillingProviderConnectivity(
           ok: true,
           message: "Mercado Pago API responded successfully",
           testedAt,
-          details: { userId: profile.id ?? null, nickname: profile.nickname ?? null },
+          details: {
+            userId: profile.id ?? null,
+            nickname: profile.nickname ?? null,
+            mode: settings.mode,
+          },
         };
       } catch (err) {
         results.mercadopago = {

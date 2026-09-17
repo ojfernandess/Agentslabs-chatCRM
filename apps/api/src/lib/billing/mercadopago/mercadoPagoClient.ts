@@ -2,6 +2,11 @@ import { config, getWebAppPublicOrigin } from "../../../config.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
 
+export {
+  inferMercadoPagoTokenMode,
+  resolvePlatformMercadoPagoAccessToken,
+} from "../mercadoPagoBillingSettings.js";
+
 const MP_API_BASE = "https://api.mercadopago.com";
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -41,12 +46,10 @@ export function isMercadoPagoSandboxAccessToken(accessToken: string): boolean {
   return accessToken.trim().startsWith("TEST-");
 }
 
-/** Mercado Pago sandbox exige e-mail @testuser.com em pagamentos. */
-export function resolveMercadoPagoSandboxPayerEmail(email: string): string {
-  const trimmed = email.trim();
-  if (trimmed.toLowerCase().endsWith("@testuser.com")) return trimmed;
-  const local = trimmed.split("@")[0]?.trim().replace(/[^a-zA-Z0-9._-]/g, "") || "test";
-  return `${local}@testuser.com`;
+/** @deprecated Prefer isMercadoPagoSandboxBillingMode() — respects Super Admin mode. */
+export function resolveMercadoPagoSandboxPayerEmailFromToken(accessToken: string, email: string): string {
+  if (!isMercadoPagoSandboxAccessToken(accessToken)) return email.trim();
+  return resolveMercadoPagoSandboxPayerEmail(email);
 }
 
 function mercadoPagoLiveCredentialsMessage(): string {
@@ -63,6 +66,7 @@ export function mercadoPagoBillingErrorHttpStatus(err: BillingError): number {
     err.code === "plan_free_mercadopago" ||
     err.code === "mercadopago_plan_sync_failed" ||
     err.code === "mercadopago_live_credentials_unauthorized" ||
+    err.code === "mercadopago_token_mode_mismatch" ||
     err.code === "mercadopago_pix_document_required" ||
     err.code === "billing_email_missing" ||
     err.code === "already_subscribed" ||
@@ -142,17 +146,6 @@ export function mercadoPagoPlanBackUrl(): string {
   return mercadoPagoBillingBackUrl();
 }
 
-export function resolvePlatformMercadoPagoAccessToken(): string {
-  const token = config.mercadopagoAccessToken.trim();
-  if (!token) {
-    throw new BillingError(
-      "Mercado Pago platform access token is not configured (MERCADOPAGO_ACCESS_TOKEN)",
-      "mercadopago_not_configured",
-    );
-  }
-  return token;
-}
-
 /** Token MP da org (OAuth) ou plataforma — usado em checkout, polling e webhooks. */
 export async function resolveMercadoPagoAccessTokenForBilling(
   organizationId: string,
@@ -171,3 +164,5 @@ export async function resolveMercadoPagoAccessTokenForBilling(
   // Catálogo global SaaS: sempre credenciais da plataforma (ignora OAuth MP da org assinante).
   return resolvePlatformMercadoPagoAccessToken();
 }
+
+export { isMercadoPagoSandboxBillingMode } from "../mercadoPagoBillingSettings.js";

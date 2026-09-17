@@ -42,11 +42,22 @@ type StripeDiagnostics = ProviderDiagnostics & {
   apiVersion: string;
 };
 
+type MercadoPagoBillingModeDiagnostics = {
+  mode: "sandbox" | "production";
+  activeAccessTokenConfigured: boolean;
+  activePublicKeyConfigured: boolean;
+  tokenMode: "sandbox" | "production" | "unknown";
+  tokenModeMismatch: boolean;
+  activeAccessTokenPreview: string | null;
+  activePublicKeyPreview: string | null;
+};
+
 type MercadoPagoDiagnostics = ProviderDiagnostics & {
   webhookConfigured: boolean;
   oauthConfigured: boolean;
   oauthRedirectUri: string;
   orgConnections: { connected: number; total: number };
+  billingMode: MercadoPagoBillingModeDiagnostics;
 };
 
 type DiagnosticsResponse = {
@@ -241,6 +252,9 @@ export function SuperAdminPaymentProvidersPanel({
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResponse | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
   const [connectivity, setConnectivity] = useState<Record<string, ConnectivityResult>>({});
+  const [mpMode, setMpMode] = useState<"sandbox" | "production">("sandbox");
+  const [mpModeSaving, setMpModeSaving] = useState(false);
+  const [mpModeSuccess, setMpModeSuccess] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -248,6 +262,7 @@ export function SuperAdminPaymentProvidersPanel({
     try {
       const res = await api.get<{ diagnostics: DiagnosticsResponse }>("/super/billing/payment-providers");
       setDiagnostics(res.diagnostics);
+      setMpMode(res.diagnostics.mercadopago.billingMode.mode);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("superAdmin.billingProvidersLoadError"));
     } finally {
@@ -273,6 +288,25 @@ export function SuperAdminPaymentProvidersPanel({
       setError(e instanceof ApiError ? e.message : t("superAdmin.billingProvidersTestError"));
     } finally {
       setTesting(null);
+    }
+  };
+
+  const saveMercadoPagoMode = async () => {
+    setMpModeSaving(true);
+    setMpModeSuccess("");
+    setError("");
+    try {
+      const res = await api.patch<{ settings: { mode: "sandbox" | "production" } }>(
+        "/super/billing/payment-providers/mercadopago",
+        { mode: mpMode },
+      );
+      setMpMode(res.settings.mode);
+      setMpModeSuccess(t("superAdmin.billingMercadoPagoModeSaved"));
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("superAdmin.billingMercadoPagoModeSaveError"));
+    } finally {
+      setMpModeSaving(false);
     }
   };
 
@@ -567,6 +601,61 @@ export function SuperAdminPaymentProvidersPanel({
           </div>
 
           <WebhookBlock stats={mp.webhooks} t={t} locale={locale} />
+
+          <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+            <h4 className="text-sm font-semibold text-slate-900">{t("superAdmin.billingMercadoPagoModeTitle")}</h4>
+            <p className="text-sm text-slate-600">{t("superAdmin.billingMercadoPagoModeHint")}</p>
+            <div className="flex flex-wrap gap-4 text-sm text-slate-800">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="mp-billing-mode"
+                  checked={mpMode === "sandbox"}
+                  onChange={() => setMpMode("sandbox")}
+                />
+                {t("superAdmin.billingMercadoPagoModeSandbox")}
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="mp-billing-mode"
+                  checked={mpMode === "production"}
+                  onChange={() => setMpMode("production")}
+                />
+                {t("superAdmin.billingMercadoPagoModeProduction")}
+              </label>
+            </div>
+            <dl className="grid gap-2 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-medium text-slate-500">{t("superAdmin.billingMercadoPagoActiveToken")}</dt>
+                <dd className="font-mono text-xs text-slate-800">
+                  {mp.billingMode.activeAccessTokenPreview ?? t("superAdmin.billingProvidersEnvMissing")}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">{t("superAdmin.billingMercadoPagoDetectedTokenMode")}</dt>
+                <dd className="text-slate-800">
+                  {mp.billingMode.tokenMode === "sandbox"
+                    ? t("superAdmin.billingMercadoPagoModeSandbox")
+                    : mp.billingMode.tokenMode === "production"
+                      ? t("superAdmin.billingMercadoPagoModeProduction")
+                      : t("superAdmin.billingStripeModeUnknown")}
+                </dd>
+              </div>
+            </dl>
+            {mp.billingMode.tokenModeMismatch ? (
+              <p className="text-sm text-red-700">{t("superAdmin.billingMercadoPagoModeMismatch")}</p>
+            ) : null}
+            {mpModeSuccess ? <p className="text-sm text-emerald-700">{mpModeSuccess}</p> : null}
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={mpModeSaving}
+              onClick={() => void saveMercadoPagoMode()}
+            >
+              {mpModeSaving ? t("common.saving") : t("superAdmin.billingMercadoPagoModeSave")}
+            </button>
+          </div>
 
           <div>
             <h4 className="text-sm font-semibold text-slate-900">{t("superAdmin.billingProvidersSetupTitle")}</h4>

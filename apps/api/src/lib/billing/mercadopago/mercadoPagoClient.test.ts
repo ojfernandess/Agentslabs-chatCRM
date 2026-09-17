@@ -4,8 +4,8 @@ import { BillingError } from "../StripeCustomerService.js";
 import {
   isMercadoPagoSandboxAccessToken,
   mercadoPagoRequest,
-  resolveMercadoPagoSandboxPayerEmail,
 } from "./mercadoPagoClient.js";
+import { resolveMercadoPagoSandboxPayerEmail } from "../mercadoPagoBillingSettings.js";
 
 describe("Mercado Pago sandbox helpers", () => {
   it("detects sandbox access tokens by TEST- prefix", () => {
