@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPageHeader, SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
 import { SuperAdminCustomPlansPanel } from "@/components/super-admin/SuperAdminCustomPlansPanel";
+import { SuperAdminPaymentProvidersPanel } from "@/components/super-admin/SuperAdminPaymentProvidersPanel";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
@@ -70,7 +71,7 @@ type ReminderModalState = {
   billingEmail: string;
 };
 
-type BillingTab = "plans" | "customPlans" | "subscriptions" | "settings";
+type BillingTab = "providers" | "plans" | "customPlans" | "subscriptions" | "settings";
 
 type DimensionOverageForm = {
   enabled: boolean;
@@ -202,7 +203,7 @@ function formatDate(iso: string | null, locale: string): string {
 export function SuperAdminBillingSection() {
   const { t, locale } = useI18n();
   const localeTag = locale === "en" ? "en-US" : "pt-BR";
-  const [tab, setTab] = useState<BillingTab>("plans");
+  const [tab, setTab] = useState<BillingTab>("providers");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -543,8 +544,16 @@ export function SuperAdminBillingSection() {
   return (
     <div className="space-y-6">
       <SuperAdminPageHeader
-        title={t("superAdmin.billingSectionTitle")}
-        subtitle={t("superAdmin.billingSectionSubtitle")}
+        title={
+          tab === "providers"
+            ? t("superAdmin.billingProvidersTitle")
+            : t("superAdmin.billingSectionTitle")
+        }
+        subtitle={
+          tab === "providers"
+            ? t("superAdmin.billingProvidersSubtitle")
+            : t("superAdmin.billingSectionSubtitle")
+        }
       />
 
       {error ? (
@@ -557,7 +566,7 @@ export function SuperAdminBillingSection() {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {(["plans", "customPlans", "subscriptions", "settings"] as const).map((id) => (
+        {(["providers", "plans", "customPlans", "subscriptions", "settings"] as const).map((id) => (
           <button
             key={id}
             type="button"
@@ -579,6 +588,16 @@ export function SuperAdminBillingSection() {
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("common.loading")}
         </div>
+      ) : null}
+
+      {tab === "providers" && !loading ? (
+        <SuperAdminPaymentProvidersPanel
+          stripeKeyMode={stripeKeyMode}
+          resetClearPlanIds={resetClearPlanIds}
+          onResetClearPlanIdsChange={setResetClearPlanIds}
+          onResetStripeBindings={resetStripeBindings}
+          resetBusy={resetBusy}
+        />
       ) : null}
 
       {tab === "plans" && !loading ? (
@@ -906,37 +925,6 @@ export function SuperAdminBillingSection() {
             <button type="submit" className="btn-primary" disabled={settingsSaving}>
               {settingsSaving ? t("common.saving") : t("common.save")}
             </button>
-
-            <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
-              <h4 className="text-sm font-semibold text-slate-900">{t("superAdmin.billingStripeModeTitle")}</h4>
-              <p className="text-sm text-slate-600">
-                {t("superAdmin.billingStripeModeCurrent").replace(
-                  "{mode}",
-                  stripeKeyMode === "live"
-                    ? t("superAdmin.billingStripeModeLive")
-                    : stripeKeyMode === "test"
-                      ? t("superAdmin.billingStripeModeTest")
-                      : t("superAdmin.billingStripeModeUnknown"),
-                )}
-              </p>
-              <p className="text-sm text-slate-600">{t("superAdmin.billingResetStripeHint")}</p>
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
-                <input
-                  type="checkbox"
-                  checked={resetClearPlanIds}
-                  onChange={(e) => setResetClearPlanIds(e.target.checked)}
-                />
-                {t("superAdmin.billingResetStripeClearPlans")}
-              </label>
-              <button
-                type="button"
-                className="btn-secondary border-amber-300 text-amber-900"
-                disabled={resetBusy}
-                onClick={() => void resetStripeBindings()}
-              >
-                {resetBusy ? t("common.saving") : t("superAdmin.billingResetStripeAction")}
-              </button>
-            </div>
           </form>
         </SuperAdminPanel>
       ) : null}

@@ -29,6 +29,10 @@ import {
 import { sendOrganizationPaymentReminder } from "../lib/billing/billingEmailNotifications.js";
 import { updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
 import { syncPlanToMercadoPago } from "../lib/billing/mercadopago/MercadoPagoPlanService.js";
+import {
+  getSuperBillingProviderDiagnostics,
+  testSuperBillingProviderConnectivity,
+} from "../lib/billing/superBillingProviderDiagnostics.js";
 import { isMercadoPagoBillingConfigured } from "../config.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
@@ -118,6 +122,10 @@ const sendPaymentReminderSchema = z.object({
   billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
 });
 
+const testPaymentProviderSchema = z.object({
+  provider: z.enum(["stripe", "mercadopago", "all"]).optional().default("all"),
+});
+
 function serializePlan(plan: {
   id: string;
   slug: string;
@@ -189,6 +197,35 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       stripeKeyMode: getStripeKeyMode(config.stripeSecretKey),
       mercadoPagoPlatformConfigured: isMercadoPagoBillingConfigured(),
     };
+  });
+
+  app.get("/payment-providers", async () => {
+    const diagnostics = await getSuperBillingProviderDiagnostics();
+    return { diagnostics };
+  });
+
+  app.post("/payment-providers/test", async (request, reply) => {
+    const parsed = testPaymentProviderSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const test = await testSuperBillingProviderConnectivity(parsed.data.provider);
+
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.payment_providers.test",
+      resourceType: "billing_settings",
+      metadata: {
+        provider: parsed.data.provider,
+        results: Object.fromEntries(
+          Object.entries(test.results).map(([key, value]) => [key, { ok: value.ok, message: value.message }]),
+        ),
+      },
+      ip: clientIp(request),
+    });
+
+    return test;
   });
 
   app.post("/reset-stripe-bindings", async (request, reply) => {

@@ -6287,8 +6287,10 @@ export const messages = {
         "O modelo atual usa ADMIN e AGENT por organização (sem matriz granular de permissões por capacidade). Ajuste funções na lista de usuários.",
       billingPlan: "Plano e faturação",
       billingNav: "Planos e assinaturas",
-      billingSectionTitle: "Planos e assinaturas Stripe",
-      billingSectionSubtitle: "Configure o catálogo comercial, IDs Stripe e acompanhe assinaturas das organizações.",
+      billingSectionTitle: "Planos e assinaturas",
+      billingSectionSubtitle:
+        "Catálogo comercial, planos personalizados, assinaturas das organizações e políticas de cobrança.",
+      billingTab_providers: "Integrações de pagamento",
       billingTab_plans: "Planos",
       billingTab_customPlans: "Planos personalizados",
       billingTab_subscriptions: "Assinaturas",
@@ -6395,6 +6397,73 @@ export const messages = {
       billingResetStripeConfirmWithPlans:
         "Isto remove customer/subscription IDs de todas as organizações e Product/Price IDs dos planos. Terá de reintroduzir os IDs live nos planos. Continuar?",
       billingResetStripeDone: "Limpeza concluída: {orgs} org(s), {subs} assinatura(s), {plans} plano(s).",
+      billingProvidersTitle: "Integrações Stripe e Mercado Pago",
+      billingProvidersSubtitle:
+        "Verifique credenciais de ambiente, URLs de webhook, conectividade com as APIs e instruções de configuração. Segredos são exibidos mascarados.",
+      billingProvidersLoadError: "Não foi possível carregar o diagnóstico das integrações.",
+      billingProvidersTestError: "Falha ao testar a conexão com o provedor.",
+      billingProvidersPlatformUrls: "URLs da plataforma",
+      billingProvidersPublicApiUrl: "URL pública da API (PUBLIC_URL)",
+      billingProvidersWebAppUrl: "URL do app web (checkout e redirecionamentos)",
+      billingProvidersEnvTitle: "Variáveis de ambiente",
+      billingProvidersEnvKey: "Variável",
+      billingProvidersEnvStatus: "Estado",
+      billingProvidersEnvValue: "Valor",
+      billingProvidersEnvConfigured: "Configurada",
+      billingProvidersEnvMissing: "Ausente",
+      billingProvidersEnvSecret: "segredo",
+      billingProvidersWebhooksTitle: "Webhooks",
+      billingProvidersWebhookEvents7d: "Eventos recebidos (7 dias)",
+      billingProvidersWebhookLastEvent: "Último evento",
+      billingProvidersWebhookNever: "Nenhum evento recebido ainda",
+      billingProvidersTestConnection: "Testar conexão",
+      billingProvidersTestAll: "Testar todas",
+      billingProvidersTestOk: "Conexão OK",
+      billingProvidersTestFailed: "Falha na conexão",
+      billingProvidersStripeTitle: "Stripe",
+      billingProvidersMercadoPagoTitle: "Mercado Pago",
+      billingProvidersStatusConfigured: "Configurado",
+      billingProvidersStatusNotConfigured: "Não configurado",
+      billingProvidersStatusPartial: "Configuração incompleta",
+      billingProvidersStripePublishableOk: "Publishable key definida",
+      billingProvidersMpOrgConnections: "{connected} org(s) conectada(s) · {total} registo(s) OAuth",
+      billingProvidersMpOAuthRedirect: "Redirect URI OAuth (por organização)",
+      billingProvidersMpWebhookOk: "Webhook pronto",
+      billingProvidersMpWebhookMissing: "Webhook secret ausente",
+      billingProvidersMpOAuthOk: "OAuth configurado",
+      billingProvidersMpOAuthMissing: "OAuth não configurado",
+      billingProvidersSetupTitle: "Como configurar",
+      billingProvidersCopyUrl: "Copiar URL",
+      billingProvidersCopied: "Copiado",
+      billingProvidersRefresh: "Atualizar diagnóstico",
+      billingProvidersStripeSetup1:
+        "No Stripe Dashboard (Developers → API keys), copie STRIPE_SECRET_KEY e STRIPE_PUBLISHABLE_KEY do modo test ou live conforme o ambiente.",
+      billingProvidersStripeSetup2:
+        "Defina STRIPE_WEBHOOK_SECRET após criar um endpoint em Developers → Webhooks apontando para a URL exibida acima (/webhooks/stripe).",
+      billingProvidersStripeSetup3:
+        "Selecione eventos de assinatura e checkout (ex.: customer.subscription.*, checkout.session.completed, invoice.*).",
+      billingProvidersStripeSetup4:
+        "Configure PUBLIC_URL com a URL pública da API (HTTPS) acessível pelo Stripe.",
+      billingProvidersStripeSetup5:
+        "Opcional: ajuste STRIPE_CHECKOUT_SUCCESS_URL e STRIPE_CHECKOUT_CANCEL_URL ou use os defaults baseados em WEB_APP_PUBLIC_URL.",
+      billingProvidersStripeSetup6:
+        "Reinicie a API, use «Testar conexão» neste painel e sincronize Product/Price IDs nos planos da aba Planos.",
+      billingProvidersMpSetup1:
+        "Em Mercado Pago Developers, crie uma aplicação e copie MERCADOPAGO_ACCESS_TOKEN (credencial da plataforma para sync de planos).",
+      billingProvidersMpSetup2:
+        "Defina MERCADOPAGO_PUBLIC_KEY se usar checkout no frontend; MERCADOPAGO_WEBHOOK_SECRET para validar assinaturas de webhook.",
+      billingProvidersMpSetup3:
+        "Configure o webhook em Suas integrações → Webhooks com a URL /webhooks/mercadopago e eventos de pagamento/assinatura.",
+      billingProvidersMpSetup4:
+        "Para conexão OAuth por organização, defina MERCADOPAGO_CLIENT_ID, MERCADOPAGO_CLIENT_SECRET e registre o Redirect URI exibido acima.",
+      billingProvidersMpSetup5:
+        "Garanta PUBLIC_URL correto — é a base das URLs de webhook e OAuth.",
+      billingProvidersMpSetup6:
+        "Organizações conectam Mercado Pago em Configurações → Faturação; o token da plataforma serve para sincronizar planos no Super Admin.",
+      billingProvidersMpSetup7:
+        "Use «Sincronizar no Mercado Pago» na aba Planos após MERCADOPAGO_ACCESS_TOKEN configurado.",
+      billingProvidersMpSetup8:
+        "Teste checkout Pix/cartão e confirme eventos recentes na secção Webhooks deste painel.",
       billingDescription: "Descrição",
       billingLoadError: "Não foi possível carregar dados de billing.",
       billingSaveError: "Não foi possível guardar.",
@@ -12848,8 +12917,10 @@ export const messages = {
         "This product uses ADMIN and AGENT per organization (no fine-grained capability matrix). Adjust roles from the user list.",
       billingPlan: "Billing & plan",
       billingNav: "Plans & subscriptions",
-      billingSectionTitle: "Stripe plans & subscriptions",
-      billingSectionSubtitle: "Manage the commercial catalog, Stripe IDs, and organization subscriptions.",
+      billingSectionTitle: "Plans & subscriptions",
+      billingSectionSubtitle:
+        "Commercial catalog, custom plans, organization subscriptions, and billing policies.",
+      billingTab_providers: "Payment integrations",
       billingTab_plans: "Plans",
       billingTab_customPlans: "Custom plans",
       billingTab_subscriptions: "Subscriptions",
@@ -12956,6 +13027,73 @@ export const messages = {
       billingResetStripeConfirmWithPlans:
         "This removes customer/subscription IDs for all organizations and Product/Price IDs on plans. You must re-enter live plan IDs. Continue?",
       billingResetStripeDone: "Reset complete: {orgs} org(s), {subs} subscription(s), {plans} plan(s).",
+      billingProvidersTitle: "Stripe & Mercado Pago integrations",
+      billingProvidersSubtitle:
+        "Review environment credentials, webhook URLs, API connectivity, and setup instructions. Secrets are shown masked.",
+      billingProvidersLoadError: "Could not load payment provider diagnostics.",
+      billingProvidersTestError: "Failed to test provider connection.",
+      billingProvidersPlatformUrls: "Platform URLs",
+      billingProvidersPublicApiUrl: "Public API URL (PUBLIC_URL)",
+      billingProvidersWebAppUrl: "Web app URL (checkout redirects)",
+      billingProvidersEnvTitle: "Environment variables",
+      billingProvidersEnvKey: "Variable",
+      billingProvidersEnvStatus: "Status",
+      billingProvidersEnvValue: "Value",
+      billingProvidersEnvConfigured: "Set",
+      billingProvidersEnvMissing: "Missing",
+      billingProvidersEnvSecret: "secret",
+      billingProvidersWebhooksTitle: "Webhooks",
+      billingProvidersWebhookEvents7d: "Events received (7 days)",
+      billingProvidersWebhookLastEvent: "Last event",
+      billingProvidersWebhookNever: "No events received yet",
+      billingProvidersTestConnection: "Test connection",
+      billingProvidersTestAll: "Test all",
+      billingProvidersTestOk: "Connection OK",
+      billingProvidersTestFailed: "Connection failed",
+      billingProvidersStripeTitle: "Stripe",
+      billingProvidersMercadoPagoTitle: "Mercado Pago",
+      billingProvidersStatusConfigured: "Configured",
+      billingProvidersStatusNotConfigured: "Not configured",
+      billingProvidersStatusPartial: "Incomplete setup",
+      billingProvidersStripePublishableOk: "Publishable key set",
+      billingProvidersMpOrgConnections: "{connected} org(s) connected · {total} OAuth record(s)",
+      billingProvidersMpOAuthRedirect: "OAuth redirect URI (per organization)",
+      billingProvidersMpWebhookOk: "Webhook ready",
+      billingProvidersMpWebhookMissing: "Webhook secret missing",
+      billingProvidersMpOAuthOk: "OAuth configured",
+      billingProvidersMpOAuthMissing: "OAuth not configured",
+      billingProvidersSetupTitle: "How to configure",
+      billingProvidersCopyUrl: "Copy URL",
+      billingProvidersCopied: "Copied",
+      billingProvidersRefresh: "Refresh diagnostics",
+      billingProvidersStripeSetup1:
+        "In Stripe Dashboard (Developers → API keys), copy STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY for test or live mode.",
+      billingProvidersStripeSetup2:
+        "Set STRIPE_WEBHOOK_SECRET after creating a webhook endpoint pointing to the URL above (/webhooks/stripe).",
+      billingProvidersStripeSetup3:
+        "Subscribe to subscription and checkout events (e.g. customer.subscription.*, checkout.session.completed, invoice.*).",
+      billingProvidersStripeSetup4:
+        "Set PUBLIC_URL to your public API base URL (HTTPS) reachable by Stripe.",
+      billingProvidersStripeSetup5:
+        "Optional: override STRIPE_CHECKOUT_SUCCESS_URL and STRIPE_CHECKOUT_CANCEL_URL or rely on WEB_APP_PUBLIC_URL defaults.",
+      billingProvidersStripeSetup6:
+        "Restart the API, use «Test connection» here, then map Product/Price IDs on the Plans tab.",
+      billingProvidersMpSetup1:
+        "In Mercado Pago Developers, create an app and set MERCADOPAGO_ACCESS_TOKEN (platform credential for plan sync).",
+      billingProvidersMpSetup2:
+        "Set MERCADOPAGO_PUBLIC_KEY for frontend checkout; MERCADOPAGO_WEBHOOK_SECRET to verify webhook signatures.",
+      billingProvidersMpSetup3:
+        "Configure webhooks in Your integrations → Webhooks with URL /webhooks/mercadopago and payment/subscription events.",
+      billingProvidersMpSetup4:
+        "For per-organization OAuth, set MERCADOPAGO_CLIENT_ID and MERCADOPAGO_CLIENT_SECRET and register the redirect URI shown above.",
+      billingProvidersMpSetup5:
+        "Ensure PUBLIC_URL is correct — it is the base for webhook and OAuth URLs.",
+      billingProvidersMpSetup6:
+        "Organizations connect Mercado Pago under Settings → Billing; the platform token is used to sync plans in Super Admin.",
+      billingProvidersMpSetup7:
+        "Use «Sync to Mercado Pago» on the Plans tab after MERCADOPAGO_ACCESS_TOKEN is set.",
+      billingProvidersMpSetup8:
+        "Test Pix/card checkout and confirm recent events appear in the Webhooks section here.",
       billingDescription: "Description",
       billingLoadError: "Could not load billing data.",
       billingSaveError: "Could not save.",
