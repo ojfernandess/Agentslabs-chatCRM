@@ -173,6 +173,14 @@ const addMemberSchema = z.object({
   userId: z.string().uuid(),
 });
 
+async function agentsInboxesVisibleForOrg(organizationId: string): Promise<boolean> {
+  const settings = await prisma.settings.findUnique({
+    where: { organizationId },
+    select: { agentsInboxesVisible: true },
+  });
+  return settings?.agentsInboxesVisible ?? false;
+}
+
 export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -182,10 +190,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
     if (request.user.role === "AGENT") {
       const rows = await prisma.inbox.findMany({
-        where: {
-          organizationId,
-          members: { some: { userId: request.user.id } },
-        },
+        where: { organizationId },
         select: {
           id: true,
           name: true,
@@ -239,20 +244,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const inboxWhere =
-      request.user.role === "AGENT"
-        ? {
-            organizationId,
-            channelType: InboxChannelType.EMAIL,
-            members: { some: { userId: request.user.id } },
-          }
-        : {
-            organizationId,
-            channelType: InboxChannelType.EMAIL,
-          };
-
     const emailInboxes = await prisma.inbox.findMany({
-      where: inboxWhere,
+      where: {
+        organizationId,
+        channelType: InboxChannelType.EMAIL,
+      },
       select: { id: true },
     });
 
@@ -382,11 +378,14 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const m = await prisma.inboxMember.findFirst({
-        where: { inboxId: inbox.id, userId: request.user.id },
-      });
-      if (!m) {
-        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      const agentsInboxesVisible = await agentsInboxesVisibleForOrg(organizationId);
+      if (!agentsInboxesVisible) {
+        const m = await prisma.inboxMember.findFirst({
+          where: { inboxId: inbox.id, userId: request.user.id },
+        });
+        if (!m) {
+          return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+        }
       }
     }
 
@@ -1075,10 +1074,6 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      const m = inbox.members.find((x) => x.userId === request.user.id);
-      if (!m) {
-        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
-      }
       // Agente: omitir segredos e lista de membros.
       const { members: _m, ingestToken: _t, channelConfig: _cfg, ...rest } = inbox;
       return rest;

@@ -37,6 +37,7 @@ const HelpRoutes = lazy(() => import("@/pages/help/HelpRoutes").then((m) => ({ d
 const WebChatPage = lazy(() => import("@/pages/WebChatPage"));
 import { isSuperAdminRole } from "@/lib/authRole";
 import { TenantAdminRoute } from "@/components/TenantAdminRoute";
+import { InboxesAccessRoute } from "@/components/InboxesAccessRoute";
 import { readInviteTokenFromLocation } from "@/lib/inviteTokenRedirect";
 
 const ORG_FEATURE_DEFAULT_ENABLED = {
@@ -243,9 +244,9 @@ export function App() {
         <Route
           path="inboxes"
           element={
-            <TenantAdminRoute>
+            <InboxesAccessRoute>
               <InboxesPage />
-            </TenantAdminRoute>
+            </InboxesAccessRoute>
           }
         />
         <Route

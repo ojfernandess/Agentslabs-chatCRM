@@ -138,6 +138,7 @@ interface AppSettings {
   resolveOfferReminder?: boolean;
   conversationsAttendanceTabEnabled?: boolean;
   conversationsAttendanceTabAutoOpen?: boolean;
+  agentsInboxesVisible?: boolean;
   conversationsListShowContactTags?: boolean;
   conversationsListShowWhatsappIcon?: boolean;
   conversationsQuickContactAddEnabled?: boolean;
@@ -322,6 +323,7 @@ export function SettingsPage() {
   const [wfOfferReminder, setWfOfferReminder] = useState(true);
   const [wfAttendanceTabEnabled, setWfAttendanceTabEnabled] = useState(false);
   const [wfAttendanceTabAutoOpen, setWfAttendanceTabAutoOpen] = useState(true);
+  const [wfAgentsInboxesVisible, setWfAgentsInboxesVisible] = useState(false);
   const [wfListShowContactTags, setWfListShowContactTags] = useState(false);
   const [wfListShowWhatsappIcon, setWfListShowWhatsappIcon] = useState(false);
   const [wfQuickContactAddEnabled, setWfQuickContactAddEnabled] = useState(false);
@@ -482,6 +484,7 @@ export function SettingsPage() {
         setWfOfferReminder(data.resolveOfferReminder ?? true);
         setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
         setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
+        setWfAgentsInboxesVisible(data.agentsInboxesVisible ?? false);
         setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
         setWfListShowWhatsappIcon(data.conversationsListShowWhatsappIcon ?? false);
         setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
@@ -745,6 +748,7 @@ export function SettingsPage() {
         resolveOfferReminder: wfOfferReminder,
         conversationsAttendanceTabEnabled: wfAttendanceTabEnabled,
         conversationsAttendanceTabAutoOpen: wfAttendanceTabAutoOpen,
+        agentsInboxesVisible: wfAgentsInboxesVisible,
         conversationsListShowContactTags: wfListShowContactTags,
         conversationsListShowWhatsappIcon: wfListShowWhatsappIcon,
         conversationsQuickContactAddEnabled: wfQuickContactAddEnabled,
@@ -764,6 +768,7 @@ export function SettingsPage() {
       setWfOfferReminder(data.resolveOfferReminder ?? true);
       setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
       setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
+      setWfAgentsInboxesVisible(data.agentsInboxesVisible ?? false);
       setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
       setWfListShowWhatsappIcon(data.conversationsListShowWhatsappIcon ?? false);
       setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
@@ -2424,6 +2429,30 @@ export function SettingsPage() {
                       </button>
                     </div>
                   )}
+
+                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAgentsInboxesVisible")}</p>
+                      <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAgentsInboxesVisibleHint")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={wfAgentsInboxesVisible}
+                      onClick={() => setWfAgentsInboxesVisible((v) => !v)}
+                      className={clsx(
+                        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                        wfAgentsInboxesVisible ? "bg-brand-500" : "bg-gray-200",
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          wfAgentsInboxesVisible ? "translate-x-5" : "translate-x-0",
+                        )}
+                      />
+                    </button>
+                  </div>
 
                   <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
                     <div>

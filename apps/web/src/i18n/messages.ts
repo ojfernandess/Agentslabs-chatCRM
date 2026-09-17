@@ -5643,6 +5643,9 @@ export const messages = {
       workflowAttendanceTabAutoOpen: "Abrir aba Atendimento por defeito",
       workflowAttendanceTabAutoOpenHint:
         "Ao entrar em Conversas, abre automaticamente a aba Atendimento quando existirem conversas aguardando atendimento.",
+      workflowAgentsInboxesVisible: "Caixas de entrada visíveis para agentes",
+      workflowAgentsInboxesVisibleHint:
+        "Quando activo, utilizadores com função Agente veem o menu «Caixas de entrada» e podem consultar as caixas. Desactivado, só administradores acedem a essa página — os agentes continuam a ver todas as conversas em Conversas.",
       workflowListShowWhatsappIcon: "Ícone WhatsApp na lista (split view)",
       workflowListShowWhatsappIconHint:
         "Quando desactivado, oculta o badge WhatsApp no avatar da fila lateral em desktop. A vista em lista completa mantém o ícone.",
@@ -12137,6 +12140,9 @@ export const messages = {
       workflowAttendanceTabAutoOpen: "Open Attendance tab by default",
       workflowAttendanceTabAutoOpenHint:
         "When entering Conversations, automatically opens the Attendance tab if conversations are waiting for an agent.",
+      workflowAgentsInboxesVisible: "Inboxes visible to agents",
+      workflowAgentsInboxesVisibleHint:
+        "When enabled, users with the Agent role see the Inboxes menu and can view inboxes. When disabled, only administrators can access that page — agents still see all conversations on the Conversations page.",
       workflowListShowWhatsappIcon: "WhatsApp icon on list (split view)",
       workflowListShowWhatsappIconHint:
         "When off, hides the WhatsApp badge on avatars in the desktop side queue. The full list view still shows the icon.",

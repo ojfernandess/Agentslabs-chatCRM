@@ -149,17 +149,6 @@ async function fetchContactTimelineForConversation(organizationId: string, conta
   });
 }
 
-/** Agente tem de ser membro da caixa para ver ou alterar a conversa. */
-async function agentIsMemberOfInbox(
-  userId: string,
-  organizationId: string,
-  inboxId: string,
-): Promise<boolean> {
-  const m = await prisma.inboxMember.findFirst({
-    where: { userId, inboxId, inbox: { organizationId } },
-  });
-  return !!m;
-}
 
 /** Sem equipa na conversa = visível para toda a organização. Com equipa = só membros dessa equipa (e admins). */
 async function agentCanViewConversation(
@@ -179,7 +168,6 @@ async function agentCanAccessConversation(
   organizationId: string,
   conv: { teamId: string | null; inboxId: string },
 ): Promise<boolean> {
-  if (!(await agentIsMemberOfInbox(userId, organizationId, conv.inboxId))) return false;
   return agentCanViewConversation(userId, organizationId, { teamId: conv.teamId });
 }
 
@@ -297,24 +285,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!inbox) {
         return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
       }
-      if (request.user.role === "AGENT") {
-        const ok = await agentIsMemberOfInbox(request.user.id, organizationId, query.inboxId);
-        if (!ok) {
-          return reply.status(403).send({
-            error: "Forbidden",
-            message: "You are not a member of this inbox",
-            statusCode: 403,
-          });
-        }
-      }
       where.inboxId = query.inboxId;
-    } else if (request.user.role === "AGENT") {
-      const myInboxes = await prisma.inboxMember.findMany({
-        where: { userId: request.user.id, inbox: { organizationId } },
-        select: { inboxId: true },
-      });
-      const ids = myInboxes.map((x) => x.inboxId);
-      where.inboxId = ids.length > 0 ? { in: ids } : { in: [] };
     }
 
     const mine = botAttendance ? false : mineRequested;

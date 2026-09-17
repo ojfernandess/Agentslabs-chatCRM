@@ -156,6 +156,7 @@ const settingsSchema = z.object({
   aiAlertWebhookSecret: z.union([z.string().max(500), z.null()]).optional(),
   conversationsAttendanceTabEnabled: z.boolean().optional(),
   conversationsAttendanceTabAutoOpen: z.boolean().optional(),
+  agentsInboxesVisible: z.boolean().optional(),
   conversationsListShowContactTags: z.boolean().optional(),
   conversationsListShowWhatsappIcon: z.boolean().optional(),
   conversationsQuickContactAddEnabled: z.boolean().optional(),
@@ -436,6 +437,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     const orgSettings = await prisma.settings.findUnique({
       where: { organizationId },
       select: {
+        agentsInboxesVisible: true,
         conversationsAttendanceTabEnabled: true,
         conversationsAttendanceTabAutoOpen: true,
         conversationsListShowContactTags: true,
@@ -457,6 +459,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       /** Aba «Atendimento» activa em Conversas (OPEN à espera de agente). */
       conversationsAttendanceTabEnabled: orgSettings?.conversationsAttendanceTabEnabled ?? false,
       conversationsAttendanceTabAutoOpen: orgSettings?.conversationsAttendanceTabAutoOpen ?? true,
+      /** Agentes podem aceder à página «Caixas de entrada». */
+      agentsInboxesVisible: orgSettings?.agentsInboxesVisible ?? false,
       conversationsListShowContactTags: orgSettings?.conversationsListShowContactTags ?? false,
       conversationsListShowWhatsappIcon: orgSettings?.conversationsListShowWhatsappIcon ?? false,
       conversationsQuickContactAddEnabled: orgSettings?.conversationsQuickContactAddEnabled ?? false,

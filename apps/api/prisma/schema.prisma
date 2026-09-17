@@ -1557,6 +1557,9 @@ model Settings {
   /// Ao passar a conversa para a fila do bot (PENDING), não voltar a disparar o webhook com a última mensagem do cliente.
   silentTransferToAgentBot Boolean @default(false) @map("silent_transfer_to_agent_bot")
 
+  /// Agentes podem aceder à página «Caixas de entrada» (gestão/visualização das caixas).
+  agentsInboxesVisible Boolean @default(false) @map("agents_inboxes_visible")
+
   /// Mostrar aba «Atendimento» em Conversas (OPEN sem atendente humano).
   conversationsAttendanceTabEnabled Boolean @default(false) @map("conversations_attendance_tab_enabled")
   /// Ao entrar em Conversas, abrir a aba Atendimento se houver conversas na fila.

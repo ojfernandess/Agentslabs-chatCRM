@@ -182,6 +182,7 @@ export function Layout() {
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
   const [emailInboxUnread, setEmailInboxUnread] = useState<EmailInboxUnreadCounts>({});
+  const [agentsInboxesVisible, setAgentsInboxesVisible] = useState(false);
 
   const showRemindersFeature = user?.organizationFeatures?.reminders !== false;
   const { reminders: actionableReminders, completingId, completeReminder } = useActionableReminders(
@@ -332,6 +333,29 @@ export function Layout() {
       window.removeEventListener("openconduit:team-transfer-badges-refresh", refresh);
     };
   }, [fetchSidebarTeams]);
+
+  useEffect(() => {
+    if (!user) {
+      setAgentsInboxesVisible(false);
+      return;
+    }
+    if (tenantAdmin) {
+      setAgentsInboxesVisible(true);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<{ agentsInboxesVisible?: boolean }>("/settings/channel")
+      .then((res) => {
+        if (!cancelled) setAgentsInboxesVisible(res.agentsInboxesVisible === true);
+      })
+      .catch(() => {
+        if (!cancelled) setAgentsInboxesVisible(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantAdmin, user?.id, orgThemeKey]);
 
   useEffect(() => {
     if (!user) {
@@ -662,16 +686,18 @@ export function Layout() {
             {!collapsed ? <span className="min-w-0 truncate">{t("nav.teams")}</span> : null}
           </NavLink>
         ) : null}
+        {tenantAdmin || agentsInboxesVisible ? (
+          <NavLink
+            to="/inboxes"
+            title={collapsed ? t("nav.inboxes") : undefined}
+            className={({ isActive }) => navLinkClass(isActive, collapsed)}
+          >
+            <Inbox className="h-5 w-5 shrink-0" />
+            {!collapsed ? <span className="min-w-0 truncate">{t("nav.inboxes")}</span> : null}
+          </NavLink>
+        ) : null}
         {tenantAdmin ? (
           <>
-            <NavLink
-              to="/inboxes"
-              title={collapsed ? t("nav.inboxes") : undefined}
-              className={({ isActive }) => navLinkClass(isActive, collapsed)}
-            >
-              <Inbox className="h-5 w-5 shrink-0" />
-              {!collapsed ? <span className="min-w-0 truncate">{t("nav.inboxes")}</span> : null}
-            </NavLink>
             <NavLink
               to="/conversation-audit"
               title={collapsed ? t("nav.conversationAudit") : undefined}
