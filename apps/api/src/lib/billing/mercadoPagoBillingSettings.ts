@@ -27,9 +27,15 @@ const DEFAULT_SETTINGS: MercadoPagoBillingPlatformSettings = {
 
 export function inferMercadoPagoTokenMode(accessToken: string): MercadoPagoTokenMode {
   const token = accessToken.trim();
+  // Legacy public keys; MP test Access Tokens also use APP_USR- (same as production).
   if (token.startsWith("TEST-")) return "sandbox";
-  if (token.startsWith("APP_USR-")) return "production";
   return "unknown";
+}
+
+function mercadoPagoDedicatedTokensMisconfigured(): boolean {
+  const sandbox = config.mercadopagoSandboxAccessToken.trim();
+  const production = config.mercadopagoProductionAccessToken.trim();
+  return Boolean(sandbox && production && sandbox === production);
 }
 
 /** Mercado Pago sandbox exige e-mail @testuser.com em pagamentos. */
@@ -110,18 +116,15 @@ export function resolveMercadoPagoPublicKeyForMode(mode: MercadoPagoBillingMode)
 }
 
 export function assertMercadoPagoTokenMatchesMode(
-  accessToken: string,
-  mode: MercadoPagoBillingMode,
+  _accessToken: string,
+  _mode: MercadoPagoBillingMode,
 ): void {
-  const inferred = inferMercadoPagoTokenMode(accessToken);
-  if (inferred === "unknown" || inferred === mode) return;
-
-  throw new BillingError(
-    mode === "sandbox"
-      ? "O Access Token activo parece ser de produção (APP_USR-). Defina MERCADOPAGO_SANDBOX_ACCESS_TOKEN com credencial TEST- no .env ou altere o modo para produção no Super Admin."
-      : "O Access Token activo parece ser de sandbox (TEST-). Defina MERCADOPAGO_PRODUCTION_ACCESS_TOKEN no .env ou altere o modo para sandbox no Super Admin.",
-    "mercadopago_token_mode_mismatch",
-  );
+  if (mercadoPagoDedicatedTokensMisconfigured()) {
+    throw new BillingError(
+      "MERCADOPAGO_SANDBOX_ACCESS_TOKEN e MERCADOPAGO_PRODUCTION_ACCESS_TOKEN não podem ser iguais. Use credenciais de Teste e de Produção separadas no painel MP Developers.",
+      "mercadopago_token_mode_mismatch",
+    );
+  }
 }
 
 function maskTokenPreview(value: string): string {
@@ -134,14 +137,13 @@ export async function getMercadoPagoBillingModeDiagnostics(): Promise<MercadoPag
   const settings = await getMercadoPagoBillingPlatformSettings();
   const accessToken = resolveMercadoPagoAccessTokenForMode(settings.mode);
   const publicKey = resolveMercadoPagoPublicKeyForMode(settings.mode);
-  const tokenMode = inferMercadoPagoTokenMode(accessToken);
 
   return {
     mode: settings.mode,
     activeAccessTokenConfigured: Boolean(accessToken),
     activePublicKeyConfigured: Boolean(publicKey),
-    tokenMode,
-    tokenModeMismatch: tokenMode !== "unknown" && tokenMode !== settings.mode,
+    tokenMode: accessToken ? inferMercadoPagoTokenMode(accessToken) : "unknown",
+    tokenModeMismatch: mercadoPagoDedicatedTokensMisconfigured(),
     activeAccessTokenPreview: accessToken ? maskTokenPreview(accessToken) : null,
     activePublicKeyPreview: publicKey ? maskTokenPreview(publicKey) : null,
   };

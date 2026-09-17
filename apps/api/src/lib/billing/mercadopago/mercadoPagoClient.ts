@@ -55,8 +55,8 @@ export function resolveMercadoPagoSandboxPayerEmailFromToken(accessToken: string
 function mercadoPagoLiveCredentialsMessage(): string {
   return (
     "Mercado Pago recusou credenciais de produção neste ambiente. " +
-    "Para testes, use Access Token de sandbox (prefixo TEST-) no MERCADOPAGO_ACCESS_TOKEN. " +
-    "Em produção, confirme que todas as credenciais são do mesmo modo (teste ou produção)."
+    "No Super Admin, seleccione modo Sandbox e use MERCADOPAGO_SANDBOX_ACCESS_TOKEN com as credenciais de Teste do painel MP Developers. " +
+    "Credenciais de teste também começam com APP_USR- — o modo activo é definido no Super Admin, não pelo prefixo do token."
   );
 }
 

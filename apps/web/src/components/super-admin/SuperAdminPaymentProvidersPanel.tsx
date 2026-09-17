@@ -639,7 +639,7 @@ export function SuperAdminPaymentProvidersPanel({
                     ? t("superAdmin.billingMercadoPagoModeSandbox")
                     : mp.billingMode.tokenMode === "production"
                       ? t("superAdmin.billingMercadoPagoModeProduction")
-                      : t("superAdmin.billingStripeModeUnknown")}
+                      : t("superAdmin.billingMercadoPagoTokenModeUnknown")}
                 </dd>
               </div>
             </dl>

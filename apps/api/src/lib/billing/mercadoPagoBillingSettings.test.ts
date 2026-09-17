@@ -8,9 +8,9 @@ import {
 } from "./mercadoPagoBillingSettings.js";
 
 describe("mercadoPagoBillingSettings", () => {
-  it("infers token mode from prefix", () => {
+  it("only treats legacy TEST- prefix as sandbox; APP_USR is unknown", () => {
     assert.equal(inferMercadoPagoTokenMode("TEST-abc"), "sandbox");
-    assert.equal(inferMercadoPagoTokenMode("APP_USR-abc"), "production");
+    assert.equal(inferMercadoPagoTokenMode("APP_USR-abc"), "unknown");
     assert.equal(inferMercadoPagoTokenMode("other"), "unknown");
   });
 
@@ -18,10 +18,7 @@ describe("mercadoPagoBillingSettings", () => {
     assert.equal(resolveMercadoPagoSandboxPayerEmail("admin@empresa.com"), "admin@testuser.com");
   });
 
-  it("throws when token mode mismatches selected billing mode", () => {
-    assert.throws(
-      () => assertMercadoPagoTokenMatchesMode("APP_USR-123", "sandbox"),
-      (err: unknown) => err instanceof BillingError && err.code === "mercadopago_token_mode_mismatch",
-    );
+  it("does not reject APP_USR tokens in sandbox mode (MP test tokens use APP_USR)", () => {
+    assert.doesNotThrow(() => assertMercadoPagoTokenMatchesMode("APP_USR-123", "sandbox"));
   });
 });

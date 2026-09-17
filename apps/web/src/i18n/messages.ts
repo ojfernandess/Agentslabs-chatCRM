@@ -6394,7 +6394,7 @@ export const messages = {
       billingStripeModeUnknown: "Desconhecido",
       billingMercadoPagoModeTitle: "Modo Mercado Pago (sandbox vs produção)",
       billingMercadoPagoModeHint:
-        "Escolha o ambiente activo para checkout Pix e sincronização de planos. Use credenciais TEST- no sandbox e APP_USR- em produção.",
+        "Escolha o ambiente activo. No MP Developers, credenciais de Teste e de Produção usam APP_USR- — copie cada par para MERCADOPAGO_SANDBOX_* e MERCADOPAGO_PRODUCTION_* no .env.",
       billingMercadoPagoModeSandbox: "Sandbox (teste)",
       billingMercadoPagoModeProduction: "Produção",
       billingMercadoPagoModeSave: "Guardar modo Mercado Pago",
@@ -6402,8 +6402,9 @@ export const messages = {
       billingMercadoPagoModeSaveError: "Não foi possível guardar o modo Mercado Pago.",
       billingMercadoPagoActiveToken: "Token activo (mascarado)",
       billingMercadoPagoDetectedTokenMode: "Tipo detectado no token",
+      billingMercadoPagoTokenModeUnknown: "APP_USR — use o modo Sandbox/Produção acima",
       billingMercadoPagoModeMismatch:
-        "O token activo não corresponde ao modo seleccionado. Defina MERCADOPAGO_SANDBOX_ACCESS_TOKEN (TEST-) ou MERCADOPAGO_PRODUCTION_ACCESS_TOKEN (APP_USR-) no .env.",
+        "Sandbox e produção estão com o mesmo token no .env. Defina MERCADOPAGO_SANDBOX_ACCESS_TOKEN (credenciais de Teste) e MERCADOPAGO_PRODUCTION_ACCESS_TOKEN (credenciais de Produção) com valores diferentes.",
       billingResetStripeHint:
         "Ao mudar STRIPE_SECRET_KEY de teste para produção, limpe os IDs antigos guardados na base de dados e atualize os Stripe Price IDs dos planos com IDs live.",
       billingResetStripeClearPlans: "Limpar também Stripe Product/Price IDs dos planos",
@@ -13040,7 +13041,7 @@ export const messages = {
       billingStripeModeUnknown: "Unknown",
       billingMercadoPagoModeTitle: "Mercado Pago mode (sandbox vs production)",
       billingMercadoPagoModeHint:
-        "Choose the active environment for Pix checkout and plan sync. Use TEST- credentials in sandbox and APP_USR- in production.",
+        "Choose the active environment. In MP Developers, both Test and Production credentials use APP_USR- — copy each pair to MERCADOPAGO_SANDBOX_* and MERCADOPAGO_PRODUCTION_* in .env.",
       billingMercadoPagoModeSandbox: "Sandbox (test)",
       billingMercadoPagoModeProduction: "Production",
       billingMercadoPagoModeSave: "Save Mercado Pago mode",
@@ -13048,8 +13049,9 @@ export const messages = {
       billingMercadoPagoModeSaveError: "Could not save Mercado Pago mode.",
       billingMercadoPagoActiveToken: "Active token (masked)",
       billingMercadoPagoDetectedTokenMode: "Detected token type",
+      billingMercadoPagoTokenModeUnknown: "APP_USR — use Sandbox/Production mode above",
       billingMercadoPagoModeMismatch:
-        "The active token does not match the selected mode. Set MERCADOPAGO_SANDBOX_ACCESS_TOKEN (TEST-) or MERCADOPAGO_PRODUCTION_ACCESS_TOKEN (APP_USR-) in .env.",
+        "Sandbox and production use the same token in .env. Set MERCADOPAGO_SANDBOX_ACCESS_TOKEN (Test credentials) and MERCADOPAGO_PRODUCTION_ACCESS_TOKEN (Production credentials) to different values.",
       billingResetStripeHint:
         "When switching STRIPE_SECRET_KEY from test to live, clear stale IDs in the database and update plan Stripe Price IDs with live values.",
       billingResetStripeClearPlans: "Also clear Stripe Product/Price IDs on plans",
