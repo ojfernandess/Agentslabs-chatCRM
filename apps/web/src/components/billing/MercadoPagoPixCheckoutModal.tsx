@@ -53,6 +53,7 @@ export function MercadoPagoPixCheckoutModal({
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("settings.billingPixStatusError"));
+      setPolling(false);
     }
   }, [checkout.sessionId, onApproved, t]);
 
@@ -77,7 +78,14 @@ export function MercadoPagoPixCheckoutModal({
               {t("settings.billingPixCheckoutHint").replace("{plan}", checkout.planName).replace("{amount}", checkout.amountLabel)}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 text-ink-500 hover:bg-slate-100 dark:hover:bg-ink-800">
+          <button
+            type="button"
+            onClick={() => {
+              setPolling(false);
+              onClose();
+            }}
+            className="rounded-lg p-1 text-ink-500 hover:bg-slate-100 dark:hover:bg-ink-800"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>

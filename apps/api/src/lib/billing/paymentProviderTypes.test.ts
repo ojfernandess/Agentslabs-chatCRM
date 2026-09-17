@@ -30,6 +30,10 @@ describe("billingTypes — payment providers", () => {
     assert.equal(subscriptionIsProviderManaged({ externalSubscriptionId: "a" }), true);
     assert.equal(subscriptionIsProviderManaged({ stripeSubscriptionId: "b" }), true);
     assert.equal(subscriptionIsProviderManaged({ paymentProvider: "mercadopago" }), false);
+    assert.equal(
+      subscriptionIsProviderManaged({ paymentProvider: "mercadopago", externalSubscriptionId: "pay_123" }),
+      false,
+    );
   });
 
   it("maps Mercado Pago preapproval statuses", () => {

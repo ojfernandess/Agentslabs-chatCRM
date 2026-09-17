@@ -239,5 +239,7 @@ export function subscriptionIsProviderManaged(input: {
   stripeSubscriptionId?: string | null;
   externalSubscriptionId?: string | null;
 }): boolean {
+  // Mercado Pago (Pix / preapproval) não implementa changePlan no provider — checkout trata upgrades.
+  if (input.paymentProvider === "mercadopago") return false;
   return Boolean(input.externalSubscriptionId?.trim() || input.stripeSubscriptionId?.trim());
 }

@@ -179,7 +179,6 @@ export async function createMercadoPagoPixCheckout(
       externalPriceId: plan.mercadopagoPlanId,
       status: subscriptionStatus,
       checkoutSessionId: sessionId,
-      externalSubscriptionId: sessionId,
     },
     update: {
       planId: plan.id,
@@ -187,7 +186,6 @@ export async function createMercadoPagoPixCheckout(
       externalPriceId: plan.mercadopagoPlanId,
       status: subscriptionStatus,
       checkoutSessionId: sessionId,
-      externalSubscriptionId: sessionId,
     },
   });
 

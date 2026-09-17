@@ -355,7 +355,7 @@ export function BillingSettingsPanel() {
       });
       return;
     }
-    if (providerManaged && subscription?.status !== "canceled") {
+    if (providerManaged && subscription?.status !== "canceled" && subscription?.paymentProvider !== "mercadopago") {
       await runAction(`change-${plan.id}`, async () => {
         await api.post("/billing/change-plan", { planId: plan.id });
       });
