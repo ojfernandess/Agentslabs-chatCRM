@@ -149,11 +149,16 @@ export async function resolveMercadoPagoAccessTokenForBilling(
   organizationId: string,
   planOrganizationId?: string | null,
 ): Promise<string> {
+  // Plano personalizado: cobrança na conta MP do dono do plano.
   if (planOrganizationId) {
-    const planOrgToken = await resolveMercadoPagoAccessToken(planOrganizationId);
-    if (planOrgToken) return planOrgToken;
+    const planOwnerToken = await resolveMercadoPagoAccessToken(planOrganizationId);
+    if (planOwnerToken) return planOwnerToken;
+    throw new BillingError(
+      "Mercado Pago is not connected for the organization that owns this plan",
+      "mercadopago_not_configured",
+    );
   }
-  const orgToken = await resolveMercadoPagoAccessToken(organizationId);
-  if (orgToken) return orgToken;
+
+  // Catálogo global SaaS: sempre credenciais da plataforma (ignora OAuth MP da org assinante).
   return resolvePlatformMercadoPagoAccessToken();
 }

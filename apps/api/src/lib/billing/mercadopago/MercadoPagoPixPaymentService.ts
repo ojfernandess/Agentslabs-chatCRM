@@ -7,10 +7,9 @@ import { mapMercadoPagoPaymentStatus } from "../billingTypes.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { syncSubscriptionSnapshot } from "../subscriptionSync.js";
-import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
 import {
   mercadoPagoRequest,
-  resolvePlatformMercadoPagoAccessToken,
+  resolveMercadoPagoAccessTokenForBilling,
   isMercadoPagoSandboxAccessToken,
   resolveMercadoPagoSandboxPayerEmail,
 } from "./mercadoPagoClient.js";
@@ -47,13 +46,7 @@ export type MercadoPagoCheckoutStatusResult = {
 };
 
 async function resolveAccessTokenForCheckout(organizationId: string, planOrganizationId: string | null) {
-  if (planOrganizationId) {
-    const orgToken = await resolveMercadoPagoAccessToken(planOrganizationId);
-    if (orgToken) return orgToken;
-  }
-  const platformToken = await resolveMercadoPagoAccessToken(organizationId);
-  if (platformToken) return platformToken;
-  return resolvePlatformMercadoPagoAccessToken();
+  return resolveMercadoPagoAccessTokenForBilling(organizationId, planOrganizationId);
 }
 
 async function resolvePayerEmail(organizationId: string): Promise<string> {
@@ -151,7 +144,7 @@ export async function createMercadoPagoPixCheckout(
         checkoutMode: "pix",
       },
     },
-    idempotencyKey: `pix-checkout:${input.organizationId}:${plan.id}`,
+    idempotencyKey: `pix-checkout:${input.organizationId}:${plan.id}:${checkoutAttemptId}`,
   });
 
   const sessionId = String(payment.id ?? "").trim();

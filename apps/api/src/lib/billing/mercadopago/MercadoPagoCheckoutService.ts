@@ -5,10 +5,9 @@ import { recordBillingAudit } from "../billingAudit.js";
 import { assertCheckoutAllowed } from "../checkoutGuards.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
-import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
 import {
   mercadoPagoRequest,
-  resolvePlatformMercadoPagoAccessToken,
+  resolveMercadoPagoAccessTokenForBilling,
 } from "./mercadoPagoClient.js";
 import { createMercadoPagoPixCheckout } from "./MercadoPagoPixPaymentService.js";
 import type { CheckoutPixDetails } from "../providers/types.js";
@@ -38,13 +37,7 @@ type MercadoPagoPreapproval = {
 };
 
 async function resolveAccessTokenForCheckout(organizationId: string, planOrganizationId: string | null) {
-  if (planOrganizationId) {
-    const orgToken = await resolveMercadoPagoAccessToken(planOrganizationId);
-    if (orgToken) return orgToken;
-  }
-  const platformToken = await resolveMercadoPagoAccessToken(organizationId);
-  if (platformToken) return platformToken;
-  return resolvePlatformMercadoPagoAccessToken();
+  return resolveMercadoPagoAccessTokenForBilling(organizationId, planOrganizationId);
 }
 
 async function resolvePayerEmail(organizationId: string): Promise<string> {

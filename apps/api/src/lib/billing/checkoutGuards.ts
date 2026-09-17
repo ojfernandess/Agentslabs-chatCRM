@@ -10,6 +10,15 @@ export async function assertCheckoutAllowed(organizationId: string, targetPlanId
 
   if (!sub) return;
 
+  const pendingMercadoPagoCheckout =
+    sub.paymentProvider === "mercadopago" &&
+    sub.planId === targetPlanId &&
+    (sub.status === "pending_payment" || sub.status === "incomplete" || sub.status === "incomplete_expired");
+
+  if (pendingMercadoPagoCheckout) {
+    return;
+  }
+
   const awaitingPayment =
     (sub.status === "pending_payment" ||
       sub.status === "incomplete" ||
