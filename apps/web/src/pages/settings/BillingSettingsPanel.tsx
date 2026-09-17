@@ -520,7 +520,7 @@ export function BillingSettingsPanel() {
       ) : null}
 
       {overview?.usage ? (
-        <section className="space-y-4">
+        <section className={clsx(settingsCard, "space-y-4")}>
           <div>
             <h3 className={settingsTitle}>{t("settings.billingUsageTitle")}</h3>
             <p className={settingsSubtitle}>
@@ -688,9 +688,9 @@ export function BillingSettingsPanel() {
               <tbody>
                 {invoices.map((inv) => (
                   <tr key={inv.id} className="border-b border-ink-100 dark:border-soft-border/60">
-                    <td className="py-2 pr-4">{formatDate(inv.created, localeTag)}</td>
-                    <td className="py-2 pr-4">{formatMoney(inv.amountPaid, inv.currency, localeTag)}</td>
-                    <td className="py-2 pr-4">{translateBillingStatus(t, inv.status, "invoice")}</td>
+                    <td className="py-2 pr-4 text-ink-800 dark:text-ink-200">{formatDate(inv.created, localeTag)}</td>
+                    <td className="py-2 pr-4 text-ink-800 dark:text-ink-200">{formatMoney(inv.amountPaid, inv.currency, localeTag)}</td>
+                    <td className="py-2 pr-4 text-ink-800 dark:text-ink-200">{translateBillingStatus(t, inv.status, "invoice")}</td>
                     <td className="py-2">
                       {inv.hostedInvoiceUrl ? (
                         <a

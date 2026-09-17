@@ -21,13 +21,21 @@ export type InteractionLimitConfig = {
   limit: number | null;
   /** Ao aproximar-se do limite, o agente deve enviar o link do Web Chat (não gera 11ª mensagem). */
   offerWebchatOnLimit: boolean;
+  /** Mensagem opcional enviada com o link (substitui a mensagem global da org quando preenchida). */
+  webchatMessageOnLimit: string | null;
   /** Caixas WhatsApp Meta Cloud API selecionadas; vazio = todas (legado). */
   inboxIds: string[];
 };
 
 /** Lê `behaviorConfig.interactionLimit` do perfil do agente (Editar Agente → Controle de atendimento). */
 export function parseInteractionLimitFromBehavior(behavior: unknown): InteractionLimitConfig {
-  const off: InteractionLimitConfig = { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] };
+  const off: InteractionLimitConfig = {
+    enabled: false,
+    limit: null,
+    offerWebchatOnLimit: false,
+    webchatMessageOnLimit: null,
+    inboxIds: [],
+  };
   if (!behavior || typeof behavior !== "object") return off;
   const raw = (behavior as Record<string, unknown>).interactionLimit;
   if (!raw || typeof raw !== "object") return off;
@@ -42,7 +50,17 @@ export function parseInteractionLimitFromBehavior(behavior: unknown): Interactio
     ? o.inboxIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
     : [];
   if (!enabled || limit == null) return off;
-  return { enabled: true, limit, offerWebchatOnLimit: o.offerWebchatOnLimit === true, inboxIds };
+  const webchatMessageOnLimit =
+    typeof o.webchatMessageOnLimit === "string" && o.webchatMessageOnLimit.trim()
+      ? o.webchatMessageOnLimit.trim().slice(0, 2000)
+      : null;
+  return {
+    enabled: true,
+    limit,
+    offerWebchatOnLimit: o.offerWebchatOnLimit === true,
+    webchatMessageOnLimit,
+    inboxIds,
+  };
 }
 
 /** Limite activo nesta conversa — vazio em inboxIds mantém comportamento legado (todas as caixas). */
@@ -237,7 +255,11 @@ export async function resetInteractionBudgetForConversation(
  */
 export function buildInteractionBudgetPromptAppendix(
   state: InteractionBudgetState,
-  options?: { offerWebchatOnLimit?: boolean; webchatUrl?: string | null },
+  options?: {
+    offerWebchatOnLimit?: boolean;
+    webchatUrl?: string | null;
+    webchatMessageTemplate?: string | null;
+  },
 ): string {
   if (!state.enabled || state.limit == null || state.remaining == null) return "";
   if (!state.nearLimit && !state.blocked) return "";
@@ -266,6 +288,12 @@ export function buildInteractionBudgetPromptAppendix(
     } else {
       lines.push(
         "- use a ferramenta generate_webchat_link e inclua exatamente a URL retornada (nunca invente a URL).",
+      );
+    }
+    const customTemplate = (options.webchatMessageTemplate ?? "").trim();
+    if (customTemplate) {
+      lines.push(
+        `- mensagem configurada para acompanhar o link (pode adaptar o tom; inclua o link exatamente como indicado acima): ${customTemplate}`,
       );
     }
   }
@@ -306,6 +334,7 @@ export async function buildInteractionBudgetPromptAppendixForConversation(params
     return buildInteractionBudgetPromptAppendix(state, {
       offerWebchatOnLimit: offerWebchatOnLastReply,
       webchatUrl,
+      webchatMessageTemplate: cfg.webchatMessageOnLimit,
     });
   } catch {
     return "";

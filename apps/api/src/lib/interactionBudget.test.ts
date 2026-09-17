@@ -16,30 +16,35 @@ describe("parseInteractionLimitFromBehavior", () => {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      webchatMessageOnLimit: null,
       inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior(undefined), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      webchatMessageOnLimit: null,
       inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior("x"), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      webchatMessageOnLimit: null,
       inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior({}), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      webchatMessageOnLimit: null,
       inboxIds: [],
     });
     assert.deepEqual(parseInteractionLimitFromBehavior({ interactionLimit: "10" }), {
       enabled: false,
       limit: null,
       offerWebchatOnLimit: false,
+      webchatMessageOnLimit: null,
       inboxIds: [],
     });
   });
@@ -47,31 +52,31 @@ describe("parseInteractionLimitFromBehavior", () => {
   it("returns disabled when toggle is off even with a limit set (interaction_limit = null)", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: false, limit: 10 } }),
-      { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] },
+      { enabled: false, limit: null, offerWebchatOnLimit: false, webchatMessageOnLimit: null, inboxIds: [] },
     );
   });
 
   it("returns disabled when enabled but the limit is invalid", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true, limit: "dez" } }),
-      { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] },
+      { enabled: false, limit: null, offerWebchatOnLimit: false, webchatMessageOnLimit: null, inboxIds: [] },
     );
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true } }),
-      { enabled: false, limit: null, offerWebchatOnLimit: false, inboxIds: [] },
+      { enabled: false, limit: null, offerWebchatOnLimit: false, webchatMessageOnLimit: null, inboxIds: [] },
     );
   });
 
   it("parses the configured limit (Editar Agente → Controle de atendimento)", () => {
     assert.deepEqual(
       parseInteractionLimitFromBehavior({ interactionLimit: { enabled: true, limit: 10 } }),
-      { enabled: true, limit: 10, offerWebchatOnLimit: false, inboxIds: [] },
+      { enabled: true, limit: 10, offerWebchatOnLimit: false, webchatMessageOnLimit: null, inboxIds: [] },
     );
     assert.deepEqual(
       parseInteractionLimitFromBehavior({
         interactionLimit: { enabled: true, limit: 10, offerWebchatOnLimit: true },
       }),
-      { enabled: true, limit: 10, offerWebchatOnLimit: true, inboxIds: [] },
+      { enabled: true, limit: 10, offerWebchatOnLimit: true, webchatMessageOnLimit: null, inboxIds: [] },
     );
   });
 
@@ -96,6 +101,7 @@ describe("interactionLimitAppliesToInbox", () => {
     enabled: true,
     limit: 10,
     offerWebchatOnLimit: false,
+    webchatMessageOnLimit: null,
     inboxIds,
   });
 
@@ -119,6 +125,19 @@ describe("interactionLimitAppliesToInbox", () => {
       },
     });
     assert.deepEqual(parsed.inboxIds, ["a", "b"]);
+    assert.equal(parsed.webchatMessageOnLimit, null);
+  });
+
+  it("parses optional webchatMessageOnLimit", () => {
+    const parsed = parseInteractionLimitFromBehavior({
+      interactionLimit: {
+        enabled: true,
+        limit: 10,
+        offerWebchatOnLimit: true,
+        webchatMessageOnLimit: "  Continue aqui: {{webchat_url}}  ",
+      },
+    });
+    assert.equal(parsed.webchatMessageOnLimit, "Continue aqui: {{webchat_url}}");
   });
 });
 
@@ -203,6 +222,15 @@ describe("buildInteractionBudgetPromptAppendix — Modo Economia (spec §34)", (
     });
     assert.ok(lastReply.includes("https://chat.example.com/s/abc"));
     assert.ok(lastReply.includes("Web Chat"));
+  });
+
+  it("includes custom webchat message template when configured", () => {
+    const lastReply = buildInteractionBudgetPromptAppendix(state(9, 10), {
+      offerWebchatOnLimit: true,
+      webchatUrl: "https://chat.example.com/s/abc",
+      webchatMessageTemplate: "Abra {{webchat_url}} para continuar",
+    });
+    assert.ok(lastReply.includes("Abra {{webchat_url}} para continuar"));
   });
 
   it("instructs the agent to hand off on the LAST allowed reply (remaining = 1)", () => {

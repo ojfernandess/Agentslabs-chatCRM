@@ -382,6 +382,11 @@ export const messages = {
       offerWebchatOnLimitToggle: "Ao atingir o limite, enviar link do Web Chat",
       offerWebchatOnLimitHelp:
         "O agente inclui o link seguro na última resposta automática para o cliente continuar a mesma conversa pelo atendimento online. Não gera uma mensagem extra depois do limite.",
+      offerWebchatOnLimitMessageLabel: "Mensagem enviada com o link (opcional)",
+      offerWebchatOnLimitMessageHelp:
+        "Personalize o texto que acompanha o link do Web Chat. Use {{webchat_url}} para inserir o link. Se vazio, usa a mensagem padrão da organização.",
+      offerWebchatOnLimitMessagePlaceholder:
+        "Para continuar seu atendimento pelo navegador, acesse:\n\n{{webchat_url}}",
       title: "Automação",
       subtitle:
         "Base de conhecimento (RAG lógico), perfis de agente por bot, ferramentas, prompts, interações e contexto de conversa. Integra com bots existentes e lembretes da organização.",
@@ -7074,6 +7079,11 @@ export const messages = {
       offerWebchatOnLimitToggle: "When the limit is reached, send the Web Chat link",
       offerWebchatOnLimitHelp:
         "The agent includes the secure link in the last automatic reply so the customer can continue the same conversation online. It does not send an extra message after the limit.",
+      offerWebchatOnLimitMessageLabel: "Message sent with the link (optional)",
+      offerWebchatOnLimitMessageHelp:
+        "Customize the text sent with the Web Chat link. Use {{webchat_url}} to insert the link. If empty, the organization default message is used.",
+      offerWebchatOnLimitMessagePlaceholder:
+        "To continue your service in the browser, open:\n\n{{webchat_url}}",
       title: "Automation",
       subtitle:
         "Knowledge base (logical RAG), per-bot agent profiles, tools, prompt library, interaction logs, and conversation context. Works with existing bots and org reminders.",

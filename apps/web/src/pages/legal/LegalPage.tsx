@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getLegalDocument, isLegalSlug } from "@/content/legalDocuments";
 import { LoginFooter } from "@/components/auth/LoginFooter";
-import { brandAssetUrl } from "@/lib/brandingAssets";
+import { brandAssetUrl, systemLogoDarkModeClass } from "@/lib/brandingAssets";
 
 export function LegalPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -23,18 +23,23 @@ export function LegalPage() {
             <ArrowLeft className="h-4 w-4" />
             {t("legal.backToLogin")}
           </Link>
-          <img src={brandAssetUrl("/logo.svg")} alt="OpenNexo CRM" className="h-8 w-auto" decoding="async" />
+          <img
+            src={brandAssetUrl("/logo.svg")}
+            alt="OpenNexo CRM"
+            className={`h-8 w-auto ${systemLogoDarkModeClass}`}
+            decoding="async"
+          />
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
         <article className="rounded-2xl border border-ink-200 bg-white p-8 shadow-sm dark:border-ink-700 dark:bg-ink-900">
           <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">{doc.title}</h1>
-          <p className="mt-2 text-xs text-ink-500">
+          <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">
             {t("legal.lastUpdated")}: {doc.updatedAt}
           </p>
 
-          <div className="prose prose-sm mt-8 max-w-none dark:prose-invert">
+          <div className="mt-8 max-w-none">
             {doc.sections.map((section, idx) => (
               <section key={idx} className="mb-8 last:mb-0">
                 {section.heading ? (

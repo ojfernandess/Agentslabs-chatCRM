@@ -44,7 +44,7 @@ export function UsageMeter({
   return (
     <div
       className={clsx(
-        "rounded-xl border border-ink-200 bg-white p-4 dark:border-soft-border dark:bg-soft-surface",
+        "rounded-xl border border-ink-200 bg-white p-4 dark:border-soft-border dark:bg-soft-surface-1",
         isOver && enforcementMode === "block" && "border-red-300 dark:border-red-800",
         isOver && enforcementMode === "overage" && "border-amber-300 dark:border-amber-800",
         className,

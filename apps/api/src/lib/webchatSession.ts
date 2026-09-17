@@ -343,6 +343,8 @@ export async function enrichReplyWithWebchatLink(params: {
   organizationId: string;
   conversationId: string;
   replyText: string;
+  /** Quando preenchida, substitui a mensagem global da organização. */
+  continuityMessageOverride?: string | null;
 }): Promise<{ replyText: string; url: string | null }> {
   const trimmed = params.replyText.trim();
   const link = await generateWebchatLinkForConversation({
@@ -354,7 +356,8 @@ export async function enrichReplyWithWebchatLink(params: {
   if (!link.ok) return { replyText: params.replyText, url: null };
   if (replyContainsWebchatUrl(trimmed, link.url)) return { replyText: params.replyText, url: link.url };
   const settings = await orgWebchatSettings(params.organizationId);
-  const continuity = buildWebchatContinuityBody(settings.continuityMessage, link.url);
+  const template = (params.continuityMessageOverride ?? "").trim() || settings.continuityMessage;
+  const continuity = buildWebchatContinuityBody(template, link.url);
   return { replyText: trimmed ? `${trimmed}\n\n${continuity}` : continuity, url: link.url };
 }
 
@@ -366,6 +369,8 @@ export async function sendWebchatContinuityLinkToContact(params: {
   botId: string;
   log: import("fastify").FastifyBaseLogger;
   skipIfBodyContains?: string;
+  /** Quando preenchida, substitui a mensagem global da organização. */
+  continuityMessageOverride?: string | null;
 }): Promise<{ sent: boolean; url?: string; messageId?: string }> {
   if (params.skipIfBodyContains && replyContainsWebchatUrl(params.skipIfBodyContains)) {
     return { sent: false };
@@ -380,7 +385,8 @@ export async function sendWebchatContinuityLinkToContact(params: {
   if (!link.ok) return { sent: false };
 
   const settings = await orgWebchatSettings(params.organizationId);
-  const body = buildWebchatContinuityBody(settings.continuityMessage, link.url);
+  const template = (params.continuityMessageOverride ?? "").trim() || settings.continuityMessage;
+  const body = buildWebchatContinuityBody(template, link.url);
 
   const { deliverOutboundWhatsAppMessage } = await import("./outboundMessage.js");
   const sent = await deliverOutboundWhatsAppMessage({

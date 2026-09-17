@@ -62,3 +62,26 @@ export function getThemePreference(): ThemePref {
 export function getResolvedTheme(): ResolvedTheme {
   return resolveTheme(readThemePref());
 }
+
+let themeScopeDepth = 0;
+let themeScopeSavedPref: ThemePref | null = null;
+
+/** Força modo claro enquanto activo (ex.: painel Super Admin). Restaura a preferência ao sair. */
+export function pushLightThemeScope(): void {
+  if (typeof document === "undefined") return;
+  if (themeScopeDepth === 0) {
+    themeScopeSavedPref = readThemePref();
+    applyDarkClass("light");
+  }
+  themeScopeDepth += 1;
+}
+
+export function popThemeScope(): void {
+  if (typeof document === "undefined") return;
+  if (themeScopeDepth <= 0) return;
+  themeScopeDepth -= 1;
+  if (themeScopeDepth === 0 && themeScopeSavedPref !== null) {
+    applyDarkClass(themeScopeSavedPref);
+    themeScopeSavedPref = null;
+  }
+}

@@ -470,6 +470,7 @@ type AgentFormFields = {
   interactionLimit: number;
   interactionLimitInboxIds: string[];
   offerWebchatOnLimit: boolean;
+  offerWebchatOnLimitMessage: string;
   followUpMessage: string;
   escalationMode: string;
   escalationConditions: string;
@@ -548,6 +549,7 @@ function emptyAgentForm(): AgentFormFields {
     interactionLimit: 10,
     interactionLimitInboxIds: [],
     offerWebchatOnLimit: false,
+    offerWebchatOnLimitMessage: "",
     followUpMessage: "",
     escalationMode: "keyword",
     escalationConditions: "",
@@ -922,6 +924,12 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
         il && typeof il === "object" && (il as Record<string, unknown>).offerWebchatOnLimit === true,
       );
     })(),
+    offerWebchatOnLimitMessage: (() => {
+      const il = beh.interactionLimit;
+      if (!il || typeof il !== "object") return "";
+      const raw = (il as Record<string, unknown>).webchatMessageOnLimit;
+      return typeof raw === "string" ? raw : "";
+    })(),
     interactionLimitInboxIds: (() => {
       const il = beh.interactionLimit;
       if (!il || typeof il !== "object") return [] as string[];
@@ -1121,6 +1129,12 @@ function formToPayload(
         ? Math.max(1, Math.min(500, Math.floor(form.interactionLimit || 10)))
         : null,
       offerWebchatOnLimit: form.interactionLimitEnabled && form.offerWebchatOnLimit,
+      webchatMessageOnLimit:
+        form.interactionLimitEnabled &&
+        form.offerWebchatOnLimit &&
+        form.offerWebchatOnLimitMessage.trim()
+          ? form.offerWebchatOnLimitMessage.trim().slice(0, 2000)
+          : null,
       inboxIds: form.interactionLimitEnabled ? form.interactionLimitInboxIds : [],
     },
     voice: {
@@ -4157,6 +4171,25 @@ function AgentsTab({
                         </span>
                       </span>
                     </label>
+                    {agentForm.offerWebchatOnLimit ? (
+                      <label className="mt-3 block text-sm">
+                        <span className="font-medium text-ink-800 dark:text-ink-200">
+                          {t("automationPage.offerWebchatOnLimitMessageLabel")}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-ink-500 dark:text-ink-400">
+                          {t("automationPage.offerWebchatOnLimitMessageHelp")}
+                        </span>
+                        <textarea
+                          className="mt-2 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 dark:border-soft-border dark:bg-soft-surface-1 dark:text-ink-100"
+                          rows={3}
+                          value={agentForm.offerWebchatOnLimitMessage}
+                          onChange={(e) =>
+                            setAgentForm((f) => ({ ...f, offerWebchatOnLimitMessage: e.target.value }))
+                          }
+                          placeholder={t("automationPage.offerWebchatOnLimitMessagePlaceholder")}
+                        />
+                      </label>
+                    ) : null}
                   </>
                 ) : null}
               </div>

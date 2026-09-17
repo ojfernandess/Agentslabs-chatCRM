@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useEffect } from "react";
 import clsx from "clsx";
 import {
   Activity,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { brandAssetUrl, systemLogoOnDarkBgClass } from "@/lib/brandingAssets";
 import { useI18n } from "@/i18n/I18nProvider";
+import { popThemeScope, pushLightThemeScope } from "@/lib/themeStorage";
 
 export type SuperSection =
   | "overview"
@@ -221,6 +223,12 @@ export function SuperAdminShell({
   children,
 }: SuperAdminShellProps) {
   const { t } = useI18n();
+
+  useEffect(() => {
+    pushLightThemeScope();
+    return () => popThemeScope();
+  }, []);
+
   const sectionTitle = t(SECTION_TITLE_KEYS[section]);
   const sectionSubtitleKey = SECTION_SUBTITLE_KEYS[section];
   const sectionSubtitle = sectionSubtitleKey ? t(sectionSubtitleKey) : undefined;

@@ -158,10 +158,12 @@ export async function runNativeAgentReplyAndDeliver(input: {
     ): Promise<string> => {
       if (!shouldAppendWebchatLinkOnReply(behaviorConfig, budgetState)) return replyText;
       try {
+        const cfg = parseInteractionLimitFromBehavior(behaviorConfig);
         const enriched = await enrichReplyWithWebchatLink({
           organizationId,
           conversationId: conversation.id,
           replyText,
+          continuityMessageOverride: cfg.webchatMessageOnLimit,
         });
         return enriched.replyText;
       } catch (err) {
@@ -205,6 +207,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
                 contactId: contact.id,
                 botId: bot.id,
                 log,
+                continuityMessageOverride: cfg.webchatMessageOnLimit,
               });
             } catch (err) {
               log.warn({ err, conversationId: conversation.id }, "webchat continuity fallback send failed");
@@ -347,6 +350,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
       }
       if (shouldAppendWebchatLinkOnReply(profileEsc?.behaviorConfig, budgetState)) {
         try {
+          const cfgEsc = parseInteractionLimitFromBehavior(profileEsc?.behaviorConfig);
           await sendWebchatContinuityLinkToContact({
             organizationId,
             conversationId: conversation.id,
@@ -354,6 +358,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
             botId: bot.id,
             log,
             skipIfBodyContains: replyText,
+            continuityMessageOverride: cfgEsc.webchatMessageOnLimit,
           });
         } catch (err) {
           log.warn({ err, conversationId: conversation.id }, "webchat continuity send on handoff failed");
@@ -389,12 +394,14 @@ export async function runNativeAgentReplyAndDeliver(input: {
       await registerBudgetAfterDelivery(true, undefined, replyText);
       if (shouldAppendWebchatLinkOnReply(behaviorConfig, budgetState) && !replyContainsWebchatUrl(replyText)) {
         try {
+          const cfgStream = parseInteractionLimitFromBehavior(behaviorConfig);
           await sendWebchatContinuityLinkToContact({
             organizationId,
             conversationId: conversation.id,
             contactId: contact.id,
             botId: bot.id,
             log,
+            continuityMessageOverride: cfgStream.webchatMessageOnLimit,
           });
         } catch (err) {
           log.warn({ err, conversationId: conversation.id }, "webchat continuity send after stream failed");
