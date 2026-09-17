@@ -8,10 +8,15 @@ import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { syncSubscriptionSnapshot } from "../subscriptionSync.js";
 import {
-  isMercadoPagoSandboxBillingMode,
+  getMercadoPagoBillingPlatformSettings,
+  MERCADOPAGO_SANDBOX_PIX_PAYER_FIRST_NAME,
   resolveMercadoPagoSandboxPayerEmail,
 } from "../mercadoPagoBillingSettings.js";
-import { mercadoPagoRequest, resolveMercadoPagoAccessTokenForBilling } from "./mercadoPagoClient.js";
+import {
+  assertMercadoPagoAccessTokenMatchesBillingMode,
+  mercadoPagoRequest,
+  resolveMercadoPagoAccessTokenForBilling,
+} from "./mercadoPagoClient.js";
 import type { CheckoutPixDetails } from "../providers/types.js";
 import type { CreateMercadoPagoCheckoutInput } from "./MercadoPagoCheckoutService.js";
 
@@ -71,7 +76,11 @@ function normalizeBrazilTaxId(value: string | null | undefined): string {
   return (value ?? "").replace(/\D/g, "");
 }
 
-export function buildMercadoPagoPixPayer(email: string, identificationNumber?: string | null) {
+export function buildMercadoPagoPixPayer(
+  email: string,
+  identificationNumber?: string | null,
+  options?: { firstName?: string; lastName?: string },
+) {
   const digits = normalizeBrazilTaxId(identificationNumber);
   if (digits.length !== 11 && digits.length !== 14) {
     throw new BillingError(
@@ -83,8 +92,8 @@ export function buildMercadoPagoPixPayer(email: string, identificationNumber?: s
   const localPart = email.split("@")[0]?.trim() || "Cliente";
   return {
     email,
-    first_name: localPart.slice(0, 50),
-    last_name: "OpenConduit",
+    first_name: (options?.firstName ?? localPart).slice(0, 50),
+    last_name: (options?.lastName ?? "OpenConduit").slice(0, 50),
     identification: {
       type: digits.length === 11 ? "CPF" : "CNPJ",
       number: digits,
@@ -115,12 +124,18 @@ export async function createMercadoPagoPixCheckout(
   input: CreateMercadoPagoCheckoutInput,
   plan: Plan,
 ): Promise<MercadoPagoPixCheckoutResult> {
+  const billingSettings = await getMercadoPagoBillingPlatformSettings();
   const accessToken = await resolveAccessTokenForCheckout(input.organizationId, plan.organizationId);
+  await assertMercadoPagoAccessTokenMatchesBillingMode(accessToken, billingSettings.mode);
+
   let payerEmail = await resolvePayerEmail(input.organizationId);
-  if (await isMercadoPagoSandboxBillingMode()) {
+  const sandboxMode = billingSettings.mode === "sandbox";
+  if (sandboxMode) {
     payerEmail = resolveMercadoPagoSandboxPayerEmail(payerEmail);
   }
-  const payer = buildMercadoPagoPixPayer(payerEmail, input.payerIdentificationNumber);
+  const payer = buildMercadoPagoPixPayer(payerEmail, input.payerIdentificationNumber, sandboxMode
+    ? { firstName: MERCADOPAGO_SANDBOX_PIX_PAYER_FIRST_NAME, lastName: "Test" }
+    : undefined);
   const checkoutAttemptId = randomUUID();
   const externalReference = `ONX-${input.organizationId}-${checkoutAttemptId}`;
 
@@ -128,6 +143,7 @@ export async function createMercadoPagoPixCheckout(
     accessToken,
     method: "POST",
     path: "/v1/payments",
+    billingMode: billingSettings.mode,
     body: {
       transaction_amount: Number((plan.amountCents / 100).toFixed(2)),
       description: plan.name.trim(),

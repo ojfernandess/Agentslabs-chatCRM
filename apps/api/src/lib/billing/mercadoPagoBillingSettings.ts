@@ -38,12 +38,15 @@ function mercadoPagoDedicatedTokensMisconfigured(): boolean {
   return Boolean(sandbox && production && sandbox === production);
 }
 
+/** E-mail recomendado pelo MP para testes Pix (Checkout API / Orders). */
+export const MERCADOPAGO_SANDBOX_PIX_PAYER_EMAIL = "test_user_br@testuser.com";
+
+/** first_name APRO simula pagamento aprovado em sandbox (documentação MP). */
+export const MERCADOPAGO_SANDBOX_PIX_PAYER_FIRST_NAME = "APRO";
+
 /** Mercado Pago sandbox exige e-mail @testuser.com em pagamentos. */
-export function resolveMercadoPagoSandboxPayerEmail(email: string): string {
-  const trimmed = email.trim();
-  if (trimmed.toLowerCase().endsWith("@testuser.com")) return trimmed;
-  const local = trimmed.split("@")[0]?.trim().replace(/[^a-zA-Z0-9._-]/g, "") || "test";
-  return `${local}@testuser.com`;
+export function resolveMercadoPagoSandboxPayerEmail(_email: string): string {
+  return MERCADOPAGO_SANDBOX_PIX_PAYER_EMAIL;
 }
 
 function inferDefaultBillingMode(): MercadoPagoBillingMode {
@@ -92,27 +95,36 @@ export async function patchMercadoPagoBillingPlatformSettings(input: {
 }
 
 export function resolveMercadoPagoAccessTokenForMode(mode: MercadoPagoBillingMode): string {
-  const sandbox =
-    config.mercadopagoSandboxAccessToken.trim() ||
-    (mode === "sandbox" ? config.mercadopagoAccessToken.trim() : "");
-  const production =
-    config.mercadopagoProductionAccessToken.trim() ||
-    (mode === "production" ? config.mercadopagoAccessToken.trim() : "");
+  const sandboxDedicated = config.mercadopagoSandboxAccessToken.trim();
+  const productionDedicated = config.mercadopagoProductionAccessToken.trim();
+  const legacy = config.mercadopagoAccessToken.trim();
 
-  if (mode === "sandbox") return sandbox;
-  return production;
+  if (mode === "sandbox") {
+    if (sandboxDedicated) return sandboxDedicated;
+    // Evita usar token de produção quando MERCADOPAGO_SANDBOX_* não está definido.
+    if (legacy && legacy !== productionDedicated) return legacy;
+    return "";
+  }
+
+  if (productionDedicated) return productionDedicated;
+  if (legacy && legacy !== sandboxDedicated) return legacy;
+  return "";
 }
 
 export function resolveMercadoPagoPublicKeyForMode(mode: MercadoPagoBillingMode): string {
-  const sandbox =
-    config.mercadopagoSandboxPublicKey.trim() ||
-    (mode === "sandbox" ? config.mercadopagoPublicKey.trim() : "");
-  const production =
-    config.mercadopagoProductionPublicKey.trim() ||
-    (mode === "production" ? config.mercadopagoPublicKey.trim() : "");
+  const sandboxDedicated = config.mercadopagoSandboxPublicKey.trim();
+  const productionDedicated = config.mercadopagoProductionPublicKey.trim();
+  const legacy = config.mercadopagoPublicKey.trim();
 
-  if (mode === "sandbox") return sandbox;
-  return production;
+  if (mode === "sandbox") {
+    if (sandboxDedicated) return sandboxDedicated;
+    if (legacy && legacy !== productionDedicated) return legacy;
+    return "";
+  }
+
+  if (productionDedicated) return productionDedicated;
+  if (legacy && legacy !== sandboxDedicated) return legacy;
+  return "";
 }
 
 export function assertMercadoPagoTokenMatchesMode(
@@ -155,8 +167,8 @@ export async function resolvePlatformMercadoPagoAccessToken(): Promise<string> {
   if (!token) {
     throw new BillingError(
       settings.mode === "sandbox"
-        ? "Mercado Pago sandbox access token is not configured (MERCADOPAGO_SANDBOX_ACCESS_TOKEN or MERCADOPAGO_ACCESS_TOKEN with mode sandbox)"
-        : "Mercado Pago production access token is not configured (MERCADOPAGO_PRODUCTION_ACCESS_TOKEN or MERCADOPAGO_ACCESS_TOKEN with mode production)",
+        ? "Mercado Pago sandbox access token is not configured. Set MERCADOPAGO_SANDBOX_ACCESS_TOKEN with Test credentials from MP Developers (Suas integrações → Testes → Credenciais de teste)."
+        : "Mercado Pago production access token is not configured. Set MERCADOPAGO_PRODUCTION_ACCESS_TOKEN with Production credentials from MP Developers.",
       "mercadopago_not_configured",
     );
   }

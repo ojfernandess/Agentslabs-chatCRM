@@ -6,6 +6,7 @@ import {
   isMercadoPagoSandboxBillingMode,
   resolveMercadoPagoSandboxPayerEmail,
   resolvePlatformMercadoPagoAccessToken,
+  type MercadoPagoBillingMode,
 } from "../mercadoPagoBillingSettings.js";
 
 export {
@@ -59,12 +60,53 @@ export function resolveMercadoPagoSandboxPayerEmailFromToken(accessToken: string
   return resolveMercadoPagoSandboxPayerEmail(email);
 }
 
-function mercadoPagoLiveCredentialsMessage(): string {
+function mercadoPagoLiveCredentialsMessage(mode?: MercadoPagoBillingMode): string {
+  if (mode === "sandbox") {
+    return (
+      "Mercado Pago recusou credenciais de produção no modo Sandbox. " +
+      "Defina MERCADOPAGO_SANDBOX_ACCESS_TOKEN com o Access Token da aba Credenciais de teste (MP Developers → Suas integrações → Testes). " +
+      "Não use o token de Produção nem MERCADOPAGO_ACCESS_TOKEN legado se ele for o mesmo token de produção."
+    );
+  }
   return (
     "Mercado Pago recusou credenciais de produção neste ambiente. " +
-    "No Super Admin, seleccione modo Sandbox e use MERCADOPAGO_SANDBOX_ACCESS_TOKEN com as credenciais de Teste do painel MP Developers. " +
-    "Credenciais de teste também começam com APP_USR- — o modo activo é definido no Super Admin, não pelo prefixo do token."
+    "Confirme MERCADOPAGO_PRODUCTION_ACCESS_TOKEN e que a conta vendedora está habilitada para Pix."
   );
+}
+
+function isMercadoPagoPixKeyMissingError(payload: MercadoPagoErrorPayload, message: string): boolean {
+  if (message.toLowerCase().includes("without key enabled for qr")) return true;
+  return (payload.cause ?? []).some((item) => String(item.code ?? "").trim() === "13253");
+}
+
+type MercadoPagoUserProfile = {
+  tags?: string[];
+};
+
+/** Valida token via /users/me — MP marca contas de teste com tag test_user. */
+export async function assertMercadoPagoAccessTokenMatchesBillingMode(
+  accessToken: string,
+  mode: MercadoPagoBillingMode,
+): Promise<void> {
+  const profile = await mercadoPagoRequest<MercadoPagoUserProfile>({
+    accessToken,
+    method: "GET",
+    path: "/users/me",
+  });
+  const isTestUser = (profile.tags ?? []).includes("test_user");
+
+  if (mode === "sandbox" && !isTestUser) {
+    throw new BillingError(
+      "O Access Token activo não é de teste. Defina MERCADOPAGO_SANDBOX_ACCESS_TOKEN com credenciais da aba Credenciais de teste no MP Developers (Suas integrações → Detalhes → Testes).",
+      "mercadopago_sandbox_token_required",
+    );
+  }
+  if (mode === "production" && isTestUser) {
+    throw new BillingError(
+      "O Access Token activo é de teste. Defina MERCADOPAGO_PRODUCTION_ACCESS_TOKEN com credenciais de Produção ou altere o modo para Sandbox no Super Admin.",
+      "mercadopago_production_token_required",
+    );
+  }
 }
 
 export function mercadoPagoBillingErrorHttpStatus(err: BillingError): number {
@@ -73,6 +115,9 @@ export function mercadoPagoBillingErrorHttpStatus(err: BillingError): number {
     err.code === "plan_free_mercadopago" ||
     err.code === "mercadopago_plan_sync_failed" ||
     err.code === "mercadopago_live_credentials_unauthorized" ||
+    err.code === "mercadopago_sandbox_token_required" ||
+    err.code === "mercadopago_production_token_required" ||
+    err.code === "mercadopago_pix_key_required" ||
     err.code === "mercadopago_token_mode_mismatch" ||
     err.code === "mercadopago_pix_document_required" ||
     err.code === "billing_email_missing" ||
@@ -97,6 +142,7 @@ export async function mercadoPagoRequest<T>(input: {
   path: string;
   body?: unknown;
   idempotencyKey?: string;
+  billingMode?: MercadoPagoBillingMode;
 }): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -121,7 +167,16 @@ export async function mercadoPagoRequest<T>(input: {
     if (!res.ok) {
       const message = formatMercadoPagoError(payload, res.status);
       if (message.toLowerCase().includes("live credentials")) {
-        throw new BillingError(mercadoPagoLiveCredentialsMessage(), "mercadopago_live_credentials_unauthorized");
+        throw new BillingError(
+          mercadoPagoLiveCredentialsMessage(input.billingMode),
+          "mercadopago_live_credentials_unauthorized",
+        );
+      }
+      if (isMercadoPagoPixKeyMissingError(payload, message)) {
+        throw new BillingError(
+          "A conta Mercado Pago da plataforma não tem chave Pix activa para gerar QR Code. Cadastre uma chave Pix na conta vendedora (Mercado Pago → Pix → Gerenciar chaves) e confirme que MERCADOPAGO_PRODUCTION_ACCESS_TOKEN pertence a essa mesma conta.",
+          "mercadopago_pix_key_required",
+        );
       }
       throw new MercadoPagoApiError(message, res.status, payload.error);
     }

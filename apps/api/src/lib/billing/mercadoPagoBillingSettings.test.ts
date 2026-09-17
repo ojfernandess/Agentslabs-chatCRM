@@ -14,8 +14,8 @@ describe("mercadoPagoBillingSettings", () => {
     assert.equal(inferMercadoPagoTokenMode("other"), "unknown");
   });
 
-  it("normalizes sandbox payer email", () => {
-    assert.equal(resolveMercadoPagoSandboxPayerEmail("admin@empresa.com"), "admin@testuser.com");
+  it("uses MP recommended sandbox payer email", () => {
+    assert.equal(resolveMercadoPagoSandboxPayerEmail("admin@empresa.com"), "test_user_br@testuser.com");
   });
 
   it("does not reject APP_USR tokens in sandbox mode (MP test tokens use APP_USR)", () => {
