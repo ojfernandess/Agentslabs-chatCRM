@@ -75,6 +75,10 @@ import {
   upsertConversationEmailFolder,
   upsertConversationEmailStar,
 } from "../lib/conversationUserEmailState.js";
+import {
+  applyAllConversationsHumanAttendanceScope,
+  isOrgAllConversationsListScope,
+} from "../lib/conversationListScope.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -332,6 +336,29 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       where.status = { in: ["OPEN", "PENDING"] };
       where.assignedToId = null;
       where.awaitingHumanHandoff = false;
+    }
+
+    const orgAllScope = isOrgAllConversationsListScope({
+      botAttendance,
+      waitingAttendance,
+      activeAttendance,
+      mineRequested,
+    });
+    if (orgAllScope) {
+      const orgSettings = await prisma.settings.findUnique({
+        where: { organizationId },
+        select: { conversationsAllScopeHumanOnly: true },
+      });
+      if (orgSettings?.conversationsAllScopeHumanOnly) {
+        const include = await applyAllConversationsHumanAttendanceScope(
+          organizationId,
+          where,
+          query.status,
+        );
+        if (!include) {
+          return { data: [], total: 0, page: query.page, pageSize: query.pageSize };
+        }
+      }
     }
 
     if (!query.inboxId) {

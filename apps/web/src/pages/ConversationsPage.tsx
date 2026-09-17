@@ -146,6 +146,7 @@ export function ConversationsPage({
   const [orgAgentBotTriageActive, setOrgAgentBotTriageActive] = useState(false);
   const [orgAttendanceTabEnabled, setOrgAttendanceTabEnabled] = useState(false);
   const [orgAttendanceTabAutoOpen, setOrgAttendanceTabAutoOpen] = useState(true);
+  const [orgAllScopeHumanOnly, setOrgAllScopeHumanOnly] = useState(false);
   const [orgListShowContactTags, setOrgListShowContactTags] = useState(false);
   const [orgListShowWhatsappIcon, setOrgListShowWhatsappIcon] = useState(false);
   const [orgQuickContactAddEnabled, setOrgQuickContactAddEnabled] = useState(false);
@@ -163,6 +164,9 @@ export function ConversationsPage({
     pending: 0,
     resolved: 0,
   });
+
+  const orgAllScopeActive = !mineActive && !botAttendanceActive && !attendanceScopeActive;
+  const hideResolvedInAllScope = orgAllScopeHumanOnly && orgAllScopeActive;
 
   type ConversationListScope = "org" | "mine" | "bot" | "attendance";
 
@@ -302,6 +306,7 @@ export function ConversationsPage({
           agentBotTriageActive?: boolean;
           conversationsAttendanceTabEnabled?: boolean;
           conversationsAttendanceTabAutoOpen?: boolean;
+          conversationsAllScopeHumanOnly?: boolean;
           conversationsListShowContactTags?: boolean;
           conversationsListShowWhatsappIcon?: boolean;
           conversationsQuickContactAddEnabled?: boolean;
@@ -309,6 +314,7 @@ export function ConversationsPage({
         setOrgAgentBotTriageActive(res.agentBotTriageActive === true);
         setOrgAttendanceTabEnabled(res.conversationsAttendanceTabEnabled === true);
         setOrgAttendanceTabAutoOpen(res.conversationsAttendanceTabAutoOpen !== false);
+        setOrgAllScopeHumanOnly(res.conversationsAllScopeHumanOnly === true);
         setOrgListShowContactTags(res.conversationsListShowContactTags === true);
         setOrgListShowWhatsappIcon(res.conversationsListShowWhatsappIcon === true);
         setOrgQuickContactAddEnabled(res.conversationsQuickContactAddEnabled === true);
@@ -316,6 +322,7 @@ export function ConversationsPage({
         setOrgAgentBotTriageActive(false);
         setOrgAttendanceTabEnabled(false);
         setOrgAttendanceTabAutoOpen(false);
+        setOrgAllScopeHumanOnly(false);
         setOrgListShowContactTags(false);
         setOrgListShowWhatsappIcon(false);
         setOrgQuickContactAddEnabled(false);
@@ -331,6 +338,19 @@ export function ConversationsPage({
       setScopeParam("org");
     }
   }, [botAttendanceActive, orgAgentBotTriageActive, setScopeParam]);
+
+  useEffect(() => {
+    if (!hideResolvedInAllScope || statusFilter !== "RESOLVED") return;
+    setStatusFilter("");
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("status");
+        return n;
+      },
+      { replace: true },
+    );
+  }, [hideResolvedInAllScope, statusFilter, setSearchParams]);
 
   useEffect(() => {
     if (attendanceScopeActive && !orgAttendanceTabEnabled) {
@@ -507,7 +527,7 @@ export function ConversationsPage({
     } finally {
       setScopeCountsLoaded(true);
     }
-  }, [teamFilter, inboxFilter, orgAgentBotTriageActive, orgAttendanceTabEnabled, channelSettingsLoaded]);
+  }, [teamFilter, inboxFilter, orgAgentBotTriageActive, orgAttendanceTabEnabled, orgAllScopeHumanOnly, channelSettingsLoaded]);
 
   const statusTabsVisible =
     !botAttendanceActive && (!attendanceScopeActive || mineActive);
@@ -534,7 +554,9 @@ export function ConversationsPage({
       const [openRes, pendingRes, resolvedRes] = await Promise.all([
         fetchTotal("OPEN"),
         fetchTotal("PENDING"),
-        fetchTotal("RESOLVED"),
+        hideResolvedInAllScope && !mineActive && !(attendanceScopeActive && mineActive)
+          ? Promise.resolve({ total: 0 })
+          : fetchTotal("RESOLVED"),
       ]);
 
       setStatusCounts({
@@ -552,6 +574,7 @@ export function ConversationsPage({
     leadTypeFilter,
     mineActive,
     attendanceScopeActive,
+    hideResolvedInAllScope,
   ]);
 
   useEffect(() => {
@@ -634,12 +657,18 @@ export function ConversationsPage({
     return s;
   };
 
-  const filters: { key: string; label: string }[] = [
-    { key: "", label: t("common.all") },
-    { key: "OPEN", label: t("conversations.filterOpen") },
-    { key: "PENDING", label: t("conversations.filterPending") },
-    { key: "RESOLVED", label: t("conversations.filterResolved") },
-  ];
+  const filters: { key: string; label: string }[] = useMemo(() => {
+    const base = [
+      { key: "", label: t("common.all") },
+      { key: "OPEN", label: t("conversations.filterOpen") },
+      { key: "PENDING", label: t("conversations.filterPending") },
+      { key: "RESOLVED", label: t("conversations.filterResolved") },
+    ];
+    if (hideResolvedInAllScope) {
+      return base.filter((f) => f.key !== "RESOLVED");
+    }
+    return base;
+  }, [hideResolvedInAllScope, t]);
 
   const scopePillClass = splitView
     ? "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold transition-colors"

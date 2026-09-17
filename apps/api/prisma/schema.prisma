@@ -1565,6 +1565,8 @@ model Settings {
   conversationsAttendanceTabEnabled Boolean @default(false) @map("conversations_attendance_tab_enabled")
   /// Ao entrar em Conversas, abrir a aba Atendimento se houver conversas na fila.
   conversationsAttendanceTabAutoOpen Boolean @default(true) @map("conversations_attendance_tab_auto_open")
+  /// Em «Todas as conversas», ocultar finalizadas e conversas na fila do bot (só atendimento humano).
+  conversationsAllScopeHumanOnly Boolean @default(false) @map("conversations_all_scope_human_only")
   /// Mostrar etiquetas do contacto nos cartões da lista de conversas.
   conversationsListShowContactTags Boolean @default(false) @map("conversations_list_show_contact_tags")
   /// Mostrar ícone WhatsApp no avatar da lista em split view.

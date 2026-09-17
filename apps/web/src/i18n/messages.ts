@@ -5701,6 +5701,9 @@ export const messages = {
       workflowAttendanceTabAutoOpen: "Abrir aba Atendimento por defeito",
       workflowAttendanceTabAutoOpenHint:
         "Ao entrar em Conversas, abre automaticamente a aba Atendimento quando existirem conversas aguardando atendimento.",
+      workflowAllScopeHumanOnly: "Separar finalizadas e bot em «Todas as conversas»",
+      workflowAllScopeHumanOnlyHint:
+        "Quando activo, a aba «Todas as conversas» mostra só atendimento humano (aguardando ou em curso). Conversas finalizadas ficam fora desta lista; conversas transferidas para o bot aparecem na aba Bot.",
       workflowAgentsInboxesVisible: "Caixas de entrada visíveis para agentes",
       workflowAgentsInboxesVisibleHint:
         "Quando activo, utilizadores com função Agente veem o menu «Caixas de entrada» e podem consultar as caixas. Desactivado, só administradores acedem a essa página — os agentes continuam a ver todas as conversas em Conversas.",
@@ -12262,6 +12265,9 @@ export const messages = {
       workflowAttendanceTabAutoOpen: "Open Attendance tab by default",
       workflowAttendanceTabAutoOpenHint:
         "When entering Conversations, automatically opens the Attendance tab if conversations are waiting for an agent.",
+      workflowAllScopeHumanOnly: "Separate finalized and bot from «All conversations»",
+      workflowAllScopeHumanOnlyHint:
+        "When enabled, the «All conversations» tab shows only human attendance (waiting or in progress). Finalized conversations are hidden from this list; conversations transferred to the bot appear under the Bot tab.",
       workflowAgentsInboxesVisible: "Inboxes visible to agents",
       workflowAgentsInboxesVisibleHint:
         "When enabled, users with the Agent role see the Inboxes menu and can view inboxes. When disabled, only administrators can access that page — agents still see all conversations on the Conversations page.",
