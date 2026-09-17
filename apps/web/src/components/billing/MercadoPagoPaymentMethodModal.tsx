@@ -27,7 +27,7 @@ export function MercadoPagoPaymentMethodModal({
               {t("settings.billingPaymentMethodTitle")}
             </h3>
             <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">
-              {t("settings.billingPaymentMethodHint").replace("{plan}", planName).replace("{amount}", amountLabel)}
+              {t("settings.billingCheckoutMethodHint").replace("{plan}", planName).replace("{amount}", amountLabel)}
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1 text-ink-500 hover:bg-slate-100 dark:hover:bg-ink-800">

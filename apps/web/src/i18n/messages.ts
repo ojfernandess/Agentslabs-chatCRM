@@ -5480,7 +5480,7 @@ export const messages = {
       billingPaymentProviderNotConfiguredHint:
         "Configure Stripe no servidor ou conecte Mercado Pago em Provedores de pagamento abaixo.",
       billingPaymentMethodTitle: "Escolha a forma de pagamento",
-      billingPaymentMethodHint: "Plano {plan} — {amount}",
+      billingCheckoutMethodHint: "Plano {plan} — {amount}",
       billingPaymentMethodPix: "Pix",
       billingPaymentMethodPixHint: "QR Code e copia e cola aqui na plataforma",
       billingPaymentMethodCard: "Cartão",
@@ -12042,7 +12042,7 @@ export const messages = {
       billingPaymentProviderNotConfiguredHint:
         "Configure Stripe on the server or connect Mercado Pago under Payment providers below.",
       billingPaymentMethodTitle: "Choose payment method",
-      billingPaymentMethodHint: "Plan {plan} — {amount}",
+      billingCheckoutMethodHint: "Plan {plan} — {amount}",
       billingPaymentMethodPix: "Pix",
       billingPaymentMethodPixHint: "QR code and copy-paste here in the platform",
       billingPaymentMethodCard: "Card",
