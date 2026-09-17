@@ -1385,7 +1385,6 @@ export function AutomationPage() {
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
   const [aiBillingMode, setAiBillingMode] = useState<"OWN_API_KEY" | "PLATFORM_CREDITS">("OWN_API_KEY");
   const platformCreditsMode = aiBillingMode === "PLATFORM_CREDITS";
-  const agentModelCatalogProvider = platformCreditsMode ? "openai" : agentForm.provider;
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
   const [metaCloudInboxes, setMetaCloudInboxes] = useState<
@@ -2039,6 +2038,7 @@ export function AutomationPage() {
               isTenantAdmin(user?.role, user?.actingOrganizationId) || isSuperAdminRole(user?.role)
             }
             metaCloudInboxes={metaCloudInboxes}
+            platformCreditsMode={platformCreditsMode}
           />
         ) : null}
 
@@ -2264,6 +2264,7 @@ function AgentsTab({
   uiLocale,
   showSuggestErrorDetails,
   metaCloudInboxes,
+  platformCreditsMode,
 }: {
   t: Translate;
   loading: boolean;
@@ -2292,7 +2293,9 @@ function AgentsTab({
   uiLocale: "pt" | "en";
   showSuggestErrorDetails: boolean;
   metaCloudInboxes: Array<{ id: string; name: string; provider: string }>;
+  platformCreditsMode: boolean;
 }) {
+  const agentModelCatalogProvider = platformCreditsMode ? "openai" : agentForm.provider;
   const promptUserCoreRef = useRef<HTMLTextAreaElement | null>(null);
   const profileBotIds = new Set(agentProfiles.map((p) => p.botId));
   const orphanBots = bots.filter((b) => !profileBotIds.has(b.id));
