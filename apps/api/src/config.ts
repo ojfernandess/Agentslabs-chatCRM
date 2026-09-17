@@ -14,6 +14,17 @@ function optionalEnv(name: string, defaultValue: string): string {
   return process.env[name] ?? defaultValue;
 }
 
+/** Variáveis secretas/URLs: trim, remove aspas e BOM (comum em .env no Windows). */
+function optionalSecretEnv(name: string, defaultValue = ""): string {
+  const raw = process.env[name];
+  if (raw == null) return defaultValue;
+  return raw
+    .replace(/^\ufeff/, "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim();
+}
+
 function optionalIntEnv(name: string, defaultValue: number, min: number, max: number): number {
   const raw = process.env[name];
   if (raw == null || raw.trim() === "") return defaultValue;
@@ -243,9 +254,9 @@ export const config = {
   /** @deprecated use NVOIP_SIP_DOMAIN — mantido por compatibilidade. */
   nvoipSipServer: optionalEnv("NVOIP_SIP_SERVER", optionalEnv("NVOIP_SIP_DOMAIN", "app.nvoip.com.br")).trim(),
   /** Stripe — billing SaaS (secret key só no servidor). */
-  stripeSecretKey: optionalEnv("STRIPE_SECRET_KEY", "").trim(),
-  stripePublishableKey: optionalEnv("STRIPE_PUBLISHABLE_KEY", "").trim(),
-  stripeWebhookSecret: optionalEnv("STRIPE_WEBHOOK_SECRET", "").trim(),
+  stripeSecretKey: optionalSecretEnv("STRIPE_SECRET_KEY"),
+  stripePublishableKey: optionalSecretEnv("STRIPE_PUBLISHABLE_KEY"),
+  stripeWebhookSecret: optionalSecretEnv("STRIPE_WEBHOOK_SECRET"),
   stripeApiVersion: optionalEnv("STRIPE_API_VERSION", "2025-02-24.acacia").trim(),
   stripeCheckoutSuccessUrl: optionalEnv(
     "STRIPE_CHECKOUT_SUCCESS_URL",
@@ -256,11 +267,11 @@ export const config = {
     `${getWebAppPublicOrigin()}/settings?section=billing&checkout=cancel`,
   ).trim(),
   /** Mercado Pago — billing SaaS (access token só no servidor). */
-  mercadopagoAccessToken: optionalEnv("MERCADOPAGO_ACCESS_TOKEN", "").trim(),
-  mercadopagoPublicKey: optionalEnv("MERCADOPAGO_PUBLIC_KEY", "").trim(),
-  mercadopagoWebhookSecret: optionalEnv("MERCADOPAGO_WEBHOOK_SECRET", "").trim(),
-  mercadopagoClientId: optionalEnv("MERCADOPAGO_CLIENT_ID", "").trim(),
-  mercadopagoClientSecret: optionalEnv("MERCADOPAGO_CLIENT_SECRET", "").trim(),
+  mercadopagoAccessToken: optionalSecretEnv("MERCADOPAGO_ACCESS_TOKEN"),
+  mercadopagoPublicKey: optionalSecretEnv("MERCADOPAGO_PUBLIC_KEY"),
+  mercadopagoWebhookSecret: optionalSecretEnv("MERCADOPAGO_WEBHOOK_SECRET"),
+  mercadopagoClientId: optionalSecretEnv("MERCADOPAGO_CLIENT_ID"),
+  mercadopagoClientSecret: optionalSecretEnv("MERCADOPAGO_CLIENT_SECRET"),
   mercadopagoOAuthRedirectUri: optionalEnv("MERCADOPAGO_OAUTH_REDIRECT_URI", "").trim(),
   mercadopagoCheckoutSuccessUrl: optionalEnv(
     "MERCADOPAGO_CHECKOUT_SUCCESS_URL",
