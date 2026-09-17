@@ -12,7 +12,8 @@ import {
   mercadoPagoRequest,
   resolvePlatformMercadoPagoAccessToken,
 } from "./mercadoPagoClient.js";
-import type { CheckoutPixDetails, CreateMercadoPagoCheckoutInput } from "./MercadoPagoCheckoutService.js";
+import type { CheckoutPixDetails } from "../providers/types.js";
+import type { CreateMercadoPagoCheckoutInput } from "./MercadoPagoCheckoutService.js";
 
 type MercadoPagoPayment = {
   id: number | string;

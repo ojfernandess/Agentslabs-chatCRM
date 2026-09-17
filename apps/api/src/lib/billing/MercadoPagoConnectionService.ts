@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { config, getPublicOrigin, getWebAppPublicOrigin, isMercadoPagoBillingConfigured } from "../../config.js";
 import { BillingError } from "./StripeCustomerService.js";
@@ -149,7 +150,7 @@ async function upsertMercadoPagoConnection(input: {
       accessTokenEnc: encryptPaymentProviderSecret(input.accessToken),
       publicKey: input.publicKey?.trim() || null,
       externalUserId: input.externalUserId?.trim() || null,
-      metadata: input.metadata ?? {},
+      metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
       connectedAt: new Date(),
     },
     update: {
@@ -158,7 +159,7 @@ async function upsertMercadoPagoConnection(input: {
       accessTokenEnc: encryptPaymentProviderSecret(input.accessToken),
       publicKey: input.publicKey?.trim() || null,
       externalUserId: input.externalUserId?.trim() || null,
-      metadata: input.metadata ?? {},
+      metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
       connectedAt: new Date(),
     },
   });

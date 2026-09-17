@@ -11,15 +11,9 @@ import {
   resolvePlatformMercadoPagoAccessToken,
 } from "./mercadoPagoClient.js";
 import { createMercadoPagoPixCheckout } from "./MercadoPagoPixPaymentService.js";
+import type { CheckoutPixDetails } from "../providers/types.js";
 
 export type MercadoPagoPaymentMethod = "card" | "pix";
-
-export type CheckoutPixDetails = {
-  qrCode: string;
-  qrCodeBase64: string;
-  ticketUrl: string | null;
-  expiresAt: string | null;
-};
 
 export type CreateMercadoPagoCheckoutInput = {
   organizationId: string;

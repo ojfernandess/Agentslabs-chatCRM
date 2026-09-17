@@ -19,7 +19,17 @@ export * from "./StripeMeterService.js";
 export * from "./limitEnforcementPolicy.js";
 export * from "./stripeErrors.js";
 export * from "./clearStripeBindings.js";
-export * from "./providers/index.js";
+export {
+  assertProviderConfigured,
+  billingProviders,
+  getBillingProvider,
+  getBillingProvidersClientConfig,
+  listBillingProviderNames,
+  mercadoPagoBillingProvider,
+  resolveDefaultPaymentProvider,
+  resolveOrganizationPaymentProvider,
+  stripeBillingProvider,
+} from "./providers/index.js";
 export * from "./paymentWebhookEvents.js";
 export * from "./paymentProviderConfig.js";
 export * from "./MercadoPagoConnectionService.js";
