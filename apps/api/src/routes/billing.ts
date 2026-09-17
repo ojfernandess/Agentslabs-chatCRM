@@ -22,6 +22,7 @@ import {
   subscriptionIsProviderManaged,
   type PaymentProviderName,
 } from "../lib/billing/index.js";
+import { mercadoPagoBillingErrorHttpStatus } from "../lib/billing/mercadopago/mercadoPagoClient.js";
 
 const planIdBodySchema = z.object({
   planId: z.string().uuid(),
@@ -40,10 +41,11 @@ const cancelBodySchema = z.object({
 
 function sendBillingError(reply: FastifyReply, err: unknown): void {
   if (err instanceof BillingError) {
-    reply.status(400).send({
+    const statusCode = mercadoPagoBillingErrorHttpStatus(err);
+    reply.status(statusCode).send({
       error: err.code,
       message: err.message,
-      statusCode: 400,
+      statusCode,
     });
     return;
   }

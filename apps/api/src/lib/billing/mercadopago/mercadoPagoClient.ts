@@ -61,7 +61,12 @@ export function mercadoPagoBillingErrorHttpStatus(err: BillingError): number {
   if (
     err.code === "mercadopago_not_configured" ||
     err.code === "plan_free_mercadopago" ||
-    err.code === "mercadopago_plan_sync_failed"
+    err.code === "mercadopago_plan_sync_failed" ||
+    err.code === "mercadopago_live_credentials_unauthorized" ||
+    err.code === "mercadopago_pix_document_required" ||
+    err.code === "billing_email_missing" ||
+    err.code === "already_subscribed" ||
+    err.code === "subscription_exists"
   ) {
     return 400;
   }
@@ -112,11 +117,15 @@ export async function mercadoPagoRequest<T>(input: {
 
     return payload;
   } catch (err) {
-    if (err instanceof MercadoPagoApiError) throw err;
+    if (err instanceof BillingError) throw err;
     if ((err as { name?: string }).name === "AbortError") {
       throw new BillingError("Mercado Pago request timed out", "mercadopago_timeout");
     }
-    throw new BillingError("Could not reach Mercado Pago API", "mercadopago_unreachable");
+    const detail = err instanceof Error ? err.message.trim() : "";
+    throw new BillingError(
+      detail ? `Could not reach Mercado Pago API (${detail})` : "Could not reach Mercado Pago API",
+      "mercadopago_unreachable",
+    );
   } finally {
     clearTimeout(timer);
   }
