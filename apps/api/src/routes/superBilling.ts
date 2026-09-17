@@ -35,7 +35,10 @@ import {
   testSuperBillingProviderConnectivity,
 } from "../lib/billing/superBillingProviderDiagnostics.js";
 import { patchMercadoPagoBillingPlatformSettings } from "../lib/billing/mercadoPagoBillingSettings.js";
-import { isMercadoPagoBillingConfigured } from "../config.js";
+import {
+  getPaymentProviderPlatformDiagnostics,
+  patchPaymentProviderPlatformSettings,
+} from "../lib/billing/paymentProviderPlatformSettings.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
@@ -132,6 +135,15 @@ const mercadoPagoModeSchema = z.object({
   mode: z.enum(["sandbox", "production"]),
 });
 
+const paymentProviderTogglesSchema = z
+  .object({
+    stripe: z.object({ enabled: z.boolean() }).optional(),
+    mercadopago: z.object({ enabled: z.boolean() }).optional(),
+  })
+  .refine((body) => body.stripe != null || body.mercadopago != null, {
+    message: "At least one provider toggle is required",
+  });
+
 function serializePlan(plan: {
   id: string;
   slug: string;
@@ -193,15 +205,33 @@ function normalizeExternalId(value: string | null | undefined): string | null | 
   return trimmed || null;
 }
 
+async function assertMercadoPagoPlanSyncAllowed(): Promise<void> {
+  const toggles = await getPaymentProviderPlatformDiagnostics();
+  if (!toggles.mercadopago.enabled) {
+    throw new BillingError(
+      "Mercado Pago billing is disabled. Enable it in Super Admin → Integrações de pagamento.",
+      "mercadopago_not_configured",
+    );
+  }
+  if (!toggles.mercadopagoReady) {
+    throw new BillingError(
+      "Mercado Pago is not configured. Set MERCADOPAGO_* tokens and active mode in Super Admin.",
+      "mercadopago_not_configured",
+    );
+  }
+}
+
 export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", requireSuperAdmin);
 
   app.get("/settings", async () => {
     const settings = await getBillingPlatformSettings();
+    const providerToggles = await getPaymentProviderPlatformDiagnostics();
     return {
       settings,
       stripeKeyMode: getStripeKeyMode(config.stripeSecretKey),
-      mercadoPagoPlatformConfigured: isMercadoPagoBillingConfigured(),
+      mercadoPagoPlatformConfigured: providerToggles.mercadopagoReady,
+      paymentProviders: providerToggles,
     };
   });
 
@@ -254,6 +284,29 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     return {
       settings,
       billingMode: diagnostics.mercadopago.billingMode,
+    };
+  });
+
+  app.patch("/payment-providers", async (request, reply) => {
+    const parsed = paymentProviderTogglesSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const settings = await patchPaymentProviderPlatformSettings(parsed.data);
+    const diagnostics = await getSuperBillingProviderDiagnostics();
+
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.payment_providers.update",
+      resourceType: "billing_settings",
+      metadata: settings,
+      ip: clientIp(request),
+    });
+
+    return {
+      settings,
+      diagnostics: diagnostics.providerToggles,
     };
   });
 
@@ -536,6 +589,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
+      await assertMercadoPagoPlanSyncAllowed();
       const result = await syncPlanToMercadoPago(request.params.id, {
         forceRecreate: parsed.data.forceRecreate,
       });
@@ -585,6 +639,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
+      await assertMercadoPagoPlanSyncAllowed();
       const result = await syncPlanToMercadoPago(request.params.id, {
         forceRecreate: parsed.data.forceRecreate,
       });

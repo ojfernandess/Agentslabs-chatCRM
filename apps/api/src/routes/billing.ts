@@ -65,7 +65,19 @@ async function resolveCheckoutProvider(
   planId: string,
   requested?: PaymentProviderName,
 ): Promise<PaymentProviderName> {
-  if (requested) return requested;
+  if (requested) {
+    const providers = await getBillingProvidersClientConfig(organizationId);
+    if (requested === "stripe" && (!providers.stripe.configured || !providers.stripe.enabled)) {
+      throw new BillingError("Stripe billing is disabled or not configured on the platform", "stripe_not_configured");
+    }
+    if (requested === "mercadopago" && (!providers.mercadopago.connected || !providers.mercadopago.enabled)) {
+      throw new BillingError(
+        "Mercado Pago billing is disabled or not configured on the platform",
+        "mercadopago_not_configured",
+      );
+    }
+    return requested;
+  }
 
   const sub = await prisma.organizationSubscription.findUnique({
     where: { organizationId },
@@ -87,9 +99,9 @@ async function resolveCheckoutProvider(
     return resolveDefaultPaymentProvider();
   }
 
-  const stripeReady = providers.stripe.configured && Boolean(plan.stripePriceId?.trim());
+  const stripeReady = providers.stripe.configured && providers.stripe.enabled;
   const mercadoPagoReady =
-    providers.mercadopago.connected && Boolean(plan.mercadopagoPlanId?.trim());
+    providers.mercadopago.connected && providers.mercadopago.enabled && plan.amountCents > 0;
 
   if (mercadoPagoReady && !stripeReady) return "mercadopago";
   if (stripeReady && !mercadoPagoReady) return "stripe";
@@ -140,7 +152,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const providers = await getBillingProvidersClientConfig(organizationId);
     const stripe = providers.stripe;
     return {
-      stripeConfigured: stripe.configured,
+      stripeConfigured: stripe.configured && stripe.enabled,
       publishableKey: stripe.publishableKey,
       providers,
       defaultProvider: resolveDefaultPaymentProvider(),
@@ -194,7 +206,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return {
-      stripeConfigured: providers.stripe.configured,
+      stripeConfigured: providers.stripe.configured && providers.stripe.enabled,
       publishableKey: providers.stripe.publishableKey,
       providers,
       defaultProvider: resolveDefaultPaymentProvider(),
@@ -261,8 +273,11 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         stripeReady: p.amountCents <= 0 || Boolean(p.stripePriceId?.trim()),
         mercadopagoReady: p.amountCents <= 0 || Boolean(p.mercadopagoPlanId?.trim()),
         checkoutProviders: {
-          stripe: providers.stripe.configured && (p.amountCents <= 0 || Boolean(p.stripePriceId?.trim())),
-          mercadopago: providers.mercadopago.connected && p.amountCents > 0,
+          stripe:
+            providers.stripe.configured &&
+            providers.stripe.enabled &&
+            (p.amountCents <= 0 || Boolean(p.stripePriceId?.trim())),
+          mercadopago: providers.mercadopago.connected && providers.mercadopago.enabled && p.amountCents > 0,
         },
       })),
       catalogMode: plans.some((p) => p.isCustom) ? ("custom" as const) : ("global" as const),
@@ -327,7 +342,13 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
 
     const body = planIdBodySchema.parse(request.body);
-    const providerName = await resolveCheckoutProvider(organizationId, body.planId, body.provider);
+    let providerName: PaymentProviderName;
+    try {
+      providerName = await resolveCheckoutProvider(organizationId, body.planId, body.provider);
+    } catch (err) {
+      sendBillingError(reply, err);
+      return;
+    }
     const provider = getBillingProvider(providerName);
     if (!(await provider.isConfigured({ organizationId }))) {
       providerNotConfiguredReply(reply, providerName);

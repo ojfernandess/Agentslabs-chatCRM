@@ -60,6 +60,7 @@ type PlanRow = {
 type BillingProviderSlice = {
   configured: boolean;
   connected: boolean;
+  enabled?: boolean;
   publishableKey: string | null;
 };
 
@@ -236,8 +237,10 @@ export function BillingSettingsPanel() {
   const currentPlan = overview?.subscription?.plan;
   const subscription = overview?.subscription;
   const localeTag = locale === "en" ? "en-US" : "pt-BR";
-  const mercadoPagoConfigured = Boolean(overview?.providers?.mercadopago?.connected);
-  const stripeConfigured = Boolean(overview?.stripeConfigured);
+  const mercadoPagoConfigured = Boolean(
+    overview?.providers?.mercadopago?.connected && overview?.providers?.mercadopago?.enabled !== false,
+  );
+  const stripeConfigured = Boolean(overview?.stripeConfigured && overview?.providers?.stripe?.enabled !== false);
   const checkoutAvailable = Boolean(stripeConfigured || mercadoPagoConfigured);
   const providerManaged = Boolean(subscription?.providerManaged ?? subscription?.stripeManaged);
 

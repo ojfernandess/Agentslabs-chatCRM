@@ -22,6 +22,7 @@ export interface ProviderContext {
 export interface BillingProviderConfigSlice {
   configured: boolean;
   connected: boolean;
+  enabled: boolean;
   publishableKey: string | null;
   capabilities: BillingProviderCapabilities;
 }

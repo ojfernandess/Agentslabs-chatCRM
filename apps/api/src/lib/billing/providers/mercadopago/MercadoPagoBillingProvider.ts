@@ -1,104 +1,95 @@
-import { prisma } from "../../../../db.js";
-import { config, isMercadoPagoBillingConfigured } from "../../../../config.js";
+import { config } from "../../../../config.js";
 import { BillingError } from "../../StripeCustomerService.js";
-import {
-  isMercadoPagoConnectedForOrganizationSync,
-  resolveMercadoPagoAccessToken,
-} from "../../MercadoPagoConnectionService.js";
 import {
   getMercadoPagoBillingPlatformSettings,
   resolveMercadoPagoPublicKeyForMode,
 } from "../../mercadoPagoBillingSettings.js";
 import {
+  getPaymentProviderPlatformSettings,
+  isMercadoPagoBillingEnabledForCheckout,
+} from "../../paymentProviderPlatformSettings.js";
+import {
   MERCADOPAGO_BILLING_CAPABILITIES,
   type BillingProvider,
   type BillingProviderConfigSlice,
-  type CreateCheckoutSessionInput,
-  type CreateCheckoutSessionResult,
   type ProviderContext,
 } from "../types.js";
 import { createMercadoPagoCheckoutSession } from "../../mercadopago/MercadoPagoCheckoutService.js";
 
-function notConfigured(): never {
-  throw new BillingError(
-    "Mercado Pago billing is not configured for this organization",
+function mercadoPagoNotConfiguredError(): BillingError {
+  return new BillingError(
+    "Mercado Pago billing is not enabled or not configured on the platform. Enable it in Super Admin → Integrações de pagamento and configure MERCADOPAGO_* tokens.",
     "mercadopago_not_configured",
   );
 }
 
-async function resolveOrgConnection(organizationId: string) {
-  return prisma.paymentProviderConnection.findUnique({
-    where: {
-      organizationId_provider: { organizationId, provider: "mercadopago" },
-    },
-    select: {
-      status: true,
-      accessTokenEnc: true,
-      publicKey: true,
-    },
-  });
+function mercadoPagoUnsupportedOperation(operation: string): never {
+  throw new BillingError(
+    `Mercado Pago ${operation} is not available in platform-managed billing. Use checkout to change plans or contact support.`,
+    "mercadopago_not_configured",
+  );
 }
 
 export const mercadoPagoBillingProvider: BillingProvider = {
   name: "mercadopago",
   capabilities: MERCADOPAGO_BILLING_CAPABILITIES,
 
-  async isConfigured(ctx?: ProviderContext): Promise<boolean> {
-    if (isMercadoPagoBillingConfigured()) return true;
-    if (!ctx?.organizationId) return false;
-    const conn = await resolveOrgConnection(ctx.organizationId);
-    return isMercadoPagoConnectedForOrganizationSync(conn);
+  async isConfigured(_ctx?: ProviderContext): Promise<boolean> {
+    return isMercadoPagoBillingEnabledForCheckout();
   },
 
-  async getClientConfig(ctx?: ProviderContext): Promise<BillingProviderConfigSlice> {
-    const platformConfigured = isMercadoPagoBillingConfigured();
-    const conn = ctx?.organizationId ? await resolveOrgConnection(ctx.organizationId) : null;
-    const orgConnected = isMercadoPagoConnectedForOrganizationSync(conn);
+  async getClientConfig(_ctx?: ProviderContext): Promise<BillingProviderConfigSlice> {
+    const toggles = await getPaymentProviderPlatformSettings();
     const mpSettings = await getMercadoPagoBillingPlatformSettings();
-    const platformPublishableKey = resolveMercadoPagoPublicKeyForMode(mpSettings.mode) || config.mercadopagoPublicKey || null;
+    const platformPublishableKey =
+      resolveMercadoPagoPublicKeyForMode(mpSettings.mode) || config.mercadopagoPublicKey || null;
+    const checkoutReady = await isMercadoPagoBillingEnabledForCheckout();
+
     return {
-      configured: platformConfigured || orgConnected,
-      connected: platformConfigured || orgConnected,
-      publishableKey: conn?.publicKey?.trim() || platformPublishableKey,
+      configured: checkoutReady,
+      connected: checkoutReady,
+      enabled: toggles.mercadopago.enabled,
+      publishableKey: platformPublishableKey,
       capabilities: MERCADOPAGO_BILLING_CAPABILITIES,
     };
   },
 
-  async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CreateCheckoutSessionResult> {
-    const configured = await this.isConfigured({ organizationId: input.organizationId });
-    if (!configured) notConfigured();
+  async createCheckoutSession(input) {
+    if (!(await this.isConfigured({ organizationId: input.organizationId }))) {
+      throw mercadoPagoNotConfiguredError();
+    }
     return createMercadoPagoCheckoutSession(input);
   },
 
   async createPortalSession() {
-    notConfigured();
+    mercadoPagoUnsupportedOperation("customer portal");
   },
 
   async changePlan() {
-    notConfigured();
+    mercadoPagoUnsupportedOperation("plan change");
   },
 
   async cancelSubscription() {
-    notConfigured();
+    mercadoPagoUnsupportedOperation("subscription cancel");
   },
 
   async resumeSubscription() {
-    notConfigured();
+    mercadoPagoUnsupportedOperation("subscription resume");
   },
 
   async listInvoices() {
-    notConfigured();
+    mercadoPagoUnsupportedOperation("invoice listing");
   },
 
   async createPaymentMethodSetupSession() {
-    notConfigured();
+    mercadoPagoUnsupportedOperation("payment method setup");
   },
 
   async createPaymentMethodPortalSession() {
-    notConfigured();
+    mercadoPagoUnsupportedOperation("payment method portal");
   },
 };
 
-export async function mercadoPagoAccessTokenForOrganization(organizationId: string): Promise<string | null> {
-  return resolveMercadoPagoAccessToken(organizationId);
+export async function mercadoPagoAccessTokenForOrganization(_organizationId: string): Promise<string | null> {
+  return null;
 }

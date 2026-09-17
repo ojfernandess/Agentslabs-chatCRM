@@ -30,6 +30,8 @@ type WebhookStats = {
 
 type ProviderDiagnostics = {
   configured: boolean;
+  enabled: boolean;
+  checkoutReady: boolean;
   env: EnvVarRow[];
   webhooks: WebhookStats;
 };
@@ -63,6 +65,12 @@ type MercadoPagoDiagnostics = ProviderDiagnostics & {
 type DiagnosticsResponse = {
   publicApiUrl: string;
   webAppUrl: string;
+  providerToggles: {
+    stripe: { enabled: boolean };
+    mercadopago: { enabled: boolean };
+    stripeReady: boolean;
+    mercadopagoReady: boolean;
+  };
   stripe: StripeDiagnostics;
   mercadopago: MercadoPagoDiagnostics;
   platformEnv: EnvVarRow[];
@@ -255,6 +263,10 @@ export function SuperAdminPaymentProvidersPanel({
   const [mpMode, setMpMode] = useState<"sandbox" | "production">("sandbox");
   const [mpModeSaving, setMpModeSaving] = useState(false);
   const [mpModeSuccess, setMpModeSuccess] = useState("");
+  const [stripeEnabled, setStripeEnabled] = useState(true);
+  const [mercadoPagoEnabled, setMercadoPagoEnabled] = useState(true);
+  const [providerTogglesSaving, setProviderTogglesSaving] = useState(false);
+  const [providerTogglesSuccess, setProviderTogglesSuccess] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -263,6 +275,8 @@ export function SuperAdminPaymentProvidersPanel({
       const res = await api.get<{ diagnostics: DiagnosticsResponse }>("/super/billing/payment-providers");
       setDiagnostics(res.diagnostics);
       setMpMode(res.diagnostics.mercadopago.billingMode.mode);
+      setStripeEnabled(res.diagnostics.providerToggles.stripe.enabled);
+      setMercadoPagoEnabled(res.diagnostics.providerToggles.mercadopago.enabled);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("superAdmin.billingProvidersLoadError"));
     } finally {
@@ -288,6 +302,24 @@ export function SuperAdminPaymentProvidersPanel({
       setError(e instanceof ApiError ? e.message : t("superAdmin.billingProvidersTestError"));
     } finally {
       setTesting(null);
+    }
+  };
+
+  const saveProviderToggles = async () => {
+    setProviderTogglesSaving(true);
+    setProviderTogglesSuccess("");
+    setError("");
+    try {
+      await api.patch("/super/billing/payment-providers", {
+        stripe: { enabled: stripeEnabled },
+        mercadopago: { enabled: mercadoPagoEnabled },
+      });
+      setProviderTogglesSuccess(t("superAdmin.billingProvidersTogglesSaved"));
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("superAdmin.billingProvidersTogglesSaveError"));
+    } finally {
+      setProviderTogglesSaving(false);
     }
   };
 
@@ -344,6 +376,65 @@ export function SuperAdminPaymentProvidersPanel({
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       ) : null}
 
+      {providerTogglesSuccess ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {providerTogglesSuccess}
+        </div>
+      ) : null}
+
+      {diagnostics ? (
+        <SuperAdminPanel className="space-y-4 p-5">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">{t("superAdmin.billingProvidersTogglesTitle")}</h3>
+            <p className="mt-1 text-sm text-slate-600">{t("superAdmin.billingProvidersTogglesHint")}</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-4">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={stripeEnabled}
+                onChange={(e) => setStripeEnabled(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-900">Stripe</span>
+                <span className="mt-1 block text-xs text-slate-500">
+                  {diagnostics.providerToggles.stripeReady
+                    ? t("superAdmin.billingProvidersToggleReady")
+                    : t("superAdmin.billingProvidersToggleNotReady")}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-4">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={mercadoPagoEnabled}
+                onChange={(e) => setMercadoPagoEnabled(e.target.checked)}
+              />
+              <span>
+                <span className="block text-sm font-medium text-slate-900">Mercado Pago</span>
+                <span className="mt-1 block text-xs text-slate-500">
+                  {diagnostics.providerToggles.mercadopagoReady
+                    ? t("superAdmin.billingProvidersToggleReady")
+                    : t("superAdmin.billingProvidersToggleNotReady")}
+                </span>
+              </span>
+            </label>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              disabled={providerTogglesSaving}
+              onClick={() => void saveProviderToggles()}
+            >
+              {providerTogglesSaving ? t("common.saving") : t("superAdmin.billingProvidersTogglesSave")}
+            </button>
+          </div>
+        </SuperAdminPanel>
+      ) : null}
+
       {diagnostics ? (
         <SuperAdminPanel className="p-4">
           <h4 className="text-sm font-semibold text-slate-900">{t("superAdmin.billingProvidersPlatformUrls")}</h4>
@@ -383,7 +474,13 @@ export function SuperAdminPaymentProvidersPanel({
       <div className="grid gap-4 lg:grid-cols-2">
         <SuperAdminMetricCard
           label="Stripe"
-          value={stripe?.configured ? t("superAdmin.billingProvidersStatusConfigured") : t("superAdmin.billingProvidersStatusNotConfigured")}
+          value={
+            stripe?.enabled
+              ? stripe.checkoutReady
+                ? t("superAdmin.billingProvidersStatusActive")
+                : t("superAdmin.billingProvidersStatusEnabledNotReady")
+              : t("superAdmin.billingProvidersStatusDisabled")
+          }
           hint={
             stripeKeyMode === "live"
               ? t("superAdmin.billingStripeModeLive")
@@ -396,9 +493,11 @@ export function SuperAdminPaymentProvidersPanel({
         <SuperAdminMetricCard
           label="Mercado Pago"
           value={
-            mp?.configured
-              ? t("superAdmin.billingProvidersStatusConfigured")
-              : t("superAdmin.billingProvidersStatusNotConfigured")
+            mp?.enabled
+              ? mp.checkoutReady
+                ? t("superAdmin.billingProvidersStatusActive")
+                : t("superAdmin.billingProvidersStatusEnabledNotReady")
+              : t("superAdmin.billingProvidersStatusDisabled")
           }
           hint={t("superAdmin.billingProvidersMpOrgConnections")
             .replace("{connected}", String(mp?.orgConnections.connected ?? 0))
@@ -414,11 +513,13 @@ export function SuperAdminPaymentProvidersPanel({
               <h3 className="text-lg font-semibold text-slate-900">{t("superAdmin.billingProvidersStripeTitle")}</h3>
               <div className="mt-2 flex flex-wrap gap-2">
                 <StatusBadge
-                  ok={stripe.configured}
+                  ok={stripe.checkoutReady}
                   label={
-                    stripe.configured
-                      ? t("superAdmin.billingProvidersStatusConfigured")
-                      : t("superAdmin.billingProvidersStatusPartial")
+                    !stripe.enabled
+                      ? t("superAdmin.billingProvidersStatusDisabled")
+                      : stripe.checkoutReady
+                        ? t("superAdmin.billingProvidersStatusActive")
+                        : t("superAdmin.billingProvidersStatusEnabledNotReady")
                   }
                 />
                 {stripe.publishableKeyConfigured ? (
@@ -517,11 +618,13 @@ export function SuperAdminPaymentProvidersPanel({
               <h3 className="text-lg font-semibold text-slate-900">{t("superAdmin.billingProvidersMercadoPagoTitle")}</h3>
               <div className="mt-2 flex flex-wrap gap-2">
                 <StatusBadge
-                  ok={mp.configured}
+                  ok={mp.enabled && mp.checkoutReady}
                   label={
-                    mp.configured
-                      ? t("superAdmin.billingProvidersStatusConfigured")
-                      : t("superAdmin.billingProvidersStatusNotConfigured")
+                    !mp.enabled
+                      ? t("superAdmin.billingProvidersStatusDisabled")
+                      : mp.checkoutReady
+                        ? t("superAdmin.billingProvidersStatusActive")
+                        : t("superAdmin.billingProvidersStatusEnabledNotReady")
                   }
                 />
                 <StatusBadge

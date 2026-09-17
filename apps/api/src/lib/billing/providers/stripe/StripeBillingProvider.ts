@@ -13,6 +13,10 @@ import {
   createPaymentMethodSetupSession,
 } from "../../StripeSetupService.js";
 import {
+  getPaymentProviderPlatformSettings,
+  isStripeBillingEnabledForCheckout,
+} from "../../paymentProviderPlatformSettings.js";
+import {
   STRIPE_BILLING_CAPABILITIES,
   type BillingProvider,
   type BillingProviderConfigSlice,
@@ -25,60 +29,76 @@ function assertStripeConfigured(): void {
   }
 }
 
+async function assertStripeEnabledForCheckout(): Promise<void> {
+  if (!(await isStripeBillingEnabledForCheckout())) {
+    throw new Error("Stripe billing is disabled or not configured on this platform");
+  }
+}
+
 export const stripeBillingProvider: BillingProvider = {
   name: "stripe",
   capabilities: STRIPE_BILLING_CAPABILITIES,
 
-  isConfigured(_ctx?: ProviderContext): boolean {
-    return isStripeBillingConfigured();
+  async isConfigured(_ctx?: ProviderContext): Promise<boolean> {
+    return isStripeBillingEnabledForCheckout();
   },
 
-  getClientConfig(_ctx?: ProviderContext): BillingProviderConfigSlice {
-    const configured = isStripeBillingConfigured();
+  async getClientConfig(_ctx?: ProviderContext): Promise<BillingProviderConfigSlice> {
+    const toggles = await getPaymentProviderPlatformSettings();
+    const checkoutReady = await isStripeBillingEnabledForCheckout();
     return {
-      configured,
-      connected: configured,
+      configured: checkoutReady,
+      connected: checkoutReady,
+      enabled: toggles.stripe.enabled,
       publishableKey: getStripePublishableKeyForClient(),
       capabilities: STRIPE_BILLING_CAPABILITIES,
     };
   },
 
   async createCheckoutSession(input) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     return createCheckoutSession(input);
   },
 
   async createPortalSession(input) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     return createBillingPortalSession(input);
   },
 
   async changePlan(input) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     await changeSubscriptionPlan(input);
   },
 
   async cancelSubscription(input) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     await cancelOrganizationSubscription(input);
   },
 
   async resumeSubscription(input) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     await resumeScheduledCancellation(input);
   },
 
   async listInvoices(organizationId) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     return listOrganizationInvoices(organizationId);
   },
 
   async createPaymentMethodSetupSession(input) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     return createPaymentMethodSetupSession(input);
   },
 
   async createPaymentMethodPortalSession(input) {
+    await assertStripeEnabledForCheckout();
     assertStripeConfigured();
     return createPaymentMethodPortalSession(input);
   },

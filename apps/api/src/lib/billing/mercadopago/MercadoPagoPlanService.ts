@@ -1,7 +1,6 @@
 import type { Plan } from "@prisma/client";
 import { prisma } from "../../../db.js";
 import { BillingError } from "../StripeCustomerService.js";
-import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
 import { resolvePlatformMercadoPagoAccessToken } from "../mercadoPagoBillingSettings.js";
 import {
   mercadoPagoPlanBackUrl,
@@ -58,12 +57,9 @@ function buildPreapprovalPlanBody(plan: Pick<Plan, "id" | "slug" | "name" | "des
   };
 }
 
-async function resolveAccessTokenForPlan(plan: Pick<Plan, "organizationId">): Promise<string> {
-  if (plan.organizationId) {
-    const orgToken = await resolveMercadoPagoAccessToken(plan.organizationId);
-    if (orgToken) return orgToken;
-  }
-  return await resolvePlatformMercadoPagoAccessToken();
+async function resolveAccessTokenForPlan(_plan: Pick<Plan, "organizationId">): Promise<string> {
+  // Billing SaaS da plataforma: planos globais e personalizados usam credenciais da plataforma.
+  return resolvePlatformMercadoPagoAccessToken();
 }
 
 export async function getMercadoPagoPreapprovalPlan(

@@ -41,6 +41,7 @@ describe("BillingProviderFactory", () => {
       const cfg = await mercadoPagoBillingProvider.getClientConfig();
       assert.equal(cfg.configured, false);
       assert.equal(cfg.connected, false);
+      assert.equal(cfg.enabled, true);
     } finally {
       if (prev != null) process.env.MERCADOPAGO_ACCESS_TOKEN = prev;
     }

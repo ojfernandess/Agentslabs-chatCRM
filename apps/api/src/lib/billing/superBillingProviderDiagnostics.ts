@@ -13,6 +13,9 @@ import {
   getMercadoPagoBillingPlatformSettings,
   resolvePlatformMercadoPagoAccessToken,
 } from "./mercadoPagoBillingSettings.js";
+import {
+  getPaymentProviderPlatformDiagnostics,
+} from "./paymentProviderPlatformSettings.js";
 import { mercadoPagoRequest } from "./mercadopago/mercadoPagoClient.js";
 import { getStripeClient } from "./stripeClient.js";
 import { getStripeKeyMode, type StripeKeyMode } from "./stripeErrors.js";
@@ -91,19 +94,24 @@ export async function getSuperBillingProviderDiagnostics() {
   const oauthRedirectUri = mercadoPagoOAuthRedirectUri();
   const mpOAuthConfigured = Boolean(config.mercadopagoClientId && config.mercadopagoClientSecret);
 
-  const [stripeWebhook, mpWebhook, mpConnectedOrgs, mpTotalOrgs, mpBillingMode] = await Promise.all([
+  const [stripeWebhook, mpWebhook, mpConnectedOrgs, mpTotalOrgs, mpBillingMode, providerToggles] =
+    await Promise.all([
     webhookStats("stripe", stripeWebhookUrl, isStripeBillingConfigured()),
     webhookStats("mercadopago", mpWebhookUrl, isMercadoPagoWebhookConfigured()),
     prisma.paymentProviderConnection.count({ where: { provider: "mercadopago", status: "connected" } }),
     prisma.paymentProviderConnection.count({ where: { provider: "mercadopago" } }),
     getMercadoPagoBillingModeDiagnostics(),
+    getPaymentProviderPlatformDiagnostics(),
   ]);
 
   return {
     publicApiUrl,
     webAppUrl,
+    providerToggles,
     stripe: {
       configured: isStripeBillingConfigured(),
+      enabled: providerToggles.stripe.enabled,
+      checkoutReady: providerToggles.stripeReady,
       checkoutConfigured: Boolean(config.stripeSecretKey),
       publishableKeyConfigured: Boolean(config.stripePublishableKey),
       webhookSecretConfigured: Boolean(config.stripeWebhookSecret),
@@ -121,6 +129,8 @@ export async function getSuperBillingProviderDiagnostics() {
     },
     mercadopago: {
       configured: isMercadoPagoBillingConfigured(),
+      enabled: providerToggles.mercadopago.enabled,
+      checkoutReady: providerToggles.mercadopagoReady,
       webhookConfigured: isMercadoPagoWebhookConfigured(),
       oauthConfigured: mpOAuthConfigured,
       oauthRedirectUri,
