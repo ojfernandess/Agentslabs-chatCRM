@@ -43,6 +43,7 @@ import {
   getPaymentProviderPlatformDiagnostics,
   patchPaymentProviderPlatformSettings,
 } from "../lib/billing/paymentProviderPlatformSettings.js";
+import { ensureMercadoPagoSubscriptionBillingPeriod } from "../lib/billing/subscriptionSync.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
@@ -888,11 +889,55 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       }),
     ]);
 
+    const backfillCandidates = rows.filter(
+      (s) =>
+        s.paymentProvider === "mercadopago" &&
+        !s.currentPeriodEnd &&
+        (s.status === "active" || s.status === "trialing") &&
+        s.plan?.interval,
+    );
+    let displayRows = rows;
+    if (backfillCandidates.length > 0) {
+      await Promise.all(
+        backfillCandidates.map((s) =>
+          ensureMercadoPagoSubscriptionBillingPeriod(s.organizationId).catch(() => {}),
+        ),
+      );
+      displayRows = await prisma.organizationSubscription.findMany({
+        where: { id: { in: backfillCandidates.map((s) => s.id) } },
+        include: {
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              planTier: true,
+              billingEmail: true,
+              isActive: true,
+              stripeCustomerId: true,
+            },
+          },
+          plan: {
+            select: {
+              id: true,
+              slug: true,
+              name: true,
+              amountCents: true,
+              currency: true,
+              interval: true,
+            },
+          },
+        },
+      });
+      const refreshedById = new Map(displayRows.map((s) => [s.id, s]));
+      displayRows = rows.map((s) => refreshedById.get(s.id) ?? s);
+    }
+
     return {
       total,
       page: query.page,
       limit: query.limit,
-      subscriptions: rows.map((s) => ({
+      subscriptions: displayRows.map((s) => ({
         id: s.id,
         organizationId: s.organizationId,
         organization: s.organization,

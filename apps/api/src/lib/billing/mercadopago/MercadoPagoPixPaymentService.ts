@@ -6,7 +6,7 @@ import { recordBillingAudit } from "../billingAudit.js";
 import { mapMercadoPagoPaymentStatus } from "../billingTypes.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
-import { syncSubscriptionSnapshot } from "../subscriptionSync.js";
+import { syncSubscriptionSnapshot, resolveMercadoPagoBillingPeriod, parseMercadoPagoDateString } from "../subscriptionSync.js";
 import {
   getMercadoPagoBillingPlatformSettings,
   MERCADOPAGO_SANDBOX_PIX_PAYER_FIRST_NAME,
@@ -25,6 +25,8 @@ type MercadoPagoPayment = {
   status?: string;
   status_detail?: string;
   date_of_expiration?: string | null;
+  date_approved?: string | null;
+  date_created?: string | null;
   external_reference?: string | null;
   point_of_interaction?: {
     transaction_data?: {
@@ -232,11 +234,20 @@ export async function syncMercadoPagoPixPaymentIfApproved(
     where: { organizationId },
     select: {
       planId: true,
-      plan: { select: { mercadopagoPlanId: true } },
+      plan: { select: { mercadopagoPlanId: true, interval: true } },
     },
   });
 
   if (approved) {
+    const periodStart =
+      parseMercadoPagoDateString(payment.date_approved) ??
+      parseMercadoPagoDateString(payment.date_created) ??
+      new Date();
+    const billingPeriod = resolveMercadoPagoBillingPeriod({
+      periodStart,
+      planInterval: sub?.plan?.interval ?? null,
+    });
+
     await syncSubscriptionSnapshot({
       organizationId,
       planId: sub?.planId ?? null,
@@ -245,6 +256,8 @@ export async function syncMercadoPagoPixPaymentIfApproved(
       externalSubscriptionId: String(payment.id),
       externalPriceId: sub?.plan?.mercadopagoPlanId ?? null,
       checkoutSessionId: String(payment.id),
+      currentPeriodStart: billingPeriod.currentPeriodStart,
+      currentPeriodEnd: billingPeriod.currentPeriodEnd,
       clearPaymentDue: true,
     });
   } else {

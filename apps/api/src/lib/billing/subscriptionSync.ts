@@ -207,6 +207,79 @@ function parseMercadoPagoDate(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/** Avança a data de acordo com o intervalo do plano (month/year). */
+export function addPlanIntervalToDate(start: Date, interval: string): Date {
+  const end = new Date(start.getTime());
+  if (interval === "year") {
+    end.setUTCFullYear(end.getUTCFullYear() + 1);
+  } else {
+    end.setUTCMonth(end.getUTCMonth() + 1);
+  }
+  return end;
+}
+
+/** Resolve início/fim do período de cobrança Mercado Pago (Renovação na UI). */
+export function resolveMercadoPagoBillingPeriod(params: {
+  periodStart?: Date | null;
+  nextPaymentDate?: Date | null;
+  planInterval?: string | null;
+}): { currentPeriodStart: Date | null; currentPeriodEnd: Date | null } {
+  const start = params.periodStart ?? null;
+  if (!start) return { currentPeriodStart: null, currentPeriodEnd: null };
+
+  const nextPayment = params.nextPaymentDate;
+  if (nextPayment && nextPayment.getTime() > start.getTime()) {
+    return { currentPeriodStart: start, currentPeriodEnd: nextPayment };
+  }
+
+  const interval = params.planInterval?.trim();
+  if (interval) {
+    return {
+      currentPeriodStart: start,
+      currentPeriodEnd: addPlanIntervalToDate(start, interval),
+    };
+  }
+
+  return { currentPeriodStart: start, currentPeriodEnd: null };
+}
+
+export function parseMercadoPagoDateString(value: string | null | undefined): Date | null {
+  return parseMercadoPagoDate(value);
+}
+
+/** Preenche Renovação em assinaturas MP activas criadas antes do cálculo de período. */
+export async function ensureMercadoPagoSubscriptionBillingPeriod(organizationId: string): Promise<void> {
+  const sub = await prisma.organizationSubscription.findUnique({
+    where: { organizationId },
+    select: {
+      status: true,
+      paymentProvider: true,
+      currentPeriodEnd: true,
+      currentPeriodStart: true,
+      updatedAt: true,
+      plan: { select: { interval: true } },
+    },
+  });
+  if (!sub || sub.paymentProvider !== "mercadopago") return;
+  if (sub.status !== "active" && sub.status !== "trialing") return;
+  if (sub.currentPeriodEnd) return;
+  if (!sub.plan?.interval) return;
+
+  const billingPeriod = resolveMercadoPagoBillingPeriod({
+    periodStart: sub.currentPeriodStart ?? sub.updatedAt,
+    planInterval: sub.plan.interval,
+  });
+  if (!billingPeriod.currentPeriodEnd) return;
+
+  await prisma.organizationSubscription.update({
+    where: { organizationId },
+    data: {
+      currentPeriodStart: billingPeriod.currentPeriodStart ?? undefined,
+      currentPeriodEnd: billingPeriod.currentPeriodEnd,
+    },
+  });
+}
+
 export function resolveOrganizationIdFromMercadoPagoReference(
   externalReference: string | null | undefined,
 ): string | null {
@@ -249,6 +322,17 @@ export async function syncSubscriptionFromMercadoPago(
   const status = mapMercadoPagoPreapprovalStatus(preapproval.status ?? "pending");
   const payerId = preapproval.payer_id != null ? String(preapproval.payer_id) : null;
 
+  const plan = planId
+    ? await prisma.plan.findUnique({ where: { id: planId }, select: { interval: true } })
+    : null;
+  const billingPeriod = resolveMercadoPagoBillingPeriod({
+    periodStart:
+      parseMercadoPagoDate(preapproval.auto_recurring?.start_date) ??
+      parseMercadoPagoDate(preapproval.date_created),
+    nextPaymentDate: parseMercadoPagoDate(preapproval.next_payment_date),
+    planInterval: plan?.interval ?? null,
+  });
+
   return syncSubscriptionSnapshot({
     organizationId,
     planId,
@@ -257,8 +341,8 @@ export async function syncSubscriptionFromMercadoPago(
     externalCustomerId: payerId,
     externalSubscriptionId: preapproval.id,
     externalPriceId: preapproval.preapproval_plan_id ?? null,
-    currentPeriodStart: parseMercadoPagoDate(preapproval.auto_recurring?.start_date),
-    currentPeriodEnd: parseMercadoPagoDate(preapproval.next_payment_date ?? preapproval.auto_recurring?.end_date),
+    currentPeriodStart: billingPeriod.currentPeriodStart,
+    currentPeriodEnd: billingPeriod.currentPeriodEnd,
     checkoutSessionId: preapproval.id,
     clearPaymentDue: status === "active",
   });

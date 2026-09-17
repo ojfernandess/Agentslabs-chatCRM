@@ -21,6 +21,7 @@ import {
   resolveDefaultPaymentProvider,
   resolveOrganizationPaymentProvider,
   subscriptionIsProviderManaged,
+  ensureMercadoPagoSubscriptionBillingPeriod,
   type PaymentProviderName,
 } from "../lib/billing/index.js";
 import { mercadoPagoBillingErrorHttpStatus } from "../lib/billing/mercadopago/mercadoPagoClient.js";
@@ -163,6 +164,8 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
   app.get("/overview", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+
+    await ensureMercadoPagoSubscriptionBillingPeriod(organizationId).catch(() => {});
 
     const [entitlements, usage, org, providers] = await Promise.all([
       getEffectivePlanForOrganization(organizationId),
