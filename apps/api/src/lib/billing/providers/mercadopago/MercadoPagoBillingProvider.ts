@@ -15,6 +15,7 @@ import {
   type ProviderContext,
 } from "../types.js";
 import { createMercadoPagoCheckoutSession } from "../../mercadopago/MercadoPagoCheckoutService.js";
+import { listOrganizationMercadoPagoInvoices } from "../../mercadopago/MercadoPagoInvoiceService.js";
 
 function mercadoPagoNotConfiguredError(): BillingError {
   return new BillingError(
@@ -77,8 +78,11 @@ export const mercadoPagoBillingProvider: BillingProvider = {
     mercadoPagoUnsupportedOperation("subscription resume");
   },
 
-  async listInvoices() {
-    mercadoPagoUnsupportedOperation("invoice listing");
+  async listInvoices(organizationId) {
+    if (!(await this.isConfigured({ organizationId }))) {
+      throw mercadoPagoNotConfiguredError();
+    }
+    return listOrganizationMercadoPagoInvoices(organizationId);
   },
 
   async createPaymentMethodSetupSession() {

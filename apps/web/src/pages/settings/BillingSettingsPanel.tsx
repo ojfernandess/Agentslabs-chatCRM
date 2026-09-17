@@ -207,13 +207,19 @@ export function BillingSettingsPanel() {
       ]);
       setOverview(ov);
       setPlans(pl.plans);
-      if (ov.stripeConfigured) {
+      const shouldLoadInvoices = Boolean(
+        ov.stripeConfigured ||
+          (ov.providers?.mercadopago?.configured && ov.subscription?.paymentProvider === "mercadopago"),
+      );
+      if (shouldLoadInvoices) {
         try {
           const inv = await api.get<{ invoices: InvoiceRow[] }>("/billing/invoices");
           setInvoices(inv.invoices);
         } catch {
           setInvoices([]);
         }
+      } else {
+        setInvoices([]);
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("settings.billingLoadError"));
