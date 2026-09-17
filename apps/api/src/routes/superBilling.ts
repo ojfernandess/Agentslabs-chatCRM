@@ -28,6 +28,7 @@ import {
 } from "../lib/billing/customPlanService.js";
 import { sendOrganizationPaymentReminder } from "../lib/billing/billingEmailNotifications.js";
 import { updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
+import { mercadoPagoBillingErrorHttpStatus } from "../lib/billing/mercadopago/mercadoPagoClient.js";
 import { syncPlanToMercadoPago } from "../lib/billing/mercadopago/MercadoPagoPlanService.js";
 import {
   getSuperBillingProviderDiagnostics,
@@ -530,16 +531,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       };
     } catch (err) {
       if (err instanceof BillingError) {
-        const statusCode =
-          err.code === "plan_not_found"
-            ? 404
-            : err.code === "mercadopago_not_configured" ||
-                err.code === "plan_free_mercadopago" ||
-                err.code === "mercadopago_plan_sync_failed"
-              ? 400
-              : err.code === "mercadopago_api_error"
-                ? 502
-                : 400;
+        const statusCode = err.code === "plan_not_found" ? 404 : mercadoPagoBillingErrorHttpStatus(err);
         return reply.status(statusCode).send({
           error: err.code,
           message: err.message,
@@ -592,16 +584,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       };
     } catch (err) {
       if (err instanceof BillingError) {
-        const statusCode =
-          err.code === "plan_not_found"
-            ? 404
-            : err.code === "mercadopago_not_configured" ||
-                err.code === "plan_free_mercadopago" ||
-                err.code === "mercadopago_plan_sync_failed"
-              ? 400
-              : err.code === "mercadopago_api_error"
-                ? 502
-                : 400;
+        const statusCode = err.code === "plan_not_found" ? 404 : mercadoPagoBillingErrorHttpStatus(err);
         return reply.status(statusCode).send({
           error: err.code,
           message: err.message,

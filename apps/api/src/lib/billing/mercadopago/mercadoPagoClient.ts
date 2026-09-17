@@ -18,6 +18,43 @@ export class MercadoPagoApiError extends BillingError {
   }
 }
 
+type MercadoPagoErrorPayload = {
+  message?: string;
+  error?: string;
+  cause?: Array<{ code?: string; description?: string }>;
+};
+
+function formatMercadoPagoError(payload: MercadoPagoErrorPayload, status: number): string {
+  const parts: string[] = [];
+  if (payload.message?.trim()) parts.push(payload.message.trim());
+  if (payload.error?.trim() && payload.error.trim() !== payload.message?.trim()) {
+    parts.push(payload.error.trim());
+  }
+  for (const item of payload.cause ?? []) {
+    if (item.description?.trim()) parts.push(item.description.trim());
+    else if (item.code?.trim()) parts.push(item.code.trim());
+  }
+  return parts.length > 0 ? parts.join(" — ") : `Mercado Pago API error (${status})`;
+}
+
+export function mercadoPagoBillingErrorHttpStatus(err: BillingError): number {
+  if (
+    err.code === "mercadopago_not_configured" ||
+    err.code === "plan_free_mercadopago" ||
+    err.code === "mercadopago_plan_sync_failed"
+  ) {
+    return 400;
+  }
+  if (err instanceof MercadoPagoApiError) {
+    if (err.statusCode >= 400 && err.statusCode < 500) return 400;
+    return 502;
+  }
+  if (err.code === "mercadopago_timeout" || err.code === "mercadopago_unreachable") {
+    return 502;
+  }
+  return 400;
+}
+
 export async function mercadoPagoRequest<T>(input: {
   accessToken: string;
   method: MercadoPagoHttpMethod;
@@ -43,19 +80,10 @@ export async function mercadoPagoRequest<T>(input: {
       signal: controller.signal,
     });
 
-    const payload = (await res.json().catch(() => ({}))) as T & {
-      message?: string;
-      error?: string;
-      cause?: Array<{ code?: string; description?: string }>;
-    };
+    const payload = (await res.json().catch(() => ({}))) as T & MercadoPagoErrorPayload;
 
     if (!res.ok) {
-      const detail =
-        payload.message ??
-        payload.error ??
-        payload.cause?.[0]?.description ??
-        `Mercado Pago API error (${res.status})`;
-      throw new MercadoPagoApiError(detail, res.status, payload.error);
+      throw new MercadoPagoApiError(formatMercadoPagoError(payload, res.status), res.status, payload.error);
     }
 
     return payload;
@@ -72,6 +100,13 @@ export async function mercadoPagoRequest<T>(input: {
 
 export function mercadoPagoBillingBackUrl(): string {
   return `${getWebAppPublicOrigin()}/settings?section=billing`;
+}
+
+/** URL de retorno ao criar planos de assinatura — prefere checkout success configurado (HTTPS). */
+export function mercadoPagoPlanBackUrl(): string {
+  const configured = config.mercadopagoCheckoutSuccessUrl.trim();
+  if (configured) return configured;
+  return mercadoPagoBillingBackUrl();
 }
 
 export function resolvePlatformMercadoPagoAccessToken(): string {
