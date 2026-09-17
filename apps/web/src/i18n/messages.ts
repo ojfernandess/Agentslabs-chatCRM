@@ -5476,9 +5476,9 @@ export const messages = {
       billingPaidPlanRequiresPaymentProvider:
         "Este plano exige checkout, mas nenhum provedor de pagamento disponível está configurado para ele.",
       billingPaymentProviderNotConfigured:
-        "Nenhum provedor de pagamento está configurado para esta organização.",
+        "Os pagamentos online ainda não estão disponíveis nesta plataforma.",
       billingPaymentProviderNotConfiguredHint:
-        "Configure Stripe no servidor ou conecte Mercado Pago em Provedores de pagamento abaixo.",
+        "Peça ao administrador da plataforma para configurar Stripe ou Mercado Pago no Super Admin.",
       billingPaymentMethodTitle: "Escolha a forma de pagamento",
       billingCheckoutMethodHint: "Plano {plan} — {amount}",
       billingPaymentMethodPix: "Pix",
@@ -6459,7 +6459,7 @@ export const messages = {
       billingProvidersMpSetup5:
         "Garanta PUBLIC_URL correto — é a base das URLs de webhook e OAuth.",
       billingProvidersMpSetup6:
-        "Organizações conectam Mercado Pago em Configurações → Faturação; o token da plataforma serve para sincronizar planos no Super Admin.",
+        "As organizações pagam planos com a configuração da plataforma — não precisam conectar credenciais próprias.",
       billingProvidersMpSetup7:
         "Use «Sincronizar no Mercado Pago» na aba Planos após MERCADOPAGO_ACCESS_TOKEN configurado.",
       billingProvidersMpSetup8:
@@ -12110,9 +12110,9 @@ export const messages = {
       billingPaidPlanRequiresPaymentProvider:
         "This plan requires checkout, but no available payment provider is configured for it.",
       billingPaymentProviderNotConfigured:
-        "No payment provider is configured for this organization.",
+        "Online payments are not available on this platform yet.",
       billingPaymentProviderNotConfiguredHint:
-        "Configure Stripe on the server or connect Mercado Pago under Payment providers below.",
+        "Ask the platform administrator to configure Stripe or Mercado Pago in Super Admin.",
       billingPaymentMethodTitle: "Choose payment method",
       billingCheckoutMethodHint: "Plan {plan} — {amount}",
       billingPaymentMethodPix: "Pix",
@@ -13089,7 +13089,7 @@ export const messages = {
       billingProvidersMpSetup5:
         "Ensure PUBLIC_URL is correct — it is the base for webhook and OAuth URLs.",
       billingProvidersMpSetup6:
-        "Organizations connect Mercado Pago under Settings → Billing; the platform token is used to sync plans in Super Admin.",
+        "Organizations pay for plans using the platform configuration — they do not connect their own credentials.",
       billingProvidersMpSetup7:
         "Use «Sync to Mercado Pago» on the Plans tab after MERCADOPAGO_ACCESS_TOKEN is set.",
       billingProvidersMpSetup8:

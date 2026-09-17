@@ -1,37 +1,16 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { z } from "zod";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isStripeBillingConfigured } from "../config.js";
-import { BillingError } from "../lib/billing/StripeCustomerService.js";
-import {
-  connectMercadoPagoManual,
-  disconnectMercadoPago,
-  getMercadoPagoConnectionClientRow,
-  handleMercadoPagoOAuthCallback,
-  startMercadoPagoOAuth,
-  testMercadoPagoConnection,
-} from "../lib/billing/MercadoPagoConnectionService.js";
-import {
-  getBillingProvidersClientConfig,
-} from "../lib/billing/index.js";
+import { handleMercadoPagoOAuthCallback } from "../lib/billing/MercadoPagoConnectionService.js";
+import { getBillingProvidersClientConfig } from "../lib/billing/index.js";
 
-const connectManualSchema = z.object({
-  accessToken: z.string().min(1).max(4096),
-  publicKey: z.union([z.string().max(255), z.literal(""), z.null()]).optional(),
-  environment: z.enum(["sandbox", "production"]).optional(),
-});
-
-function sendBillingError(reply: FastifyReply, err: unknown): void {
-  if (err instanceof BillingError) {
-    reply.status(400).send({
-      error: err.code,
-      message: err.message,
-      statusCode: 400,
-    });
-    return;
-  }
-  throw err;
+function orgProviderConfigDisabled(reply: FastifyReply): void {
+  reply.status(403).send({
+    error: "platform_managed_billing",
+    message: "Payment provider configuration is managed by the platform administrator",
+    statusCode: 403,
+  });
 }
 
 export async function billingProviderRoutes(app: FastifyInstance): Promise<void> {
@@ -53,10 +32,7 @@ export async function billingProviderRoutes(app: FastifyInstance): Promise<void>
       const organizationId = await resolveTenantOrganizationId(request, reply);
       if (!organizationId) return;
 
-      const [providers, mercadopago] = await Promise.all([
-        getBillingProvidersClientConfig(organizationId),
-        getMercadoPagoConnectionClientRow(organizationId),
-      ]);
+      const providers = await getBillingProvidersClientConfig(organizationId);
 
       return {
         stripe: {
@@ -66,62 +42,34 @@ export async function billingProviderRoutes(app: FastifyInstance): Promise<void>
         },
         mercadopago: {
           ...providers.mercadopago,
-          ...mercadopago,
           label: "Mercado Pago",
+          status: providers.mercadopago.connected ? "connected" : "disconnected",
+          environment: "platform",
+          hasAccessToken: providers.mercadopago.connected,
+          externalUserId: null,
+          externalUserIdMasked: null,
+          connectedAt: null,
+          lastError: null,
+          oauthAvailable: false,
         },
         defaultProvider: "stripe" as const,
       };
     });
 
-    admin.post("/providers/mercadopago/connect", async (request, reply) => {
-      const organizationId = await resolveTenantOrganizationId(request, reply);
-      if (!organizationId) return;
-
-      const body = connectManualSchema.parse(request.body ?? {});
-      try {
-        const connection = await connectMercadoPagoManual({
-          organizationId,
-          accessToken: body.accessToken,
-          publicKey: body.publicKey,
-          environment: body.environment,
-        });
-        return { ok: true, connection };
-      } catch (err) {
-        sendBillingError(reply, err);
-        return;
-      }
+    admin.post("/providers/mercadopago/connect", async (_request, reply) => {
+      orgProviderConfigDisabled(reply);
     });
 
-    admin.post("/providers/mercadopago/oauth/start", async (request, reply) => {
-      const organizationId = await resolveTenantOrganizationId(request, reply);
-      if (!organizationId) return;
-
-      try {
-        return await startMercadoPagoOAuth(organizationId);
-      } catch (err) {
-        sendBillingError(reply, err);
-        return;
-      }
+    admin.post("/providers/mercadopago/oauth/start", async (_request, reply) => {
+      orgProviderConfigDisabled(reply);
     });
 
-    admin.post("/providers/mercadopago/test", async (request, reply) => {
-      const organizationId = await resolveTenantOrganizationId(request, reply);
-      if (!organizationId) return;
-
-      try {
-        return await testMercadoPagoConnection(organizationId);
-      } catch (err) {
-        sendBillingError(reply, err);
-        return;
-      }
+    admin.post("/providers/mercadopago/test", async (_request, reply) => {
+      orgProviderConfigDisabled(reply);
     });
 
-    admin.delete("/providers/mercadopago", async (request, reply) => {
-      const organizationId = await resolveTenantOrganizationId(request, reply);
-      if (!organizationId) return;
-
-      const connection = await disconnectMercadoPago(organizationId);
-      return { ok: true, connection };
+    admin.delete("/providers/mercadopago", async (_request, reply) => {
+      orgProviderConfigDisabled(reply);
     });
   });
 }
