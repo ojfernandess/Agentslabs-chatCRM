@@ -15,6 +15,7 @@ import {
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { promoteUserToOnlineIfInactive } from "./userAvailability.js";
 import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
 import { recordMessageLedgerEntry } from "./messageBillingLedger.js";
@@ -169,6 +170,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
 
   if (!isPrivate) {
     await assertCanSendOutboundMessage(organizationId);
+  }
+
+  if (actor.kind === "user" && !isPrivate) {
+    await promoteUserToOnlineIfInactive(actor.userId, organizationId);
   }
 
   if (actor.kind === "agent_bot" && isPrivate) {

@@ -10,8 +10,9 @@ import {
   enrichWebsiteContacts,
 } from "../lib/websiteVisitorContacts.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
+import { userBelongsToOrganization } from "../lib/organizationMemberships.js";
 import { broadcastConversationReadState, broadcastToOrganization } from "../lib/workspaceHub.js";
-import { isOnlineForTransfer } from "../lib/userAvailability.js";
+import { isOnlineForTransfer, promoteUserToOnlineIfInactive } from "../lib/userAvailability.js";
 import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
@@ -1861,24 +1862,32 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (parsed.data.assignedToId !== undefined && parsed.data.assignedToId !== null) {
-      const assigneeInOrg = await prisma.user.findFirst({
-        where: { id: parsed.data.assignedToId, organizationId },
-        select: { id: true, availabilityStatus: true },
-      });
+      const assigneeId = parsed.data.assignedToId;
       /** Super admin no tenant (`actingOrganizationId`) costuma ter `organizationId` null em `users`. */
       const superAdminSelfInTenant =
         request.user.role === "SUPER_ADMIN" &&
         !!request.user.actingOrganizationId &&
-        parsed.data.assignedToId === request.user.id;
-      if (!assigneeInOrg && !superAdminSelfInTenant) {
+        assigneeId === request.user.id;
+      const belongs =
+        superAdminSelfInTenant || (await userBelongsToOrganization(organizationId, assigneeId));
+      if (!belongs) {
         return reply.status(400).send({ error: "Bad Request", message: "Invalid assignedToId", statusCode: 400 });
       }
-      if (assigneeInOrg && !isOnlineForTransfer(assigneeInOrg.availabilityStatus)) {
-        return reply.status(400).send({
-          error: "Bad Request",
-          message: "Assignee must be online to receive a transfer",
-          statusCode: 400,
+
+      if (assigneeId === request.user.id) {
+        await promoteUserToOnlineIfInactive(request.user.id, organizationId);
+      } else {
+        const assignee = await prisma.user.findUnique({
+          where: { id: assigneeId },
+          select: { availabilityStatus: true },
         });
+        if (!assignee || !isOnlineForTransfer(assignee.availabilityStatus)) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Assignee must be online to receive a transfer",
+            statusCode: 400,
+          });
+        }
       }
       const effectiveTeamAfter =
         parsed.data.teamId !== undefined ? parsed.data.teamId : existing.teamId;
@@ -2061,6 +2070,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         message: "No fields to update",
         statusCode: 400,
       });
+    }
+
+    if (data.assignedToId === request.user.id) {
+      await promoteUserToOnlineIfInactive(request.user.id, organizationId);
     }
 
     const prevTeamId = existing.teamId;

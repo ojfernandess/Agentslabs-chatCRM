@@ -68,6 +68,24 @@ export async function listMemberUserIds(organizationId: string): Promise<string[
 }
 
 /**
+ * Tamanho da equipe (Configurações → Equipe / limite `users` em billing).
+ * Prefer membership rows; fallback legado a `users.organization_id` (pré-backfill).
+ */
+export async function countOrganizationTeamMembers(organizationId: string): Promise<number> {
+  const membershipCount = await prisma.organizationMembership.count({
+    where: { organizationId },
+  });
+  if (membershipCount > 0) return membershipCount;
+
+  return prisma.user.count({
+    where: {
+      organizationId,
+      role: { not: "SUPER_ADMIN" },
+    },
+  });
+}
+
+/**
  * Filtro Prisma: membros da org via membership, com fallback ao `users.organization_id` legado
  * (antes do backfill / linhas sem membership).
  */
@@ -75,6 +93,20 @@ export function organizationMembersWhere(organizationId: string): Prisma.UserWhe
   return {
     OR: [{ organizationId }, { memberships: { some: { organizationId } } }],
   };
+}
+
+/** Utilizador pertence ao tenant (membership ou `users.organization_id` legado). */
+export async function userBelongsToOrganization(
+  organizationId: string,
+  userId: string,
+): Promise<boolean> {
+  const membership = await getMembership(organizationId, userId);
+  if (membership) return true;
+  const legacy = await prisma.user.findFirst({
+    where: { id: userId, organizationId },
+    select: { id: true },
+  });
+  return legacy != null;
 }
 
 /**

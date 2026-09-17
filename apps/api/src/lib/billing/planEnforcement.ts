@@ -1,7 +1,7 @@
 import type { FastifyReply } from "fastify";
 import { startOfMonth } from "date-fns";
 import { prisma } from "../../db.js";
-import { organizationMembersWhere } from "../organizationMemberships.js";
+import { countOrganizationTeamMembers } from "../organizationMemberships.js";
 import {
   getEffectivePlanForOrganization,
   resolveLimitValue,
@@ -92,12 +92,6 @@ async function countContacts(organizationId: string): Promise<number> {
   return prisma.contact.count({ where: { organizationId } });
 }
 
-async function countOrganizationMembers(organizationId: string): Promise<number> {
-  return prisma.user.count({
-    where: organizationMembersWhere(organizationId),
-  });
-}
-
 const LIMIT_USAGE_ALIASES: Record<string, string> = {
   utilizadores: "users",
   utilizador: "users",
@@ -114,7 +108,7 @@ async function buildUsageCounts(organizationId: string): Promise<Record<string, 
     countContacts(organizationId),
     countMonthlyMessages(organizationId),
     countHumanAgentSeats(organizationId),
-    countOrganizationMembers(organizationId),
+    countOrganizationTeamMembers(organizationId),
   ]);
 
   return {

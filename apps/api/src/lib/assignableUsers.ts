@@ -1,6 +1,7 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { availabilityToClient } from "./userAvailability.js";
-import { organizationMembersWhere } from "./organizationMemberships.js";
+import { listMemberUserIds, organizationMembersWhere } from "./organizationMemberships.js";
 
 export type AssignableUserRow = {
   id: string;
@@ -12,8 +13,14 @@ export type AssignableUserRow = {
 };
 
 export async function listAssignableUsers(organizationId: string): Promise<AssignableUserRow[]> {
+  const memberIds = await listMemberUserIds(organizationId);
+  const where: Prisma.UserWhereInput =
+    memberIds.length > 0
+      ? { id: { in: memberIds } }
+      : organizationMembersWhere(organizationId);
+
   const users = await prisma.user.findMany({
-    where: organizationMembersWhere(organizationId),
+    where,
     select: {
       id: true,
       name: true,
@@ -24,10 +31,7 @@ export async function listAssignableUsers(organizationId: string): Promise<Assig
     orderBy: { name: "asc" },
   });
 
-  const countMap = await openConversationCountByUserId(
-    organizationId,
-    users.map((u) => u.id),
-  );
+  const countMap = await openConversationCountByUserId(organizationId, users.map((u) => u.id));
 
   return users.map((row) => ({
     id: row.id,
@@ -39,6 +43,20 @@ export async function listAssignableUsers(organizationId: string): Promise<Assig
   }));
 }
 
+/** Conversas abertas atribuídas ao atendente **neste tenant** (não global / outras orgs). */
+export function openConversationCountWhere(
+  organizationId: string,
+  userIds: string[],
+): Prisma.ConversationWhereInput {
+  return {
+    organizationId,
+    assignedToId: { in: userIds },
+    status: "OPEN",
+    deletedAt: null,
+    inbox: { organizationId },
+  };
+}
+
 export async function openConversationCountByUserId(
   organizationId: string,
   userIds: string[],
@@ -47,11 +65,7 @@ export async function openConversationCountByUserId(
 
   const rows = await prisma.conversation.groupBy({
     by: ["assignedToId"],
-    where: {
-      organizationId,
-      assignedToId: { in: userIds },
-      status: "OPEN",
-    },
+    where: openConversationCountWhere(organizationId, userIds),
     _count: { id: true },
   });
 

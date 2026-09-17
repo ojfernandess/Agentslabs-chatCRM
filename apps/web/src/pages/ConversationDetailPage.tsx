@@ -962,7 +962,7 @@ export function ConversationDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [mapAssignableAgent]);
+  }, [mapAssignableAgent, user?.organizationId, user?.actingOrganizationId]);
 
   const loadTransferAssignees = useCallback(async () => {
     const conversationHasTeam = Boolean(conversation?.team?.id);

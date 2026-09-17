@@ -1,4 +1,6 @@
 import type { UserAvailabilityStatus } from "@prisma/client";
+import { prisma } from "../db.js";
+import { broadcastUserAvailabilityChanged } from "./workspaceHub.js";
 
 export type AvailabilityClient = "online" | "away" | "offline";
 
@@ -28,4 +30,24 @@ export function availabilityFromClient(value: string): UserAvailabilityStatus | 
 
 export function isOnlineForTransfer(status: UserAvailabilityStatus): boolean {
   return status === "ONLINE";
+}
+
+/** Ao assumir conversa ou enviar mensagem ao cliente, passa ausente/offline → online. */
+export async function promoteUserToOnlineIfInactive(
+  userId: string,
+  organizationId: string,
+): Promise<AvailabilityClient> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { availabilityStatus: true },
+  });
+  if (!user) return "offline";
+  if (user.availabilityStatus === "ONLINE") return "online";
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { availabilityStatus: "ONLINE", availabilityUpdatedAt: new Date() },
+  });
+  broadcastUserAvailabilityChanged(organizationId, userId, "online");
+  return "online";
 }
