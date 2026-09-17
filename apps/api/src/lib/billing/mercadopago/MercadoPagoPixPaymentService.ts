@@ -11,6 +11,8 @@ import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.j
 import {
   mercadoPagoRequest,
   resolvePlatformMercadoPagoAccessToken,
+  isMercadoPagoSandboxAccessToken,
+  resolveMercadoPagoSandboxPayerEmail,
 } from "./mercadoPagoClient.js";
 import type { CheckoutPixDetails } from "../providers/types.js";
 import type { CreateMercadoPagoCheckoutInput } from "./MercadoPagoCheckoutService.js";
@@ -122,7 +124,10 @@ export async function createMercadoPagoPixCheckout(
   plan: Plan,
 ): Promise<MercadoPagoPixCheckoutResult> {
   const accessToken = await resolveAccessTokenForCheckout(input.organizationId, plan.organizationId);
-  const payerEmail = await resolvePayerEmail(input.organizationId);
+  let payerEmail = await resolvePayerEmail(input.organizationId);
+  if (isMercadoPagoSandboxAccessToken(accessToken)) {
+    payerEmail = resolveMercadoPagoSandboxPayerEmail(payerEmail);
+  }
   const payer = buildMercadoPagoPixPayer(payerEmail, input.payerIdentificationNumber);
   const checkoutAttemptId = randomUUID();
   const externalReference = `ONX-${input.organizationId}-${checkoutAttemptId}`;

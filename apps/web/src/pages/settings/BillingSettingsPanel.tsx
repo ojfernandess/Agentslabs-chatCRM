@@ -237,7 +237,8 @@ export function BillingSettingsPanel() {
   const subscription = overview?.subscription;
   const localeTag = locale === "en" ? "en-US" : "pt-BR";
   const mercadoPagoConfigured = Boolean(overview?.providers?.mercadopago?.connected);
-  const checkoutAvailable = Boolean(overview?.stripeConfigured || mercadoPagoConfigured);
+  const stripeConfigured = Boolean(overview?.stripeConfigured);
+  const checkoutAvailable = Boolean(stripeConfigured || mercadoPagoConfigured);
   const providerManaged = Boolean(subscription?.providerManaged ?? subscription?.stripeManaged);
 
   const checkoutBanner = useMemo(() => {
@@ -361,7 +362,10 @@ export function BillingSettingsPanel() {
       return;
     }
 
-    if (plan.checkoutProviders?.mercadopago && mercadoPagoConfigured) {
+    const stripeCheckoutReady = Boolean(stripeConfigured && plan.checkoutProviders?.stripe);
+    const mpPixCheckoutReady = Boolean(mercadoPagoConfigured && plan.checkoutProviders?.mercadopago);
+
+    if (mpPixCheckoutReady) {
       setPaymentMethodPlan(plan);
       return;
     }
@@ -381,7 +385,11 @@ export function BillingSettingsPanel() {
     const plan = paymentMethodPlan;
     setPaymentMethodPlan(null);
     if (!plan) return;
-    await startCheckout(plan, "mercadopago", method, options?.payerIdentificationNumber);
+    if (method === "card") {
+      await startCheckout(plan, "stripe");
+      return;
+    }
+    await startCheckout(plan, "mercadopago", "pix", options?.payerIdentificationNumber);
   };
 
   if (loading) {
@@ -707,6 +715,10 @@ export function BillingSettingsPanel() {
         <MercadoPagoPaymentMethodModal
           planName={paymentMethodPlan.name}
           amountLabel={formatMoney(paymentMethodPlan.amountCents, paymentMethodPlan.currency, localeTag)}
+          stripeAvailable={Boolean(stripeConfigured && paymentMethodPlan.checkoutProviders?.stripe)}
+          mercadoPagoPixAvailable={Boolean(
+            mercadoPagoConfigured && paymentMethodPlan.checkoutProviders?.mercadopago,
+          )}
           onClose={() => setPaymentMethodPlan(null)}
           onSelect={(method, options) => void handleMercadoPagoPaymentMethod(method, options)}
         />

@@ -37,6 +37,26 @@ function formatMercadoPagoError(payload: MercadoPagoErrorPayload, status: number
   return parts.length > 0 ? parts.join(" — ") : `Mercado Pago API error (${status})`;
 }
 
+export function isMercadoPagoSandboxAccessToken(accessToken: string): boolean {
+  return accessToken.trim().startsWith("TEST-");
+}
+
+/** Mercado Pago sandbox exige e-mail @testuser.com em pagamentos. */
+export function resolveMercadoPagoSandboxPayerEmail(email: string): string {
+  const trimmed = email.trim();
+  if (trimmed.toLowerCase().endsWith("@testuser.com")) return trimmed;
+  const local = trimmed.split("@")[0]?.trim().replace(/[^a-zA-Z0-9._-]/g, "") || "test";
+  return `${local}@testuser.com`;
+}
+
+function mercadoPagoLiveCredentialsMessage(): string {
+  return (
+    "Mercado Pago recusou credenciais de produção neste ambiente. " +
+    "Para testes, use Access Token de sandbox (prefixo TEST-) no MERCADOPAGO_ACCESS_TOKEN. " +
+    "Em produção, confirme que todas as credenciais são do mesmo modo (teste ou produção)."
+  );
+}
+
 export function mercadoPagoBillingErrorHttpStatus(err: BillingError): number {
   if (
     err.code === "mercadopago_not_configured" ||
@@ -83,7 +103,11 @@ export async function mercadoPagoRequest<T>(input: {
     const payload = (await res.json().catch(() => ({}))) as T & MercadoPagoErrorPayload;
 
     if (!res.ok) {
-      throw new MercadoPagoApiError(formatMercadoPagoError(payload, res.status), res.status, payload.error);
+      const message = formatMercadoPagoError(payload, res.status);
+      if (message.toLowerCase().includes("live credentials")) {
+        throw new BillingError(mercadoPagoLiveCredentialsMessage(), "mercadopago_live_credentials_unauthorized");
+      }
+      throw new MercadoPagoApiError(message, res.status, payload.error);
     }
 
     return payload;

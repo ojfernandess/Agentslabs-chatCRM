@@ -260,8 +260,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         mercadopagoReady: p.amountCents <= 0 || Boolean(p.mercadopagoPlanId?.trim()),
         checkoutProviders: {
           stripe: providers.stripe.configured && (p.amountCents <= 0 || Boolean(p.stripePriceId?.trim())),
-          mercadopago:
-            providers.mercadopago.connected && (p.amountCents <= 0 || Boolean(p.mercadopagoPlanId?.trim())),
+          mercadopago: providers.mercadopago.connected && p.amountCents > 0,
         },
       })),
       catalogMode: plans.some((p) => p.isCustom) ? ("custom" as const) : ("global" as const),
