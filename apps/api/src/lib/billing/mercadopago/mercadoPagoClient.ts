@@ -1,11 +1,18 @@
 import { config, getWebAppPublicOrigin } from "../../../config.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
+import {
+  inferMercadoPagoTokenMode,
+  isMercadoPagoSandboxBillingMode,
+  resolveMercadoPagoSandboxPayerEmail,
+  resolvePlatformMercadoPagoAccessToken,
+} from "../mercadoPagoBillingSettings.js";
 
 export {
   inferMercadoPagoTokenMode,
+  isMercadoPagoSandboxBillingMode,
   resolvePlatformMercadoPagoAccessToken,
-} from "../mercadoPagoBillingSettings.js";
+};
 
 const MP_API_BASE = "https://api.mercadopago.com";
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -164,5 +171,3 @@ export async function resolveMercadoPagoAccessTokenForBilling(
   // Catálogo global SaaS: sempre credenciais da plataforma (ignora OAuth MP da org assinante).
   return resolvePlatformMercadoPagoAccessToken();
 }
-
-export { isMercadoPagoSandboxBillingMode } from "../mercadoPagoBillingSettings.js";
