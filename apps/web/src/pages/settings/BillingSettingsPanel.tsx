@@ -21,6 +21,7 @@ import {
   settingsTitle,
 } from "@/components/settings/settingsUi";
 import { BillingAvailablePlansSection } from "@/components/billing/BillingAvailablePlansSection";
+import { PaymentProvidersPanel } from "@/components/billing/PaymentProvidersPanel";
 import { UsageMeter } from "@/components/settings/UsageMeter";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
 import { catalogLimitLabelKey, orderPlanLimitKeys } from "@/lib/planCatalog";
@@ -146,6 +147,7 @@ export function BillingSettingsPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
   const checkoutNotice = searchParams.get("checkout");
   const setupNotice = searchParams.get("setup");
+  const mpNotice = searchParams.get("mp");
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -184,12 +186,13 @@ export function BillingSettingsPanel() {
   }, [load]);
 
   useEffect(() => {
-    if (!checkoutNotice && !setupNotice) return;
+    if (!checkoutNotice && !setupNotice && !mpNotice) return;
     const next = new URLSearchParams(searchParams);
     next.delete("checkout");
     next.delete("setup");
+    next.delete("mp");
     setSearchParams(next, { replace: true });
-  }, [checkoutNotice, setupNotice, searchParams, setSearchParams]);
+  }, [checkoutNotice, setupNotice, mpNotice, searchParams, setSearchParams]);
 
   const currentPlan = overview?.subscription?.plan;
   const subscription = overview?.subscription;
@@ -230,6 +233,24 @@ export function BillingSettingsPanel() {
     }
     return null;
   }, [setupNotice, t]);
+
+  const mpBanner = useMemo(() => {
+    if (mpNotice === "connected") {
+      return (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100">
+          {t("settings.billingMercadoPagoConnectedBanner")}
+        </div>
+      );
+    }
+    if (mpNotice === "error") {
+      return (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100">
+          {t("settings.billingMercadoPagoErrorBanner")}
+        </div>
+      );
+    }
+    return null;
+  }, [mpNotice, t]);
 
   const messagesRenewLabel = useMemo(() => {
     const end = subscription?.currentPeriodEnd;
@@ -302,6 +323,7 @@ export function BillingSettingsPanel() {
 
       {checkoutBanner}
       {setupBanner}
+      {mpBanner}
 
       {!overview?.entitlements?.hasAccess ? (
         <div
@@ -408,6 +430,8 @@ export function BillingSettingsPanel() {
           </div>
         </div>
       ) : null}
+
+      <PaymentProvidersPanel onChanged={() => void load()} />
 
       {overview?.usage ? (
         <section className="space-y-4">

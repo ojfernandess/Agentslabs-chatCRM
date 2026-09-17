@@ -1,7 +1,11 @@
 import type Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
-import { mapStripeSubscriptionStatus } from "./billingTypes.js";
+import {
+  mapStripeSubscriptionStatus,
+  type PaymentProviderName,
+  type SubscriptionStatus,
+} from "./billingTypes.js";
 import { getSubscriptionBillingPeriod } from "./stripeHelpers.js";
 
 function stripeUnixToDate(value: number | null | undefined): Date | null {
@@ -35,6 +39,92 @@ export type SyncSubscriptionResult = {
   planId: string | null;
   status: string;
 };
+
+export type SubscriptionSnapshotInput = {
+  organizationId: string;
+  planId: string | null;
+  paymentProvider: PaymentProviderName;
+  status: SubscriptionStatus;
+  externalCustomerId?: string | null;
+  externalSubscriptionId?: string | null;
+  externalPriceId?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripePriceId?: string | null;
+  currentPeriodStart?: Date | null;
+  currentPeriodEnd?: Date | null;
+  cancelAtPeriodEnd?: boolean;
+  canceledAt?: Date | null;
+  trialStart?: Date | null;
+  trialEnd?: Date | null;
+  checkoutSessionId?: string | null;
+  clearPaymentDue?: boolean;
+};
+
+/**
+ * Persiste snapshot provider-agnostic → OrganizationSubscription + plan_tier legado.
+ */
+export async function syncSubscriptionSnapshot(
+  input: SubscriptionSnapshotInput,
+): Promise<SyncSubscriptionResult> {
+  const subData: Prisma.OrganizationSubscriptionUncheckedUpdateInput = {
+    organizationId: input.organizationId,
+    planId: input.planId,
+    paymentProvider: input.paymentProvider,
+    externalCustomerId: input.externalCustomerId ?? undefined,
+    externalSubscriptionId: input.externalSubscriptionId ?? undefined,
+    externalPriceId: input.externalPriceId ?? undefined,
+    stripeCustomerId: input.stripeCustomerId ?? undefined,
+    stripeSubscriptionId: input.stripeSubscriptionId ?? undefined,
+    stripePriceId: input.stripePriceId ?? undefined,
+    status: input.status,
+    currentPeriodStart: input.currentPeriodStart ?? undefined,
+    currentPeriodEnd: input.currentPeriodEnd ?? undefined,
+    cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
+    canceledAt: input.canceledAt ?? undefined,
+    trialStart: input.trialStart ?? undefined,
+    trialEnd: input.trialEnd ?? undefined,
+    checkoutSessionId: input.checkoutSessionId ?? undefined,
+    ...(input.clearPaymentDue ? { paymentDueAt: null } : {}),
+  };
+
+  await prisma.organizationSubscription.upsert({
+    where: { organizationId: input.organizationId },
+    create: subData as Prisma.OrganizationSubscriptionUncheckedCreateInput,
+    update: subData,
+  });
+
+  const customerId = input.externalCustomerId ?? input.stripeCustomerId;
+  if (customerId) {
+    const orgUpdate: Prisma.OrganizationUpdateInput = {};
+    if (input.paymentProvider === "stripe") {
+      orgUpdate.stripeCustomerId = customerId;
+    }
+    if (Object.keys(orgUpdate).length > 0) {
+      await prisma.organization.update({
+        where: { id: input.organizationId },
+        data: orgUpdate,
+      });
+    }
+  }
+
+  if (input.planId) {
+    const plan = await prisma.plan.findUnique({
+      where: { id: input.planId },
+      select: { legacyPlanTier: true, limits: true },
+    });
+    if (plan?.legacyPlanTier) {
+      const orgUpdate: Prisma.OrganizationUpdateInput = { planTier: plan.legacyPlanTier };
+      const limits = plan.limits as Record<string, unknown> | null;
+      if (limits && typeof limits.messages === "number") {
+        orgUpdate.monthlyMessageQuota = limits.messages;
+      }
+      await prisma.organization.update({ where: { id: input.organizationId }, data: orgUpdate });
+    }
+  }
+
+  return { organizationId: input.organizationId, planId: input.planId, status: input.status };
+}
 
 /**
  * Persiste snapshot Stripe → OrganizationSubscription + plan_tier legado na Organization.
@@ -71,13 +161,17 @@ export async function syncSubscriptionFromStripe(
     typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
   const period = getSubscriptionBillingPeriod(subscription);
 
-  const subData: Prisma.OrganizationSubscriptionUncheckedUpdateInput = {
+  return syncSubscriptionSnapshot({
     organizationId,
     planId,
-    stripeCustomerId: customerId ?? undefined,
+    paymentProvider: "stripe",
+    status,
+    externalCustomerId: customerId,
+    externalSubscriptionId: subscription.id,
+    externalPriceId: priceId,
+    stripeCustomerId: customerId,
     stripeSubscriptionId: subscription.id,
     stripePriceId: priceId,
-    status,
     currentPeriodStart: stripeUnixToDate(period.currentPeriodStart),
     currentPeriodEnd: stripeUnixToDate(period.currentPeriodEnd),
     cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
@@ -85,38 +179,6 @@ export async function syncSubscriptionFromStripe(
     trialStart: stripeUnixToDate(subscription.trial_start),
     trialEnd: stripeUnixToDate(subscription.trial_end),
     checkoutSessionId: null,
-    ...(status === "active" || status === "trialing"
-      ? { paymentDueAt: null }
-      : {}),
-  };
-
-  await prisma.organizationSubscription.upsert({
-    where: { organizationId },
-    create: subData as Prisma.OrganizationSubscriptionUncheckedCreateInput,
-    update: subData,
+    clearPaymentDue: status === "active" || status === "trialing",
   });
-
-  if (customerId) {
-    await prisma.organization.update({
-      where: { id: organizationId },
-      data: { stripeCustomerId: customerId },
-    });
-  }
-
-  if (planId) {
-    const plan = await prisma.plan.findUnique({
-      where: { id: planId },
-      select: { legacyPlanTier: true, limits: true },
-    });
-    if (plan?.legacyPlanTier) {
-      const orgUpdate: Prisma.OrganizationUpdateInput = { planTier: plan.legacyPlanTier };
-      const limits = plan.limits as Record<string, unknown> | null;
-      if (limits && typeof limits.messages === "number") {
-        orgUpdate.monthlyMessageQuota = limits.messages;
-      }
-      await prisma.organization.update({ where: { id: organizationId }, data: orgUpdate });
-    }
-  }
-
-  return { organizationId, planId, status };
 }

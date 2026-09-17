@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Loader2, Pencil, Plus, Sparkles } from "lucide-react";
+import { Loader2, Pencil, Plus, RefreshCw, Sparkles } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -19,6 +19,7 @@ type CustomPlanRow = {
   paymentGraceDays: number | null;
   stripeProductId: string | null;
   stripePriceId: string | null;
+  mercadopagoPlanId: string | null;
   legacyPlanTier: string | null;
   isActive: boolean;
   organization: { id: string; name: string; slug: string } | null;
@@ -37,6 +38,7 @@ type CustomPlanForm = {
   paymentGraceDays: string;
   stripeProductId: string;
   stripePriceId: string;
+  mercadopagoPlanId: string;
   legacyPlanTier: string;
   isActive: boolean;
   limitsJson: string;
@@ -54,6 +56,7 @@ const EMPTY_CUSTOM_FORM: CustomPlanForm = {
   paymentGraceDays: "7",
   stripeProductId: "",
   stripePriceId: "",
+  mercadopagoPlanId: "",
   legacyPlanTier: "",
   isActive: true,
   limitsJson: '{\n  "agents": 10,\n  "automations": 50,\n  "contacts": 10000,\n  "messages": 50000\n}',
@@ -80,6 +83,7 @@ function planToForm(plan: CustomPlanRow): CustomPlanForm {
     paymentGraceDays: plan.paymentGraceDays != null ? String(plan.paymentGraceDays) : "7",
     stripeProductId: plan.stripeProductId ?? "",
     stripePriceId: plan.stripePriceId ?? "",
+    mercadopagoPlanId: plan.mercadopagoPlanId ?? "",
     legacyPlanTier: plan.legacyPlanTier ?? "",
     isActive: plan.isActive,
     limitsJson: JSON.stringify(plan.limits, null, 2),
@@ -98,6 +102,8 @@ export function SuperAdminCustomPlansPanel() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<CustomPlanRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [syncingPlanId, setSyncingPlanId] = useState<string | null>(null);
+  const [success, setSuccess] = useState("");
   const [form, setForm] = useState<CustomPlanForm>(EMPTY_CUSTOM_FORM);
 
   const load = useCallback(async () => {
@@ -165,6 +171,7 @@ export function SuperAdminCustomPlansPanel() {
         paymentGraceDays: Number(form.paymentGraceDays),
         stripeProductId: form.stripeProductId.trim() || null,
         stripePriceId: form.stripePriceId.trim() || null,
+        mercadopagoPlanId: form.mercadopagoPlanId.trim() || null,
         legacyPlanTier: form.legacyPlanTier.trim()
           ? (form.legacyPlanTier as "free" | "growth" | "enterprise")
           : null,
@@ -192,10 +199,35 @@ export function SuperAdminCustomPlansPanel() {
     }
   };
 
+  const syncPlanToMercadoPago = async (plan: CustomPlanRow) => {
+    setSyncingPlanId(plan.id);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await api.post<{ sync: { mercadopagoPlanId: string }; plan: CustomPlanRow | null }>(
+        `/super/billing/custom-plans/${plan.id}/sync-mercadopago`,
+        {},
+      );
+      if (res.plan) {
+        setPlans((rows) => rows.map((row) => (row.id === plan.id ? res.plan! : row)));
+      } else {
+        await load();
+      }
+      setSuccess(t("superAdmin.billingSyncMercadoPagoSuccess").replace("{id}", res.sync.mercadopagoPlanId));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingSyncMercadoPagoError"));
+    } finally {
+      setSyncingPlanId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
+      ) : null}
+      {success ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{success}</div>
       ) : null}
 
       <SuperAdminPanel className="overflow-hidden p-0">
@@ -225,6 +257,7 @@ export function SuperAdminCustomPlansPanel() {
                   <th className="px-4 py-3">{t("superAdmin.billingColPrice")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColGraceDays")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColStripe")}</th>
+                  <th className="px-4 py-3">{t("superAdmin.billingColMercadoPago")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColStatus")}</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -232,7 +265,7 @@ export function SuperAdminCustomPlansPanel() {
               <tbody>
                 {plans.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                       {t("superAdmin.billingCustomPlansEmpty")}
                     </td>
                   </tr>
@@ -252,6 +285,7 @@ export function SuperAdminCustomPlansPanel() {
                       </td>
                       <td className="px-4 py-3">{plan.paymentGraceDays ?? "—"}</td>
                       <td className="px-4 py-3 text-xs text-slate-600">{plan.stripePriceId || "—"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{plan.mercadopagoPlanId || "—"}</td>
                       <td className="px-4 py-3">
                         <span
                           className={clsx(
@@ -263,14 +297,31 @@ export function SuperAdminCustomPlansPanel() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(plan)}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          {t("superAdmin.billingEditPlan")}
-                        </button>
+                        <div className="flex flex-col items-end gap-1">
+                          {plan.amountCents > 0 ? (
+                            <button
+                              type="button"
+                              disabled={syncingPlanId === plan.id}
+                              onClick={() => void syncPlanToMercadoPago(plan)}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline disabled:opacity-50"
+                            >
+                              {syncingPlanId === plan.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                              {t("superAdmin.billingSyncMercadoPago")}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => openEdit(plan)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            {t("superAdmin.billingEditPlan")}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -367,6 +418,15 @@ export function SuperAdminCustomPlansPanel() {
                   value={form.stripePriceId}
                   onChange={(e) => setForm((f) => ({ ...f, stripePriceId: e.target.value }))}
                   className="input-field mt-1"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingMercadoPagoPlanId")}</label>
+                <input
+                  value={form.mercadopagoPlanId}
+                  onChange={(e) => setForm((f) => ({ ...f, mercadopagoPlanId: e.target.value }))}
+                  className="input-field mt-1"
+                  placeholder={t("superAdmin.billingMercadoPagoPlanIdHint")}
                 />
               </div>
               <div>

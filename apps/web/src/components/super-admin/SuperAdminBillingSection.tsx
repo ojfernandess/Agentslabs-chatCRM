@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { CreditCard, Loader2, Mail, Pencil, Plus } from "lucide-react";
+import { CreditCard, Loader2, Mail, Pencil, Plus, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -28,6 +28,7 @@ type PlanRow = {
   isActive: boolean;
   stripeProductId: string | null;
   stripePriceId: string | null;
+  mercadopagoPlanId: string | null;
   legacyPlanTier: string | null;
   limits: Record<string, number | null | undefined>;
   features: Record<string, boolean | undefined>;
@@ -178,6 +179,7 @@ const EMPTY_PLAN_FORM = {
   isActive: true,
   stripeProductId: "",
   stripePriceId: "",
+  mercadopagoPlanId: "",
   legacyPlanTier: "",
   limitsJson: '{\n  "agents": 3,\n  "automations": 10,\n  "contacts": 1000,\n  "messages": null\n}',
   featuresJson: '{\n  "rag": false,\n  "api": false,\n  "mcp": false\n}',
@@ -224,6 +226,8 @@ export function SuperAdminBillingSection() {
   }, [plans, customPlans, billingSettings.overage]);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [stripeKeyMode, setStripeKeyMode] = useState<"test" | "live" | "unknown">("unknown");
+  const [mercadoPagoPlatformConfigured, setMercadoPagoPlatformConfigured] = useState(false);
+  const [syncingPlanId, setSyncingPlanId] = useState<string | null>(null);
   const [resetClearPlanIds, setResetClearPlanIds] = useState(true);
   const [resetBusy, setResetBusy] = useState(false);
   const [planModalOpen, setPlanModalOpen] = useState(false);
@@ -258,9 +262,11 @@ export function SuperAdminBillingSection() {
     const res = await api.get<{
       settings: Parameters<typeof settingsFromApi>[0];
       stripeKeyMode?: "test" | "live" | "unknown";
+      mercadoPagoPlatformConfigured?: boolean;
     }>("/super/billing/settings");
     setBillingSettings(settingsFromApi(res.settings, limitKeys));
     setStripeKeyMode(res.stripeKeyMode ?? "unknown");
+    setMercadoPagoPlatformConfigured(res.mercadoPagoPlatformConfigured === true);
   }, []);
 
   const loadCustomPlans = useCallback(async () => {
@@ -329,6 +335,7 @@ export function SuperAdminBillingSection() {
       isActive: plan.isActive,
       stripeProductId: plan.stripeProductId ?? "",
       stripePriceId: plan.stripePriceId ?? "",
+      mercadopagoPlanId: plan.mercadopagoPlanId ?? "",
       legacyPlanTier: plan.legacyPlanTier ?? "",
       limitsJson: JSON.stringify(plan.limits, null, 2),
       featuresJson: JSON.stringify(plan.features, null, 2),
@@ -365,6 +372,7 @@ export function SuperAdminBillingSection() {
         isActive: planForm.isActive,
         stripeProductId: planForm.stripeProductId.trim() || null,
         stripePriceId: planForm.stripePriceId.trim() || null,
+        mercadopagoPlanId: planForm.mercadopagoPlanId.trim() || null,
         legacyPlanTier: planForm.legacyPlanTier.trim()
           ? (planForm.legacyPlanTier as "free" | "growth" | "enterprise")
           : null,
@@ -384,6 +392,30 @@ export function SuperAdminBillingSection() {
       setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
     } finally {
       setPlanSaving(false);
+    }
+  };
+
+  const syncPlanToMercadoPago = async (plan: PlanRow) => {
+    setSyncingPlanId(plan.id);
+    setError("");
+    setBillingSuccess("");
+    try {
+      const res = await api.post<{ sync: { mercadopagoPlanId: string; created: boolean }; plan: PlanRow | null }>(
+        `/super/billing/plans/${plan.id}/sync-mercadopago`,
+        {},
+      );
+      if (res.plan) {
+        setPlans((rows) => rows.map((row) => (row.id === plan.id ? res.plan! : row)));
+      } else {
+        await loadPlans();
+      }
+      setBillingSuccess(
+        t("superAdmin.billingSyncMercadoPagoSuccess").replace("{id}", res.sync.mercadopagoPlanId),
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingSyncMercadoPagoError"));
+    } finally {
+      setSyncingPlanId(null);
     }
   };
 
@@ -568,6 +600,7 @@ export function SuperAdminBillingSection() {
                   <th className="px-4 py-3">{t("superAdmin.billingColPlan")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColPrice")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColStripe")}</th>
+                  <th className="px-4 py-3">{t("superAdmin.billingColMercadoPago")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColStatus")}</th>
                   <th className="px-4 py-3">{t("superAdmin.billingColSubs")}</th>
                   <th className="px-4 py-3" />
@@ -587,6 +620,7 @@ export function SuperAdminBillingSection() {
                       <div>{plan.stripeProductId || "—"}</div>
                       <div className="text-slate-400">{plan.stripePriceId || "—"}</div>
                     </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{plan.mercadopagoPlanId || "—"}</td>
                     <td className="px-4 py-3">
                       <span
                         className={clsx(
@@ -599,14 +633,31 @@ export function SuperAdminBillingSection() {
                     </td>
                     <td className="px-4 py-3">{plan.subscriptionCount}</td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEditPlan(plan)}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        {t("superAdmin.billingEditPlan")}
-                      </button>
+                      <div className="flex flex-col items-end gap-1">
+                        {plan.amountCents > 0 && mercadoPagoPlatformConfigured ? (
+                          <button
+                            type="button"
+                            disabled={syncingPlanId === plan.id}
+                            onClick={() => void syncPlanToMercadoPago(plan)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline disabled:opacity-50"
+                          >
+                            {syncingPlanId === plan.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                            {t("superAdmin.billingSyncMercadoPago")}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => openEditPlan(plan)}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          {t("superAdmin.billingEditPlan")}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -985,6 +1036,15 @@ export function SuperAdminBillingSection() {
                   value={planForm.stripePriceId}
                   onChange={(e) => setPlanForm((f) => ({ ...f, stripePriceId: e.target.value }))}
                   className="input-field mt-1"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingMercadoPagoPlanId")}</label>
+                <input
+                  value={planForm.mercadopagoPlanId}
+                  onChange={(e) => setPlanForm((f) => ({ ...f, mercadopagoPlanId: e.target.value }))}
+                  className="input-field mt-1"
+                  placeholder={t("superAdmin.billingMercadoPagoPlanIdHint")}
                 />
               </div>
               <div>

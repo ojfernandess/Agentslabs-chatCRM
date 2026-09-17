@@ -4,31 +4,28 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { clientIp } from "../lib/audit.js";
-import { isStripeBillingConfigured } from "../config.js";
 import {
   BillingError,
-  createBillingPortalSession,
-  createCheckoutSession,
-  cancelOrganizationSubscription,
-  changeSubscriptionPlan,
   getEffectivePlanForOrganization,
-  getStripePublishableKeyForClient,
-  listOrganizationInvoices,
   parsePlanExtras,
   parsePlanFeatures,
   parsePlanLimitEnabledFlags,
   parsePlanLimits,
-  resumeScheduledCancellation,
   getOrganizationUsage,
   applyCatalogPlanToOrganization,
   listPlansForOrganization,
   computePaymentGraceInfo,
-  createPaymentMethodSetupSession,
-  createPaymentMethodPortalSession,
+  getBillingProvider,
+  getBillingProvidersClientConfig,
+  resolveDefaultPaymentProvider,
+  resolveOrganizationPaymentProvider,
+  subscriptionIsProviderManaged,
+  type PaymentProviderName,
 } from "../lib/billing/index.js";
 
 const planIdBodySchema = z.object({
   planId: z.string().uuid(),
+  provider: z.enum(["stripe", "mercadopago"]).optional(),
 });
 
 const portalBodySchema = z.object({
@@ -51,6 +48,23 @@ function sendBillingError(reply: FastifyReply, err: unknown): void {
   throw err;
 }
 
+function providerNotConfiguredReply(reply: FastifyReply, provider: PaymentProviderName): void {
+  reply.status(503).send({
+    error: `${provider}_not_configured`,
+    message: `${provider} billing is not configured on this server`,
+    statusCode: 503,
+  });
+}
+
+async function resolveCheckoutProvider(
+  organizationId: string,
+  requested?: PaymentProviderName,
+): Promise<PaymentProviderName> {
+  if (requested) return requested;
+  const active = await resolveOrganizationPaymentProvider(organizationId);
+  return active ?? resolveDefaultPaymentProvider();
+}
+
 function serializePlanForClient(plan: {
   id: string;
   slug: string;
@@ -64,6 +78,8 @@ function serializePlanForClient(plan: {
   limits: unknown;
   features: unknown;
   planExtras?: unknown;
+  stripePriceId?: string | null;
+  mercadopagoPlanId?: string | null;
 }) {
   return {
     id: plan.id,
@@ -86,10 +102,17 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
   app.addHook("preHandler", requireAdmin);
 
-  app.get("/config", async (_request, reply) => {
+  app.get("/config", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const providers = await getBillingProvidersClientConfig(organizationId);
+    const stripe = providers.stripe;
     return {
-      stripeConfigured: isStripeBillingConfigured(),
-      publishableKey: getStripePublishableKeyForClient(),
+      stripeConfigured: stripe.configured,
+      publishableKey: stripe.publishableKey,
+      providers,
+      defaultProvider: resolveDefaultPaymentProvider(),
     };
   });
 
@@ -97,7 +120,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const [entitlements, usage, org] = await Promise.all([
+    const [entitlements, usage, org, providers] = await Promise.all([
       getEffectivePlanForOrganization(organizationId),
       getOrganizationUsage(organizationId),
       prisma.organization.findUnique({
@@ -127,6 +150,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
           },
         },
       }),
+      getBillingProvidersClientConfig(organizationId),
     ]);
 
     const sub = org?.subscription;
@@ -139,8 +163,10 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return {
-      stripeConfigured: isStripeBillingConfigured(),
-      publishableKey: getStripePublishableKeyForClient(),
+      stripeConfigured: providers.stripe.configured,
+      publishableKey: providers.stripe.publishableKey,
+      providers,
+      defaultProvider: resolveDefaultPaymentProvider(),
       billingEmail: org?.billingEmail ?? null,
       legacyPlanTier: org?.planTier ?? "free",
       hasCustomPlanCatalog: Boolean(
@@ -151,7 +177,9 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
       subscription: sub
         ? {
             status: sub.status,
+            paymentProvider: sub.paymentProvider,
             stripeManaged: Boolean(sub.stripeSubscriptionId),
+            providerManaged: subscriptionIsProviderManaged(sub),
             currentPeriodStart: sub.currentPeriodStart?.toISOString() ?? null,
             currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
             cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
@@ -183,12 +211,13 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const [plans, sub] = await Promise.all([
+    const [plans, sub, providers] = await Promise.all([
       listPlansForOrganization(organizationId),
       prisma.organizationSubscription.findUnique({
         where: { organizationId },
         select: { planId: true },
       }),
+      getBillingProvidersClientConfig(organizationId),
     ]);
 
     return {
@@ -196,11 +225,17 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         ...serializePlanForClient(p),
         isCurrent: sub?.planId === p.id,
         isCustom: p.isCustom,
-        requiresCheckout: p.amountCents > 0 && Boolean(p.stripePriceId),
+        requiresCheckout: p.amountCents > 0 && Boolean(p.stripePriceId || p.mercadopagoPlanId),
         isFree: p.amountCents <= 0,
         stripeReady: p.amountCents <= 0 || Boolean(p.stripePriceId?.trim()),
+        mercadopagoReady: p.amountCents <= 0 || Boolean(p.mercadopagoPlanId?.trim()),
+        checkoutProviders: {
+          stripe: providers.stripe.configured && (p.amountCents <= 0 || Boolean(p.stripePriceId?.trim())),
+          mercadopago:
+            providers.mercadopago.connected && (p.amountCents <= 0 || Boolean(p.mercadopagoPlanId?.trim())),
+        },
       })),
-      catalogMode: plans.some((p) => p.isCustom) ? "custom" as const : "global" as const,
+      catalogMode: plans.some((p) => p.isCustom) ? ("custom" as const) : ("global" as const),
     };
   });
 
@@ -223,7 +258,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     if (plan.amountCents > 0) {
       return reply.status(400).send({
         error: "Bad Request",
-        message: "Paid plans require Stripe checkout",
+        message: "Paid plans require checkout via a payment provider",
         statusCode: 400,
       });
     }
@@ -241,17 +276,16 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
     try {
-      const invoices = await listOrganizationInvoices(organizationId);
-      return { invoices };
+      const invoices = await provider.listInvoices(organizationId);
+      return { invoices, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;
@@ -262,25 +296,24 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const body = planIdBodySchema.parse(request.body);
+    const providerName = await resolveCheckoutProvider(organizationId, body.provider);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
-    const body = planIdBodySchema.parse(request.body);
     const actorUserId = request.user!.id;
 
     try {
-      const result = await createCheckoutSession({
+      const result = await provider.createCheckoutSession({
         organizationId,
         planId: body.planId,
         actorUserId,
         ip: clientIp(request),
       });
-      return result;
+      return { ...result, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;
@@ -291,24 +324,24 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
     const body = portalBodySchema.parse(request.body ?? {});
     const actorUserId = request.user!.id;
 
     try {
-      return await createBillingPortalSession({
+      const result = await provider.createPortalSession({
         organizationId,
         actorUserId,
         returnUrl: body.returnUrl,
         ip: clientIp(request),
       });
+      return { ...result, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;
@@ -319,25 +352,24 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
     const body = planIdBodySchema.parse(request.body);
     const actorUserId = request.user!.id;
 
     try {
-      await changeSubscriptionPlan({
+      await provider.changePlan({
         organizationId,
         planId: body.planId,
         actorUserId,
         ip: clientIp(request),
       });
-      return { ok: true };
+      return { ok: true, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;
@@ -348,25 +380,24 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
     const body = cancelBodySchema.parse(request.body ?? {});
     const actorUserId = request.user!.id;
 
     try {
-      await cancelOrganizationSubscription({
+      await provider.cancelSubscription({
         organizationId,
         actorUserId,
         cancelAtPeriodEnd: body.cancelAtPeriodEnd,
         ip: clientIp(request),
       });
-      return { ok: true };
+      return { ok: true, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;
@@ -377,24 +408,24 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
     const body = portalBodySchema.parse(request.body ?? {});
     const actorUserId = request.user!.id;
 
     try {
-      return await createPaymentMethodSetupSession({
+      const result = await provider.createPaymentMethodSetupSession({
         organizationId,
         actorUserId,
         returnUrl: body.returnUrl,
         ip: clientIp(request),
       });
+      return { ...result, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;
@@ -405,24 +436,24 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
     const body = portalBodySchema.parse(request.body ?? {});
     const actorUserId = request.user!.id;
 
     try {
-      return await createPaymentMethodPortalSession({
+      const result = await provider.createPaymentMethodPortalSession({
         organizationId,
         actorUserId,
         returnUrl: body.returnUrl,
         ip: clientIp(request),
       });
+      return { ...result, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;
@@ -433,23 +464,22 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    if (!isStripeBillingConfigured()) {
-      return reply.status(503).send({
-        error: "stripe_not_configured",
-        message: "Stripe billing is not configured on this server",
-        statusCode: 503,
-      });
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    const provider = getBillingProvider(providerName);
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, providerName);
+      return;
     }
 
     const actorUserId = request.user!.id;
 
     try {
-      await resumeScheduledCancellation({
+      await provider.resumeSubscription({
         organizationId,
         actorUserId,
         ip: clientIp(request),
       });
-      return { ok: true };
+      return { ok: true, provider: providerName };
     } catch (err) {
       sendBillingError(reply, err);
       return;

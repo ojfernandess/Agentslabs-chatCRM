@@ -28,6 +28,8 @@ import {
 } from "../lib/billing/customPlanService.js";
 import { sendOrganizationPaymentReminder } from "../lib/billing/billingEmailNotifications.js";
 import { updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
+import { syncPlanToMercadoPago } from "../lib/billing/mercadopago/MercadoPagoPlanService.js";
+import { isMercadoPagoBillingConfigured } from "../config.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
@@ -43,6 +45,7 @@ const createPlanSchema = z.object({
   isActive: z.boolean().optional(),
   stripeProductId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
   stripePriceId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
+  mercadopagoPlanId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
   legacyPlanTier: z.enum(["free", "growth", "enterprise"]).nullable().optional(),
   limits: jsonLimitsSchema,
   features: jsonLimitsSchema,
@@ -80,6 +83,7 @@ const customPlanFieldsSchema = {
   paymentGraceDays: z.number().int().min(1).max(90),
   stripeProductId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
   stripePriceId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
+  mercadopagoPlanId: z.union([z.string().max(255), z.literal("")]).nullable().optional(),
   legacyPlanTier: z.enum(["free", "growth", "enterprise"]).nullable().optional(),
   limits: jsonLimitsSchema,
   features: jsonLimitsSchema,
@@ -106,6 +110,10 @@ const billingEmailPatchSchema = z.object({
   billingEmail: z.union([z.string().email(), z.literal("")]),
 });
 
+const syncMercadoPagoPlanSchema = z.object({
+  forceRecreate: z.boolean().optional(),
+});
+
 const sendPaymentReminderSchema = z.object({
   billingEmail: z.union([z.string().email(), z.literal("")]).optional(),
 });
@@ -123,6 +131,7 @@ function serializePlan(plan: {
   isActive: boolean;
   stripeProductId: string | null;
   stripePriceId: string | null;
+  mercadopagoPlanId: string | null;
   legacyPlanTier: string | null;
   isCustom?: boolean;
   organizationId?: string | null;
@@ -148,6 +157,7 @@ function serializePlan(plan: {
     isActive: plan.isActive,
     stripeProductId: plan.stripeProductId,
     stripePriceId: plan.stripePriceId,
+    mercadopagoPlanId: plan.mercadopagoPlanId,
     legacyPlanTier: plan.legacyPlanTier,
     isCustom: plan.isCustom ?? false,
     organizationId: plan.organizationId ?? null,
@@ -163,7 +173,7 @@ function serializePlan(plan: {
   };
 }
 
-function normalizeStripeId(value: string | null | undefined): string | null | undefined {
+function normalizeExternalId(value: string | null | undefined): string | null | undefined {
   if (value === undefined) return undefined;
   const trimmed = (value ?? "").trim();
   return trimmed || null;
@@ -177,6 +187,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     return {
       settings,
       stripeKeyMode: getStripeKeyMode(config.stripeSecretKey),
+      mercadoPagoPlatformConfigured: isMercadoPagoBillingConfigured(),
     };
   });
 
@@ -266,8 +277,9 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         amountCents: p.amountCents,
         interval: p.interval,
         paymentGraceDays: p.paymentGraceDays,
-        stripeProductId: normalizeStripeId(p.stripeProductId),
-        stripePriceId: normalizeStripeId(p.stripePriceId),
+        stripeProductId: normalizeExternalId(p.stripeProductId),
+        stripePriceId: normalizeExternalId(p.stripePriceId),
+        mercadopagoPlanId: normalizeExternalId(p.mercadopagoPlanId),
         legacyPlanTier: p.legacyPlanTier ?? undefined,
         limits: p.limits,
         features: p.features,
@@ -314,8 +326,9 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         amountCents: p.amountCents,
         interval: p.interval,
         paymentGraceDays: p.paymentGraceDays,
-        stripeProductId: normalizeStripeId(p.stripeProductId),
-        stripePriceId: normalizeStripeId(p.stripePriceId),
+        stripeProductId: normalizeExternalId(p.stripeProductId),
+        stripePriceId: normalizeExternalId(p.stripePriceId),
+        mercadopagoPlanId: normalizeExternalId(p.mercadopagoPlanId),
         legacyPlanTier: p.legacyPlanTier ?? null,
         limits: p.limits,
         features: p.features,
@@ -370,8 +383,9 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         trialDays: p.trialDays ?? null,
         displayOrder: p.displayOrder ?? 0,
         isActive: p.isActive ?? true,
-        stripeProductId: normalizeStripeId(p.stripeProductId),
-        stripePriceId: normalizeStripeId(p.stripePriceId),
+        stripeProductId: normalizeExternalId(p.stripeProductId),
+        stripePriceId: normalizeExternalId(p.stripePriceId),
+        mercadopagoPlanId: normalizeExternalId(p.mercadopagoPlanId),
         legacyPlanTier: p.legacyPlanTier ?? null,
         limits: (p.limits ?? {}) as Prisma.InputJsonValue,
         features: (p.features ?? {}) as Prisma.InputJsonValue,
@@ -419,8 +433,9 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     if (p.trialDays !== undefined) data.trialDays = p.trialDays;
     if (p.displayOrder !== undefined) data.displayOrder = p.displayOrder;
     if (p.isActive !== undefined) data.isActive = p.isActive;
-    if (p.stripeProductId !== undefined) data.stripeProductId = normalizeStripeId(p.stripeProductId);
-    if (p.stripePriceId !== undefined) data.stripePriceId = normalizeStripeId(p.stripePriceId);
+    if (p.stripeProductId !== undefined) data.stripeProductId = normalizeExternalId(p.stripeProductId);
+    if (p.stripePriceId !== undefined) data.stripePriceId = normalizeExternalId(p.stripePriceId);
+    if (p.mercadopagoPlanId !== undefined) data.mercadopagoPlanId = normalizeExternalId(p.mercadopagoPlanId);
     if (p.legacyPlanTier !== undefined) data.legacyPlanTier = p.legacyPlanTier;
     if (p.limits !== undefined) data.limits = p.limits as Prisma.InputJsonValue;
     if (p.features !== undefined) data.features = p.features as Prisma.InputJsonValue;
@@ -445,6 +460,118 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       return { plan: serializePlan(plan) };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Plan not found", statusCode: 404 });
+    }
+  });
+
+  app.post<{ Params: { id: string } }>("/plans/:id/sync-mercadopago", async (request, reply) => {
+    const parsed = syncMercadoPagoPlanSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    try {
+      const result = await syncPlanToMercadoPago(request.params.id, {
+        forceRecreate: parsed.data.forceRecreate,
+      });
+
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        action: "super.billing.plan.sync_mercadopago",
+        resourceType: "plan",
+        resourceId: request.params.id,
+        metadata: result,
+        ip: clientIp(request),
+      });
+
+      const plan = await prisma.plan.findUnique({
+        where: { id: request.params.id },
+        include: { _count: { select: { subscriptions: true } } },
+      });
+      return {
+        sync: result,
+        plan: plan ? serializePlan(plan) : null,
+      };
+    } catch (err) {
+      if (err instanceof BillingError) {
+        const statusCode =
+          err.code === "plan_not_found"
+            ? 404
+            : err.code === "mercadopago_not_configured" ||
+                err.code === "plan_free_mercadopago" ||
+                err.code === "mercadopago_plan_sync_failed"
+              ? 400
+              : err.code === "mercadopago_api_error"
+                ? 502
+                : 400;
+        return reply.status(statusCode).send({
+          error: err.code,
+          message: err.message,
+          statusCode,
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.post<{ Params: { id: string } }>("/custom-plans/:id/sync-mercadopago", async (request, reply) => {
+    const parsed = syncMercadoPagoPlanSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const customPlan = await prisma.plan.findFirst({
+      where: { id: request.params.id, isCustom: true },
+      select: { id: true, organizationId: true },
+    });
+    if (!customPlan) {
+      return reply.status(404).send({ error: "Not Found", message: "Custom plan not found", statusCode: 404 });
+    }
+
+    try {
+      const result = await syncPlanToMercadoPago(request.params.id, {
+        forceRecreate: parsed.data.forceRecreate,
+      });
+
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        organizationId: customPlan.organizationId ?? undefined,
+        action: "super.billing.custom_plan.sync_mercadopago",
+        resourceType: "plan",
+        resourceId: request.params.id,
+        metadata: result,
+        ip: clientIp(request),
+      });
+
+      const plan = await prisma.plan.findUnique({
+        where: { id: request.params.id },
+        include: {
+          organization: { select: { id: true, name: true, slug: true } },
+          _count: { select: { subscriptions: true } },
+        },
+      });
+      return {
+        sync: result,
+        plan: plan ? serializePlan(plan) : null,
+      };
+    } catch (err) {
+      if (err instanceof BillingError) {
+        const statusCode =
+          err.code === "plan_not_found"
+            ? 404
+            : err.code === "mercadopago_not_configured" ||
+                err.code === "plan_free_mercadopago" ||
+                err.code === "mercadopago_plan_sync_failed"
+              ? 400
+              : err.code === "mercadopago_api_error"
+                ? 502
+                : 400;
+        return reply.status(statusCode).send({
+          error: err.code,
+          message: err.message,
+          statusCode,
+        });
+      }
+      throw err;
     }
   });
 

@@ -240,6 +240,7 @@ model Organization {
   threeCxCallLogs                ThreeCxCallLog[]
   threeCxIntegrationLogs         ThreeCxIntegrationLog[]
   nvoipAccount                   NvoipAccount?
+  paymentProviderConnections   PaymentProviderConnection[]
   nvoipAgentExtensions           NvoipAgentExtension[]
   nvoipCallLogs                  NvoipCallLog[]
   nvoipIntegrationLogs           NvoipIntegrationLog[]
@@ -1713,6 +1714,32 @@ model PlatformSetting {
   @@map("platform_settings")
 }
 
+enum PaymentProvider {
+  stripe
+  mercadopago
+}
+
+/// Conexão de provedor de pagamento por organização (credenciais OAuth/token criptografadas).
+model PaymentProviderConnection {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider       PaymentProvider
+  status         String          @default("disconnected") @db.VarChar(32)
+  environment    String          @default("sandbox") @db.VarChar(16)
+  accessTokenEnc String?         @map("access_token_enc") @db.Text
+  publicKey      String?         @map("public_key") @db.VarChar(255)
+  externalUserId String?         @map("external_user_id") @db.VarChar(255)
+  metadata       Json            @default("{}")
+  connectedAt    DateTime?       @map("connected_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@unique([organizationId, provider])
+  @@index([provider, status])
+  @@map("payment_provider_connections")
+}
+
 /// Catálogo comercial configurável pelo Super Admin (integração Stripe via Product/Price IDs).
 model Plan {
   id              String   @id @default(uuid()) @db.Uuid
@@ -1725,8 +1752,9 @@ model Plan {
   trialDays       Int?     @map("trial_days")
   displayOrder    Int      @default(0) @map("display_order")
   isActive        Boolean  @default(true) @map("is_active")
-  stripeProductId String?  @map("stripe_product_id") @db.VarChar(255)
-  stripePriceId   String?  @map("stripe_price_id") @db.VarChar(255)
+  stripeProductId     String?  @map("stripe_product_id") @db.VarChar(255)
+  stripePriceId       String?  @map("stripe_price_id") @db.VarChar(255)
+  mercadopagoPlanId   String?  @map("mercadopago_plan_id") @db.VarChar(255)
   limits          Json     @default("{}")
   features        Json     @default("{}")
   /// Campos textuais do plano (suporte, SLA, pedidos de desenvolvimento, etc.).
@@ -1748,13 +1776,17 @@ model Plan {
   @@map("plans")
 }
 
-/// Assinatura principal Stripe por organização (1:1).
+/// Assinatura comercial por organização (1:1) — Stripe ou Mercado Pago.
 model OrganizationSubscription {
-  id                   String       @id @default(uuid()) @db.Uuid
-  organizationId       String       @unique @map("organization_id") @db.Uuid
-  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  planId               String?      @map("plan_id") @db.Uuid
-  plan                 Plan?        @relation(fields: [planId], references: [id], onDelete: SetNull)
+  id                   String          @id @default(uuid()) @db.Uuid
+  organizationId       String          @unique @map("organization_id") @db.Uuid
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId               String?         @map("plan_id") @db.Uuid
+  plan                 Plan?           @relation(fields: [planId], references: [id], onDelete: SetNull)
+  paymentProvider      PaymentProvider @default(stripe) @map("payment_provider")
+  externalCustomerId     String?       @map("external_customer_id") @db.VarChar(255)
+  externalSubscriptionId String?       @unique @map("external_subscription_id") @db.VarChar(255)
+  externalPriceId        String?       @map("external_price_id") @db.VarChar(255)
   stripeCustomerId     String?      @map("stripe_customer_id") @db.VarChar(255)
   stripeSubscriptionId String?      @unique @map("stripe_subscription_id") @db.VarChar(255)
   stripePriceId        String?      @map("stripe_price_id") @db.VarChar(255)
@@ -1784,6 +1816,23 @@ model StripeWebhookEvent {
   payload     Json?
 
   @@map("stripe_webhook_events")
+}
+
+/// Idempotência genérica de webhooks de pagamento (multi-provider).
+model PaymentWebhookEvent {
+  id              String          @id @default(uuid()) @db.Uuid
+  provider        PaymentProvider
+  externalEventId String          @map("external_event_id") @db.VarChar(255)
+  eventType       String          @map("event_type") @db.VarChar(120)
+  payloadHash     String?         @map("payload_hash") @db.VarChar(64)
+  status          String          @default("processed") @db.VarChar(32)
+  payload         Json?
+  processedAt     DateTime?       @map("processed_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@unique([provider, externalEventId])
+  @@index([provider, status])
+  @@map("payment_webhook_events")
 }
 
 // --- Automação (KB, perfis de agente por Bot, ferramentas, prompts, interações, contexto) ---

@@ -1,0 +1,93 @@
+import { prisma } from "../../../../db.js";
+import { config, isMercadoPagoBillingConfigured } from "../../../../config.js";
+import { BillingError } from "../../StripeCustomerService.js";
+import {
+  isMercadoPagoConnectedForOrganizationSync,
+  resolveMercadoPagoAccessToken,
+} from "../../MercadoPagoConnectionService.js";
+import {
+  MERCADOPAGO_BILLING_CAPABILITIES,
+  type BillingProvider,
+  type BillingProviderConfigSlice,
+  type ProviderContext,
+} from "../types.js";
+
+function notConfigured(): never {
+  throw new BillingError(
+    "Mercado Pago billing is not configured for this organization",
+    "mercadopago_not_configured",
+  );
+}
+
+async function resolveOrgConnection(organizationId: string) {
+  return prisma.paymentProviderConnection.findUnique({
+    where: {
+      organizationId_provider: { organizationId, provider: "mercadopago" },
+    },
+    select: {
+      status: true,
+      accessTokenEnc: true,
+      publicKey: true,
+    },
+  });
+}
+
+export const mercadoPagoBillingProvider: BillingProvider = {
+  name: "mercadopago",
+  capabilities: MERCADOPAGO_BILLING_CAPABILITIES,
+
+  async isConfigured(ctx?: ProviderContext): Promise<boolean> {
+    if (isMercadoPagoBillingConfigured()) return true;
+    if (!ctx?.organizationId) return false;
+    const conn = await resolveOrgConnection(ctx.organizationId);
+    return isMercadoPagoConnectedForOrganizationSync(conn);
+  },
+
+  async getClientConfig(ctx?: ProviderContext): Promise<BillingProviderConfigSlice> {
+    const platformConfigured = isMercadoPagoBillingConfigured();
+    const conn = ctx?.organizationId ? await resolveOrgConnection(ctx.organizationId) : null;
+    const orgConnected = isMercadoPagoConnectedForOrganizationSync(conn);
+    return {
+      configured: platformConfigured || orgConnected,
+      connected: platformConfigured || orgConnected,
+      publishableKey: conn?.publicKey?.trim() || config.mercadopagoPublicKey || null,
+      capabilities: MERCADOPAGO_BILLING_CAPABILITIES,
+    };
+  },
+
+  async createCheckoutSession() {
+    notConfigured();
+  },
+
+  async createPortalSession() {
+    notConfigured();
+  },
+
+  async changePlan() {
+    notConfigured();
+  },
+
+  async cancelSubscription() {
+    notConfigured();
+  },
+
+  async resumeSubscription() {
+    notConfigured();
+  },
+
+  async listInvoices() {
+    notConfigured();
+  },
+
+  async createPaymentMethodSetupSession() {
+    notConfigured();
+  },
+
+  async createPaymentMethodPortalSession() {
+    notConfigured();
+  },
+};
+
+export async function mercadoPagoAccessTokenForOrganization(organizationId: string): Promise<string | null> {
+  return resolveMercadoPagoAccessToken(organizationId);
+}

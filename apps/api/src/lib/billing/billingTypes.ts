@@ -14,6 +14,13 @@ export const SUBSCRIPTION_STATUSES = [
 
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
+export const PAYMENT_PROVIDER_NAMES = ["stripe", "mercadopago"] as const;
+export type PaymentProviderName = (typeof PAYMENT_PROVIDER_NAMES)[number];
+
+export function isPaymentProviderName(value: string): value is PaymentProviderName {
+  return (PAYMENT_PROVIDER_NAMES as readonly string[]).includes(value);
+}
+
 /** Status que concedem acesso ao produto (antes de grace period). */
 export const ACCESS_GRANTING_STATUSES = new Set<SubscriptionStatus>([
   "trialing",
@@ -177,4 +184,25 @@ export function subscriptionHasStripeBilling(input: {
   stripeSubscriptionId?: string | null;
 }): boolean {
   return Boolean(input.stripeSubscriptionId?.trim() || input.stripeCustomerId?.trim());
+}
+
+/** Assinatura gerida por qualquer provedor externo (Stripe ou Mercado Pago). */
+export function subscriptionHasExternalBilling(input: {
+  paymentProvider?: string | null;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  externalCustomerId?: string | null;
+  externalSubscriptionId?: string | null;
+}): boolean {
+  if (input.externalSubscriptionId?.trim() || input.externalCustomerId?.trim()) return true;
+  return subscriptionHasStripeBilling(input);
+}
+
+/** Assinatura com cobrança recorrente ativa no provedor externo. */
+export function subscriptionIsProviderManaged(input: {
+  paymentProvider?: string | null;
+  stripeSubscriptionId?: string | null;
+  externalSubscriptionId?: string | null;
+}): boolean {
+  return Boolean(input.externalSubscriptionId?.trim() || input.stripeSubscriptionId?.trim());
 }

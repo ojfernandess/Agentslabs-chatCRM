@@ -13,6 +13,7 @@ export type UpdateCustomPlanInput = {
   paymentGraceDays?: number;
   stripeProductId?: string | null;
   stripePriceId?: string | null;
+  mercadopagoPlanId?: string | null;
   legacyPlanTier?: "free" | "growth" | "enterprise" | null;
   limits?: Record<string, unknown>;
   features?: Record<string, unknown>;
@@ -31,6 +32,7 @@ export type CreateCustomPlanInput = {
   paymentGraceDays: number;
   stripeProductId?: string | null;
   stripePriceId?: string | null;
+  mercadopagoPlanId?: string | null;
   legacyPlanTier?: "free" | "growth" | "enterprise" | null;
   limits?: Record<string, unknown>;
   features?: Record<string, unknown>;
@@ -38,9 +40,16 @@ export type CreateCustomPlanInput = {
   trialDays?: number | null;
 };
 
-function normalizeStripeId(value: string | null | undefined): string | null {
+function normalizeExternalId(value: string | null | undefined): string | null {
   const trimmed = (value ?? "").trim();
   return trimmed || null;
+}
+
+function paidPlanHasBillingProvider(input: {
+  stripePriceId?: string | null;
+  mercadopagoPlanId?: string | null;
+}): boolean {
+  return Boolean(normalizeExternalId(input.stripePriceId) || normalizeExternalId(input.mercadopagoPlanId));
 }
 
 async function uniqueCustomSlug(organizationId: string): Promise<string> {
@@ -67,8 +76,11 @@ export async function createCustomPlanForOrganization(input: CreateCustomPlanInp
     throw new BillingError("Organization not found or inactive", "organization_not_found");
   }
 
-  if (input.amountCents > 0 && !normalizeStripeId(input.stripePriceId)) {
-    throw new BillingError("Paid custom plans require stripePriceId", "plan_not_stripe_ready");
+  if (input.amountCents > 0 && !paidPlanHasBillingProvider(input)) {
+    throw new BillingError(
+      "Paid custom plans require stripePriceId or mercadopagoPlanId",
+      "plan_not_billing_ready",
+    );
   }
 
   const slug = await uniqueCustomSlug(input.organizationId);
@@ -88,8 +100,9 @@ export async function createCustomPlanForOrganization(input: CreateCustomPlanInp
       isCustom: true,
       organizationId: input.organizationId,
       paymentGraceDays: graceDays,
-      stripeProductId: normalizeStripeId(input.stripeProductId),
-      stripePriceId: normalizeStripeId(input.stripePriceId),
+      stripeProductId: normalizeExternalId(input.stripeProductId),
+      stripePriceId: normalizeExternalId(input.stripePriceId),
+      mercadopagoPlanId: normalizeExternalId(input.mercadopagoPlanId),
       legacyPlanTier: input.legacyPlanTier ?? null,
       limits: (input.limits ?? {}) as Prisma.InputJsonValue,
       features: (input.features ?? {}) as Prisma.InputJsonValue,
@@ -119,21 +132,27 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
   const nextAmountCents = input.amountCents ?? existing.amountCents;
   const nextStripePriceId =
     input.stripePriceId !== undefined
-      ? normalizeStripeId(input.stripePriceId)
+      ? normalizeExternalId(input.stripePriceId)
+      : undefined;
+  const nextMercadoPagoPlanId =
+    input.mercadopagoPlanId !== undefined
+      ? normalizeExternalId(input.mercadopagoPlanId)
       : undefined;
 
   if (nextAmountCents > 0) {
-    const priceId =
-      nextStripePriceId !== undefined
-        ? nextStripePriceId
-        : (
-            await prisma.plan.findUnique({
-              where: { id: planId },
-              select: { stripePriceId: true },
-            })
-          )?.stripePriceId;
-    if (!priceId) {
-      throw new BillingError("Paid custom plans require stripePriceId", "plan_not_stripe_ready");
+    const current = await prisma.plan.findUnique({
+      where: { id: planId },
+      select: { stripePriceId: true, mercadopagoPlanId: true },
+    });
+    const stripePriceId =
+      nextStripePriceId !== undefined ? nextStripePriceId : current?.stripePriceId ?? null;
+    const mercadopagoPlanId =
+      nextMercadoPagoPlanId !== undefined ? nextMercadoPagoPlanId : current?.mercadopagoPlanId ?? null;
+    if (!paidPlanHasBillingProvider({ stripePriceId, mercadopagoPlanId })) {
+      throw new BillingError(
+        "Paid custom plans require stripePriceId or mercadopagoPlanId",
+        "plan_not_billing_ready",
+      );
     }
   }
 
@@ -145,8 +164,9 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
   if (input.interval !== undefined) data.interval = input.interval;
   if (input.trialDays !== undefined) data.trialDays = input.trialDays;
   if (input.isActive !== undefined) data.isActive = input.isActive;
-  if (input.stripeProductId !== undefined) data.stripeProductId = normalizeStripeId(input.stripeProductId);
-  if (input.stripePriceId !== undefined) data.stripePriceId = normalizeStripeId(input.stripePriceId);
+  if (input.stripeProductId !== undefined) data.stripeProductId = normalizeExternalId(input.stripeProductId);
+  if (input.stripePriceId !== undefined) data.stripePriceId = normalizeExternalId(input.stripePriceId);
+  if (input.mercadopagoPlanId !== undefined) data.mercadopagoPlanId = normalizeExternalId(input.mercadopagoPlanId);
   if (input.legacyPlanTier !== undefined) data.legacyPlanTier = input.legacyPlanTier;
   if (input.limits !== undefined) data.limits = input.limits as Prisma.InputJsonValue;
   if (input.features !== undefined) data.features = input.features as Prisma.InputJsonValue;
