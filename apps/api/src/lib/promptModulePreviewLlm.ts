@@ -13,7 +13,56 @@ configureLlmQuotaGateDefaults({
 
 export type PreviewChatTurn = { role: "user" | "assistant"; content: string };
 
-export type PreviewLlmUsage = { prompt: number; completion: number; total: number };
+export type PreviewLlmUsage = {
+  prompt: number;
+  completion: number;
+  total: number;
+  cachedInput?: number;
+  reasoning?: number;
+  requestId?: string | null;
+  actualModel?: string | null;
+};
+
+type OpenAiUsagePayload = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+  completion_tokens_details?: { reasoning_tokens?: number };
+};
+
+function parseOpenAiUsageChunk(
+  usage: OpenAiUsagePayload | undefined,
+  requestId?: string | null,
+  actualModel?: string | null,
+): PreviewLlmUsage | undefined {
+  if (!usage) return undefined;
+  const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
+  const reasoning = usage.completion_tokens_details?.reasoning_tokens ?? 0;
+  const prompt = usage.prompt_tokens ?? 0;
+  const completion = usage.completion_tokens ?? 0;
+  return {
+    prompt,
+    completion,
+    total: usage.total_tokens ?? prompt + completion,
+    cachedInput: cached,
+    reasoning,
+    requestId: requestId ?? null,
+    actualModel: actualModel ?? null,
+  };
+}
+
+function mergePreviewLlmUsage(a: PreviewLlmUsage, b: PreviewLlmUsage): PreviewLlmUsage {
+  return {
+    prompt: a.prompt + b.prompt,
+    completion: a.completion + b.completion,
+    total: a.total + b.total,
+    cachedInput: (a.cachedInput ?? 0) + (b.cachedInput ?? 0),
+    reasoning: (a.reasoning ?? 0) + (b.reasoning ?? 0),
+    requestId: b.requestId ?? a.requestId ?? null,
+    actualModel: b.actualModel ?? a.actualModel ?? null,
+  };
+}
 
 /**
  * Novos modelos OpenAI (ex. GPT-5.x) em `/v1/chat/completions` rejeitam `max_tokens` e exigem
@@ -212,13 +261,14 @@ export async function callOpenAiCompatibleChatWithTools(params: {
       throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
     }
     let data: {
+      model?: string;
       choices?: Array<{
         message?: {
           content?: string | null;
           tool_calls?: OpenAiChatMessage["tool_calls"];
         };
       }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      usage?: OpenAiUsagePayload;
     };
     try {
       data = JSON.parse(rawText) as typeof data;
@@ -226,20 +276,10 @@ export async function callOpenAiCompatibleChatWithTools(params: {
       throw new Error("OpenAI-compatible API returned non-JSON");
     }
 
-    const u = data.usage;
-    if (u) {
-      const chunk: PreviewLlmUsage = {
-        prompt: u.prompt_tokens ?? 0,
-        completion: u.completion_tokens ?? 0,
-        total: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0),
-      };
-      totalUsage = totalUsage
-        ? {
-            prompt: totalUsage.prompt + chunk.prompt,
-            completion: totalUsage.completion + chunk.completion,
-            total: totalUsage.total + chunk.total,
-          }
-        : chunk;
+    const requestId = res.headers.get("x-request-id");
+    const chunkUsage = parseOpenAiUsageChunk(data.usage, requestId, data.model ?? params.model);
+    if (chunkUsage) {
+      totalUsage = totalUsage ? mergePreviewLlmUsage(totalUsage, chunkUsage) : chunkUsage;
     }
 
     const choice = data.choices?.[0]?.message;
@@ -336,21 +376,18 @@ async function readOpenAiStreamCompletion(params: {
         if (!payload || payload === "[DONE]") continue;
         try {
           const json = JSON.parse(payload) as {
+            model?: string;
             choices?: Array<{ delta?: { content?: string } }>;
-            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+            usage?: OpenAiUsagePayload;
           };
           const delta = json.choices?.[0]?.delta?.content;
           if (typeof delta === "string" && delta) {
             text += delta;
             params.onTokenDelta?.(delta);
           }
-          const u = json.usage;
-          if (u) {
-            usage = {
-              prompt: u.prompt_tokens ?? 0,
-              completion: u.completion_tokens ?? 0,
-              total: u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0),
-            };
+          const chunkUsage = parseOpenAiUsageChunk(json.usage, res.headers.get("x-request-id"), json.model);
+          if (chunkUsage) {
+            usage = usage ? mergePreviewLlmUsage(usage, chunkUsage) : chunkUsage;
           }
         } catch {
           /* ignore malformed chunk */
@@ -422,8 +459,9 @@ export async function callOpenAiCompatibleChat(params: {
     throw new Error(`OpenAI-compatible API HTTP ${res.status}: ${rawText.slice(0, 800)}`);
   }
   let data: {
+    model?: string;
     choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    usage?: OpenAiUsagePayload;
   };
   try {
     data = JSON.parse(rawText) as typeof data;
@@ -431,16 +469,11 @@ export async function callOpenAiCompatibleChat(params: {
     throw new Error("OpenAI-compatible API returned non-JSON");
   }
   const text = data.choices?.[0]?.message?.content ?? "";
-  const u = data.usage;
-  const usage: PreviewLlmUsage | undefined = u
-    ? {
-        prompt: u.prompt_tokens ?? 0,
-        completion: u.completion_tokens ?? 0,
-        total:
-          u.total_tokens ??
-          (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0),
-      }
-    : undefined;
+  const usage = parseOpenAiUsageChunk(
+    data.usage,
+    res.headers.get("x-request-id"),
+    data.model ?? params.model,
+  );
   return { text: typeof text === "string" ? text : "", usage };
 }
 

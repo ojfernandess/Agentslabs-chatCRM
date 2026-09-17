@@ -50,6 +50,7 @@ interface OrgRow {
   address?: string | null;
   cnpj?: string | null;
   monthlyMessageQuota?: number | null;
+  aiBillingMode?: "OWN_API_KEY" | "PLATFORM_CREDITS";
   subscription?: {
     planId: string | null;
     status: string;
@@ -404,6 +405,8 @@ export function SuperAdminPage() {
   const [billingPlanTier, setBillingPlanTier] = useState("free");
   const [billingEmailState, setBillingEmailState] = useState("");
   const [billingQuota, setBillingQuota] = useState("");
+  const [billingAiMode, setBillingAiMode] = useState<"OWN_API_KEY" | "PLATFORM_CREDITS">("OWN_API_KEY");
+  const [billingInitialAiMode, setBillingInitialAiMode] = useState<"OWN_API_KEY" | "PLATFORM_CREDITS">("OWN_API_KEY");
   const [billingInitialPlanId, setBillingInitialPlanId] = useState<string | null>(null);
   const [billingInitialPlanTier, setBillingInitialPlanTier] = useState("free");
   const [billingSaving, setBillingSaving] = useState(false);
@@ -1115,6 +1118,9 @@ export function SuperAdminPage() {
     setBillingInitialPlanTier(tier);
     setBillingEmailState(o.billingEmail ?? "");
     setBillingQuota(o.monthlyMessageQuota != null ? String(o.monthlyMessageQuota) : "");
+    const aiMode = o.aiBillingMode === "PLATFORM_CREDITS" ? "PLATFORM_CREDITS" : "OWN_API_KEY";
+    setBillingAiMode(aiMode);
+    setBillingInitialAiMode(aiMode);
   };
 
   const openEditOrg = (o: OrgRow) => {
@@ -1219,10 +1225,14 @@ export function SuperAdminPage() {
         planTier?: string;
         billingEmail: string;
         monthlyMessageQuota: number | null;
+        aiBillingMode?: "OWN_API_KEY" | "PLATFORM_CREDITS";
       } = {
         billingEmail: billingEmailState.trim() || "",
         monthlyMessageQuota,
       };
+      if (billingAiMode !== billingInitialAiMode) {
+        patch.aiBillingMode = billingAiMode;
+      }
       if (catalogPlans.length > 0) {
         if (billingPlanId && billingPlanId !== billingInitialPlanId) {
           patch.planId = billingPlanId;
@@ -3390,6 +3400,20 @@ export function SuperAdminPage() {
                     className="input-field mt-1"
                     placeholder="—"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-600">{t("superAdmin.aiBillingMode")}</label>
+                  <select
+                    value={billingAiMode}
+                    onChange={(e) =>
+                      setBillingAiMode(e.target.value === "PLATFORM_CREDITS" ? "PLATFORM_CREDITS" : "OWN_API_KEY")
+                    }
+                    className="input-field mt-1"
+                  >
+                    <option value="OWN_API_KEY">{t("superAdmin.aiBillingModeOwnApiKey")}</option>
+                    <option value="PLATFORM_CREDITS">{t("superAdmin.aiBillingModePlatformCredits")}</option>
+                  </select>
+                  <p className="mt-1 text-xs text-ink-500">{t("superAdmin.aiBillingModeHelp")}</p>
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" className="btn-secondary" onClick={() => setBillingOrg(null)}>

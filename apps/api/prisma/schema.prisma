@@ -178,6 +178,8 @@ model Organization {
   monthlyMessageQuota Int?    @map("monthly_message_quota")
   /// Stripe Customer principal da organização (billing SaaS).
   stripeCustomerId    String? @map("stripe_customer_id") @db.VarChar(255)
+  /// Modo de faturação de IA: API própria da org ou créditos da plataforma (Super Admin).
+  aiBillingMode       AiBillingMode @default(OWN_API_KEY) @map("ai_billing_mode")
 
   users              User[]
   subscription       OrganizationSubscription?
@@ -241,6 +243,10 @@ model Organization {
   threeCxIntegrationLogs         ThreeCxIntegrationLog[]
   nvoipAccount                   NvoipAccount?
   paymentProviderConnections   PaymentProviderConnection[]
+  aiWallet                     OrganizationAiWallet?
+  aiUsageRecords               AiUsageRecord[]
+  aiWalletLedgerEntries        AiWalletLedgerEntry[]
+  aiCreditPurchases            AiCreditPurchase[]
   nvoipAgentExtensions           NvoipAgentExtension[]
   nvoipCallLogs                  NvoipCallLog[]
   nvoipIntegrationLogs           NvoipIntegrationLog[]
@@ -1721,6 +1727,11 @@ enum PaymentProvider {
   mercadopago
 }
 
+enum AiBillingMode {
+  OWN_API_KEY
+  PLATFORM_CREDITS
+}
+
 /// Conexão de provedor de pagamento por organização (credenciais OAuth/token criptografadas).
 model PaymentProviderConnection {
   id             String          @id @default(uuid()) @db.Uuid
@@ -1740,6 +1751,152 @@ model PaymentProviderConnection {
   @@unique([organizationId, provider])
   @@index([provider, status])
   @@map("payment_provider_connections")
+}
+
+enum AiWalletLedgerEntryType {
+  CREDIT_ADJUSTMENT
+  CREDIT_PURCHASE
+  USAGE_DEBIT
+  RESERVE_HOLD
+  RESERVE_RELEASE
+  REFUND
+}
+
+/// Carteira de Créditos de IA por organização (PLATFORM_CREDITS).
+model OrganizationAiWallet {
+  organizationId   String       @id @map("organization_id") @db.Uuid
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  balance          Decimal      @default(0) @db.Decimal(18, 8)
+  reservedBalance  Decimal      @default(0) @map("reserved_balance") @db.Decimal(18, 8)
+  currency         String       @default("USD") @db.VarChar(8)
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@map("organization_ai_wallets")
+}
+
+/// Ledger imutável da carteira de Créditos de IA.
+model AiWalletLedgerEntry {
+  id               String                  @id @default(uuid()) @db.Uuid
+  organizationId   String                  @map("organization_id") @db.Uuid
+  organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entryType        AiWalletLedgerEntryType @map("entry_type")
+  amount           Decimal                 @db.Decimal(18, 8)
+  balanceAfter     Decimal                 @map("balance_after") @db.Decimal(18, 8)
+  reservedAfter    Decimal                 @map("reserved_after") @db.Decimal(18, 8)
+  idempotencyKey   String?                 @unique @map("idempotency_key") @db.VarChar(255)
+  referenceType    String?                 @map("reference_type") @db.VarChar(64)
+  referenceId      String?                 @map("reference_id") @db.VarChar(255)
+  metadata         Json?
+  createdAt        DateTime                @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@map("ai_wallet_ledger_entries")
+}
+
+/// Tabela versionada de preços por modelo/provedor (valores por 1M tokens/unidade).
+model AiModelPricing {
+  id               String           @id @default(uuid()) @db.Uuid
+  provider         String           @db.VarChar(32)
+  model            String           @db.VarChar(128)
+  inputPrice       Decimal          @map("input_price") @db.Decimal(18, 8)
+  cachedInputPrice Decimal?         @map("cached_input_price") @db.Decimal(18, 8)
+  outputPrice      Decimal          @map("output_price") @db.Decimal(18, 8)
+  reasoningPrice   Decimal?         @map("reasoning_price") @db.Decimal(18, 8)
+  currency         String           @default("USD") @db.VarChar(8)
+  effectiveFrom    DateTime         @map("effective_from")
+  effectiveUntil   DateTime?        @map("effective_until")
+  active           Boolean          @default(true)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  usageRecords     AiUsageRecord[]
+
+  @@index([provider, model, effectiveFrom])
+  @@index([active, effectiveFrom])
+  @@map("ai_model_pricing")
+}
+
+/// Registo imutável de consumo de IA (auditoria + conciliação).
+model AiUsageRecord {
+  id                 String         @id @default(uuid()) @db.Uuid
+  organizationId     String         @map("organization_id") @db.Uuid
+  organization       Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentBotId         String?        @map("agent_bot_id") @db.Uuid
+  conversationId     String?        @map("conversation_id") @db.Uuid
+  provider           String         @db.VarChar(32)
+  requestedModel     String?        @map("requested_model") @db.VarChar(128)
+  actualModel        String?        @map("actual_model") @db.VarChar(128)
+  inputTokens        Int            @default(0) @map("input_tokens")
+  cachedInputTokens  Int            @default(0) @map("cached_input_tokens")
+  outputTokens       Int            @default(0) @map("output_tokens")
+  reasoningTokens    Int            @default(0) @map("reasoning_tokens")
+  totalTokens        Int            @default(0) @map("total_tokens")
+  providerCost       Decimal        @map("provider_cost") @db.Decimal(18, 8)
+  markupPercent      Decimal        @map("markup_percent") @db.Decimal(8, 4)
+  platformCost       Decimal        @map("platform_cost") @db.Decimal(18, 8)
+  pricingVersionId   String         @map("pricing_version_id") @db.Uuid
+  pricingVersion     AiModelPricing @relation(fields: [pricingVersionId], references: [id], onDelete: Restrict)
+  openaiRequestId    String?        @map("openai_request_id") @db.VarChar(255)
+  idempotencyKey     String         @unique @map("idempotency_key") @db.VarChar(255)
+  usageMetadata      Json?          @map("usage_metadata")
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([pricingVersionId])
+  @@map("ai_usage_records")
+}
+
+enum AiCreditPurchaseStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELED
+}
+
+/// Pacote comercial de Créditos de IA (compra avulsa).
+model AiCreditPackage {
+  id            String   @id @default(uuid()) @db.Uuid
+  slug          String   @unique @db.VarChar(64)
+  name          String   @db.VarChar(120)
+  description   String?  @db.Text
+  creditAmount  Decimal  @map("credit_amount") @db.Decimal(18, 8)
+  amountCents   Int      @map("amount_cents")
+  currency      String   @default("USD") @db.VarChar(8)
+  stripePriceId String?  @map("stripe_price_id") @db.VarChar(255)
+  displayOrder  Int      @default(0) @map("display_order")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  purchases     AiCreditPurchase[]
+
+  @@index([isActive, displayOrder])
+  @@map("ai_credit_packages")
+}
+
+/// Checkout/compra de Créditos de IA (Stripe ou Mercado Pago).
+model AiCreditPurchase {
+  id                String                 @id @default(uuid()) @db.Uuid
+  organizationId    String                 @map("organization_id") @db.Uuid
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  packageId         String                 @map("package_id") @db.Uuid
+  package           AiCreditPackage        @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  paymentProvider   String                 @map("payment_provider") @db.VarChar(32)
+  status            AiCreditPurchaseStatus @default(PENDING)
+  checkoutSessionId String?                @map("checkout_session_id") @db.VarChar(255)
+  externalReference String?                @map("external_reference") @db.VarChar(255)
+  creditAmount      Decimal                @map("credit_amount") @db.Decimal(18, 8)
+  amountCents       Int                    @map("amount_cents")
+  currency          String                 @default("USD") @db.VarChar(8)
+  idempotencyKey    String                 @unique @map("idempotency_key") @db.VarChar(255)
+  metadata          Json?
+  completedAt       DateTime?              @map("completed_at")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+
+  @@index([organizationId, createdAt])
+  @@index([checkoutSessionId])
+  @@index([status, createdAt])
+  @@map("ai_credit_purchases")
 }
 
 /// Catálogo comercial configurável pelo Super Admin (integração Stripe via Product/Price IDs).

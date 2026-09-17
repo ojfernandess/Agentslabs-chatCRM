@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPageHeader, SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
 import { SuperAdminCustomPlansPanel } from "@/components/super-admin/SuperAdminCustomPlansPanel";
 import { SuperAdminPaymentProvidersPanel } from "@/components/super-admin/SuperAdminPaymentProvidersPanel";
+import { SuperAdminAiCreditsPanel } from "@/components/super-admin/SuperAdminAiCreditsPanel";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
 import {
@@ -76,7 +77,7 @@ type ReminderModalState = {
   billingEmail: string;
 };
 
-type BillingTab = "providers" | "plans" | "customPlans" | "subscriptions" | "settings";
+type BillingTab = "providers" | "plans" | "customPlans" | "subscriptions" | "settings" | "aiCredits";
 
 type DimensionOverageForm = {
   enabled: boolean;
@@ -605,7 +606,7 @@ export function SuperAdminBillingSection() {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {(["providers", "plans", "customPlans", "subscriptions", "settings"] as const).map((id) => (
+        {(["providers", "plans", "customPlans", "subscriptions", "aiCredits", "settings"] as const).map((id) => (
           <button
             key={id}
             type="button"
@@ -726,6 +727,8 @@ export function SuperAdminBillingSection() {
       ) : null}
 
       {tab === "customPlans" && !loading ? <SuperAdminCustomPlansPanel /> : null}
+
+      {tab === "aiCredits" && !loading ? <SuperAdminAiCreditsPanel /> : null}
 
       {tab === "subscriptions" && !loading ? (
         <SuperAdminPanel className="overflow-hidden p-0">

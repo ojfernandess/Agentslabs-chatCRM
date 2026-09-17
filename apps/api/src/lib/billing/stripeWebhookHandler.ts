@@ -61,6 +61,13 @@ async function markEventProcessed(event: Stripe.Event): Promise<boolean> {
 }
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  const { fulfillAiCreditPurchaseFromStripeSession } = await import(
+    "../ai-billing/AiCreditPurchaseService.js"
+  );
+  if (await fulfillAiCreditPurchaseFromStripeSession(session)) {
+    return;
+  }
+
   const organizationId = session.metadata?.organizationId?.trim() || session.client_reference_id?.trim();
   if (!organizationId) return;
 

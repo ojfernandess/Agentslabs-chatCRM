@@ -4,10 +4,16 @@ import { config } from "../config.js";
 import {
   isAnthropicProvider,
   isGeminiProvider,
-  platformLlmKeySource,
-  resolveLlmApiBaseUrl,
-  resolvePlatformLlmApiKey,
 } from "./llmProviders.js";
+import { resolveAgentLlmCredentials } from "./ai-billing/AiCredentialResolver.js";
+import {
+  beginPlatformCreditsLlmUsage,
+  cancelPlatformCreditsLlmUsage,
+  finalizePlatformCreditsLlmUsage,
+  type PlatformCreditsBillingHandle,
+} from "./ai-billing/AiUsageBillingService.js";
+import { mapPreviewUsageToDetails, type LlmUsageDetails } from "./ai-billing/llmUsageDetails.js";
+import type { PreviewLlmUsage } from "./promptModulePreviewLlm.js";
 import { prisma } from "../db.js";
 import {
   callAnthropicMessagesWithTools,
@@ -1744,11 +1750,11 @@ async function generateNativeAgentReplyCore(input: {
   }
 
   const llm = profile.llmConfig as Record<string, unknown>;
-  const provider = llmString(llm, "provider") || "openai";
-  const model = llmString(llm, "model") || "gpt-4o-mini";
-  const storedKey = llmString(llm, "apiKey");
-  /** Mesma ordem que embeddings/playground: chave no perfil ou `OPENAI_PROMPT_PREVIEW_KEY` / `OPENAI_API_KEY` no servidor. */
-  const apiKey = resolvePlatformLlmApiKey(provider, storedKey, config);
+  const credentials = await resolveAgentLlmCredentials({
+    organizationId,
+    llmConfig: llm,
+  });
+  const { provider, model, apiKey, apiBaseUrl } = credentials;
   if (!apiKey) {
     log.warn(
       { botId: bot.id },
@@ -1874,7 +1880,6 @@ async function generateNativeAgentReplyCore(input: {
     ),
     profile.behaviorConfig,
   );
-  const apiBaseUrl = resolveLlmApiBaseUrl(provider, llmString(llm, "apiBaseUrl"), config);
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(profile.behaviorConfig);
   const toolCallNotify = parseToolCallNotifyFromBehavior(profile.behaviorConfig);
   /** Mensagens de espera do agente (config + default) — nunca válidas como resposta final. */
@@ -2701,10 +2706,58 @@ async function generateNativeAgentReplyCore(input: {
       historyTurns: history.length,
       historyIsolated,
       identityConflictCleared,
-      apiKeySource: platformLlmKeySource(provider, storedKey, config),
+      apiKeySource: credentials.keySource,
     });
   }
 
+  let platformCreditsHandle: PlatformCreditsBillingHandle | null = null;
+  const platformCreditsUsageParts: LlmUsageDetails[] = [];
+  const trackPlatformCreditsUsage = (usage: PreviewLlmUsage | undefined, fallbackModel?: string) => {
+    const mapped = mapPreviewUsageToDetails(usage, fallbackModel ?? model);
+    if (mapped && platformCreditsHandle?.ok) platformCreditsUsageParts.push(mapped);
+  };
+
+  if (credentials.billingMode === "PLATFORM_CREDITS") {
+    const began = await beginPlatformCreditsLlmUsage({
+      organizationId,
+      provider,
+      requestedModel: model,
+      maxTokens,
+      agentBotId: bot.id,
+      conversationId: conversation.id,
+    });
+    if (!began.ok) {
+      if (began.reason === "insufficient_balance") {
+        ex?.warn({ id: "ai_credits", name: "Créditos IA" }, "Saldo insuficiente — geração abortada");
+        return {
+          ...EMPTY_NATIVE_CORE_RESULT,
+          reply:
+            "Os créditos de IA da sua organização estão esgotados. Contacte o administrador para adicionar créditos.",
+        };
+      }
+    } else {
+      platformCreditsHandle = began;
+    }
+  }
+
+  const settlePlatformCreditsBilling = async () => {
+    if (!platformCreditsHandle?.ok) return;
+    const handle = platformCreditsHandle;
+    platformCreditsHandle = null;
+    try {
+      await finalizePlatformCreditsLlmUsage({
+        handle,
+        usageParts: platformCreditsUsageParts,
+        agentBotId: bot.id,
+        conversationId: conversation.id,
+      });
+    } catch (finalizeErr) {
+      log.warn({ err: finalizeErr, organizationId }, "AI platform credits finalize failed; releasing reserve");
+      await cancelPlatformCreditsLlmUsage(handle).catch(() => {});
+    }
+  };
+
+  try {
   try {
     if (useTools) {
       try {
@@ -3145,6 +3198,7 @@ async function generateNativeAgentReplyCore(input: {
           signal,
         });
         replyText = r.text.trim();
+        trackPlatformCreditsUsage(r.usage, model);
         completedToolRounds = r.toolRounds;
         ex?.info(
           { id: "llm", name: "Modelo + tools" },
@@ -3180,6 +3234,7 @@ async function generateNativeAgentReplyCore(input: {
             signal: nativeAgentLlmAbortSignal(),
           });
           replyText = r.text;
+          trackPlatformCreditsUsage(r.usage, model);
           ex?.info({ id: "llm", name: "Modelo (fallback)" }, "Resposta após fallback sem tools", {
             output: { replyChars: replyText.length },
           });
@@ -3214,6 +3269,7 @@ async function generateNativeAgentReplyCore(input: {
         signal,
       });
       replyText = r.text;
+      trackPlatformCreditsUsage(r.usage, model);
       ex?.info({ id: "llm", name: "Gemini" }, "Resposta Gemini", { output: { replyChars: replyText.length } });
     } else {
       ex?.info({ id: "llm", name: "OpenAI chat" }, "Geração sem tools (OpenAI)");
@@ -3231,6 +3287,7 @@ async function generateNativeAgentReplyCore(input: {
         onTokenDelta,
       });
       replyText = r.text;
+      trackPlatformCreditsUsage(r.usage, model);
       ex?.info({ id: "llm", name: "OpenAI chat" }, "Resposta OpenAI", { output: { replyChars: replyText.length } });
     }
   } catch (err) {
@@ -3957,6 +4014,9 @@ async function generateNativeAgentReplyCore(input: {
     llmSupervisorSummary,
     clientStreamDelivered,
   };
+  } finally {
+    await settlePlatformCreditsBilling();
+  }
 }
 
 let agentEngineExecutorRegistered = false;

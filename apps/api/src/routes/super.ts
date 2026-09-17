@@ -23,6 +23,7 @@ import {
   isOrganizationFeatureEnabled,
   type FeatureFlagKey,
 } from "../lib/featureFlags.js";
+import { AI_BILLING_MODES } from "../lib/ai-billing/aiBillingTypes.js";
 import {
   DEFAULT_PIPELINE_STAGES,
   DEFAULT_TAGS,
@@ -119,6 +120,7 @@ const patchOrgSchema = z.object({
     ])
     .optional(),
   monthlyMessageQuota: z.union([z.number().int().positive(), z.null()]).optional(),
+  aiBillingMode: z.enum(AI_BILLING_MODES).optional(),
 });
 
 const superUserPatchSchema = z.object({
@@ -726,6 +728,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         data.cnpj = p.cnpj === "" ? null : p.cnpj.trim();
       }
       if (p.monthlyMessageQuota !== undefined) data.monthlyMessageQuota = p.monthlyMessageQuota;
+      if (p.aiBillingMode !== undefined) data.aiBillingMode = p.aiBillingMode;
       org = await prisma.organization.update({
         where: { id: request.params.id },
         data,

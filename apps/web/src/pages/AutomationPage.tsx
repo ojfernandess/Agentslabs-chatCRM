@@ -983,6 +983,7 @@ function formToPayload(
     customTools: AutomationCustomToolRow[];
     orgTags: Array<{ id: string; name: string; color: string }>;
     orgTeams: Array<{ id: string; name: string }>;
+    platformCreditsMode: boolean;
     t: (key: string) => string;
   },
 ): {
@@ -1080,19 +1081,22 @@ function formToPayload(
   });
   const mergedInstructions = mergeSystemWithAutoBlock(promptCoreForSave, autoInner);
 
-  const modelResolved = form.model.trim() || defaultModelForProvider(form.provider);
+  const modelResolved =
+    form.model.trim() || defaultModelForProvider(ctx.platformCreditsMode ? "openai" : form.provider);
 
   const llmConfig: Record<string, unknown> = {
-    provider: form.provider,
     model: modelResolved,
     temperature: form.temperature,
     maxTokens: form.maxTokens,
-    apiBaseUrl: form.apiBaseUrl.trim() || null,
     systemInstructions: mergedInstructions,
   };
-  const apiKeyTrimmed = form.apiKey.trim();
-  // Evitar enviar o placeholder "***" (o backend interpreta como “não mudou”).
-  if (apiKeyTrimmed && apiKeyTrimmed !== "***") llmConfig.apiKey = apiKeyTrimmed;
+  if (!ctx.platformCreditsMode) {
+    llmConfig.provider = form.provider;
+    llmConfig.apiBaseUrl = form.apiBaseUrl.trim() || null;
+    const apiKeyTrimmed = form.apiKey.trim();
+    // Evitar enviar o placeholder "***" (o backend interpreta como “não mudou”).
+    if (apiKeyTrimmed && apiKeyTrimmed !== "***") llmConfig.apiKey = apiKeyTrimmed;
+  }
 
   const schedulingExternal = form.nativeTools.scheduling_google
     ? "google"
@@ -1379,6 +1383,9 @@ export function AutomationPage() {
   >([]);
 
   const [agentProfiles, setAgentProfiles] = useState<AgentProfileRow[]>([]);
+  const [aiBillingMode, setAiBillingMode] = useState<"OWN_API_KEY" | "PLATFORM_CREDITS">("OWN_API_KEY");
+  const platformCreditsMode = aiBillingMode === "PLATFORM_CREDITS";
+  const agentModelCatalogProvider = platformCreditsMode ? "openai" : agentForm.provider;
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
   const [metaCloudInboxes, setMetaCloudInboxes] = useState<
@@ -1479,8 +1486,11 @@ export function AutomationPage() {
   }, []);
 
   const loadAgentProfiles = useCallback(async () => {
-    const res = await api.get<{ data: AgentProfileRow[] }>("/automation/agent-profiles");
+    const res = await api.get<{ data: AgentProfileRow[]; aiBillingMode?: "OWN_API_KEY" | "PLATFORM_CREDITS" }>(
+      "/automation/agent-profiles",
+    );
     setAgentProfiles(res.data);
+    setAiBillingMode(res.aiBillingMode === "PLATFORM_CREDITS" ? "PLATFORM_CREDITS" : "OWN_API_KEY");
   }, []);
 
   const loadDashboard = useCallback(async () => {
@@ -1662,6 +1672,7 @@ export function AutomationPage() {
         customTools: tools,
         orgTeams: orgTeamsForAgent,
         orgTags: orgTagsForAgent,
+        platformCreditsMode,
         t,
       });
       if (agentForm.mode === "edit" && agentForm.editBotId) {
@@ -3728,34 +3739,42 @@ function AgentsTab({
                 </>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
-                  {t("automationPage.agentProvider")}
-                  <select
-                    value={agentForm.provider}
-                    onChange={(e) => onProviderChange(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
-                  >
-                    {PROVIDER_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {t(o.labelKey)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
+              {platformCreditsMode ? (
+                <p className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-100">
+                  {t("automationPage.agentPlatformCreditsNotice")}
+                </p>
+              ) : null}
+
+              <div className={`grid gap-3 sm:grid-cols-2 ${platformCreditsMode ? "" : ""}`}>
+                {!platformCreditsMode ? (
+                  <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
+                    {t("automationPage.agentProvider")}
+                    <select
+                      value={agentForm.provider}
+                      onChange={(e) => onProviderChange(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
+                    >
+                      {PROVIDER_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {t(o.labelKey)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className={`block text-sm font-medium text-ink-800 dark:text-ink-200 ${platformCreditsMode ? "sm:col-span-2" : ""}`}>
                   {t("automationPage.agentModel")}
-                  {OPENAI_COMPAT_PROVIDERS.has(agentForm.provider) ? (
+                  {OPENAI_COMPAT_PROVIDERS.has(agentModelCatalogProvider) ? (
                     <>
                       <select
                         value={
-                          (MODELS_BY_PROVIDER[agentForm.provider] ?? []).includes(agentForm.model)
+                          (MODELS_BY_PROVIDER[agentModelCatalogProvider] ?? []).includes(agentForm.model)
                             ? agentForm.model
                             : OPENAI_MODEL_CUSTOM
                         }
                         onChange={(e) => {
                           const v = e.target.value;
-                          const catalog = MODELS_BY_PROVIDER[agentForm.provider] ?? [];
+                          const catalog = MODELS_BY_PROVIDER[agentModelCatalogProvider] ?? [];
                           if (v === OPENAI_MODEL_CUSTOM) {
                             setAgentForm((f) => ({
                               ...f,
@@ -3767,14 +3786,14 @@ function AgentsTab({
                         }}
                         className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                       >
-                        {(MODELS_BY_PROVIDER[agentForm.provider] ?? MODELS_BY_PROVIDER.openai).map((m) => (
+                        {(MODELS_BY_PROVIDER[agentModelCatalogProvider] ?? MODELS_BY_PROVIDER.openai).map((m) => (
                           <option key={m} value={m}>
                             {m}
                           </option>
                         ))}
                         <option value={OPENAI_MODEL_CUSTOM}>{t("automationPage.agentModelCustom")}</option>
                       </select>
-                      {!(MODELS_BY_PROVIDER[agentForm.provider] ?? []).includes(agentForm.model) ? (
+                      {!(MODELS_BY_PROVIDER[agentModelCatalogProvider] ?? []).includes(agentForm.model) ? (
                         <input
                           type="text"
                           value={agentForm.model}
@@ -3792,7 +3811,7 @@ function AgentsTab({
                       onChange={(e) => setAgentForm((f) => ({ ...f, model: e.target.value }))}
                       className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100"
                     >
-                      {(MODELS_BY_PROVIDER[agentForm.provider] ?? MODELS_BY_PROVIDER.google_gemini).map((m) => (
+                      {(MODELS_BY_PROVIDER[agentModelCatalogProvider] ?? MODELS_BY_PROVIDER.google_gemini).map((m) => (
                         <option key={m} value={m}>
                           {m}
                         </option>
@@ -3803,6 +3822,8 @@ function AgentsTab({
                 </label>
               </div>
 
+              {!platformCreditsMode ? (
+                <>
               <label className="block text-sm font-medium text-ink-800 dark:text-ink-200">
                 {t("automationPage.agentApiUrl")}
                 <input
@@ -3831,6 +3852,8 @@ function AgentsTab({
                   </p>
                 ) : null}
               </label>
+                </>
+              ) : null}
 
               <AgentEnginePanel
                 value={agentForm.agentEngine}

@@ -7,6 +7,7 @@ import {
   callGeminiGenerateContent,
   callOpenAiCompatibleChat,
   type PreviewChatTurn,
+  type PreviewLlmUsage,
 } from "../../promptModulePreviewLlm.js";
 import { isAnthropicProvider } from "../../llmProviders.js";
 
@@ -31,7 +32,7 @@ export function clampLlmMaxTokens(maxTokens: number): number {
 /** Geração de texto sem tools — Gemini ou OpenAI-compatible. */
 export async function invokeLlmTextGeneration(
   input: LlmTextGenerationInput,
-): Promise<{ text: string }> {
+): Promise<{ text: string; usage?: PreviewLlmUsage }> {
   const maxTokens = clampLlmMaxTokens(input.maxTokens);
   if (input.provider === "google_gemini") {
     const r = await callGeminiGenerateContent({
@@ -58,7 +59,7 @@ export async function invokeLlmTextGeneration(
       userMessage: input.userMessage,
       signal: input.signal,
     });
-    return { text: r.text.trim() };
+    return { text: r.text.trim(), usage: r.usage };
   }
   const r = await callOpenAiCompatibleChat({
     baseUrl: input.apiBaseUrl.replace(/\/+$/, ""),
@@ -72,5 +73,5 @@ export async function invokeLlmTextGeneration(
     signal: input.signal,
     onTokenDelta: input.onTokenDelta,
   });
-  return { text: r.text.trim() };
+  return { text: r.text.trim(), usage: r.usage };
 }

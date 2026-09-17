@@ -43,6 +43,23 @@ import {
   getPaymentProviderPlatformDiagnostics,
   patchPaymentProviderPlatformSettings,
 } from "../lib/billing/paymentProviderPlatformSettings.js";
+import {
+  createAiModelPricingVersion,
+  listActiveAiModelPricing,
+} from "../lib/ai-billing/AiPricingService.js";
+import {
+  createAiCreditPackage,
+  listAllAiCreditPackages,
+  updateAiCreditPackage,
+} from "../lib/ai-billing/AiCreditPackageService.js";
+import {
+  getAiPlatformMarkupSettings,
+  patchAiPlatformMarkupSettings,
+} from "../lib/ai-billing/aiPlatformMarkupSettings.js";
+import { creditAiWallet } from "../lib/ai-billing/AiWalletService.js";
+import { getOrganizationAiCreditsBalance } from "../lib/ai-billing/AiUsageBillingService.js";
+import { listAllAiCreditPurchases } from "../lib/ai-billing/AiCreditPurchaseService.js";
+import { money, moneyToApiString } from "../lib/ai-billing/money.js";
 import { ensureMercadoPagoSubscriptionBillingPeriod } from "../lib/billing/subscriptionSync.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
@@ -1042,4 +1059,185 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       return { ok: true, sentTo: result.sentTo };
     },
   );
+
+  const aiCreditBodySchema = z.object({
+    amount: z.union([z.string(), z.number()]),
+    note: z.string().max(500).optional(),
+    idempotencyKey: z.string().min(8).max(255).optional(),
+  });
+
+  const aiPricingBodySchema = z.object({
+    provider: z.string().min(1).max(32),
+    model: z.string().min(1).max(128),
+    currency: z.string().min(3).max(8).optional(),
+    inputPrice: z.union([z.string(), z.number()]),
+    cachedInputPrice: z.union([z.string(), z.number()]).nullable().optional(),
+    outputPrice: z.union([z.string(), z.number()]),
+    reasoningPrice: z.union([z.string(), z.number()]).nullable().optional(),
+  });
+
+  const aiMarkupPatchSchema = z.object({
+    globalMarkupPercent: z.number().min(0).max(500).optional(),
+    modelMarkupPercent: z.record(z.string(), z.number().min(0).max(500)).optional(),
+  });
+
+  app.get("/ai-credits/pricing", async () => ({
+    pricing: await listActiveAiModelPricing(),
+    markup: await getAiPlatformMarkupSettings(),
+  }));
+
+  app.post("/ai-credits/pricing", async (request, reply) => {
+    const parsed = aiPricingBodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const pricing = await createAiModelPricingVersion(parsed.data);
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.ai_credits.pricing.create",
+      resourceType: "ai_model_pricing",
+      resourceId: pricing.id,
+      metadata: { provider: pricing.provider, model: pricing.model },
+      ip: clientIp(request),
+    });
+    return { pricing };
+  });
+
+  app.patch("/ai-credits/markup", async (request, reply) => {
+    const parsed = aiMarkupPatchSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const markup = await patchAiPlatformMarkupSettings(parsed.data);
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.ai_credits.markup.update",
+      resourceType: "platform_settings",
+      metadata: markup,
+      ip: clientIp(request),
+    });
+    return { markup };
+  });
+
+  app.get("/ai-credits/organizations/:organizationId/balance", async (request, reply) => {
+    const org = await prisma.organization.findUnique({
+      where: { id: request.params.organizationId },
+      select: { id: true },
+    });
+    if (!org) {
+      return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+    }
+    return getOrganizationAiCreditsBalance(org.id);
+  });
+
+  app.post("/ai-credits/organizations/:organizationId/credit", async (request, reply) => {
+    const parsed = aiCreditBodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const org = await prisma.organization.findUnique({
+      where: { id: request.params.organizationId },
+      select: { id: true },
+    });
+    if (!org) {
+      return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+    }
+
+    const idempotencyKey =
+      parsed.data.idempotencyKey?.trim() ||
+      `super-credit:${request.user!.id}:${org.id}:${Date.now()}`;
+    const wallet = await creditAiWallet({
+      organizationId: org.id,
+      amount: money(parsed.data.amount),
+      entryType: "CREDIT_ADJUSTMENT",
+      idempotencyKey,
+      referenceType: "super_admin_adjustment",
+      referenceId: request.user!.id,
+      metadata: { note: parsed.data.note ?? null },
+    });
+
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      organizationId: org.id,
+      action: "super.billing.ai_credits.credit",
+      resourceType: "organization_ai_wallet",
+      resourceId: org.id,
+      metadata: {
+        amount: moneyToApiString(money(parsed.data.amount)),
+        note: parsed.data.note ?? null,
+        balanceAfter: wallet.balance,
+      },
+      ip: clientIp(request),
+    });
+
+    return { wallet: { ...wallet, balance: moneyToApiString(wallet.balance), reservedBalance: moneyToApiString(wallet.reservedBalance), availableBalance: moneyToApiString(wallet.availableBalance) } };
+  });
+
+  const aiCreditPackageBodySchema = z.object({
+    slug: z.string().min(2).max(64),
+    name: z.string().min(1).max(120),
+    description: z.string().max(2000).nullable().optional(),
+    creditAmount: z.union([z.string(), z.number()]),
+    amountCents: z.number().int().positive(),
+    currency: z.string().min(3).max(8).optional(),
+    stripePriceId: z.string().max(255).nullable().optional(),
+    displayOrder: z.number().int().optional(),
+    isActive: z.boolean().optional(),
+  });
+
+  const aiCreditPackagePatchSchema = aiCreditPackageBodySchema.partial();
+
+  app.get("/ai-credits/packages", async () => ({
+    packages: await listAllAiCreditPackages(),
+  }));
+
+  app.post("/ai-credits/packages", async (request, reply) => {
+    const parsed = aiCreditPackageBodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const pkg = await createAiCreditPackage(parsed.data);
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.ai_credits.package.create",
+      resourceType: "ai_credit_package",
+      resourceId: pkg.id,
+      metadata: { slug: pkg.slug },
+      ip: clientIp(request),
+    });
+    return { package: pkg };
+  });
+
+  app.patch("/ai-credits/packages/:packageId", async (request, reply) => {
+    const parsed = aiCreditPackagePatchSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    try {
+      const pkg = await updateAiCreditPackage(request.params.packageId, parsed.data);
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        action: "super.billing.ai_credits.package.update",
+        resourceType: "ai_credit_package",
+        resourceId: pkg.id,
+        metadata: parsed.data,
+        ip: clientIp(request),
+      });
+      return { package: pkg };
+    } catch {
+      return reply.status(404).send({ error: "Not Found", message: "Package not found", statusCode: 404 });
+    }
+  });
+
+  app.get("/ai-credits/purchases", async (request) => {
+    const query = request.query as { organizationId?: string; status?: string; limit?: string };
+    const limit = query.limit ? Number.parseInt(query.limit, 10) : 50;
+    return {
+      purchases: await listAllAiCreditPurchases({
+        organizationId: query.organizationId?.trim() || undefined,
+        status: query.status?.trim() || undefined,
+        limit,
+      }),
+    };
+  });
 }

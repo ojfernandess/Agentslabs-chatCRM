@@ -181,6 +181,8 @@ export const config = {
   openAiApiBaseUrl: optionalEnv("OPENAI_API_BASE_URL", "https://api.openai.com/v1")
     .trim()
     .replace(/\/+$/, ""),
+  /** Provedor LLM usado quando organization.ai_billing_mode = PLATFORM_CREDITS. */
+  platformCreditsLlmProvider: optionalEnv("PLATFORM_CREDITS_LLM_PROVIDER", "openai").trim(),
   /** Modelo de embeddings para indexação semântica da KB (requer chave OpenAI no servidor). */
   openAiEmbeddingModel: optionalEnv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").trim(),
   /** Modelo OpenAI para `POST /v1/audio/transcriptions` (ex.: whisper-1, gpt-4o-mini-transcribe). */

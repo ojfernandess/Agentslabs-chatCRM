@@ -37,6 +37,8 @@ import {
   resolveLlmApiBaseUrl,
   resolvePlatformLlmApiKey,
 } from "../lib/llmProviders.js";
+import { resolveAgentLlmCredentials } from "../lib/ai-billing/AiCredentialResolver.js";
+import { getOrganizationAiBillingMode } from "../lib/ai-billing/getOrganizationAiBillingMode.js";
 import { ensureAgentProfileTestSandbox } from "../lib/agentTestChatSandbox.js";
 import {
   buildSyncedPromptAutoInstructionBlock,
@@ -2334,6 +2336,7 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           llmConfig: redactLlmConfig(r.llmConfig),
         };
       }),
+      aiBillingMode: await getOrganizationAiBillingMode(organizationId),
     };
   });
 
@@ -2839,10 +2842,11 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
       }
 
       const llm = (profile.llmConfig as Record<string, unknown>) ?? {};
-      const provider = String(llm.provider ?? "openai");
-      const model = String(llm.model ?? "gpt-4o-mini");
-      const storedKey = String(llm.apiKey ?? "").trim();
-      const apiKey = resolvePlatformLlmApiKey(provider, storedKey, config);
+      const credentials = await resolveAgentLlmCredentials({
+        organizationId,
+        llmConfig: llm,
+      });
+      const { provider, model, apiKey, apiBaseUrl } = credentials;
       const history = parsed.data.history as PreviewChatTurn[];
       const userMessage = parsed.data.message;
 

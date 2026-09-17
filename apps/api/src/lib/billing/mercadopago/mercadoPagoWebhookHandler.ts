@@ -12,6 +12,10 @@ import {
   syncMercadoPagoPixPaymentIfApproved,
 } from "./MercadoPagoPixPaymentService.js";
 import {
+  fulfillAiCreditPurchaseFromMercadoPagoPayment,
+  isAiCreditsMercadoPagoPayment,
+} from "../../ai-billing/AiCreditPurchaseService.js";
+import {
   mercadoPagoRequest,
   resolveMercadoPagoAccessTokenForBilling,
 } from "./mercadoPagoClient.js";
@@ -132,6 +136,25 @@ async function handlePaymentWebhook(paymentId: string, action: string): Promise<
     if (orgToken !== accessToken) {
       payment = await getMercadoPagoPayment(orgToken, paymentId);
     }
+  }
+
+  if (isAiCreditsMercadoPagoPayment(payment)) {
+    const fulfilled = await fulfillAiCreditPurchaseFromMercadoPagoPayment(payment);
+    if (fulfilled?.approved) {
+      await recordBillingAudit({
+        action: "billing.payment_succeeded",
+        organizationId,
+        resourceId: paymentId,
+        metadata: {
+          provider: "mercadopago",
+          paymentStatus: fulfilled.status,
+          action,
+          checkoutMode: "ai_credits",
+          purchaseId: fulfilled.purchaseId,
+        },
+      });
+    }
+    return organizationId;
   }
 
   const result = await syncMercadoPagoPixPaymentIfApproved(organizationId, payment);

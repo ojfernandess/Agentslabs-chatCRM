@@ -25,6 +25,17 @@ import {
   type PaymentProviderName,
 } from "../lib/billing/index.js";
 import { mercadoPagoBillingErrorHttpStatus } from "../lib/billing/mercadopago/mercadoPagoClient.js";
+import {
+  getOrganizationAiCreditsBalance,
+  listOrganizationAiUsageRecords,
+} from "../lib/ai-billing/AiUsageBillingService.js";
+import { getOrganizationAiBillingMode } from "../lib/ai-billing/getOrganizationAiBillingMode.js";
+import { listActiveAiCreditPackages } from "../lib/ai-billing/AiCreditPackageService.js";
+import {
+  AiCreditPurchaseError,
+  createAiCreditPurchaseCheckout,
+  getAiCreditPurchaseCheckoutStatus,
+} from "../lib/ai-billing/AiCreditPurchaseService.js";
 
 const planIdBodySchema = z.object({
   planId: z.string().uuid(),
@@ -40,6 +51,33 @@ const portalBodySchema = z.object({
 const cancelBodySchema = z.object({
   cancelAtPeriodEnd: z.boolean().optional(),
 });
+
+const aiCreditCheckoutBodySchema = z.object({
+  packageId: z.string().uuid(),
+  provider: z.enum(["stripe", "mercadopago"]).optional(),
+  paymentMethod: z.enum(["card", "pix"]).optional(),
+  payerIdentificationNumber: z.string().trim().min(11).max(18).optional(),
+});
+
+function sendAiCreditPurchaseError(reply: FastifyReply, err: unknown): void {
+  if (err instanceof AiCreditPurchaseError) {
+    const statusCode =
+      err.code === "checkout_not_found"
+        ? 404
+        : err.code === "not_platform_credits" || err.code === "package_not_found"
+          ? 400
+          : err.code === "provider_not_configured" || err.code === "billing_email_missing"
+            ? 422
+            : 400;
+    reply.status(statusCode).send({
+      error: err.code,
+      message: err.message,
+      statusCode,
+    });
+    return;
+  }
+  sendBillingError(reply, err);
+}
 
 function sendBillingError(reply: FastifyReply, err: unknown): void {
   if (err instanceof BillingError) {
@@ -167,7 +205,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
 
     await ensureMercadoPagoSubscriptionBillingPeriod(organizationId).catch(() => {});
 
-    const [entitlements, usage, org, providers] = await Promise.all([
+    const [entitlements, usage, org, providers, aiBillingMode] = await Promise.all([
       getEffectivePlanForOrganization(organizationId),
       getOrganizationUsage(organizationId),
       prisma.organization.findUnique({
@@ -198,6 +236,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         },
       }),
       getBillingProvidersClientConfig(organizationId),
+      getOrganizationAiBillingMode(organizationId),
     ]);
 
     const sub = org?.subscription;
@@ -245,7 +284,82 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
           }
         : null,
       usage,
+      aiBillingMode,
+      aiCredits: aiBillingMode === "PLATFORM_CREDITS" ? (await getOrganizationAiCreditsBalance(organizationId)).wallet : null,
+      aiCreditPackages:
+        aiBillingMode === "PLATFORM_CREDITS" ? await listActiveAiCreditPackages() : null,
     };
+  });
+
+  app.get("/ai-credits/packages", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const mode = await getOrganizationAiBillingMode(organizationId);
+    if (mode !== "PLATFORM_CREDITS") {
+      return reply.status(400).send({
+        error: "not_platform_credits",
+        message: "AI credit packages are only available in PLATFORM_CREDITS mode",
+        statusCode: 400,
+      });
+    }
+    return { packages: await listActiveAiCreditPackages() };
+  });
+
+  app.post("/ai-credits/checkout", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const parsed = aiCreditCheckoutBodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    try {
+      const result = await createAiCreditPurchaseCheckout({
+        organizationId,
+        packageId: parsed.data.packageId,
+        actorUserId: request.user!.id,
+        provider: parsed.data.provider,
+        paymentMethod: parsed.data.paymentMethod,
+        payerIdentificationNumber: parsed.data.payerIdentificationNumber,
+        ip: clientIp(request),
+      });
+      return result;
+    } catch (err) {
+      sendAiCreditPurchaseError(reply, err);
+      return;
+    }
+  });
+
+  app.get("/ai-credits/balance", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    return getOrganizationAiCreditsBalance(organizationId);
+  });
+
+  app.get("/ai-credits/usage", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const limitRaw = (request.query as { limit?: string }).limit;
+    const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 24;
+    return { records: await listOrganizationAiUsageRecords(organizationId, limit) };
+  });
+
+  app.get("/ai-credits/purchases", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    const mode = await getOrganizationAiBillingMode(organizationId);
+    if (mode !== "PLATFORM_CREDITS") {
+      return reply.status(400).send({
+        error: "not_platform_credits",
+        message: "AI credit purchases are only available in PLATFORM_CREDITS mode",
+        statusCode: 400,
+      });
+    }
+    const limitRaw = (request.query as { limit?: string }).limit;
+    const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 20;
+    const { listOrganizationAiCreditPurchases } = await import("../lib/ai-billing/AiCreditPurchaseService.js");
+    return { purchases: await listOrganizationAiCreditPurchases(organizationId, limit) };
   });
 
   app.get("/usage", async (request, reply) => {
@@ -393,6 +507,16 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { sessionId: string } }>("/checkout/:sessionId/status", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+
+    try {
+      const aiStatus = await getAiCreditPurchaseCheckoutStatus(organizationId, request.params.sessionId);
+      return { ...aiStatus, provider: "mercadopago", kind: "ai_credits" as const };
+    } catch (err) {
+      if (!(err instanceof AiCreditPurchaseError && err.code === "checkout_not_found")) {
+        sendAiCreditPurchaseError(reply, err);
+        return;
+      }
+    }
 
     const providerName = await resolveOrganizationPaymentProvider(organizationId);
     if (providerName !== "mercadopago") {
