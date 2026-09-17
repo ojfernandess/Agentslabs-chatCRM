@@ -3,10 +3,12 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import {
   mapStripeSubscriptionStatus,
+  mapMercadoPagoPreapprovalStatus,
   type PaymentProviderName,
   type SubscriptionStatus,
 } from "./billingTypes.js";
 import { getSubscriptionBillingPeriod } from "./stripeHelpers.js";
+import { resolvePlanIdFromMercadoPagoPlanId } from "./mercadopago/MercadoPagoPlanService.js";
 
 function stripeUnixToDate(value: number | null | undefined): Date | null {
   if (value == null || !Number.isFinite(value)) return null;
@@ -180,5 +182,84 @@ export async function syncSubscriptionFromStripe(
     trialEnd: stripeUnixToDate(subscription.trial_end),
     checkoutSessionId: null,
     clearPaymentDue: status === "active" || status === "trialing",
+  });
+}
+
+export type MercadoPagoPreapprovalSnapshot = {
+  id: string;
+  status?: string | null;
+  preapproval_plan_id?: string | null;
+  payer_id?: number | string | null;
+  payer_email?: string | null;
+  external_reference?: string | null;
+  next_payment_date?: string | null;
+  date_created?: string | null;
+  last_modified?: string | null;
+  auto_recurring?: {
+    start_date?: string | null;
+    end_date?: string | null;
+  } | null;
+};
+
+function parseMercadoPagoDate(value: string | null | undefined): Date | null {
+  if (!value?.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function resolveOrganizationIdFromMercadoPagoReference(
+  externalReference: string | null | undefined,
+): string | null {
+  const ref = externalReference?.trim();
+  if (!ref?.startsWith("ONX-")) return null;
+  const parts = ref.split("-");
+  if (parts.length < 7) return null;
+  return parts.slice(1, 6).join("-");
+}
+
+export async function syncSubscriptionFromMercadoPago(
+  preapproval: MercadoPagoPreapprovalSnapshot,
+  organizationIdHint?: string | null,
+): Promise<SyncSubscriptionResult | null> {
+  const organizationId =
+    organizationIdHint?.trim() ||
+    resolveOrganizationIdFromMercadoPagoReference(preapproval.external_reference) ||
+    null;
+
+  if (!organizationId) {
+    const existing = preapproval.id?.trim()
+      ? await prisma.organizationSubscription.findFirst({
+          where: { externalSubscriptionId: preapproval.id },
+          select: { organizationId: true },
+        })
+      : null;
+    if (!existing?.organizationId) return null;
+    return syncSubscriptionFromMercadoPago(preapproval, existing.organizationId);
+  }
+
+  const planId = preapproval.preapproval_plan_id
+    ? await resolvePlanIdFromMercadoPagoPlanId(preapproval.preapproval_plan_id)
+    : (
+        await prisma.organizationSubscription.findUnique({
+          where: { organizationId },
+          select: { planId: true },
+        })
+      )?.planId ?? null;
+
+  const status = mapMercadoPagoPreapprovalStatus(preapproval.status ?? "pending");
+  const payerId = preapproval.payer_id != null ? String(preapproval.payer_id) : null;
+
+  return syncSubscriptionSnapshot({
+    organizationId,
+    planId,
+    paymentProvider: "mercadopago",
+    status,
+    externalCustomerId: payerId,
+    externalSubscriptionId: preapproval.id,
+    externalPriceId: preapproval.preapproval_plan_id ?? null,
+    currentPeriodStart: parseMercadoPagoDate(preapproval.auto_recurring?.start_date),
+    currentPeriodEnd: parseMercadoPagoDate(preapproval.next_payment_date ?? preapproval.auto_recurring?.end_date),
+    checkoutSessionId: preapproval.id,
+    clearPaymentDue: status === "active",
   });
 }

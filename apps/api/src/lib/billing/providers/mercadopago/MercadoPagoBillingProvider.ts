@@ -9,8 +9,11 @@ import {
   MERCADOPAGO_BILLING_CAPABILITIES,
   type BillingProvider,
   type BillingProviderConfigSlice,
+  type CreateCheckoutSessionInput,
+  type CreateCheckoutSessionResult,
   type ProviderContext,
 } from "../types.js";
+import { createMercadoPagoCheckoutSession } from "../../mercadopago/MercadoPagoCheckoutService.js";
 
 function notConfigured(): never {
   throw new BillingError(
@@ -55,8 +58,10 @@ export const mercadoPagoBillingProvider: BillingProvider = {
     };
   },
 
-  async createCheckoutSession() {
-    notConfigured();
+  async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CreateCheckoutSessionResult> {
+    const configured = await this.isConfigured({ organizationId: input.organizationId });
+    if (!configured) notConfigured();
+    return createMercadoPagoCheckoutSession(input);
   },
 
   async createPortalSession() {

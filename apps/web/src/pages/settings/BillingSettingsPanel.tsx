@@ -21,6 +21,14 @@ import {
   settingsTitle,
 } from "@/components/settings/settingsUi";
 import { BillingAvailablePlansSection } from "@/components/billing/BillingAvailablePlansSection";
+import {
+  MercadoPagoPixCheckoutModal,
+  type MercadoPagoPixCheckoutState,
+} from "@/components/billing/MercadoPagoPixCheckoutModal";
+import {
+  MercadoPagoPaymentMethodModal,
+  type MercadoPagoPaymentMethodChoice,
+} from "@/components/billing/MercadoPagoPaymentMethodModal";
 import { PaymentProvidersPanel } from "@/components/billing/PaymentProvidersPanel";
 import { UsageMeter } from "@/components/settings/UsageMeter";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
@@ -43,6 +51,17 @@ type PlanRow = {
   requiresCheckout: boolean;
   isFree?: boolean;
   stripeReady?: boolean;
+  mercadopagoReady?: boolean;
+  checkoutProviders?: {
+    stripe?: boolean;
+    mercadopago?: boolean;
+  };
+};
+
+type BillingProviderSlice = {
+  configured: boolean;
+  connected: boolean;
+  publishableKey: string | null;
 };
 
 type UsageDimension = {
@@ -54,6 +73,10 @@ type UsageDimension = {
 type BillingOverview = {
   stripeConfigured: boolean;
   publishableKey: string | null;
+  providers?: {
+    stripe?: BillingProviderSlice;
+    mercadopago?: BillingProviderSlice;
+  };
   billingEmail: string | null;
   legacyPlanTier: string;
   usage?: {
@@ -67,6 +90,8 @@ type BillingOverview = {
   subscription: {
     status: string;
     stripeManaged: boolean;
+    providerManaged?: boolean;
+    paymentProvider?: string | null;
     currentPeriodStart: string | null;
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
@@ -142,6 +167,21 @@ function limitMeterLabel(t: (key: string) => string, key: string): string {
   return labelKey ? t(labelKey) : key.replace(/_/g, " ");
 }
 
+function resolveCheckoutProviderForPlan(
+  plan: PlanRow,
+  providers?: BillingOverview["providers"],
+): "stripe" | "mercadopago" | null {
+  const stripe = Boolean(plan.checkoutProviders?.stripe);
+  const mercadopago = Boolean(plan.checkoutProviders?.mercadopago);
+  if (mercadopago && !stripe) return "mercadopago";
+  if (stripe && !mercadopago) return "stripe";
+  if (stripe && mercadopago) {
+    if (providers?.mercadopago?.connected && !providers?.stripe?.configured) return "mercadopago";
+    return "stripe";
+  }
+  return null;
+}
+
 export function BillingSettingsPanel() {
   const { t, locale } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -155,6 +195,8 @@ export function BillingSettingsPanel() {
   const [overview, setOverview] = useState<BillingOverview | null>(null);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [paymentMethodPlan, setPaymentMethodPlan] = useState<PlanRow | null>(null);
+  const [pixCheckout, setPixCheckout] = useState<MercadoPagoPixCheckoutState | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -197,6 +239,9 @@ export function BillingSettingsPanel() {
   const currentPlan = overview?.subscription?.plan;
   const subscription = overview?.subscription;
   const localeTag = locale === "en" ? "en-US" : "pt-BR";
+  const mercadoPagoConfigured = Boolean(overview?.providers?.mercadopago?.connected);
+  const checkoutAvailable = Boolean(overview?.stripeConfigured || mercadoPagoConfigured);
+  const providerManaged = Boolean(subscription?.providerManaged ?? subscription?.stripeManaged);
 
   const checkoutBanner = useMemo(() => {
     if (checkoutNotice === "success") {
@@ -273,7 +318,7 @@ export function BillingSettingsPanel() {
 
   const canCompletePayment =
     Boolean(overview?.paymentGrace?.canCompletePayment) &&
-    Boolean(overview?.stripeConfigured) &&
+    checkoutAvailable &&
     Boolean(currentPlan && currentPlan.amountCents > 0);
 
   const planNeedsPayment = (plan: PlanRow) =>
@@ -287,6 +332,40 @@ export function BillingSettingsPanel() {
     if (planRow) void subscribeToPlan(planRow);
   };
 
+  const startCheckout = async (
+    plan: PlanRow,
+    provider: "stripe" | "mercadopago",
+    paymentMethod?: MercadoPagoPaymentMethodChoice,
+  ) => {
+    await runAction(`checkout-${plan.id}`, async () => {
+      const res = await api.post<{
+        url: string;
+        sessionId: string;
+        mode?: "redirect" | "pix";
+        pix?: MercadoPagoPixCheckoutState;
+      }>("/billing/checkout", {
+        planId: plan.id,
+        provider,
+        paymentMethod,
+      });
+
+      if (res.mode === "pix" && res.pix) {
+        setPixCheckout({
+          sessionId: res.sessionId,
+          planName: plan.name,
+          amountLabel: formatMoney(plan.amountCents, plan.currency, localeTag),
+          qrCode: res.pix.qrCode,
+          qrCodeBase64: res.pix.qrCodeBase64,
+          ticketUrl: res.pix.ticketUrl,
+          expiresAt: res.pix.expiresAt,
+        });
+        return;
+      }
+
+      window.location.href = res.url;
+    });
+  };
+
   const subscribeToPlan = async (plan: PlanRow) => {
     if (plan.isFree || plan.amountCents <= 0) {
       await runAction(`select-${plan.id}`, async () => {
@@ -294,16 +373,31 @@ export function BillingSettingsPanel() {
       });
       return;
     }
-    if (subscription?.stripeManaged && subscription.status !== "canceled") {
+    if (providerManaged && subscription?.status !== "canceled") {
       await runAction(`change-${plan.id}`, async () => {
         await api.post("/billing/change-plan", { planId: plan.id });
       });
       return;
     }
-    await runAction(`checkout-${plan.id}`, async () => {
-      const res = await api.post<{ url: string }>("/billing/checkout", { planId: plan.id });
-      window.location.href = res.url;
-    });
+
+    if (plan.checkoutProviders?.mercadopago && mercadoPagoConfigured) {
+      setPaymentMethodPlan(plan);
+      return;
+    }
+
+    const provider = resolveCheckoutProviderForPlan(plan, overview?.providers);
+    if (!provider) {
+      setError(t("settings.billingPaidPlanRequiresPaymentProvider"));
+      return;
+    }
+    await startCheckout(plan, provider);
+  };
+
+  const handleMercadoPagoPaymentMethod = async (method: MercadoPagoPaymentMethodChoice) => {
+    const plan = paymentMethodPlan;
+    setPaymentMethodPlan(null);
+    if (!plan) return;
+    await startCheckout(plan, "mercadopago", method);
   };
 
   if (loading) {
@@ -421,12 +515,12 @@ export function BillingSettingsPanel() {
         </div>
       ) : null}
 
-      {overview && !overview.stripeConfigured ? (
+      {overview && !checkoutAvailable ? (
         <div className={clsx(settingsCard, "flex gap-3 text-sm text-ink-700 dark:text-ink-200")}>
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
           <div className="space-y-1">
-            <p>{t("settings.billingStripeNotConfigured")}</p>
-            <p className="text-xs text-ink-500 dark:text-ink-400">{t("settings.billingStripeNotConfiguredHint")}</p>
+            <p>{t("settings.billingPaymentProviderNotConfigured")}</p>
+            <p className="text-xs text-ink-500 dark:text-ink-400">{t("settings.billingPaymentProviderNotConfiguredHint")}</p>
           </div>
         </div>
       ) : null}
@@ -576,7 +670,7 @@ export function BillingSettingsPanel() {
       <BillingAvailablePlansSection
         plans={plans}
         hasCustomPlanCatalog={overview?.hasCustomPlanCatalog}
-        stripeConfigured={Boolean(overview?.stripeConfigured)}
+        checkoutAvailable={checkoutAvailable}
         busy={busy}
         localeTag={localeTag}
         t={t}
@@ -626,6 +720,26 @@ export function BillingSettingsPanel() {
             </table>
           </div>
         </section>
+      ) : null}
+
+      {paymentMethodPlan ? (
+        <MercadoPagoPaymentMethodModal
+          planName={paymentMethodPlan.name}
+          amountLabel={formatMoney(paymentMethodPlan.amountCents, paymentMethodPlan.currency, localeTag)}
+          onClose={() => setPaymentMethodPlan(null)}
+          onSelect={(method) => void handleMercadoPagoPaymentMethod(method)}
+        />
+      ) : null}
+
+      {pixCheckout ? (
+        <MercadoPagoPixCheckoutModal
+          checkout={pixCheckout}
+          onClose={() => setPixCheckout(null)}
+          onApproved={() => {
+            setPixCheckout(null);
+            void load();
+          }}
+        />
       ) : null}
     </div>
   );

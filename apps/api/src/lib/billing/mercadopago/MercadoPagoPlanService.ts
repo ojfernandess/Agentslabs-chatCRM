@@ -49,15 +49,23 @@ function buildAutoRecurring(plan: Pick<Plan, "amountCents" | "currency" | "inter
   };
 }
 
+function buildPaymentMethodsAllowed() {
+  return {
+    payment_types: [
+      { id: "credit_card" },
+      { id: "debit_card" },
+      { id: "bank_transfer" },
+    ],
+  };
+}
+
 function buildPreapprovalPlanBody(plan: Pick<Plan, "id" | "slug" | "name" | "description" | "amountCents" | "currency" | "interval">) {
   return {
     reason: plan.name.trim(),
     external_reference: `ONX-PLAN-${plan.id}`,
     auto_recurring: buildAutoRecurring(plan),
     back_url: mercadoPagoBillingBackUrl(),
-    payment_methods_allowed: {
-      payment_types: [{ id: "credit_card" }, { id: "debit_card" }],
-    },
+    payment_methods_allowed: buildPaymentMethodsAllowed(),
   };
 }
 

@@ -174,6 +174,41 @@ export function mapStripeSubscriptionStatus(stripeStatus: string): SubscriptionS
   }
 }
 
+/** Mapeia status Mercado Pago preapproval → status interno. */
+export function mapMercadoPagoPreapprovalStatus(mpStatus: string): SubscriptionStatus {
+  switch (mpStatus.trim().toLowerCase()) {
+    case "authorized":
+      return "active";
+    case "pending":
+      return "incomplete";
+    case "paused":
+      return "paused";
+    case "cancelled":
+    case "canceled":
+      return "canceled";
+    default:
+      return "inactive";
+  }
+}
+
+/** Mapeia status Mercado Pago payment (Pix/cartão avulso) → status interno. */
+export function mapMercadoPagoPaymentStatus(mpStatus: string): SubscriptionStatus {
+  switch (mpStatus.trim().toLowerCase()) {
+    case "approved":
+      return "active";
+    case "pending":
+    case "in_process":
+    case "in_mediation":
+      return "pending_payment";
+    case "rejected":
+    case "cancelled":
+    case "canceled":
+      return "incomplete";
+    default:
+      return "inactive";
+  }
+}
+
 export function isAccessGrantingStatus(status: string): boolean {
   return ACCESS_GRANTING_STATUSES.has(status as SubscriptionStatus);
 }

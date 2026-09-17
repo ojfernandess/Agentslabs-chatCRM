@@ -5469,8 +5469,34 @@ export const messages = {
       billingSelectPlan: "Selecionar plano",
       billingPlanStripePriceMissing:
         "Este plano pago ainda não tem preço Stripe configurado. Peça ao super administrador para associar stripe_price_id.",
+      billingPlanPaymentNotReady:
+        "Este plano pago ainda não está ligado a um provedor de pagamento. Peça ao super administrador para sincronizar Stripe ou Mercado Pago.",
       billingPaidPlanRequiresStripe:
         "Pagamentos online exigem Stripe configurado no servidor (STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET).",
+      billingPaidPlanRequiresPaymentProvider:
+        "Este plano exige checkout, mas nenhum provedor de pagamento disponível está configurado para ele.",
+      billingPaymentProviderNotConfigured:
+        "Nenhum provedor de pagamento está configurado para esta organização.",
+      billingPaymentProviderNotConfiguredHint:
+        "Configure Stripe no servidor ou conecte Mercado Pago em Provedores de pagamento abaixo.",
+      billingPaymentMethodTitle: "Escolha a forma de pagamento",
+      billingPaymentMethodHint: "Plano {plan} — {amount}",
+      billingPaymentMethodPix: "Pix",
+      billingPaymentMethodPixHint: "QR Code e copia e cola aqui na plataforma",
+      billingPaymentMethodCard: "Cartão",
+      billingPaymentMethodCardHint: "Checkout seguro no Mercado Pago",
+      billingPixCheckoutTitle: "Pague com Pix",
+      billingPixCheckoutHint: "Plano {plan} — {amount}",
+      billingPixCopyLabel: "Pix copia e cola",
+      billingPixCopy: "Copiar",
+      billingPixCopied: "Copiado",
+      billingPixCopyError: "Não foi possível copiar o código Pix.",
+      billingPixQrAlt: "QR Code Pix",
+      billingPixWaiting: "Aguardando confirmação do pagamento…",
+      billingPixApproved: "Pagamento Pix confirmado. A assinatura será atualizada em instantes.",
+      billingPixStatusError: "Não foi possível verificar o pagamento Pix.",
+      billingPixExpires: "Expira em {date}",
+      billingPixOpenTicket: "Abrir instruções no Mercado Pago",
       billingCheckoutSuccess: "Pagamento recebido. A assinatura será confirmada em instantes via webhook Stripe.",
       billingCheckoutCancel: "Checkout cancelado. Pode escolher um plano quando quiser.",
       billingHistory: "Histórico de pagamentos",
@@ -12005,8 +12031,34 @@ export const messages = {
       billingSelectPlan: "Select plan",
       billingPlanStripePriceMissing:
         "This paid plan has no Stripe price configured yet. Ask the super admin to set stripe_price_id.",
+      billingPlanPaymentNotReady:
+        "This paid plan is not linked to a payment provider yet. Ask the super admin to sync Stripe or Mercado Pago.",
       billingPaidPlanRequiresStripe:
         "Online payments require Stripe configured on the server (STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET).",
+      billingPaidPlanRequiresPaymentProvider:
+        "This plan requires checkout, but no available payment provider is configured for it.",
+      billingPaymentProviderNotConfigured:
+        "No payment provider is configured for this organization.",
+      billingPaymentProviderNotConfiguredHint:
+        "Configure Stripe on the server or connect Mercado Pago under Payment providers below.",
+      billingPaymentMethodTitle: "Choose payment method",
+      billingPaymentMethodHint: "Plan {plan} — {amount}",
+      billingPaymentMethodPix: "Pix",
+      billingPaymentMethodPixHint: "QR code and copy-paste here in the platform",
+      billingPaymentMethodCard: "Card",
+      billingPaymentMethodCardHint: "Secure checkout on Mercado Pago",
+      billingPixCheckoutTitle: "Pay with Pix",
+      billingPixCheckoutHint: "Plan {plan} — {amount}",
+      billingPixCopyLabel: "Pix copy and paste",
+      billingPixCopy: "Copy",
+      billingPixCopied: "Copied",
+      billingPixCopyError: "Could not copy the Pix code.",
+      billingPixQrAlt: "Pix QR code",
+      billingPixWaiting: "Waiting for payment confirmation…",
+      billingPixApproved: "Pix payment confirmed. Your subscription will update shortly.",
+      billingPixStatusError: "Could not verify Pix payment.",
+      billingPixExpires: "Expires on {date}",
+      billingPixOpenTicket: "Open instructions on Mercado Pago",
       billingCheckoutSuccess: "Payment received. Your subscription will be confirmed shortly via Stripe webhook.",
       billingCheckoutCancel: "Checkout canceled. You can choose a plan anytime.",
       billingHistory: "Payment history",

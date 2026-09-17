@@ -37,12 +37,17 @@ export type BillingPlanCardPlan = {
   requiresCheckout: boolean;
   isFree?: boolean;
   stripeReady?: boolean;
+  mercadopagoReady?: boolean;
+  checkoutProviders?: {
+    stripe?: boolean;
+    mercadopago?: boolean;
+  };
 };
 
 type BillingPlanCardProps = {
   plan: BillingPlanCardPlan;
   localeTag: string;
-  stripeConfigured: boolean;
+  checkoutAvailable: boolean;
   busy: string | null;
   featured?: boolean;
   showSubscribeAction: boolean;
@@ -94,7 +99,7 @@ function extraLabel(t: (key: string) => string, key: string): string {
 export function BillingPlanCard({
   plan,
   localeTag,
-  stripeConfigured,
+  checkoutAvailable,
   busy,
   featured = false,
   showSubscribeAction,
@@ -110,6 +115,8 @@ export function BillingPlanCard({
   const planExtras = Object.entries(plan.planExtras ?? {}).filter(([, value]) => Boolean(value?.trim()));
 
   const isPaid = plan.amountCents > 0;
+  const planCheckoutReady =
+    !isPaid || Boolean(plan.stripeReady || plan.mercadopagoReady);
   const isBusy =
     busy === `select-${plan.id}` ||
     busy === `checkout-${plan.id}` ||
@@ -252,7 +259,7 @@ export function BillingPlanCard({
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {t("settings.billingSelectPlan")}
               </button>
-            ) : stripeConfigured && plan.requiresCheckout ? (
+            ) : checkoutAvailable && plan.requiresCheckout && planCheckoutReady ? (
               <button
                 type="button"
                 disabled={Boolean(busy)}
@@ -267,13 +274,13 @@ export function BillingPlanCard({
                 {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {needsPayment ? t("settings.billingCompletePayment") : t("settings.billingSubscribe")}
               </button>
-            ) : stripeConfigured && plan.stripeReady === false ? (
+            ) : checkoutAvailable && plan.requiresCheckout && !planCheckoutReady ? (
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-                {t("settings.billingPlanStripePriceMissing")}
+                {t("settings.billingPlanPaymentNotReady")}
               </p>
-            ) : !stripeConfigured ? (
+            ) : !checkoutAvailable ? (
               <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-ink-500 dark:border-soft-border dark:bg-ink-900/30 dark:text-ink-400">
-                {t("settings.billingPaidPlanRequiresStripe")}
+                {t("settings.billingPaidPlanRequiresPaymentProvider")}
               </p>
             ) : null
           ) : plan.isCurrent ? (

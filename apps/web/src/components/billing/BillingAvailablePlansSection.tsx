@@ -6,7 +6,7 @@ import { settingsCard } from "@/components/settings/settingsUi";
 type BillingAvailablePlansSectionProps = {
   plans: BillingPlanCardPlan[];
   hasCustomPlanCatalog?: boolean;
-  stripeConfigured: boolean;
+  checkoutAvailable: boolean;
   busy: string | null;
   localeTag: string;
   t: (key: string) => string;
@@ -27,7 +27,7 @@ function resolveFeaturedPlanId(plans: BillingPlanCardPlan[]): string | null {
 export function BillingAvailablePlansSection({
   plans,
   hasCustomPlanCatalog,
-  stripeConfigured,
+  checkoutAvailable,
   busy,
   localeTag,
   t,
@@ -73,7 +73,7 @@ export function BillingAvailablePlansSection({
               <BillingPlanCard
                 plan={plan}
                 localeTag={localeTag}
-                stripeConfigured={stripeConfigured}
+                checkoutAvailable={checkoutAvailable}
                 busy={busy}
                 featured={featuredPlanId === plan.id}
                 showSubscribeAction={planShowsSubscribeAction(plan)}

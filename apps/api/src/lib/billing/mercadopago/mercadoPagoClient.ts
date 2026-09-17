@@ -1,5 +1,6 @@
 import { config, getWebAppPublicOrigin } from "../../../config.js";
 import { BillingError } from "../StripeCustomerService.js";
+import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
 
 const MP_API_BASE = "https://api.mercadopago.com";
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -82,4 +83,18 @@ export function resolvePlatformMercadoPagoAccessToken(): string {
     );
   }
   return token;
+}
+
+/** Token MP da org (OAuth) ou plataforma — usado em checkout, polling e webhooks. */
+export async function resolveMercadoPagoAccessTokenForBilling(
+  organizationId: string,
+  planOrganizationId?: string | null,
+): Promise<string> {
+  if (planOrganizationId) {
+    const planOrgToken = await resolveMercadoPagoAccessToken(planOrganizationId);
+    if (planOrgToken) return planOrgToken;
+  }
+  const orgToken = await resolveMercadoPagoAccessToken(organizationId);
+  if (orgToken) return orgToken;
+  return resolvePlatformMercadoPagoAccessToken();
 }

@@ -26,6 +26,7 @@ import {
 const planIdBodySchema = z.object({
   planId: z.string().uuid(),
   provider: z.enum(["stripe", "mercadopago"]).optional(),
+  paymentMethod: z.enum(["card", "pix"]).optional(),
 });
 
 const portalBodySchema = z.object({
@@ -58,11 +59,38 @@ function providerNotConfiguredReply(reply: FastifyReply, provider: PaymentProvid
 
 async function resolveCheckoutProvider(
   organizationId: string,
+  planId: string,
   requested?: PaymentProviderName,
 ): Promise<PaymentProviderName> {
   if (requested) return requested;
-  const active = await resolveOrganizationPaymentProvider(organizationId);
-  return active ?? resolveDefaultPaymentProvider();
+
+  const sub = await prisma.organizationSubscription.findUnique({
+    where: { organizationId },
+    select: { paymentProvider: true },
+  });
+  if (sub?.paymentProvider === "mercadopago" || sub?.paymentProvider === "stripe") {
+    return sub.paymentProvider;
+  }
+
+  const [plan, providers] = await Promise.all([
+    prisma.plan.findFirst({
+      where: { id: planId, isActive: true },
+      select: { stripePriceId: true, mercadopagoPlanId: true, amountCents: true },
+    }),
+    getBillingProvidersClientConfig(organizationId),
+  ]);
+
+  if (!plan || plan.amountCents <= 0) {
+    return resolveDefaultPaymentProvider();
+  }
+
+  const stripeReady = providers.stripe.configured && Boolean(plan.stripePriceId?.trim());
+  const mercadoPagoReady =
+    providers.mercadopago.connected && Boolean(plan.mercadopagoPlanId?.trim());
+
+  if (mercadoPagoReady && !stripeReady) return "mercadopago";
+  if (stripeReady && !mercadoPagoReady) return "stripe";
+  return resolveDefaultPaymentProvider();
 }
 
 function serializePlanForClient(plan: {
@@ -297,7 +325,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
 
     const body = planIdBodySchema.parse(request.body);
-    const providerName = await resolveCheckoutProvider(organizationId, body.provider);
+    const providerName = await resolveCheckoutProvider(organizationId, body.planId, body.provider);
     const provider = getBillingProvider(providerName);
     if (!(await provider.isConfigured({ organizationId }))) {
       providerNotConfiguredReply(reply, providerName);
@@ -312,9 +340,42 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         planId: body.planId,
         actorUserId,
         ip: clientIp(request),
+        paymentMethod: body.paymentMethod,
       });
       return { ...result, provider: providerName };
     } catch (err) {
+      sendBillingError(reply, err);
+      return;
+    }
+  });
+
+  app.get<{ Params: { sessionId: string } }>("/checkout/:sessionId/status", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const providerName = await resolveOrganizationPaymentProvider(organizationId);
+    if (providerName !== "mercadopago") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Checkout status polling is only supported for Mercado Pago Pix sessions",
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const { getMercadoPagoCheckoutStatus } = await import(
+        "../lib/billing/mercadopago/MercadoPagoPixPaymentService.js"
+      );
+      const status = await getMercadoPagoCheckoutStatus(organizationId, request.params.sessionId);
+      return { ...status, provider: providerName };
+    } catch (err) {
+      if (err instanceof BillingError && err.code === "checkout_not_found") {
+        return reply.status(404).send({
+          error: err.code,
+          message: err.message,
+          statusCode: 404,
+        });
+      }
       sendBillingError(reply, err);
       return;
     }

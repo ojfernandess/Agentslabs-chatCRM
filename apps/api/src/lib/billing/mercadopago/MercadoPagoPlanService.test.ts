@@ -44,6 +44,9 @@ describe("MercadoPagoPlanService helpers", () => {
         transaction_amount: 99,
         currency_id: "BRL",
       });
+      assert.deepEqual(capturedBody.payment_methods_allowed, {
+        payment_types: [{ id: "credit_card" }, { id: "debit_card" }, { id: "bank_transfer" }],
+      });
     } finally {
       globalThis.fetch = origFetch;
     }

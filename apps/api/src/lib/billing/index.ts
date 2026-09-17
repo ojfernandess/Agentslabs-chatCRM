@@ -25,3 +25,8 @@ export * from "./paymentProviderConfig.js";
 export * from "./MercadoPagoConnectionService.js";
 export * from "./mercadopago/mercadoPagoClient.js";
 export * from "./mercadopago/MercadoPagoPlanService.js";
+export * from "./mercadopago/MercadoPagoCheckoutService.js";
+export * from "./mercadopago/MercadoPagoPixPaymentService.js";
+export * from "./mercadopago/mercadoPagoWebhookSignature.js";
+export * from "./mercadopago/mercadoPagoWebhookHandler.js";
+export * from "./checkoutGuards.js";

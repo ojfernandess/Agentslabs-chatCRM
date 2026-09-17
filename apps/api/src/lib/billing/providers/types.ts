@@ -31,11 +31,21 @@ export interface CreateCheckoutSessionInput {
   planId: string;
   actorUserId: string;
   ip?: string | null;
+  paymentMethod?: "card" | "pix";
+}
+
+export interface CheckoutPixDetails {
+  qrCode: string;
+  qrCodeBase64: string;
+  ticketUrl: string | null;
+  expiresAt: string | null;
 }
 
 export interface CreateCheckoutSessionResult {
   url: string;
   sessionId: string;
+  mode?: "redirect" | "pix";
+  pix?: CheckoutPixDetails;
 }
 
 export interface PortalSessionInput {

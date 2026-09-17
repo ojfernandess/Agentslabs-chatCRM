@@ -48,7 +48,13 @@ import {
   processStripeWebhookEvent,
   StripeWebhookError,
 } from "../lib/billing/stripeWebhookHandler.js";
-import { isStripeBillingConfigured } from "../config.js";
+import {
+  assertMercadoPagoWebhookSignature,
+  MercadoPagoWebhookError,
+  processMercadoPagoWebhookNotification,
+  type MercadoPagoWebhookNotification,
+} from "../lib/billing/mercadopago/mercadoPagoWebhookHandler.js";
+import { isStripeBillingConfigured, isMercadoPagoWebhookConfigured } from "../config.js";
 
 type WebhookRequest = FastifyRequest & { rawBody?: string };
 
@@ -1108,6 +1114,50 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(500).send({
         error: "internal_error",
         message: "Stripe webhook processing failed",
+        statusCode: 500,
+      });
+    }
+  });
+
+  app.post("/mercadopago", webhookPostOpts, async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!isMercadoPagoWebhookConfigured()) {
+      return reply.status(503).send({
+        error: "mercadopago_not_configured",
+        message: "Mercado Pago webhooks are not configured on this server",
+        statusCode: 503,
+      });
+    }
+
+    const body = normalizeJsonBody(request.body);
+    if (body === null) {
+      return reply.status(400).send({ error: "Invalid JSON body" });
+    }
+
+    const query =
+      typeof request.query === "object" && request.query !== null
+        ? (request.query as Record<string, string | undefined>)
+        : {};
+
+    try {
+      assertMercadoPagoWebhookSignature(
+        request.headers as Record<string, string | string[] | undefined>,
+        query,
+      );
+      const notification = body as MercadoPagoWebhookNotification;
+      const processed = await processMercadoPagoWebhookNotification(notification, body);
+      return { received: true, duplicate: !processed };
+    } catch (err) {
+      if (err instanceof MercadoPagoWebhookError) {
+        return reply.status(err.statusCode).send({
+          error: "mercadopago_webhook_error",
+          message: err.message,
+          statusCode: err.statusCode,
+        });
+      }
+      request.log.error({ err }, "Mercado Pago webhook processing failed");
+      return reply.status(500).send({
+        error: "internal_error",
+        message: "Mercado Pago webhook processing failed",
         statusCode: 500,
       });
     }

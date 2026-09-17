@@ -262,6 +262,14 @@ export const config = {
   mercadopagoClientId: optionalEnv("MERCADOPAGO_CLIENT_ID", "").trim(),
   mercadopagoClientSecret: optionalEnv("MERCADOPAGO_CLIENT_SECRET", "").trim(),
   mercadopagoOAuthRedirectUri: optionalEnv("MERCADOPAGO_OAUTH_REDIRECT_URI", "").trim(),
+  mercadopagoCheckoutSuccessUrl: optionalEnv(
+    "MERCADOPAGO_CHECKOUT_SUCCESS_URL",
+    `${getWebAppPublicOrigin()}/settings?section=billing&checkout=success`,
+  ).trim(),
+  mercadopagoCheckoutCancelUrl: optionalEnv(
+    "MERCADOPAGO_CHECKOUT_CANCEL_URL",
+    `${getWebAppPublicOrigin()}/settings?section=billing&checkout=cancel`,
+  ).trim(),
 } as const;
 
 /** Stripe configurado para checkout/webhooks (não exige publishable key no backend). */
@@ -272,4 +280,9 @@ export function isStripeBillingConfigured(): boolean {
 /** Mercado Pago configurado na plataforma (Fase 0 — credenciais globais). */
 export function isMercadoPagoBillingConfigured(): boolean {
   return Boolean(config.mercadopagoAccessToken);
+}
+
+/** Mercado Pago pronto para receber webhooks (token + secret para validar assinatura). */
+export function isMercadoPagoWebhookConfigured(): boolean {
+  return Boolean(config.mercadopagoAccessToken && config.mercadopagoWebhookSecret);
 }

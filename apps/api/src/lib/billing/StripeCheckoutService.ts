@@ -1,9 +1,9 @@
 import { prisma } from "../../db.js";
 import { config } from "../../config.js";
 import { recordBillingAudit } from "./billingAudit.js";
+import { assertCheckoutAllowed } from "./checkoutGuards.js";
 import { BillingError, ensureStripeCustomer } from "./StripeCustomerService.js";
 import { getStripeClient } from "./stripeClient.js";
-import { isAccessGrantingStatus } from "./billingTypes.js";
 import { isStaleStripeBindingError } from "./stripeErrors.js";
 
 export type CreateCheckoutSessionInput = {
@@ -17,37 +17,6 @@ export type CreateCheckoutSessionResult = {
   url: string;
   sessionId: string;
 };
-
-async function assertCheckoutAllowed(organizationId: string, targetPlanId: string): Promise<void> {
-  const sub = await prisma.organizationSubscription.findUnique({
-    where: { organizationId },
-    include: { plan: { select: { id: true, slug: true } } },
-  });
-
-  if (!sub) return;
-
-  const awaitingStripePayment =
-    (sub.status === "pending_payment" ||
-      sub.status === "incomplete" ||
-      sub.status === "incomplete_expired") &&
-    !sub.stripeSubscriptionId?.trim();
-
-  if (
-    sub.planId === targetPlanId &&
-    isAccessGrantingStatus(sub.status) &&
-    !awaitingStripePayment
-  ) {
-    throw new BillingError("Organization already has an active subscription for this plan", "already_subscribed");
-  }
-
-  if (isAccessGrantingStatus(sub.status) && sub.stripeSubscriptionId) {
-    throw new BillingError(
-      "Use plan change flow for an existing paid subscription",
-      "subscription_exists",
-    );
-  }
-
-}
 
 /**
  * Cria sessão Stripe Checkout — preço vem exclusivamente do plano no banco.
@@ -118,15 +87,21 @@ export async function createCheckoutSession(
     create: {
       organizationId: input.organizationId,
       planId: plan.id,
+      paymentProvider: "stripe",
       stripeCustomerId: customerId,
       stripePriceId: plan.stripePriceId,
+      externalCustomerId: customerId,
+      externalPriceId: plan.stripePriceId,
       status: "incomplete",
       checkoutSessionId: session.id,
     },
     update: {
       planId: plan.id,
+      paymentProvider: "stripe",
       stripeCustomerId: customerId,
       stripePriceId: plan.stripePriceId,
+      externalCustomerId: customerId,
+      externalPriceId: plan.stripePriceId,
       status: "incomplete",
       checkoutSessionId: session.id,
     },
