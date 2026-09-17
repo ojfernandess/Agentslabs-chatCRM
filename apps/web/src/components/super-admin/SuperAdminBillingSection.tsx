@@ -8,6 +8,10 @@ import { SuperAdminCustomPlansPanel } from "@/components/super-admin/SuperAdminC
 import { SuperAdminPaymentProvidersPanel } from "@/components/super-admin/SuperAdminPaymentProvidersPanel";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
+import {
+  PlanBillingProvidersEditor,
+  type PlanPaymentProvidersForm,
+} from "@/components/super-admin/PlanBillingProvidersEditor";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
 import {
   ALL_CATALOG_LIMIT_KEYS,
@@ -34,6 +38,7 @@ type PlanRow = {
   limits: Record<string, number | null | undefined>;
   features: Record<string, boolean | undefined>;
   planExtras?: Record<string, string | undefined>;
+  paymentProviders?: PlanPaymentProvidersForm;
   subscriptionCount: number;
 };
 
@@ -182,6 +187,7 @@ const EMPTY_PLAN_FORM = {
   stripePriceId: "",
   mercadopagoPlanId: "",
   legacyPlanTier: "",
+  paymentProviders: { stripe: true, mercadopago: true },
   limitsJson: '{\n  "agents": 3,\n  "automations": 10,\n  "contacts": 1000,\n  "messages": null\n}',
   featuresJson: '{\n  "rag": false,\n  "api": false,\n  "mcp": false\n}',
   extrasJson: "{}",
@@ -338,6 +344,7 @@ export function SuperAdminBillingSection() {
       stripePriceId: plan.stripePriceId ?? "",
       mercadopagoPlanId: plan.mercadopagoPlanId ?? "",
       legacyPlanTier: plan.legacyPlanTier ?? "",
+      paymentProviders: plan.paymentProviders ?? { stripe: true, mercadopago: true },
       limitsJson: JSON.stringify(plan.limits, null, 2),
       featuresJson: JSON.stringify(plan.features, null, 2),
       extrasJson: JSON.stringify(plan.planExtras ?? {}, null, 2),
@@ -361,19 +368,25 @@ export function SuperAdminBillingSection() {
         throw new ApiError(t("superAdmin.billingInvalidJson"), 400);
       }
 
+      const amountCents = Number(planForm.amountCents);
+      if (amountCents > 0 && !planForm.paymentProviders.stripe && !planForm.paymentProviders.mercadopago) {
+        throw new ApiError(t("superAdmin.billingPlanProvidersRequired"), 400);
+      }
+
       const payload = {
         slug: planForm.slug.trim(),
         name: planForm.name.trim(),
         description: planForm.description.trim() || null,
         currency: planForm.currency.trim(),
-        amountCents: Number(planForm.amountCents),
+        amountCents,
         interval: planForm.interval as "month" | "year",
         trialDays: planForm.trialDays.trim() ? Number(planForm.trialDays) : null,
         displayOrder: Number(planForm.displayOrder) || 0,
         isActive: planForm.isActive,
-        stripeProductId: planForm.stripeProductId.trim() || null,
-        stripePriceId: planForm.stripePriceId.trim() || null,
-        mercadopagoPlanId: planForm.mercadopagoPlanId.trim() || null,
+        stripeProductId: planForm.paymentProviders.stripe ? planForm.stripeProductId.trim() || null : null,
+        stripePriceId: planForm.paymentProviders.stripe ? planForm.stripePriceId.trim() || null : null,
+        mercadopagoPlanId: planForm.paymentProviders.mercadopago ? planForm.mercadopagoPlanId.trim() || null : null,
+        paymentProviders: planForm.paymentProviders,
         legacyPlanTier: planForm.legacyPlanTier.trim()
           ? (planForm.legacyPlanTier as "free" | "growth" | "enterprise")
           : null,
@@ -383,16 +396,42 @@ export function SuperAdminBillingSection() {
       };
 
       if (editingPlan) {
-        await api.patch(`/super/billing/plans/${editingPlan.id}`, payload);
+        const res = await api.patch<{ plan: PlanRow }>(`/super/billing/plans/${editingPlan.id}`, payload);
+        setPlans((rows) => rows.map((row) => (row.id === editingPlan.id ? res.plan : row)));
       } else {
         await api.post("/super/billing/plans", payload);
+        await loadPlans();
       }
       setPlanModalOpen(false);
-      await loadPlans();
+      setBillingSuccess(t("superAdmin.billingPlanSaved"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
     } finally {
       setPlanSaving(false);
+    }
+  };
+
+  const generateMercadoPagoPlanId = async () => {
+    if (!editingPlan) return;
+    setSyncingPlanId(editingPlan.id);
+    setError("");
+    setBillingSuccess("");
+    try {
+      const res = await api.post<{ sync: { mercadopagoPlanId: string }; plan: PlanRow | null }>(
+        `/super/billing/plans/${editingPlan.id}/sync-mercadopago`,
+        {},
+      );
+      const nextId = res.sync.mercadopagoPlanId;
+      setPlanForm((f) => ({ ...f, mercadopagoPlanId: nextId }));
+      if (res.plan) {
+        setEditingPlan(res.plan);
+        setPlans((rows) => rows.map((row) => (row.id === editingPlan.id ? res.plan! : row)));
+      }
+      setBillingSuccess(t("superAdmin.billingSyncMercadoPagoSuccess").replace("{id}", nextId));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingSyncMercadoPagoError"));
+    } finally {
+      setSyncingPlanId(null);
     }
   };
 
@@ -1010,31 +1049,21 @@ export function SuperAdminBillingSection() {
                   className="input-field mt-1"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-600">Stripe Product ID</label>
-                <input
-                  value={planForm.stripeProductId}
-                  onChange={(e) => setPlanForm((f) => ({ ...f, stripeProductId: e.target.value }))}
-                  className="input-field mt-1"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-600">Stripe Price ID</label>
-                <input
-                  value={planForm.stripePriceId}
-                  onChange={(e) => setPlanForm((f) => ({ ...f, stripePriceId: e.target.value }))}
-                  className="input-field mt-1"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingMercadoPagoPlanId")}</label>
-                <input
-                  value={planForm.mercadopagoPlanId}
-                  onChange={(e) => setPlanForm((f) => ({ ...f, mercadopagoPlanId: e.target.value }))}
-                  className="input-field mt-1"
-                  placeholder={t("superAdmin.billingMercadoPagoPlanIdHint")}
-                />
-              </div>
+              <PlanBillingProvidersEditor
+                amountCents={Number(planForm.amountCents) || 0}
+                providers={planForm.paymentProviders}
+                onProvidersChange={(paymentProviders) => setPlanForm((f) => ({ ...f, paymentProviders }))}
+                stripeProductId={planForm.stripeProductId}
+                stripePriceId={planForm.stripePriceId}
+                onStripeProductIdChange={(stripeProductId) => setPlanForm((f) => ({ ...f, stripeProductId }))}
+                onStripePriceIdChange={(stripePriceId) => setPlanForm((f) => ({ ...f, stripePriceId }))}
+                mercadopagoPlanId={planForm.mercadopagoPlanId}
+                onMercadopagoPlanIdChange={(mercadopagoPlanId) => setPlanForm((f) => ({ ...f, mercadopagoPlanId }))}
+                planId={editingPlan?.id}
+                mercadoPagoPlatformConfigured={mercadoPagoPlatformConfigured}
+                generatingMercadoPago={syncingPlanId === editingPlan?.id}
+                onGenerateMercadoPago={generateMercadoPagoPlanId}
+              />
               <div>
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.planColumn")}</label>
                 <select

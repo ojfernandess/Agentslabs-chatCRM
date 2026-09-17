@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Loader2, Pencil, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import { PlanLimitsFeaturesEditor } from "@/components/super-admin/PlanLimitsFeaturesEditor";
+import {
+  PlanBillingProvidersEditor,
+  type PlanPaymentProvidersForm,
+} from "@/components/super-admin/PlanBillingProvidersEditor";
 import { parseSuperAdminOrgList, type SuperAdminOrgOption } from "@/lib/superAdminOrganizations";
 
 type CustomPlanRow = {
@@ -26,6 +30,7 @@ type CustomPlanRow = {
   limits: Record<string, number | null | undefined>;
   features: Record<string, boolean | undefined>;
   planExtras?: Record<string, string | undefined>;
+  paymentProviders?: PlanPaymentProvidersForm;
 };
 
 type CustomPlanForm = {
@@ -41,6 +46,7 @@ type CustomPlanForm = {
   mercadopagoPlanId: string;
   legacyPlanTier: string;
   isActive: boolean;
+  paymentProviders: PlanPaymentProvidersForm;
   limitsJson: string;
   featuresJson: string;
   extrasJson: string;
@@ -59,6 +65,7 @@ const EMPTY_CUSTOM_FORM: CustomPlanForm = {
   mercadopagoPlanId: "",
   legacyPlanTier: "",
   isActive: true,
+  paymentProviders: { stripe: true, mercadopago: true },
   limitsJson: '{\n  "agents": 10,\n  "automations": 50,\n  "contacts": 10000,\n  "messages": 50000\n}',
   featuresJson: '{\n  "rag": true,\n  "api": true,\n  "mcp": false\n}',
   extrasJson: "{}",
@@ -86,6 +93,7 @@ function planToForm(plan: CustomPlanRow): CustomPlanForm {
     mercadopagoPlanId: plan.mercadopagoPlanId ?? "",
     legacyPlanTier: plan.legacyPlanTier ?? "",
     isActive: plan.isActive,
+    paymentProviders: plan.paymentProviders ?? { stripe: true, mercadopago: true },
     limitsJson: JSON.stringify(plan.limits, null, 2),
     featuresJson: JSON.stringify(plan.features, null, 2),
     extrasJson: JSON.stringify(plan.planExtras ?? {}, null, 2),
@@ -105,17 +113,21 @@ export function SuperAdminCustomPlansPanel() {
   const [syncingPlanId, setSyncingPlanId] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
   const [form, setForm] = useState<CustomPlanForm>(EMPTY_CUSTOM_FORM);
+  const [mercadoPagoPlatformConfigured, setMercadoPagoPlatformConfigured] = useState(false);
+  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [planRes, orgRaw] = await Promise.all([
+      const [planRes, orgRaw, settingsRes] = await Promise.all([
         api.get<{ plans: CustomPlanRow[] }>("/super/billing/custom-plans"),
         api.get<unknown>("/super/organizations"),
+        api.get<{ mercadoPagoPlatformConfigured?: boolean }>("/super/billing/settings"),
       ]);
       setPlans(Array.isArray(planRes.plans) ? planRes.plans : []);
       setOrgs(parseSuperAdminOrgList(orgRaw));
+      setMercadoPagoPlatformConfigured(settingsRes.mercadoPagoPlatformConfigured === true);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("superAdmin.billingLoadError"));
     } finally {
@@ -162,16 +174,22 @@ export function SuperAdminCustomPlansPanel() {
         throw new ApiError(t("superAdmin.billingInvalidJson"), 400);
       }
 
+      const amountCents = Number(form.amountCents);
+      if (amountCents > 0 && !form.paymentProviders.stripe && !form.paymentProviders.mercadopago) {
+        throw new ApiError(t("superAdmin.billingPlanProvidersRequired"), 400);
+      }
+
       const payload = {
         name: form.name.trim(),
         description: form.description.trim() || null,
         currency: form.currency.trim(),
-        amountCents: Number(form.amountCents),
+        amountCents,
         interval: form.interval,
         paymentGraceDays: Number(form.paymentGraceDays),
-        stripeProductId: form.stripeProductId.trim() || null,
-        stripePriceId: form.stripePriceId.trim() || null,
-        mercadopagoPlanId: form.mercadopagoPlanId.trim() || null,
+        stripeProductId: form.paymentProviders.stripe ? form.stripeProductId.trim() || null : null,
+        stripePriceId: form.paymentProviders.stripe ? form.stripePriceId.trim() || null : null,
+        mercadopagoPlanId: form.paymentProviders.mercadopago ? form.mercadopagoPlanId.trim() || null : null,
+        paymentProviders: form.paymentProviders,
         legacyPlanTier: form.legacyPlanTier.trim()
           ? (form.legacyPlanTier as "free" | "growth" | "enterprise")
           : null,
@@ -182,20 +200,60 @@ export function SuperAdminCustomPlansPanel() {
       };
 
       if (editingPlan) {
-        await api.patch(`/super/billing/custom-plans/${editingPlan.id}`, payload);
+        const res = await api.patch<{ plan: CustomPlanRow }>(`/super/billing/custom-plans/${editingPlan.id}`, payload);
+        setPlans((rows) => rows.map((row) => (row.id === editingPlan.id ? res.plan : row)));
       } else {
         await api.post("/super/billing/custom-plans", {
           organizationId: form.organizationId,
           ...payload,
         });
+        await load();
       }
-
       closeModal();
-      await load();
+      setSuccess(t("superAdmin.billingCustomPlanSaved"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("superAdmin.billingSaveError"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const generateMercadoPagoPlanId = async () => {
+    if (!editingPlan) return;
+    setSyncingPlanId(editingPlan.id);
+    setError("");
+    try {
+      const res = await api.post<{ sync: { mercadopagoPlanId: string }; plan: CustomPlanRow | null }>(
+        `/super/billing/custom-plans/${editingPlan.id}/sync-mercadopago`,
+        {},
+      );
+      const nextId = res.sync.mercadopagoPlanId;
+      setForm((f) => ({ ...f, mercadopagoPlanId: nextId }));
+      if (res.plan) {
+        setEditingPlan(res.plan);
+        setPlans((rows) => rows.map((row) => (row.id === editingPlan.id ? res.plan! : row)));
+      }
+      setSuccess(t("superAdmin.billingSyncMercadoPagoSuccess").replace("{id}", nextId));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingSyncMercadoPagoError"));
+    } finally {
+      setSyncingPlanId(null);
+    }
+  };
+
+  const deletePlan = async (plan: CustomPlanRow) => {
+    if (!window.confirm(t("superAdmin.billingCustomPlanDeleteConfirm").replace("{name}", plan.name))) return;
+    setDeletingPlanId(plan.id);
+    setError("");
+    setSuccess("");
+    try {
+      await api.delete(`/super/billing/custom-plans/${plan.id}`);
+      setPlans((rows) => rows.filter((row) => row.id !== plan.id));
+      setSuccess(t("superAdmin.billingCustomPlanDeleted"));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("superAdmin.billingCustomPlanDeleteError"));
+    } finally {
+      setDeletingPlanId(null);
     }
   };
 
@@ -321,6 +379,19 @@ export function SuperAdminCustomPlansPanel() {
                             <Pencil className="h-3.5 w-3.5" />
                             {t("superAdmin.billingEditPlan")}
                           </button>
+                          <button
+                            type="button"
+                            disabled={deletingPlanId === plan.id}
+                            onClick={() => void deletePlan(plan)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                          >
+                            {deletingPlanId === plan.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                            {t("superAdmin.billingCustomPlanDelete")}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -404,31 +475,21 @@ export function SuperAdminCustomPlansPanel() {
                   required
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-600">Stripe Product ID</label>
-                <input
-                  value={form.stripeProductId}
-                  onChange={(e) => setForm((f) => ({ ...f, stripeProductId: e.target.value }))}
-                  className="input-field mt-1"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-600">Stripe Price ID</label>
-                <input
-                  value={form.stripePriceId}
-                  onChange={(e) => setForm((f) => ({ ...f, stripePriceId: e.target.value }))}
-                  className="input-field mt-1"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingMercadoPagoPlanId")}</label>
-                <input
-                  value={form.mercadopagoPlanId}
-                  onChange={(e) => setForm((f) => ({ ...f, mercadopagoPlanId: e.target.value }))}
-                  className="input-field mt-1"
-                  placeholder={t("superAdmin.billingMercadoPagoPlanIdHint")}
-                />
-              </div>
+              <PlanBillingProvidersEditor
+                amountCents={Number(form.amountCents) || 0}
+                providers={form.paymentProviders}
+                onProvidersChange={(paymentProviders) => setForm((f) => ({ ...f, paymentProviders }))}
+                stripeProductId={form.stripeProductId}
+                stripePriceId={form.stripePriceId}
+                onStripeProductIdChange={(stripeProductId) => setForm((f) => ({ ...f, stripeProductId }))}
+                onStripePriceIdChange={(stripePriceId) => setForm((f) => ({ ...f, stripePriceId }))}
+                mercadopagoPlanId={form.mercadopagoPlanId}
+                onMercadopagoPlanIdChange={(mercadopagoPlanId) => setForm((f) => ({ ...f, mercadopagoPlanId }))}
+                planId={editingPlan?.id}
+                mercadoPagoPlatformConfigured={mercadoPagoPlatformConfigured}
+                generatingMercadoPago={syncingPlanId === editingPlan?.id}
+                onGenerateMercadoPago={generateMercadoPagoPlanId}
+              />
               <div>
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.planColumn")}</label>
                 <select

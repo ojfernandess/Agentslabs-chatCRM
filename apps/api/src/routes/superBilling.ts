@@ -19,10 +19,14 @@ import {
   parsePlanFeatures,
   parsePlanLimitEnabledFlags,
   parsePlanLimits,
+  parsePlanPaymentProviders,
+  applyPlanPaymentProvidersToFeatures,
+  type PlanPaymentProviders,
 } from "../lib/billing/billingTypes.js";
 import { BillingError } from "../lib/billing/StripeCustomerService.js";
 import {
   createCustomPlanForOrganization,
+  deleteCustomPlan,
   listCustomPlans,
   updateCustomPlan,
 } from "../lib/billing/customPlanService.js";
@@ -42,6 +46,11 @@ import {
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
+const paymentProvidersSchema = z.object({
+  stripe: z.boolean(),
+  mercadopago: z.boolean(),
+});
+
 const createPlanSchema = z.object({
   slug: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1).max(120),
@@ -59,6 +68,7 @@ const createPlanSchema = z.object({
   limits: jsonLimitsSchema,
   features: jsonLimitsSchema,
   planExtras: jsonLimitsSchema,
+  paymentProviders: paymentProvidersSchema.optional(),
 });
 
 const patchPlanSchema = createPlanSchema.partial().omit({ slug: true }).extend({
@@ -99,6 +109,7 @@ const customPlanFieldsSchema = {
   planExtras: jsonLimitsSchema,
   trialDays: z.union([z.number().int().min(0).max(365), z.null()]).optional(),
   isActive: z.boolean().optional(),
+  paymentProviders: paymentProvidersSchema.optional(),
 };
 
 const createCustomPlanSchema = z.object({
@@ -192,6 +203,11 @@ function serializePlan(plan: {
     limits: parsePlanLimits(plan.limits),
     limitEnabled: parsePlanLimitEnabledFlags(plan.limits),
     features: parsePlanFeatures(plan.features),
+    paymentProviders: parsePlanPaymentProviders(plan.features, {
+      amountCents: plan.amountCents,
+      stripePriceId: plan.stripePriceId,
+      mercadopagoPlanId: plan.mercadopagoPlanId,
+    }),
     planExtras: parsePlanExtras(plan.planExtras ?? {}),
     subscriptionCount: plan._count?.subscriptions ?? 0,
     createdAt: plan.createdAt.toISOString(),
@@ -218,6 +234,62 @@ async function assertMercadoPagoPlanSyncAllowed(): Promise<void> {
       "Mercado Pago is not configured. Set MERCADOPAGO_* tokens and active mode in Super Admin.",
       "mercadopago_not_configured",
     );
+  }
+}
+
+function resolvePlanPaymentProvidersInput(
+  input: PlanPaymentProviders | undefined,
+  fallback: {
+    features?: unknown;
+    stripePriceId?: string | null;
+    mercadopagoPlanId?: string | null;
+    amountCents: number;
+  },
+): PlanPaymentProviders {
+  if (input) return input;
+  return parsePlanPaymentProviders(fallback.features, fallback);
+}
+
+function assertPaidPlanPaymentProviders(amountCents: number, paymentProviders: PlanPaymentProviders): void {
+  if (amountCents <= 0) return;
+  if (!paymentProviders.stripe && !paymentProviders.mercadopago) {
+    throw new BillingError(
+      "Paid plans require at least one payment provider (Stripe or Mercado Pago)",
+      "plan_not_billing_ready",
+    );
+  }
+}
+
+async function maybeSyncMercadoPagoPlanOnSave(planId: string) {
+  const plan = await prisma.plan.findUnique({
+    where: { id: planId },
+    include: {
+      organization: { select: { id: true, name: true, slug: true } },
+      _count: { select: { subscriptions: true } },
+    },
+  });
+  if (!plan) return null;
+
+  const providers = parsePlanPaymentProviders(plan.features, {
+    amountCents: plan.amountCents,
+    mercadopagoPlanId: plan.mercadopagoPlanId,
+  });
+  if (plan.amountCents <= 0 || !providers.mercadopago || plan.mercadopagoPlanId?.trim()) {
+    return plan;
+  }
+
+  try {
+    await assertMercadoPagoPlanSyncAllowed();
+    await syncPlanToMercadoPago(plan.id);
+    return prisma.plan.findUnique({
+      where: { id: plan.id },
+      include: {
+        organization: { select: { id: true, name: true, slug: true } },
+        _count: { select: { subscriptions: true } },
+      },
+    });
+  } catch {
+    return plan;
   }
 }
 
@@ -405,19 +477,47 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         planExtras: p.planExtras,
         trialDays: p.trialDays,
         isActive: p.isActive,
+        paymentProviders: p.paymentProviders,
       });
+
+      const saved = (await maybeSyncMercadoPagoPlanOnSave(plan.id)) ?? plan;
 
       await recordAuditLog({
         actorUserId: request.user!.id,
         organizationId: plan.organizationId ?? undefined,
         action: "super.billing.custom_plan.update",
         resourceType: "plan",
-        resourceId: plan.id,
+        resourceId: saved.id,
         metadata: { patch: p },
         ip: clientIp(request),
       });
 
-      return { plan: serializePlan(plan) };
+      return { plan: serializePlan(saved) };
+    } catch (err) {
+      if (err instanceof BillingError) {
+        return reply.status(err.code === "plan_not_found" ? 404 : 400).send({
+          error: err.code,
+          message: err.message,
+          statusCode: err.code === "plan_not_found" ? 404 : 400,
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/custom-plans/:id", async (request, reply) => {
+    try {
+      await deleteCustomPlan(request.params.id);
+
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        action: "super.billing.custom_plan.delete",
+        resourceType: "plan",
+        resourceId: request.params.id,
+        ip: clientIp(request),
+      });
+
+      return reply.status(204).send();
     } catch (err) {
       if (err instanceof BillingError) {
         return reply.status(err.code === "plan_not_found" ? 404 : 400).send({
@@ -453,20 +553,23 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         features: p.features,
         planExtras: p.planExtras,
         trialDays: p.trialDays,
+        paymentProviders: p.paymentProviders,
       });
+
+      const saved = (await maybeSyncMercadoPagoPlanOnSave(plan.id)) ?? plan;
 
       await recordAuditLog({
         actorUserId: request.user!.id,
         organizationId: p.organizationId,
         action: "super.billing.custom_plan.create",
         resourceType: "plan",
-        resourceId: plan.id,
-        metadata: { name: plan.name, organizationId: p.organizationId },
+        resourceId: saved.id,
+        metadata: { name: saved.name, organizationId: p.organizationId },
         ip: clientIp(request),
       });
 
       return reply.status(201).send({
-        plan: serializePlan({ ...plan, _count: { subscriptions: 1 } }),
+        plan: serializePlan({ ...saved, _count: { subscriptions: 1 } }),
       });
     } catch (err) {
       if (err instanceof BillingError) {
@@ -491,38 +594,59 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(409).send({ error: "Conflict", message: "Plan slug already exists", statusCode: 409 });
     }
 
-    const plan = await prisma.plan.create({
-      data: {
-        slug: p.slug,
-        name: p.name.trim(),
-        description: p.description?.trim() || null,
-        currency: p.currency.toUpperCase(),
-        amountCents: p.amountCents,
-        interval: p.interval,
-        trialDays: p.trialDays ?? null,
-        displayOrder: p.displayOrder ?? 0,
-        isActive: p.isActive ?? true,
-        stripeProductId: normalizeExternalId(p.stripeProductId),
-        stripePriceId: normalizeExternalId(p.stripePriceId),
-        mercadopagoPlanId: normalizeExternalId(p.mercadopagoPlanId),
-        legacyPlanTier: p.legacyPlanTier ?? null,
-        limits: (p.limits ?? {}) as Prisma.InputJsonValue,
-        features: (p.features ?? {}) as Prisma.InputJsonValue,
-        planExtras: (p.planExtras ?? {}) as Prisma.InputJsonValue,
-      },
-      include: { _count: { select: { subscriptions: true } } },
+    const paymentProviders = resolvePlanPaymentProvidersInput(p.paymentProviders, {
+      features: p.features,
+      stripePriceId: p.stripePriceId,
+      mercadopagoPlanId: p.mercadopagoPlanId,
+      amountCents: p.amountCents,
     });
+    assertPaidPlanPaymentProviders(p.amountCents, paymentProviders);
 
-    await recordAuditLog({
-      actorUserId: request.user!.id,
-      action: "super.billing.plan.create",
-      resourceType: "plan",
-      resourceId: plan.id,
-      metadata: { slug: plan.slug, name: plan.name },
-      ip: clientIp(request),
-    });
+    try {
+      const plan = await prisma.plan.create({
+        data: {
+          slug: p.slug,
+          name: p.name.trim(),
+          description: p.description?.trim() || null,
+          currency: p.currency.toUpperCase(),
+          amountCents: p.amountCents,
+          interval: p.interval,
+          trialDays: p.trialDays ?? null,
+          displayOrder: p.displayOrder ?? 0,
+          isActive: p.isActive ?? true,
+          stripeProductId: paymentProviders.stripe ? normalizeExternalId(p.stripeProductId) : null,
+          stripePriceId: paymentProviders.stripe ? normalizeExternalId(p.stripePriceId) : null,
+          mercadopagoPlanId: paymentProviders.mercadopago ? normalizeExternalId(p.mercadopagoPlanId) : null,
+          legacyPlanTier: p.legacyPlanTier ?? null,
+          limits: (p.limits ?? {}) as Prisma.InputJsonValue,
+          features: applyPlanPaymentProvidersToFeatures(p.features, paymentProviders) as Prisma.InputJsonValue,
+          planExtras: (p.planExtras ?? {}) as Prisma.InputJsonValue,
+        },
+        include: { _count: { select: { subscriptions: true } } },
+      });
 
-    return reply.status(201).send({ plan: serializePlan(plan) });
+      const saved = (await maybeSyncMercadoPagoPlanOnSave(plan.id)) ?? plan;
+
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        action: "super.billing.plan.create",
+        resourceType: "plan",
+        resourceId: saved.id,
+        metadata: { slug: saved.slug, name: saved.name },
+        ip: clientIp(request),
+      });
+
+      return reply.status(201).send({ plan: serializePlan(saved) });
+    } catch (err) {
+      if (err instanceof BillingError) {
+        return reply.status(400).send({
+          error: err.code,
+          message: err.message,
+          statusCode: 400,
+        });
+      }
+      throw err;
+    }
   });
 
   app.patch<{ Params: { id: string } }>("/plans/:id", async (request, reply) => {
@@ -542,41 +666,81 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const data: Prisma.PlanUpdateInput = {};
-    if (p.slug !== undefined) data.slug = p.slug;
-    if (p.name !== undefined) data.name = p.name.trim();
-    if (p.description !== undefined) data.description = p.description?.trim() || null;
-    if (p.currency !== undefined) data.currency = p.currency.toUpperCase();
-    if (p.amountCents !== undefined) data.amountCents = p.amountCents;
-    if (p.interval !== undefined) data.interval = p.interval;
-    if (p.trialDays !== undefined) data.trialDays = p.trialDays;
-    if (p.displayOrder !== undefined) data.displayOrder = p.displayOrder;
-    if (p.isActive !== undefined) data.isActive = p.isActive;
-    if (p.stripeProductId !== undefined) data.stripeProductId = normalizeExternalId(p.stripeProductId);
-    if (p.stripePriceId !== undefined) data.stripePriceId = normalizeExternalId(p.stripePriceId);
-    if (p.mercadopagoPlanId !== undefined) data.mercadopagoPlanId = normalizeExternalId(p.mercadopagoPlanId);
-    if (p.legacyPlanTier !== undefined) data.legacyPlanTier = p.legacyPlanTier;
-    if (p.limits !== undefined) data.limits = p.limits as Prisma.InputJsonValue;
-    if (p.features !== undefined) data.features = p.features as Prisma.InputJsonValue;
-    if (p.planExtras !== undefined) data.planExtras = p.planExtras as Prisma.InputJsonValue;
-
     try {
+      const current = await prisma.plan.findUnique({
+        where: { id: request.params.id },
+        select: {
+          amountCents: true,
+          features: true,
+          stripeProductId: true,
+          stripePriceId: true,
+          mercadopagoPlanId: true,
+        },
+      });
+      if (!current) {
+        return reply.status(404).send({ error: "Not Found", message: "Plan not found", statusCode: 404 });
+      }
+
+      const nextAmountCents = p.amountCents ?? current.amountCents;
+      const paymentProviders = resolvePlanPaymentProvidersInput(p.paymentProviders, {
+        features: p.features ?? current.features,
+        stripePriceId: p.stripePriceId !== undefined ? p.stripePriceId : current.stripePriceId,
+        mercadopagoPlanId:
+          p.mercadopagoPlanId !== undefined ? p.mercadopagoPlanId : current.mercadopagoPlanId,
+        amountCents: nextAmountCents,
+      });
+      assertPaidPlanPaymentProviders(nextAmountCents, paymentProviders);
+
+      const data: Prisma.PlanUpdateInput = {};
+      if (p.slug !== undefined) data.slug = p.slug;
+      if (p.name !== undefined) data.name = p.name.trim();
+      if (p.description !== undefined) data.description = p.description?.trim() || null;
+      if (p.currency !== undefined) data.currency = p.currency.toUpperCase();
+      if (p.amountCents !== undefined) data.amountCents = p.amountCents;
+      if (p.interval !== undefined) data.interval = p.interval;
+      if (p.trialDays !== undefined) data.trialDays = p.trialDays;
+      if (p.displayOrder !== undefined) data.displayOrder = p.displayOrder;
+      if (p.isActive !== undefined) data.isActive = p.isActive;
+      if (p.stripeProductId !== undefined || p.paymentProviders !== undefined) {
+        const value = p.stripeProductId !== undefined ? p.stripeProductId : current.stripeProductId;
+        data.stripeProductId = paymentProviders.stripe ? normalizeExternalId(value) : null;
+      }
+      if (p.stripePriceId !== undefined || p.paymentProviders !== undefined) {
+        const value = p.stripePriceId !== undefined ? p.stripePriceId : current.stripePriceId;
+        data.stripePriceId = paymentProviders.stripe ? normalizeExternalId(value) : null;
+      }
+      if (p.mercadopagoPlanId !== undefined || p.paymentProviders !== undefined) {
+        const value = p.mercadopagoPlanId !== undefined ? p.mercadopagoPlanId : current.mercadopagoPlanId;
+        data.mercadopagoPlanId = paymentProviders.mercadopago ? normalizeExternalId(value) : null;
+      }
+      if (p.legacyPlanTier !== undefined) data.legacyPlanTier = p.legacyPlanTier;
+      if (p.limits !== undefined) data.limits = p.limits as Prisma.InputJsonValue;
+      if (p.planExtras !== undefined) data.planExtras = p.planExtras as Prisma.InputJsonValue;
+      if (p.features !== undefined || p.paymentProviders !== undefined) {
+        data.features = applyPlanPaymentProvidersToFeatures(
+          (p.features ?? (current.features as Record<string, unknown>)) as Record<string, unknown>,
+          paymentProviders,
+        ) as Prisma.InputJsonValue;
+      }
+
       const plan = await prisma.plan.update({
         where: { id: request.params.id },
         data,
         include: { _count: { select: { subscriptions: true } } },
       });
 
+      const saved = (await maybeSyncMercadoPagoPlanOnSave(plan.id)) ?? plan;
+
       await recordAuditLog({
         actorUserId: request.user!.id,
         action: "super.billing.plan.update",
         resourceType: "plan",
-        resourceId: plan.id,
+        resourceId: saved.id,
         metadata: { patch: p },
         ip: clientIp(request),
       });
 
-      return { plan: serializePlan(plan) };
+      return { plan: serializePlan(saved) };
     } catch {
       return reply.status(404).send({ error: "Not Found", message: "Plan not found", statusCode: 404 });
     }

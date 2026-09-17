@@ -1,6 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../../db.js";
+import {
+  applyPlanPaymentProvidersToFeatures,
+  parsePlanPaymentProviders,
+  type PlanPaymentProviders,
+} from "./billingTypes.js";
 import { BillingError } from "./StripeCustomerService.js";
 import { assignCustomPlanToOrganization } from "./planAssignment.js";
 
@@ -20,6 +25,7 @@ export type UpdateCustomPlanInput = {
   planExtras?: Record<string, unknown>;
   trialDays?: number | null;
   isActive?: boolean;
+  paymentProviders?: PlanPaymentProviders;
 };
 
 export type CreateCustomPlanInput = {
@@ -38,6 +44,7 @@ export type CreateCustomPlanInput = {
   features?: Record<string, unknown>;
   planExtras?: Record<string, unknown>;
   trialDays?: number | null;
+  paymentProviders?: PlanPaymentProviders;
 };
 
 function normalizeExternalId(value: string | null | undefined): string | null {
@@ -45,11 +52,31 @@ function normalizeExternalId(value: string | null | undefined): string | null {
   return trimmed || null;
 }
 
-function paidPlanHasBillingProvider(input: {
-  stripePriceId?: string | null;
-  mercadopagoPlanId?: string | null;
-}): boolean {
-  return Boolean(normalizeExternalId(input.stripePriceId) || normalizeExternalId(input.mercadopagoPlanId));
+function resolvePaymentProviders(
+  input: PlanPaymentProviders | undefined,
+  fallback?: {
+    features?: Record<string, unknown>;
+    stripePriceId?: string | null;
+    mercadopagoPlanId?: string | null;
+    amountCents?: number;
+  },
+): PlanPaymentProviders {
+  if (input) return input;
+  return parsePlanPaymentProviders(fallback?.features, {
+    amountCents: fallback?.amountCents,
+    stripePriceId: fallback?.stripePriceId,
+    mercadopagoPlanId: fallback?.mercadopagoPlanId,
+  });
+}
+
+function assertPaidPlanPaymentProviders(amountCents: number, paymentProviders: PlanPaymentProviders): void {
+  if (amountCents <= 0) return;
+  if (!paymentProviders.stripe && !paymentProviders.mercadopago) {
+    throw new BillingError(
+      "Paid custom plans require at least one payment provider (Stripe or Mercado Pago)",
+      "plan_not_billing_ready",
+    );
+  }
 }
 
 async function uniqueCustomSlug(organizationId: string): Promise<string> {
@@ -76,12 +103,13 @@ export async function createCustomPlanForOrganization(input: CreateCustomPlanInp
     throw new BillingError("Organization not found or inactive", "organization_not_found");
   }
 
-  if (input.amountCents > 0 && !paidPlanHasBillingProvider(input)) {
-    throw new BillingError(
-      "Paid custom plans require stripePriceId or mercadopagoPlanId",
-      "plan_not_billing_ready",
-    );
-  }
+  const paymentProviders = resolvePaymentProviders(input.paymentProviders, {
+    features: input.features,
+    stripePriceId: input.stripePriceId,
+    mercadopagoPlanId: input.mercadopagoPlanId,
+    amountCents: input.amountCents,
+  });
+  assertPaidPlanPaymentProviders(input.amountCents, paymentProviders);
 
   const slug = await uniqueCustomSlug(input.organizationId);
   const graceDays = Math.max(1, Math.min(90, input.paymentGraceDays));
@@ -100,12 +128,12 @@ export async function createCustomPlanForOrganization(input: CreateCustomPlanInp
       isCustom: true,
       organizationId: input.organizationId,
       paymentGraceDays: graceDays,
-      stripeProductId: normalizeExternalId(input.stripeProductId),
-      stripePriceId: normalizeExternalId(input.stripePriceId),
-      mercadopagoPlanId: normalizeExternalId(input.mercadopagoPlanId),
+      stripeProductId: paymentProviders.stripe ? normalizeExternalId(input.stripeProductId) : null,
+      stripePriceId: paymentProviders.stripe ? normalizeExternalId(input.stripePriceId) : null,
+      mercadopagoPlanId: paymentProviders.mercadopago ? normalizeExternalId(input.mercadopagoPlanId) : null,
       legacyPlanTier: input.legacyPlanTier ?? null,
       limits: (input.limits ?? {}) as Prisma.InputJsonValue,
-      features: (input.features ?? {}) as Prisma.InputJsonValue,
+      features: applyPlanPaymentProvidersToFeatures(input.features, paymentProviders) as Prisma.InputJsonValue,
       planExtras: (input.planExtras ?? {}) as Prisma.InputJsonValue,
     },
   });
@@ -123,6 +151,10 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
       amountCents: true,
       legacyPlanTier: true,
       limits: true,
+      features: true,
+      stripeProductId: true,
+      stripePriceId: true,
+      mercadopagoPlanId: true,
     },
   });
   if (!existing?.organizationId) {
@@ -130,31 +162,17 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
   }
 
   const nextAmountCents = input.amountCents ?? existing.amountCents;
-  const nextStripePriceId =
-    input.stripePriceId !== undefined
-      ? normalizeExternalId(input.stripePriceId)
-      : undefined;
-  const nextMercadoPagoPlanId =
-    input.mercadopagoPlanId !== undefined
-      ? normalizeExternalId(input.mercadopagoPlanId)
-      : undefined;
-
-  if (nextAmountCents > 0) {
-    const current = await prisma.plan.findUnique({
-      where: { id: planId },
-      select: { stripePriceId: true, mercadopagoPlanId: true },
-    });
-    const stripePriceId =
-      nextStripePriceId !== undefined ? nextStripePriceId : current?.stripePriceId ?? null;
-    const mercadopagoPlanId =
-      nextMercadoPagoPlanId !== undefined ? nextMercadoPagoPlanId : current?.mercadopagoPlanId ?? null;
-    if (!paidPlanHasBillingProvider({ stripePriceId, mercadopagoPlanId })) {
-      throw new BillingError(
-        "Paid custom plans require stripePriceId or mercadopagoPlanId",
-        "plan_not_billing_ready",
-      );
-    }
-  }
+  const paymentProviders = resolvePaymentProviders(input.paymentProviders, {
+    features: input.features ?? (existing.features as Record<string, unknown>),
+    stripePriceId:
+      input.stripePriceId !== undefined ? normalizeExternalId(input.stripePriceId) : existing.stripePriceId,
+    mercadopagoPlanId:
+      input.mercadopagoPlanId !== undefined
+        ? normalizeExternalId(input.mercadopagoPlanId)
+        : existing.mercadopagoPlanId,
+    amountCents: nextAmountCents,
+  });
+  assertPaidPlanPaymentProviders(nextAmountCents, paymentProviders);
 
   const data: Prisma.PlanUpdateInput = {};
   if (input.name !== undefined) data.name = input.name.trim();
@@ -164,15 +182,31 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
   if (input.interval !== undefined) data.interval = input.interval;
   if (input.trialDays !== undefined) data.trialDays = input.trialDays;
   if (input.isActive !== undefined) data.isActive = input.isActive;
-  if (input.stripeProductId !== undefined) data.stripeProductId = normalizeExternalId(input.stripeProductId);
-  if (input.stripePriceId !== undefined) data.stripePriceId = normalizeExternalId(input.stripePriceId);
-  if (input.mercadopagoPlanId !== undefined) data.mercadopagoPlanId = normalizeExternalId(input.mercadopagoPlanId);
+  if (input.stripeProductId !== undefined || input.paymentProviders !== undefined) {
+    const value =
+      input.stripeProductId !== undefined ? input.stripeProductId : existing.stripeProductId;
+    data.stripeProductId = paymentProviders.stripe ? normalizeExternalId(value) : null;
+  }
+  if (input.stripePriceId !== undefined || input.paymentProviders !== undefined) {
+    const value = input.stripePriceId !== undefined ? input.stripePriceId : existing.stripePriceId;
+    data.stripePriceId = paymentProviders.stripe ? normalizeExternalId(value) : null;
+  }
+  if (input.mercadopagoPlanId !== undefined || input.paymentProviders !== undefined) {
+    const value =
+      input.mercadopagoPlanId !== undefined ? input.mercadopagoPlanId : existing.mercadopagoPlanId;
+    data.mercadopagoPlanId = paymentProviders.mercadopago ? normalizeExternalId(value) : null;
+  }
   if (input.legacyPlanTier !== undefined) data.legacyPlanTier = input.legacyPlanTier;
   if (input.limits !== undefined) data.limits = input.limits as Prisma.InputJsonValue;
-  if (input.features !== undefined) data.features = input.features as Prisma.InputJsonValue;
   if (input.planExtras !== undefined) data.planExtras = input.planExtras as Prisma.InputJsonValue;
   if (input.paymentGraceDays !== undefined) {
     data.paymentGraceDays = Math.max(1, Math.min(90, input.paymentGraceDays));
+  }
+  if (input.features !== undefined || input.paymentProviders !== undefined) {
+    data.features = applyPlanPaymentProvidersToFeatures(
+      (input.features ?? (existing.features as Record<string, unknown>)) as Record<string, unknown>,
+      paymentProviders,
+    ) as Prisma.InputJsonValue;
   }
 
   const plan = await prisma.plan.update({
@@ -241,6 +275,29 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
   }
 
   return plan;
+}
+
+export async function deleteCustomPlan(planId: string): Promise<void> {
+  const plan = await prisma.plan.findFirst({
+    where: { id: planId, isCustom: true },
+    select: { id: true, organizationId: true },
+  });
+  if (!plan) {
+    throw new BillingError("Custom plan not found", "plan_not_found");
+  }
+
+  await prisma.$transaction([
+    prisma.organizationSubscription.updateMany({
+      where: { planId: plan.id },
+      data: {
+        planId: null,
+        status: "inactive",
+        paymentDueAt: null,
+        customPlanAssignedAt: null,
+      },
+    }),
+    prisma.plan.delete({ where: { id: plan.id } }),
+  ]);
 }
 
 export async function listCustomPlans(organizationId?: string) {

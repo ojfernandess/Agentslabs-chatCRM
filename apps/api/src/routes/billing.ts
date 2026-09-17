@@ -11,6 +11,7 @@ import {
   parsePlanFeatures,
   parsePlanLimitEnabledFlags,
   parsePlanLimits,
+  parsePlanPaymentProviders,
   getOrganizationUsage,
   applyCatalogPlanToOrganization,
   listPlansForOrganization,
@@ -264,22 +265,35 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     ]);
 
     return {
-      plans: plans.map((p) => ({
-        ...serializePlanForClient(p),
-        isCurrent: sub?.planId === p.id,
-        isCustom: p.isCustom,
-        requiresCheckout: p.amountCents > 0 && Boolean(p.stripePriceId || p.mercadopagoPlanId),
-        isFree: p.amountCents <= 0,
-        stripeReady: p.amountCents <= 0 || Boolean(p.stripePriceId?.trim()),
-        mercadopagoReady: p.amountCents <= 0 || Boolean(p.mercadopagoPlanId?.trim()),
-        checkoutProviders: {
-          stripe:
-            providers.stripe.configured &&
-            providers.stripe.enabled &&
-            (p.amountCents <= 0 || Boolean(p.stripePriceId?.trim())),
-          mercadopago: providers.mercadopago.connected && providers.mercadopago.enabled && p.amountCents > 0,
-        },
-      })),
+      plans: plans.map((p) => {
+        const planProviders = parsePlanPaymentProviders(p.features, {
+          amountCents: p.amountCents,
+          stripePriceId: p.stripePriceId,
+          mercadopagoPlanId: p.mercadopagoPlanId,
+        });
+        const stripeCheckoutReady =
+          planProviders.stripe && (p.amountCents <= 0 || Boolean(p.stripePriceId?.trim()));
+        const mercadoPagoCheckoutReady = planProviders.mercadopago && p.amountCents > 0;
+        return {
+          ...serializePlanForClient(p),
+          isCurrent: sub?.planId === p.id,
+          isCustom: p.isCustom,
+          paymentProviders: planProviders,
+          requiresCheckout:
+            p.amountCents > 0 && (stripeCheckoutReady || mercadoPagoCheckoutReady),
+          isFree: p.amountCents <= 0,
+          stripeReady: stripeCheckoutReady,
+          mercadopagoReady: mercadoPagoCheckoutReady,
+          checkoutProviders: {
+            stripe:
+              providers.stripe.configured && providers.stripe.enabled && stripeCheckoutReady,
+            mercadopago:
+              providers.mercadopago.connected &&
+              providers.mercadopago.enabled &&
+              mercadoPagoCheckoutReady,
+          },
+        };
+      }),
       catalogMode: plans.some((p) => p.isCustom) ? ("custom" as const) : ("global" as const),
     };
   });

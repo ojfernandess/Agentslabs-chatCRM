@@ -147,6 +147,56 @@ export function parsePlanFeatures(raw: unknown): PlanFeatures {
 
 export type PlanExtras = Record<string, string>;
 
+export type PlanPaymentProviders = {
+  stripe: boolean;
+  mercadopago: boolean;
+};
+
+export const PLAN_BILLING_STRIPE_KEY = "__billingStripe";
+export const PLAN_BILLING_MERCADOPAGO_KEY = "__billingMercadopago";
+
+export function parsePlanPaymentProviders(
+  features: unknown,
+  fallback?: {
+    stripePriceId?: string | null;
+    mercadopagoPlanId?: string | null;
+    amountCents?: number;
+  },
+): PlanPaymentProviders {
+  const flags = parsePlanFeatures(features);
+  if (
+    typeof flags[PLAN_BILLING_STRIPE_KEY] === "boolean" ||
+    typeof flags[PLAN_BILLING_MERCADOPAGO_KEY] === "boolean"
+  ) {
+    return {
+      stripe: flags[PLAN_BILLING_STRIPE_KEY] === true,
+      mercadopago: flags[PLAN_BILLING_MERCADOPAGO_KEY] === true,
+    };
+  }
+
+  if ((fallback?.amountCents ?? 0) > 0) {
+    const hasStripe = Boolean(fallback?.stripePriceId?.trim());
+    const hasMercadoPago = Boolean(fallback?.mercadopagoPlanId?.trim());
+    if (hasStripe || hasMercadoPago) {
+      return { stripe: hasStripe, mercadopago: hasMercadoPago };
+    }
+    return { stripe: true, mercadopago: true };
+  }
+
+  return { stripe: false, mercadopago: false };
+}
+
+export function applyPlanPaymentProvidersToFeatures(
+  features: Record<string, unknown> | undefined,
+  paymentProviders: PlanPaymentProviders,
+): Record<string, unknown> {
+  return {
+    ...(features ?? {}),
+    [PLAN_BILLING_STRIPE_KEY]: paymentProviders.stripe,
+    [PLAN_BILLING_MERCADOPAGO_KEY]: paymentProviders.mercadopago,
+  };
+}
+
 export function parsePlanExtras(raw: unknown): PlanExtras {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;

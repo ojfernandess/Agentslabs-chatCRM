@@ -1,6 +1,5 @@
 import { config, getWebAppPublicOrigin } from "../../../config.js";
 import { BillingError } from "../StripeCustomerService.js";
-import { resolveMercadoPagoAccessToken } from "../MercadoPagoConnectionService.js";
 import {
   inferMercadoPagoTokenMode,
   isMercadoPagoSandboxBillingMode,
@@ -208,21 +207,10 @@ export function mercadoPagoPlanBackUrl(): string {
   return mercadoPagoBillingBackUrl();
 }
 
-/** Token MP da org (OAuth) ou plataforma — usado em checkout, polling e webhooks. */
+/** Credenciais da plataforma — catálogo global e planos personalizados (billing SaaS). */
 export async function resolveMercadoPagoAccessTokenForBilling(
-  organizationId: string,
-  planOrganizationId?: string | null,
+  _organizationId: string,
+  _planOrganizationId?: string | null,
 ): Promise<string> {
-  // Plano personalizado: cobrança na conta MP do dono do plano.
-  if (planOrganizationId) {
-    const planOwnerToken = await resolveMercadoPagoAccessToken(planOrganizationId);
-    if (planOwnerToken) return planOwnerToken;
-    throw new BillingError(
-      "Mercado Pago is not connected for the organization that owns this plan",
-      "mercadopago_not_configured",
-    );
-  }
-
-  // Catálogo global SaaS: sempre credenciais da plataforma (ignora OAuth MP da org assinante).
   return resolvePlatformMercadoPagoAccessToken();
 }
