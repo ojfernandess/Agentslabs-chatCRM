@@ -27,6 +27,7 @@ const planIdBodySchema = z.object({
   planId: z.string().uuid(),
   provider: z.enum(["stripe", "mercadopago"]).optional(),
   paymentMethod: z.enum(["card", "pix"]).optional(),
+  payerIdentificationNumber: z.string().trim().min(11).max(18).optional(),
 });
 
 const portalBodySchema = z.object({
@@ -341,6 +342,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         actorUserId,
         ip: clientIp(request),
         paymentMethod: body.paymentMethod,
+        payerIdentificationNumber: body.payerIdentificationNumber,
       });
       return { ...result, provider: providerName };
     } catch (err) {

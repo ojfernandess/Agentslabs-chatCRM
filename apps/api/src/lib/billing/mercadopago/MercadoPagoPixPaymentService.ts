@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Plan } from "@prisma/client";
+import { getPublicOrigin } from "../../../config.js";
 import { prisma } from "../../../db.js";
 import { recordBillingAudit } from "../billingAudit.js";
-import { assertCheckoutAllowed } from "../checkoutGuards.js";
 import { mapMercadoPagoPaymentStatus } from "../billingTypes.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
@@ -69,6 +69,39 @@ async function resolvePayerEmail(organizationId: string): Promise<string> {
   return email;
 }
 
+function mercadoPagoPixNotificationUrl(): string {
+  return `${getPublicOrigin()}/webhooks/mercadopago`;
+}
+
+function normalizeBrazilTaxId(value: string | null | undefined): string {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+export function buildMercadoPagoPixPayer(email: string, identificationNumber?: string | null) {
+  const digits = normalizeBrazilTaxId(identificationNumber);
+  if (digits.length !== 11 && digits.length !== 14) {
+    throw new BillingError(
+      "CPF or CNPJ is required for Mercado Pago Pix payments",
+      "mercadopago_pix_document_required",
+    );
+  }
+
+  const localPart = email.split("@")[0]?.trim() || "Cliente";
+  return {
+    email,
+    first_name: localPart.slice(0, 50),
+    last_name: "OpenConduit",
+    identification: {
+      type: digits.length === 11 ? "CPF" : "CNPJ",
+      number: digits,
+    },
+  };
+}
+
+function pixExpirationIso(hours = 24): string {
+  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+}
+
 function extractPixDetails(payment: MercadoPagoPayment): CheckoutPixDetails {
   const txData = payment.point_of_interaction?.transaction_data;
   const qrCode = txData?.qr_code?.trim();
@@ -90,6 +123,7 @@ export async function createMercadoPagoPixCheckout(
 ): Promise<MercadoPagoPixCheckoutResult> {
   const accessToken = await resolveAccessTokenForCheckout(input.organizationId, plan.organizationId);
   const payerEmail = await resolvePayerEmail(input.organizationId);
+  const payer = buildMercadoPagoPixPayer(payerEmail, input.payerIdentificationNumber);
   const checkoutAttemptId = randomUUID();
   const externalReference = `ONX-${input.organizationId}-${checkoutAttemptId}`;
 
@@ -101,8 +135,10 @@ export async function createMercadoPagoPixCheckout(
       transaction_amount: Number((plan.amountCents / 100).toFixed(2)),
       description: plan.name.trim(),
       payment_method_id: "pix",
-      payer: { email: payerEmail },
+      payer,
       external_reference: externalReference,
+      notification_url: mercadoPagoPixNotificationUrl(),
+      date_of_expiration: pixExpirationIso(),
       metadata: {
         organizationId: input.organizationId,
         planId: plan.id,

@@ -315,6 +315,7 @@ export function BillingSettingsPanel() {
     plan: PlanRow,
     provider: "stripe" | "mercadopago",
     paymentMethod?: MercadoPagoPaymentMethodChoice,
+    payerIdentificationNumber?: string,
   ) => {
     await runAction(`checkout-${plan.id}`, async () => {
       const res = await api.post<{
@@ -326,6 +327,7 @@ export function BillingSettingsPanel() {
         planId: plan.id,
         provider,
         paymentMethod,
+        payerIdentificationNumber,
       });
 
       if (res.mode === "pix" && res.pix) {
@@ -372,11 +374,14 @@ export function BillingSettingsPanel() {
     await startCheckout(plan, provider);
   };
 
-  const handleMercadoPagoPaymentMethod = async (method: MercadoPagoPaymentMethodChoice) => {
+  const handleMercadoPagoPaymentMethod = async (
+    method: MercadoPagoPaymentMethodChoice,
+    options?: { payerIdentificationNumber?: string },
+  ) => {
     const plan = paymentMethodPlan;
     setPaymentMethodPlan(null);
     if (!plan) return;
-    await startCheckout(plan, "mercadopago", method);
+    await startCheckout(plan, "mercadopago", method, options?.payerIdentificationNumber);
   };
 
   if (loading) {
@@ -703,7 +708,7 @@ export function BillingSettingsPanel() {
           planName={paymentMethodPlan.name}
           amountLabel={formatMoney(paymentMethodPlan.amountCents, paymentMethodPlan.currency, localeTag)}
           onClose={() => setPaymentMethodPlan(null)}
-          onSelect={(method) => void handleMercadoPagoPaymentMethod(method)}
+          onSelect={(method, options) => void handleMercadoPagoPaymentMethod(method, options)}
         />
       ) : null}
 

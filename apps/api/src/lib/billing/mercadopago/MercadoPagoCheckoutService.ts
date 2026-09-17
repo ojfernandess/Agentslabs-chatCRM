@@ -21,6 +21,7 @@ export type CreateMercadoPagoCheckoutInput = {
   actorUserId: string;
   ip?: string | null;
   paymentMethod?: MercadoPagoPaymentMethod;
+  payerIdentificationNumber?: string | null;
 };
 
 export type CreateMercadoPagoCheckoutResult = {
@@ -68,7 +69,7 @@ export async function createMercadoPagoCheckoutSession(
     where: { id: input.planId, isActive: true },
   });
   if (!plan) throw new BillingError("Plan not found or inactive", "plan_not_found");
-  if (!plan.mercadopagoPlanId?.trim()) {
+  if (!plan.mercadopagoPlanId?.trim() && input.paymentMethod !== "pix") {
     throw new BillingError("Plan is not linked to a Mercado Pago preapproval plan", "plan_not_mercadopago_ready");
   }
   if (plan.amountCents <= 0) {

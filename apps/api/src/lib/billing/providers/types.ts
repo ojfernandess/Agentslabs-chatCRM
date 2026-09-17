@@ -32,6 +32,7 @@ export interface CreateCheckoutSessionInput {
   actorUserId: string;
   ip?: string | null;
   paymentMethod?: "card" | "pix";
+  payerIdentificationNumber?: string | null;
 }
 
 export interface CheckoutPixDetails {
