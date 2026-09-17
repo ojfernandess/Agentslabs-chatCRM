@@ -92,13 +92,66 @@ async function countContacts(organizationId: string): Promise<number> {
   return prisma.contact.count({ where: { organizationId } });
 }
 
+/** Normaliza chaves de limite do plano para lookup de uso (PT/EN, acentos, maiúsculas). */
+export function normalizePlanLimitUsageKey(key: string): string {
+  return key
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[\s-]+/g, "_");
+}
+
 const LIMIT_USAGE_ALIASES: Record<string, string> = {
+  users: "users",
+  user: "users",
   utilizadores: "users",
   utilizador: "users",
+  usuarios: "users",
+  usuario: "users",
+  seats: "seats",
+  seat: "seats",
+  lugares: "seats",
+  agents: "agents",
+  agent: "agents",
+  agentes: "agents",
+  automations: "automations",
+  automation: "automations",
+  automacao: "automations",
+  automacoes: "automations",
+  bots: "automations",
+  contacts: "contacts",
+  contact: "contacts",
+  contatos: "contacts",
+  contato: "contacts",
+  messages: "messages",
+  message: "messages",
+  mensagens: "messages",
+  mensagem: "messages",
 };
 
-function resolveUsageCountKey(key: string): string {
-  return LIMIT_USAGE_ALIASES[key] ?? key;
+export function resolveUsageCountKey(key: string): string {
+  const normalized = normalizePlanLimitUsageKey(key);
+  return LIMIT_USAGE_ALIASES[normalized] ?? normalized;
+}
+
+/** Resolve contagem usada para uma chave de limite do plano (inclui aliases PT/custom). */
+export function resolveUsedCountForPlanLimitKey(
+  planLimitKey: string,
+  usageCounts: Record<string, number>,
+): number {
+  const canonical = resolveUsageCountKey(planLimitKey);
+  if (canonical in usageCounts) return usageCounts[canonical] ?? 0;
+
+  const normalized = normalizePlanLimitUsageKey(planLimitKey);
+  if (/^(user|utilizad|usuario|memb|equipe|team)/.test(normalized)) {
+    return usageCounts.users ?? 0;
+  }
+  if (/^(seat|lugar)/.test(normalized)) {
+    return usageCounts.seats ?? 0;
+  }
+
+  return usageCounts[normalized] ?? 0;
 }
 
 async function buildUsageCounts(organizationId: string): Promise<Record<string, number>> {
@@ -120,6 +173,8 @@ async function buildUsageCounts(organizationId: string): Promise<Record<string, 
     users: members,
     utilizadores: members,
     utilizador: members,
+    usuarios: members,
+    usuario: members,
   };
 }
 
@@ -184,7 +239,7 @@ export async function getOrganizationUsage(organizationId: string): Promise<Orga
       limit = await resolveMessageLimit(organizationId, snap);
     }
 
-    const used = usageCounts[resolveUsageCountKey(key)] ?? 0;
+    const used = resolveUsedCountForPlanLimitKey(key, usageCounts);
     dimensions[key] = {
       used,
       limit,

@@ -69,18 +69,12 @@ export async function listMemberUserIds(organizationId: string): Promise<string[
 
 /**
  * Tamanho da equipe (Configurações → Equipe / limite `users` em billing).
- * Prefer membership rows; fallback legado a `users.organization_id` (pré-backfill).
+ * Conta membros via membership **ou** `users.organization_id` legado (multi-org).
  */
 export async function countOrganizationTeamMembers(organizationId: string): Promise<number> {
-  const membershipCount = await prisma.organizationMembership.count({
-    where: { organizationId },
-  });
-  if (membershipCount > 0) return membershipCount;
-
   return prisma.user.count({
     where: {
-      organizationId,
-      role: { not: "SUPER_ADMIN" },
+      AND: [organizationMembersWhere(organizationId), { role: { not: "SUPER_ADMIN" } }],
     },
   });
 }
