@@ -139,6 +139,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
    * grava a mensagem com `channel = "WEBCHAT"` e o cliente recebe via sessão pública do Web Chat.
    */
   deliveryChannelOverride?: "WEBCHAT";
+  /** Componentes Meta Cloud API completos (header/body/buttons) — integrações externas. */
+  templateMetaComponents?: Array<Record<string, unknown>>;
+  /** Regista mensagem OUTBOUND sem chamar o provider WhatsApp (template já enviado externamente). */
+  skipWhatsappProviderDelivery?: boolean;
 }): Promise<{ message: Message; conversation: Conversation }> {
   const {
     organizationId,
@@ -150,6 +154,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
     postSendConversationPolicy = "default",
     skipCrmFlowTrigger = false,
     deliveryChannelOverride,
+    templateMetaComponents,
+    skipWhatsappProviderDelivery = false,
   } = options;
 
   const {
@@ -413,7 +419,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
   let providerMsgId: string | undefined;
   /** Assunto resolvido no canal EMAIL — persistido no body para listagens/títulos. */
   let resolvedEmailSubject: string | null = null;
-  if (!isPrivate && !deliveryChannelOverride && inboxChannelType === "WHATSAPP") {
+  if (!isPrivate && !deliveryChannelOverride && !skipWhatsappProviderDelivery && inboxChannelType === "WHATSAPP") {
     try {
       const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
       if (provider) {
@@ -453,6 +459,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
                 templateLanguage: templateRow!.templateLanguage,
                 templateBodyParameters:
                   templateRow!.bodyVariableCount > 0 ? (data.templateBodyParameters ?? []) : undefined,
+                templateComponents: templateMetaComponents,
               }
             : {}),
         });
@@ -571,7 +578,9 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   }
 
-  const outboundStatus = deliveryChannelOverride
+  const outboundStatus = skipWhatsappProviderDelivery && !isPrivate && inboxChannelType === "WHATSAPP"
+    ? "SENT"
+    : deliveryChannelOverride
     ? "SENT"
     : isPrivate
     ? "SENT"

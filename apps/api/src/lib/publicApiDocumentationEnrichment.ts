@@ -188,6 +188,21 @@ POST — HTTP 201: objeto Contact criado`,
   "pageSize": 20
 }`,
   },
+  "/api/v1/sendTemplate": {
+    successStatus: 201,
+    exampleResponsePt: `HTTP 201 application/json:
+{
+  "ok": true,
+  "organizationId": "<uuid-organizacao>",
+  "messageId": "<uuid>",
+  "conversationId": "<uuid>",
+  "contactId": "<uuid>",
+  "contactCreated": true,
+  "sentToWhatsapp": true,
+  "inboxId": "<uuid-caixa>",
+  "templateId": "<uuid-modelo>"
+}`,
+  },
   "/api/v1/messages": {
     successStatus: 201,
     exampleResponsePt: `HTTP 201 application/json — Send Message (TEXT):

@@ -105,6 +105,17 @@ export const PUBLIC_TENANT_API_DOCUMENTATION_ENDPOINTS: PublicApiDocEndpoint[] =
   },
   {
     method: "POST",
+    path: "/api/v1/sendTemplate",
+    auth: "session_jwt_or_api_access_token",
+    descriptionEn:
+      "External automation API — send WhatsApp Business template by phone number (auto-creates contact). Accepts organizationId, inboxId, Meta-style components[], sendToWA, inboxType (ai|human) and optional from (inbox phone/UUID). Compatible with nested data{} payloads from third-party integrators.",
+    descriptionPt:
+      "API de automação externa — envia template WhatsApp Business pelo telefone (cria contacto automaticamente). Aceita organizationId, inboxId, components[] no formato Meta, sendToWA, inboxType (ai|human) e from opcional (telefone/UUID da caixa). Compatível com payload aninhado data{} de integradores externos.",
+    examplePayloadPt:
+      'Authorization: Bearer ocu_<token-perfil>\nOrganization-Id: <uuid-tenant> (alternativa ao organizationId no body; super admin)\nContent-Type: application/json\n\nPOST /api/v1/sendTemplate\n\n{\n  "organizationId": "<uuid-organizacao>",\n  "inboxId": "<uuid-caixa-whatsapp>",\n  "to": "5516999999999",\n  "data": {\n    "templateId": "pedido_confirmado",\n    "sendToWA": true,\n    "inboxType": "ai",\n    "components": [\n      {\n        "type": "body",\n        "parameters": [\n          { "type": "text", "text": "Maria Silva" },\n          { "type": "text", "text": "Pedido #4521" }\n        ]\n      }\n    ]\n  }\n}\n\nCampos:\n• organizationId — UUID da organização (tenant). Obrigatório no body se o token não estiver ligado a uma org; para super admin pode substituir o cabeçalho Organization-Id.\n• inboxId — UUID da caixa WhatsApp de origem (GET /api/v1/inboxes). Tem prioridade sobre from.\n• to — telefone internacional do destinatário (E.164 ou dígitos); cria contacto se não existir.\n• from — opcional (legado): telefone da caixa, phone_number_id Meta ou UUID da inbox.\n• templateId — UUID interno (GET /api/v1/templates), providerTemplateId (nome Meta) ou name local.\n• sendToWA — true envia via WhatsApp; false só regista na plataforma (UI).\n• inboxType — "ai" (fila bot/PENDING) ou "human" (handoff humano).\n• components — parâmetros Meta (header/body/buttons); body mapeia para templateBodyParameters.\n\nResposta 201:\n{\n  "ok": true,\n  "organizationId": "<uuid>",\n  "messageId": "<uuid>",\n  "conversationId": "<uuid>",\n  "contactId": "<uuid>",\n  "contactCreated": true,\n  "sentToWhatsapp": true,\n  "inboxId": "<uuid>",\n  "templateId": "<uuid-modelo>"\n}',
+  },
+  {
+    method: "POST",
     path: "/api/v1/messages/upload-audio",
     auth: "session_jwt",
     descriptionEn: "Upload audio for messages.",

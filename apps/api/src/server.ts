@@ -56,6 +56,7 @@ import { channelInboxPublicRoutes } from "./routes/channelInboxPublic.js";
 import { channelNativePublicRoutes } from "./routes/channelNativePublic.js";
 import { publicSystemDocumentationRoutes } from "./routes/publicSystemDocumentation.js";
 import { automationRoutes } from "./routes/automations.js";
+import { externalAutomationRoutes } from "./routes/externalAutomation.js";
 import { automationSuiteRoutes } from "./routes/automationSuite.js";
 import {
   googleCalendarAutomationRoutes,
@@ -249,6 +250,7 @@ await app.register(teamRoutes, { prefix: "/api/v1/teams" });
 await app.register(agentBotInboxRoutes, { prefix: "/api/v1/agent-bot" });
 await app.register(botRoutes, { prefix: "/api/v1/bots" });
   await app.register(automationRoutes, { prefix: "/api/v1/automations" });
+  await app.register(externalAutomationRoutes, { prefix: "/api/v1" });
   await app.register(automationSuiteRoutes, { prefix: "/api/v1/automation" });
   await app.register(googleCalendarAutomationRoutes, { prefix: "/api/v1/automation" });
 await app.register(mcpRoutes, { prefix: "/api/v1/super/mcp" });

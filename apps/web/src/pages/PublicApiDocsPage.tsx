@@ -21,46 +21,62 @@ type PublicEndpoint = {
   errors: PublicApiDocError[];
 };
 
+type PublicDocsSectionVisibility = {
+  conventions: boolean;
+  auth: boolean;
+  schemas: boolean;
+  changelog: boolean;
+  quickGuide: boolean;
+  emailGuide: boolean;
+  n8nGuide: boolean;
+  postmanDownload: boolean;
+  botAutomationNav: boolean;
+};
+
+const DEFAULT_SECTION_VISIBILITY: PublicDocsSectionVisibility = {
+  conventions: true,
+  auth: true,
+  schemas: true,
+  changelog: true,
+  quickGuide: true,
+  emailGuide: true,
+  n8nGuide: true,
+  postmanDownload: true,
+  botAutomationNav: true,
+};
+
+type PublicDocsSchema = {
+  id: string;
+  namePt: string;
+  descriptionPt: string;
+  fields: {
+    name: string;
+    type: string;
+    required: boolean;
+    enumValues?: string[];
+    descriptionPt: string;
+  }[];
+};
+
+type PublicDocsChangelogEntry = {
+  date: string;
+  schemaVersion: number;
+  titlePt: string;
+  changesPt: string[];
+  breaking: boolean;
+};
+
 type PublicDocsPayload = {
   schemaVersion: number;
   generatedAt: string;
   noticeEn: string;
   noticePt: string;
-  conventions: {
-    errorFormatPt: string;
-    errorExampleJson: string;
-    paginationPt: string;
-    paginationExampleJson: string;
-    filtersPt: string;
-    rateLimitPt: string;
-    versioningPt: string;
-    authTable: {
-      tokenTypePt: string;
-      prefix: string;
-      howToObtainPt: string;
-      whereToUsePt: string;
-      whoCanUsePt: string;
-    }[];
+  visibility?: {
+    sections: PublicDocsSectionVisibility;
   };
-  schemas: {
-    id: string;
-    namePt: string;
-    descriptionPt: string;
-    fields: {
-      name: string;
-      type: string;
-      required: boolean;
-      enumValues?: string[];
-      descriptionPt: string;
-    }[];
-  }[];
-  changelog: {
-    date: string;
-    schemaVersion: number;
-    titlePt: string;
-    changesPt: string[];
-    breaking: boolean;
-  }[];
+  conventions?: PublicDocsPayloadConventions;
+  schemas?: PublicDocsSchema[];
+  changelog?: PublicDocsChangelogEntry[];
   groups: {
     id: string;
     titleEn: string;
@@ -83,6 +99,38 @@ type PublicDocsPayload = {
     };
   };
 };
+
+type PublicDocsPayloadConventions = {
+  errorFormatPt: string;
+  errorExampleJson: string;
+  paginationPt: string;
+  paginationExampleJson: string;
+  filtersPt: string;
+  rateLimitPt: string;
+  versioningPt: string;
+  authTable: {
+    tokenTypePt: string;
+    prefix: string;
+    howToObtainPt: string;
+    whereToUsePt: string;
+    whoCanUsePt: string;
+  }[];
+};
+
+function resolveDocsVisibility(payload: PublicDocsPayload): PublicDocsSectionVisibility {
+  return payload.visibility?.sections ?? DEFAULT_SECTION_VISIBILITY;
+}
+
+function normalizeDocsPayload(raw: PublicDocsPayload): PublicDocsPayload & {
+  visibility: { sections: PublicDocsSectionVisibility };
+} {
+  return {
+    ...raw,
+    schemas: raw.schemas ?? [],
+    changelog: raw.changelog ?? [],
+    visibility: { sections: resolveDocsVisibility(raw) },
+  };
+}
 
 const tDoc = (path: string) => translate(DOC_LOCALE, path);
 
@@ -191,6 +239,7 @@ function buildBotAutomationGroups(data: PublicDocsPayload): PublicDocsPayload["g
 function isTenantEndpointForBotAutomation(e: PublicEndpoint): boolean {
   const p = e.path;
   if (p.startsWith("/api/v1/automations")) return true;
+  if (p === "/api/v1/sendTemplate") return true;
   if (p.startsWith("/api/v1/bots")) return true;
   return (
     p === "/api/v1/conversations" ||
@@ -218,7 +267,7 @@ function endpointMatchesQuery(ep: PublicEndpoint, q: string): boolean {
   return hay.includes(q);
 }
 
-function AuthTable({ rows }: { rows: PublicDocsPayload["conventions"]["authTable"] }) {
+function AuthTable({ rows }: { rows: PublicDocsPayloadConventions["authTable"] }) {
   return (
     <div className="mt-3 overflow-x-auto rounded-md border border-ink-200/80 dark:border-ink-700">
       <table className="w-full min-w-[640px] text-left text-xs">
@@ -352,7 +401,7 @@ function DocsEndpointGroupSection({ g }: { g: PublicDocsPayload["groups"][number
 }
 
 export function PublicApiDocsPage() {
-  const [data, setData] = useState<PublicDocsPayload | null>(null);
+  const [data, setData] = useState<(PublicDocsPayload & { visibility: { sections: PublicDocsSectionVisibility } }) | null>(null);
   const [phase404, setPhase404] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -378,7 +427,7 @@ export function PublicApiDocsPage() {
           return;
         }
         const json = (await res.json()) as PublicDocsPayload;
-        if (!cancelled) setData(json);
+        if (!cancelled) setData(normalizeDocsPayload(json));
       })
       .catch(() => {
         if (!cancelled) setError(tDoc("publicDocs.loadError"));
@@ -391,9 +440,12 @@ export function PublicApiDocsPage() {
     };
   }, []);
 
+  const sections = data?.visibility.sections ?? DEFAULT_SECTION_VISIBILITY;
+  const effectiveNavMode: "bot_automation" | "full" = sections.botAutomationNav ? navMode : "full";
+
   const activeGroups = useMemo(() => {
     if (!data) return [];
-    const base = navMode === "bot_automation" ? buildBotAutomationGroups(data) : data.groups;
+    const base = effectiveNavMode === "bot_automation" ? buildBotAutomationGroups(data) : data.groups;
     const q = search.trim().toLowerCase();
     if (!q) return base;
     return base
@@ -402,18 +454,18 @@ export function PublicApiDocsPage() {
         endpoints: g.endpoints.filter((ep) => endpointMatchesQuery(ep, q)),
       }))
       .filter((g) => g.endpoints.length > 0);
-  }, [data, navMode, search]);
+  }, [data, effectiveNavMode, search]);
 
   const navEntries = useMemo(() => {
     if (!data) return [];
-    const base = navMode === "bot_automation" ? buildBotAutomationGroups(data) : data.groups;
+    const base = effectiveNavMode === "bot_automation" ? buildBotAutomationGroups(data) : data.groups;
     const q = search.trim().toLowerCase();
     return base.flatMap((g) => {
       const eps = q ? g.endpoints.filter((ep) => endpointMatchesQuery(ep, q)) : g.endpoints;
       if (!eps.length && q) return [];
       return [{ kind: "group" as const, id: g.id, title: g.titlePt }, ...eps.map((ep) => ({ kind: "endpoint" as const, ep, groupId: g.id }))];
     });
-  }, [data, navMode, search]);
+  }, [data, effectiveNavMode, search]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900 dark:from-ink-950 dark:via-ink-950 dark:to-[#0d1218] dark:text-ink-100 print:bg-white">
@@ -434,7 +486,7 @@ export function PublicApiDocsPage() {
             <a href="/api/v1/public/system-documentation" className="btn-secondary text-sm shadow-sm" target="_blank" rel="noopener noreferrer">
               {tDoc("publicDocs.jsonLink")}
             </a>
-            {data ? (
+            {data && sections.postmanDownload ? (
               <a
                 href={`/api/v1/public/system-documentation/postman`}
                 className="btn-secondary text-sm shadow-sm"
@@ -482,12 +534,13 @@ export function PublicApiDocsPage() {
                   placeholder={tDoc("publicDocs.searchPlaceholder")}
                   className="mb-3 w-full rounded-md border border-ink-200 bg-white px-2.5 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-950"
                 />
+                {sections.botAutomationNav ? (
                 <div className="mb-3 flex rounded-lg border border-ink-200/90 p-0.5 dark:border-ink-700">
                   <button
                     type="button"
                     onClick={() => setNavMode("full")}
                     className={`flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold leading-tight transition-colors ${
-                      navMode === "full" ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600" : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
+                      effectiveNavMode === "full" ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600" : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
                     }`}
                   >
                     {tDoc("publicDocs.navFullApi")}
@@ -496,34 +549,49 @@ export function PublicApiDocsPage() {
                     type="button"
                     onClick={() => setNavMode("bot_automation")}
                     className={`flex-1 rounded-md px-2 py-1.5 text-center text-[11px] font-semibold leading-tight transition-colors ${
-                      navMode === "bot_automation" ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600" : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
+                      effectiveNavMode === "bot_automation" ? "bg-brand-500 text-white shadow-sm dark:bg-brand-600" : "text-ink-600 hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-ink-800"
                     }`}
                   >
                     {tDoc("publicDocs.navBotAutomation")}
                   </button>
                 </div>
+                ) : null}
                 <nav className="max-h-[70vh] space-y-0.5 overflow-y-auto text-sm">
-                  <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#convencoes">
-                    {tDoc("publicDocs.navConventions")}
-                  </a>
-                  <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#autenticacao">
-                    {tDoc("publicDocs.navAuth")}
-                  </a>
-                  <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#modelos">
-                    {tDoc("publicDocs.navSchemas")}
-                  </a>
-                  <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#changelog">
-                    {tDoc("publicDocs.navChangelog")}
-                  </a>
-                  <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-rapido">
-                    {tDoc("publicDocs.navQuickGuide")}
-                  </a>
-                  <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-email">
-                    {tDoc("publicDocs.navEmailGuide")}
-                  </a>
-                  <a className="block rounded px-2 py-1 font-semibold text-orange-800 hover:bg-orange-50 dark:text-orange-200 dark:hover:bg-orange-950/40" href="#guia-n8n">
-                    {tDoc("publicDocs.navN8nGuide")}
-                  </a>
+                  {sections.conventions ? (
+                    <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#convencoes">
+                      {tDoc("publicDocs.navConventions")}
+                    </a>
+                  ) : null}
+                  {sections.auth ? (
+                    <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#autenticacao">
+                      {tDoc("publicDocs.navAuth")}
+                    </a>
+                  ) : null}
+                  {sections.schemas ? (
+                    <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#modelos">
+                      {tDoc("publicDocs.navSchemas")}
+                    </a>
+                  ) : null}
+                  {sections.changelog ? (
+                    <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#changelog">
+                      {tDoc("publicDocs.navChangelog")}
+                    </a>
+                  ) : null}
+                  {sections.quickGuide ? (
+                    <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-rapido">
+                      {tDoc("publicDocs.navQuickGuide")}
+                    </a>
+                  ) : null}
+                  {sections.emailGuide ? (
+                    <a className="block rounded px-2 py-1 hover:bg-ink-100 dark:hover:bg-ink-800" href="#guia-email">
+                      {tDoc("publicDocs.navEmailGuide")}
+                    </a>
+                  ) : null}
+                  {sections.n8nGuide ? (
+                    <a className="block rounded px-2 py-1 font-semibold text-orange-800 hover:bg-orange-50 dark:text-orange-200 dark:hover:bg-orange-950/40" href="#guia-n8n">
+                      {tDoc("publicDocs.navN8nGuide")}
+                    </a>
+                  ) : null}
                   {navEntries.map((entry, i) =>
                     entry.kind === "group" ? (
                       <a
@@ -548,6 +616,7 @@ export function PublicApiDocsPage() {
               </aside>
 
               <div className="space-y-10 print:space-y-6">
+                {sections.conventions && data.conventions ? (
                 <section id="convencoes" className="scroll-mt-24 rounded-lg border border-ink-200/90 bg-white p-5 shadow-sm dark:border-ink-700 dark:bg-ink-900/80">
                   <h2 className="text-lg font-bold text-ink-900 dark:text-white">{tDoc("publicDocs.conventionsTitle")}</h2>
                   <div className="mt-4 space-y-6 text-sm text-ink-700 dark:text-ink-300">
@@ -579,7 +648,9 @@ export function PublicApiDocsPage() {
                     </div>
                   </div>
                 </section>
+                ) : null}
 
+                {sections.auth && data.conventions ? (
                 <section
                   id="autenticacao"
                   className="scroll-mt-24 rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/90 to-white px-4 py-4 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60"
@@ -588,7 +659,9 @@ export function PublicApiDocsPage() {
                   <p className="mt-2 text-sm leading-relaxed text-ink-700 dark:text-ink-300">{tDoc("publicDocs.authLegendBody")}</p>
                   <AuthTable rows={data.conventions.authTable} />
                 </section>
+                ) : null}
 
+                {sections.schemas && data.schemas.length > 0 ? (
                 <section id="modelos" className="scroll-mt-24 rounded-lg border border-ink-200/90 bg-white p-5 shadow-sm dark:border-ink-700 dark:bg-ink-900/80">
                   <h2 className="text-lg font-bold text-ink-900 dark:text-white">{tDoc("publicDocs.schemasTitle")}</h2>
                   <p className="mt-1 text-sm text-ink-600 dark:text-ink-400">{tDoc("publicDocs.schemasIntro")}</p>
@@ -627,7 +700,9 @@ export function PublicApiDocsPage() {
                     ))}
                   </div>
                 </section>
+                ) : null}
 
+                {sections.changelog && data.changelog.length > 0 ? (
                 <section id="changelog" className="scroll-mt-24 rounded-lg border border-ink-200/90 bg-white p-5 shadow-sm dark:border-ink-700 dark:bg-ink-900/80">
                   <h2 className="text-lg font-bold text-ink-900 dark:text-white">{tDoc("publicDocs.changelogTitle")}</h2>
                   <ol className="mt-4 space-y-4">
@@ -654,8 +729,9 @@ export function PublicApiDocsPage() {
                     ))}
                   </ol>
                 </section>
+                ) : null}
 
-                {/* Guias rápidos — mantidos, com DocCodeBlock */}
+                {sections.quickGuide ? (
                 <section id="guia-rapido" className="scroll-mt-24 rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/80 to-white p-5 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60 print:break-inside-avoid">
                   <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.automationGuideTitle")}</h2>
                   <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">{tDoc("publicDocs.automationGuideIntro")}</p>
@@ -670,7 +746,9 @@ export function PublicApiDocsPage() {
                     </a>
                   </p>
                 </section>
+                ) : null}
 
+                {sections.emailGuide ? (
                 <section id="guia-email" className="scroll-mt-24 rounded-lg border border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 to-white p-5 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/25 dark:to-ink-900/60 print:break-inside-avoid">
                   <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.emailGuideTitle")}</h2>
                   <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">{tDoc("publicDocs.emailGuideIntro")}</p>
@@ -680,8 +758,9 @@ export function PublicApiDocsPage() {
                     </a>
                   </p>
                 </section>
+                ) : null}
 
-                {data.guides?.n8n ? (
+                {sections.n8nGuide && data.guides?.n8n ? (
                   <PublicApiN8nGuideSection
                     guide={data.guides.n8n}
                     diagramCaption={tDoc("publicDocs.n8nDiagramCaption")}

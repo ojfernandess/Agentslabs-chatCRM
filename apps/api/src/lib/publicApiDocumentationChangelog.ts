@@ -9,6 +9,28 @@ export type PublicApiDocChangelogEntry = {
 export const PUBLIC_API_DOCUMENTATION_CHANGELOG: PublicApiDocChangelogEntry[] = [
   {
     date: "2026-09-18",
+    schemaVersion: 17,
+    titlePt: "sendTemplate com organizationId/inboxId e visibilidade configurável em /docs",
+    changesPt: [
+      "POST /api/v1/sendTemplate aceita organizationId e inboxId no body para integrações externas",
+      "Super admin pode escolher secções e grupos de endpoints visíveis na página /docs",
+      "Payload público inclui visibility.sections; export Postman respeita a mesma configuração",
+    ],
+    breaking: false,
+  },
+  {
+    date: "2026-09-18",
+    schemaVersion: 16,
+    titlePt: "POST /api/v1/sendTemplate para integrações externas",
+    changesPt: [
+      "Novo endpoint POST /api/v1/sendTemplate — telefone do destinatário, criação automática de contacto, components Meta e token ocu_",
+      "Campos sendToWA (registar sem enviar), inboxType ai|human e from (caixa WhatsApp)",
+      "templateId aceita UUID interno, providerTemplateId (nome Meta) ou name local",
+    ],
+    breaking: false,
+  },
+  {
+    date: "2026-09-18",
     schemaVersion: 15,
     titlePt: "Tokens ocu_/ocp_, paridade de auth e docs sem duplicados",
     changesPt: [

@@ -59,6 +59,12 @@ import {
   type HelpCenterConfig,
 } from "../lib/helpCenterSettings.js";
 import {
+  PUBLIC_SYSTEM_DOCUMENTATION_GROUP_OPTIONS,
+  PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY,
+  parsePublicSystemDocumentationConfig,
+  type PublicSystemDocumentationConfig,
+} from "../lib/platformPublicDocs.js";
+import {
   RESEND_EMAIL_PLATFORM_KEY,
   getBillingReminderTemplatesForEditor,
   getPasswordResetTemplatesForEditor,
@@ -2137,6 +2143,66 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return value;
+  });
+
+  const publicDocsSectionSchema = z.object({
+    conventions: z.boolean(),
+    auth: z.boolean(),
+    schemas: z.boolean(),
+    changelog: z.boolean(),
+    quickGuide: z.boolean(),
+    emailGuide: z.boolean(),
+    n8nGuide: z.boolean(),
+    postmanDownload: z.boolean(),
+    botAutomationNav: z.boolean(),
+  });
+
+  const publicDocsPutSchema = z.object({
+    enabled: z.boolean(),
+    sections: publicDocsSectionSchema,
+    groups: z.record(z.string(), z.boolean()),
+  });
+
+  app.get("/public-docs-config", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY },
+    });
+    const config = parsePublicSystemDocumentationConfig(row?.value);
+    return {
+      ...config,
+      availableGroups: PUBLIC_SYSTEM_DOCUMENTATION_GROUP_OPTIONS,
+    };
+  });
+
+  app.put("/public-docs-config", async (request, reply) => {
+    const parsed = publicDocsPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const value: PublicSystemDocumentationConfig = parsed.data;
+    await prisma.platformSetting.upsert({
+      where: { key: PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY },
+      create: { key: PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.public_docs_config.upsert",
+      resourceType: "platform_setting",
+      resourceId: PUBLIC_SYSTEM_DOCUMENTATION_SETTING_KEY,
+      metadata: {
+        enabled: value.enabled,
+        visibleGroups: Object.entries(value.groups)
+          .filter(([, on]) => on)
+          .map(([id]) => id),
+        sections: value.sections,
+      },
+      ip: clientIp(request),
+    });
+    return {
+      ...value,
+      availableGroups: PUBLIC_SYSTEM_DOCUMENTATION_GROUP_OPTIONS,
+    };
   });
 
   /**

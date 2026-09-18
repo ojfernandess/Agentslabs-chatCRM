@@ -11,6 +11,8 @@ export interface SendMessageParams {
   templateLanguage?: string;
   /** Valores {{1}}, {{2}}, … para o componente BODY (Cloud API). */
   templateBodyParameters?: string[];
+  /** Componentes completos da Meta Cloud API (header/body/buttons). Tem prioridade sobre templateBodyParameters. */
+  templateComponents?: Array<Record<string, unknown>>;
   /** Botões de resposta rápida (Meta interactive, máx. 3). */
   interactiveButtons?: { id: string; title: string }[];
 }

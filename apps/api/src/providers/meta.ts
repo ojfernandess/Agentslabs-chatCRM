@@ -36,17 +36,21 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         name: params.templateName,
         language: { code: params.templateLanguage ?? "en" },
       };
-      const comps = params.templateBodyParameters?.filter((x) => x.length > 0);
-      if (comps && comps.length > 0) {
-        tpl.components = [
-          {
-            type: "body",
-            parameters: comps.map((text) => ({
-              type: "text",
-              text: text.length > 1024 ? text.slice(0, 1024) : text,
-            })),
-          },
-        ];
+      if (params.templateComponents?.length) {
+        tpl.components = params.templateComponents;
+      } else {
+        const comps = params.templateBodyParameters?.filter((x) => x.length > 0);
+        if (comps && comps.length > 0) {
+          tpl.components = [
+            {
+              type: "body",
+              parameters: comps.map((text) => ({
+                type: "text",
+                text: text.length > 1024 ? text.slice(0, 1024) : text,
+              })),
+            },
+          ];
+        }
       }
       payload.template = tpl;
     } else if (params.type === "IMAGE" && params.mediaUrl) {

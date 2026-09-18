@@ -1,13 +1,10 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { isPublicSystemDocumentationEnabled } from "../lib/platformPublicDocs.js";
 import {
-  PUBLIC_API_DOCUMENTATION_GROUPS,
-  enrichDocumentationGroups,
-  PUBLIC_API_DOCUMENTATION_CONVENTIONS,
-  PUBLIC_API_DOCUMENTATION_SCHEMAS,
-  PUBLIC_API_DOCUMENTATION_CHANGELOG,
-} from "../lib/publicApiDocumentationCatalog.js";
-import { PUBLIC_API_DOCUMENTATION_N8N_GUIDE } from "../lib/publicApiDocumentationN8nGuide.js";
+  buildPublicSystemDocumentationPayload,
+  filterDocumentationGroupsForPostman,
+  getPublicSystemDocumentationConfig,
+  PUBLIC_SYSTEM_DOCUMENTATION_SCHEMA_VERSION,
+} from "../lib/platformPublicDocs.js";
 import { buildPostmanCollectionV21 } from "../lib/publicApiDocumentationPostman.js";
 
 function setCorsPublic(reply: FastifyReply) {
@@ -18,7 +15,7 @@ function setCorsPublic(reply: FastifyReply) {
 
 /**
  * Documentação HTTP pública do sistema (sem segredos). Só responde se
- * `platform_settings.public_system_documentation_enabled` for verdadeiro.
+ * `platform_settings.public_system_documentation_enabled` estiver activo.
  */
 export async function publicSystemDocumentationRoutes(app: FastifyInstance): Promise<void> {
   app.options("/system-documentation", async (_request, reply) => {
@@ -28,26 +25,12 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
 
   app.get("/system-documentation", async (_request, reply) => {
     setCorsPublic(reply);
-    const enabled = await isPublicSystemDocumentationEnabled();
-    if (!enabled) {
+    const config = await getPublicSystemDocumentationConfig();
+    if (!config.enabled) {
       return reply.status(404).send({ error: "Not Found", message: "Documentation is not public", statusCode: 404 });
     }
 
-    return {
-      schemaVersion: 15,
-      generatedAt: new Date().toISOString(),
-      noticeEn:
-        "This catalog lists routes, auth, request/response examples and error codes. It never includes real tokens, organization IDs, or secrets.",
-      noticePt:
-        "Este catálogo lista rotas, autenticação, exemplos de pedido/resposta e códigos de erro. Nunca inclui tokens reais, IDs de organização nem segredos. Ver «Convenções gerais» e «Modelos de dados» antes dos endpoints.",
-      conventions: PUBLIC_API_DOCUMENTATION_CONVENTIONS,
-      schemas: PUBLIC_API_DOCUMENTATION_SCHEMAS,
-      changelog: PUBLIC_API_DOCUMENTATION_CHANGELOG,
-      guides: {
-        n8n: PUBLIC_API_DOCUMENTATION_N8N_GUIDE,
-      },
-      groups: enrichDocumentationGroups(PUBLIC_API_DOCUMENTATION_GROUPS),
-    };
+    return buildPublicSystemDocumentationPayload(config);
   });
 
   app.options("/system-documentation/postman", async (_request, reply) => {
@@ -57,15 +40,17 @@ export async function publicSystemDocumentationRoutes(app: FastifyInstance): Pro
 
   app.get("/system-documentation/postman", async (_request, reply) => {
     setCorsPublic(reply);
-    const enabled = await isPublicSystemDocumentationEnabled();
-    if (!enabled) {
+    const config = await getPublicSystemDocumentationConfig();
+    if (!config.enabled) {
       return reply.status(404).send({ error: "Not Found", message: "Documentation is not public", statusCode: 404 });
     }
+    if (!config.sections.postmanDownload) {
+      return reply.status(404).send({ error: "Not Found", message: "Postman export is disabled", statusCode: 404 });
+    }
 
-    const schemaVersion = 15;
-    const groups = enrichDocumentationGroups(PUBLIC_API_DOCUMENTATION_GROUPS);
-    const collection = buildPostmanCollectionV21(groups, schemaVersion);
-    const filename = `opennexo-crm-api-v${schemaVersion}.postman_collection.json`;
+    const groups = filterDocumentationGroupsForPostman(config);
+    const collection = buildPostmanCollectionV21(groups, PUBLIC_SYSTEM_DOCUMENTATION_SCHEMA_VERSION);
+    const filename = `opennexo-crm-api-v${PUBLIC_SYSTEM_DOCUMENTATION_SCHEMA_VERSION}.postman_collection.json`;
 
     return reply
       .header("Content-Type", "application/json; charset=utf-8")
