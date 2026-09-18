@@ -10,7 +10,10 @@ const {
   formatTeamHubCopilotSystemPrompt,
   formatTeamHubCopilotUserContext,
   teamHubCopilotMaxConversations,
+  teamHubCopilotMaxContextChars,
+  teamHubCopilotMaxMessageChars,
   teamHubCopilotMaxMessages,
+  truncateCopilotText,
 } = await import("./teamHubCopilotContext.js");
 
 type TeamHubCopilotLoadedContext = Parameters<typeof formatTeamHubCopilotSystemPrompt>[0];
@@ -25,7 +28,7 @@ function sampleContext(overrides: Partial<TeamHubCopilotLoadedContext> = {}): Te
     },
     totalCount: 42,
     sampledCount: 2,
-    maxConversations: 15,
+    maxConversations: 8,
     byStatus: { OPEN: 10, PENDING: 5, RESOLVED: 27 },
     byInbox: [
       { name: "WhatsApp", count: 30 },
@@ -69,14 +72,14 @@ describe("teamHubCopilotMaxConversations", () => {
   it("returns default when env is unset", () => {
     const prev = process.env.TEAM_COPILOT_MAX_CONVERSATIONS;
     delete process.env.TEAM_COPILOT_MAX_CONVERSATIONS;
-    assert.equal(teamHubCopilotMaxConversations(), 15);
+    assert.equal(teamHubCopilotMaxConversations(), 8);
     if (prev !== undefined) process.env.TEAM_COPILOT_MAX_CONVERSATIONS = prev;
   });
 
   it("clamps invalid values", () => {
     const prev = process.env.TEAM_COPILOT_MAX_CONVERSATIONS;
     process.env.TEAM_COPILOT_MAX_CONVERSATIONS = "999";
-    assert.equal(teamHubCopilotMaxConversations(), 40);
+    assert.equal(teamHubCopilotMaxConversations(), 20);
     process.env.TEAM_COPILOT_MAX_CONVERSATIONS = "1";
     assert.equal(teamHubCopilotMaxConversations(), 3);
     if (prev !== undefined) process.env.TEAM_COPILOT_MAX_CONVERSATIONS = prev;
@@ -88,7 +91,7 @@ describe("teamHubCopilotMaxMessages", () => {
   it("returns default when env is unset", () => {
     const prev = process.env.TEAM_COPILOT_MAX_MESSAGES;
     delete process.env.TEAM_COPILOT_MAX_MESSAGES;
-    assert.equal(teamHubCopilotMaxMessages(), 12);
+    assert.equal(teamHubCopilotMaxMessages(), 6);
     if (prev !== undefined) process.env.TEAM_COPILOT_MAX_MESSAGES = prev;
   });
 });
@@ -136,11 +139,50 @@ describe("formatTeamHubCopilotConversationBlock", () => {
   });
 });
 
+describe("truncateCopilotText", () => {
+  it("strips html and truncates long bodies", () => {
+    const long = `<p>${"x".repeat(500)}</p>`;
+    const out = truncateCopilotText(long, 40);
+    assert.ok(out.length <= 40);
+    assert.doesNotMatch(out, /<p>/);
+  });
+});
+
 describe("formatTeamHubCopilotUserContext", () => {
   it("combines stats, conversation detail and user prompt", () => {
     const content = formatTeamHubCopilotUserContext(sampleContext(), "Quais conversas estão paradas?");
     assert.match(content, /Resumo operacional:/);
     assert.match(content, /--- Conversa #1 ---/);
     assert.match(content, /Pedido do usuário:\nQuais conversas estão paradas\?/);
+  });
+
+  it("omits extra conversations when context budget is exceeded", () => {
+    const prev = process.env.TEAM_COPILOT_MAX_CONTEXT_CHARS;
+    process.env.TEAM_COPILOT_MAX_CONTEXT_CHARS = "12000";
+
+    const conversations = Array.from({ length: 20 }, (_, index) => ({
+      ...sampleContext().conversations[0]!,
+      id: `conv-${index}`,
+      contact: {
+        ...sampleContext().conversations[0]!.contact,
+        name: `Contato ${index}`,
+      },
+      messages: [
+        {
+          direction: "INBOUND",
+          body: "Preciso de ajuda com um pedido longo ".repeat(20),
+          isPrivate: false,
+        },
+      ],
+    }));
+
+    const content = formatTeamHubCopilotUserContext(
+      sampleContext({ conversations, sampledCount: conversations.length }),
+      "Resumo?",
+    );
+    assert.match(content, /omitida\(s\) para respeitar o limite de contexto|contexto truncado para respeitar o limite do modelo/);
+
+    if (prev !== undefined) process.env.TEAM_COPILOT_MAX_CONTEXT_CHARS = prev;
+    else delete process.env.TEAM_COPILOT_MAX_CONTEXT_CHARS;
   });
 });

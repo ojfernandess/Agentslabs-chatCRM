@@ -11,6 +11,7 @@ import {
 } from "../lib/teamChannelMessagePayload.js";
 import {
   AssistLlmError,
+  replyAssistLlmCallError,
   replyAssistLlmUnavailable,
   resolveAssistLlmForOrganization,
 } from "../lib/agentAssistLlm.js";
@@ -661,7 +662,17 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       if (err instanceof AssistLlmError) {
         return replyAssistLlmUnavailable(reply, { ok: false, reason: err.code });
       }
-      throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/Request too large|tokens per min|rate_limit_exceeded/i.test(msg)) {
+        return reply.status(413).send({
+          error: "Payload Too Large",
+          message:
+            "O contexto das conversas é grande demais para o modelo de IA. Tente uma pergunta mais específica ou peça ao administrador para reduzir os limites TEAM_COPILOT_* no servidor.",
+          code: "copilot_context_too_large",
+          statusCode: 413,
+        });
+      }
+      return replyAssistLlmCallError(reply, err);
     }
   });
 }
