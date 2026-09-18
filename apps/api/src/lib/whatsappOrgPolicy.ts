@@ -96,6 +96,7 @@ type LedgerAggRow = {
   messageCategory: string;
   billingStatus: string;
   currency: string | null;
+  metaBillable: boolean | null;
   _count: { _all: number };
   _sum: { estimatedCost: unknown };
 };
@@ -116,6 +117,8 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
       billable: number;
       estimatedCost: number;
       costSamples: number;
+      billableDelivered: number;
+      nonBillableDelivered: number;
       currency: string | null;
     }
   >();
@@ -127,6 +130,8 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
       billable: 0,
       estimatedCost: 0,
       costSamples: 0,
+      billableDelivered: 0,
+      nonBillableDelivered: 0,
       currency: null,
     });
   }
@@ -138,7 +143,11 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
     const count = row._count._all;
     const status = row.billingStatus;
     if (status !== "BLOCKED") bucket.sent += count;
-    if (status === "DELIVERED" || status === "READ") bucket.delivered += count;
+    if (status === "DELIVERED" || status === "READ") {
+      bucket.delivered += count;
+      if (row.metaBillable === true) bucket.billableDelivered += count;
+      else if (row.metaBillable === false) bucket.nonBillableDelivered += count;
+    }
     if (status === "FAILED") bucket.failed += count;
     const cost = toNumber(row._sum.estimatedCost);
     if (cost != null && (status === "DELIVERED" || status === "READ")) {
@@ -155,14 +164,29 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
 
   return WHATSAPP_CONSUMPTION_CATEGORIES.map((category) => {
     const b = byCat.get(category)!;
+    const hasBillabilitySignal = b.billableDelivered + b.nonBillableDelivered > 0;
+    let billable: number | null = null;
+    let estimatedCost: number | null = null;
+    let currency: string | null = null;
+
+    if (b.costSamples > 0) {
+      billable = b.billable;
+      estimatedCost = b.estimatedCost;
+      currency = b.currency;
+    } else if (hasBillabilitySignal) {
+      billable = b.billableDelivered;
+      estimatedCost = b.billableDelivered > 0 ? null : 0;
+      currency = null;
+    }
+
     return {
       category,
       sent: b.sent,
       delivered: b.delivered,
       failed: b.failed,
-      billable: b.costSamples > 0 ? b.billable : null,
-      estimatedCost: b.costSamples > 0 ? b.estimatedCost : null,
-      currency: b.costSamples > 0 ? b.currency : null,
+      billable,
+      estimatedCost,
+      currency,
     };
   });
 }
@@ -173,7 +197,7 @@ export async function getWhatsappConsumption(params: {
   to: Date;
 }): Promise<CategoryConsumptionRow[]> {
   const rows = await prisma.messageBillingLedgerEntry.groupBy({
-    by: ["messageCategory", "billingStatus", "currency"],
+    by: ["messageCategory", "billingStatus", "currency", "metaBillable"],
     where: {
       organizationId: params.organizationId,
       channel: "WHATSAPP",

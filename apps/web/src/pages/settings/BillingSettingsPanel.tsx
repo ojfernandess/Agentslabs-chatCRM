@@ -827,6 +827,9 @@ export function BillingSettingsPanel() {
                 ? t("settings.billingUsageIntroOverage")
                 : t("settings.billingUsageIntro")}
             </p>
+            {overview.usage.dimensions.automations ? (
+              <p className={clsx(settingsMuted, "text-xs")}>{t("settings.billingUsageAutomationsHint")}</p>
+            ) : null}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {(overview.usage.dimensionOrder.length > 0

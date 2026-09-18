@@ -5397,6 +5397,8 @@ export const messages = {
       whatsappConsumptionFailed: "Falhou",
       whatsappConsumptionBillable: "Cobráveis",
       whatsappConsumptionEstimatedCost: "Custo estimado",
+      whatsappConsumptionBillableHint:
+        "«Não disponível» aparece sem entregas ou sem rate card sincronizado. Mensagens grátis (Service/Utility in-window ou franquia) mostram 0 cobráveis após entrega.",
       whatsappCatSERVICE: "Service",
       whatsappCatUTILITY: "Utility",
       whatsappCatMARKETING: "Marketing",
@@ -5549,6 +5551,8 @@ export const messages = {
       billingInvoiceStatus_uncollectible: "Incobrável",
       billingInvoiceStatus_void: "Anulada",
       billingUsageIntro: "Consumo do plano neste ciclo de faturação.",
+      billingUsageAutomationsHint:
+        "Automações / bots inclui todos os bots da organização. Agentes IA nativos também contam em «Agentes IA»; bots webhook/n8n respeitam o limite de automações ao criar.",
       billingUsageIntroOverage:
         "Consumo do plano. Acima do limite, novas criações são permitidas e o excesso é cobrado via Stripe.",
       billingUsageOverLimitBlock: "Limite atingido — novas criações bloqueadas.",
@@ -12143,6 +12147,8 @@ export const messages = {
       whatsappConsumptionFailed: "Failed",
       whatsappConsumptionBillable: "Billable",
       whatsappConsumptionEstimatedCost: "Estimated cost",
+      whatsappConsumptionBillableHint:
+        "Not available means no deliveries yet or no synced rate card. Free messages (in-window Service/Utility or free tier) show 0 billable after delivery.",
       whatsappCatSERVICE: "Service",
       whatsappCatUTILITY: "Utility",
       whatsappCatMARKETING: "Marketing",
@@ -12293,6 +12299,8 @@ export const messages = {
       billingInvoiceStatus_uncollectible: "Uncollectible",
       billingInvoiceStatus_void: "Void",
       billingUsageIntro: "Plan usage in this billing cycle.",
+      billingUsageAutomationsHint:
+        "Automations / bots counts every bot in the organization. Native AI agents also appear under AI agents; webhook/n8n bots enforce the automations limit on create.",
       billingUsageIntroOverage:
         "Plan usage. Above the limit, new resources are allowed and overage is billed via Stripe.",
       billingUsageOverLimitBlock: "Limit reached — new creations are blocked.",

@@ -84,8 +84,13 @@ async function countPendingAgentInvites(organizationId: string): Promise<number>
   });
 }
 
-/** Bots legados / webhooks sem perfil de agente IA (limits.automations). */
-async function countAutomations(organizationId: string): Promise<number> {
+/** Total de bots da organização — exibido em «Automações / bots» (inclui agentes nativos OpenConduit). */
+async function countAllBots(organizationId: string): Promise<number> {
+  return prisma.bot.count({ where: { organizationId } });
+}
+
+/** Bots legados / webhooks sem perfil de agente IA — enforcement de limits.automations. */
+async function countLegacyAutomations(organizationId: string): Promise<number> {
   return prisma.bot.count({
     where: { organizationId, automationProfile: null },
   });
@@ -160,7 +165,7 @@ export function resolveUsedCountForPlanLimitKey(
 async function buildUsageCounts(organizationId: string): Promise<Record<string, number>> {
   const [aiAgents, automations, contacts, messageStats, humanSeats, members] = await Promise.all([
     countAiAgents(organizationId),
-    countAutomations(organizationId),
+    countAllBots(organizationId),
     countContacts(organizationId),
     countMonthlyMessages(organizationId),
     countHumanAgentSeats(organizationId),
@@ -352,7 +357,7 @@ export async function assertCanAddAutomations(
   const snap = await requireSnapshot(organizationId);
   if (!isEnforcedLimit(snap, "automations")) return;
   const limit = resolveLimitValue(snap.limits.automations);
-  const used = await countAutomations(organizationId);
+  const used = await countLegacyAutomations(organizationId);
   await enforceUsageLimit({
     organizationId,
     dimension: "automations",

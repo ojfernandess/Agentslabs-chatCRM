@@ -63,6 +63,7 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
         messageCategory: "SERVICE",
         billingStatus: "SENT",
         currency: null,
+        metaBillable: null,
         _count: { _all: 5 },
         _sum: { estimatedCost: null },
       },
@@ -70,6 +71,7 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
         messageCategory: "SERVICE",
         billingStatus: "DELIVERED",
         currency: null,
+        metaBillable: null,
         _count: { _all: 3 },
         _sum: { estimatedCost: null },
       },
@@ -77,6 +79,7 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
         messageCategory: "SERVICE",
         billingStatus: "FAILED",
         currency: null,
+        metaBillable: null,
         _count: { _all: 1 },
         _sum: { estimatedCost: null },
       },
@@ -89,12 +92,45 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
     assert.equal(service.estimatedCost, null);
   });
 
+  it("shows zero billable/cost when delivered messages are explicitly non-billable", () => {
+    const rows = foldLedgerAggregation([
+      {
+        messageCategory: "SERVICE",
+        billingStatus: "DELIVERED",
+        currency: null,
+        metaBillable: false,
+        _count: { _all: 12 },
+        _sum: { estimatedCost: null },
+      },
+    ]);
+    const service = rows.find((r) => r.category === "SERVICE")!;
+    assert.equal(service.billable, 0);
+    assert.equal(service.estimatedCost, 0);
+  });
+
+  it("shows billable count without cost when delivered is billable but rate card is missing", () => {
+    const rows = foldLedgerAggregation([
+      {
+        messageCategory: "MARKETING",
+        billingStatus: "DELIVERED",
+        currency: null,
+        metaBillable: true,
+        _count: { _all: 2 },
+        _sum: { estimatedCost: null },
+      },
+    ]);
+    const m = rows.find((r) => r.category === "MARKETING")!;
+    assert.equal(m.billable, 2);
+    assert.equal(m.estimatedCost, null);
+  });
+
   it("propagates currency from delivered rows with cost", () => {
     const rows = foldLedgerAggregation([
       {
         messageCategory: "MARKETING",
         billingStatus: "DELIVERED",
         currency: "USD",
+        metaBillable: true,
         _count: { _all: 2 },
         _sum: { estimatedCost: 0.125 },
       },

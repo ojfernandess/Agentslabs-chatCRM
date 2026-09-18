@@ -249,6 +249,7 @@ export function WhatsappOrgPolicyPanel() {
         <h3 className={settingsTitle}>{t("settings.whatsappConsumptionTitle")}</h3>
         <p className={clsx(settingsSubtitle, "mt-1")}>{t("settings.whatsappConsumptionSubtitle")}</p>
         <p className={clsx(settingsMuted, "mt-1 text-xs")}>{t("settings.whatsappConsumptionEstimateHint")}</p>
+        <p className={clsx(settingsMuted, "mt-1 text-xs")}>{t("settings.whatsappConsumptionBillableHint")}</p>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {(["today", "7d", "30d", "month"] as const).map((id) => (
