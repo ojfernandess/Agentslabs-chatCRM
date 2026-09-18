@@ -65,6 +65,13 @@ import {
   type PublicSystemDocumentationConfig,
 } from "../lib/platformPublicDocs.js";
 import {
+  API_ENDPOINT_RATE_LIMIT_CATALOG,
+  API_ENDPOINT_RATE_LIMITS_SETTING_KEY,
+  invalidateApiEndpointRateLimitConfigCache,
+  parseApiEndpointRateLimitConfig,
+  type ApiEndpointRateLimitConfig,
+} from "../lib/apiEndpointRateLimitSettings.js";
+import {
   RESEND_EMAIL_PLATFORM_KEY,
   getBillingReminderTemplatesForEditor,
   getPasswordResetTemplatesForEditor,
@@ -2202,6 +2209,60 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     return {
       ...value,
       availableGroups: PUBLIC_SYSTEM_DOCUMENTATION_GROUP_OPTIONS,
+    };
+  });
+
+  const apiRateLimitRuleSchema = z.object({
+    enabled: z.boolean(),
+    max: z.number().int().min(1).max(10_000),
+    timeWindowSeconds: z.number().int().min(1).max(86_400),
+    keyBy: z.enum(["organization", "api_token", "user", "ip"]),
+  });
+
+  const apiRateLimitPutSchema = z.object({
+    endpoints: z.object({
+      send_template: apiRateLimitRuleSchema,
+      messages_post: apiRateLimitRuleSchema,
+      templates_list: apiRateLimitRuleSchema,
+    }),
+  });
+
+  app.get("/api-endpoint-rate-limits", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: API_ENDPOINT_RATE_LIMITS_SETTING_KEY },
+    });
+    const config = parseApiEndpointRateLimitConfig(row?.value);
+    return {
+      ...config,
+      catalog: API_ENDPOINT_RATE_LIMIT_CATALOG,
+    };
+  });
+
+  app.put("/api-endpoint-rate-limits", async (request, reply) => {
+    const parsed = apiRateLimitPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const value: ApiEndpointRateLimitConfig = parsed.data;
+    await prisma.platformSetting.upsert({
+      where: { key: API_ENDPOINT_RATE_LIMITS_SETTING_KEY },
+      create: { key: API_ENDPOINT_RATE_LIMITS_SETTING_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    invalidateApiEndpointRateLimitConfigCache();
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.api_endpoint_rate_limits.upsert",
+      resourceType: "platform_setting",
+      resourceId: API_ENDPOINT_RATE_LIMITS_SETTING_KEY,
+      metadata: {
+        endpoints: value.endpoints,
+      },
+      ip: clientIp(request),
+    });
+    return {
+      ...value,
+      catalog: API_ENDPOINT_RATE_LIMIT_CATALOG,
     };
   });
 

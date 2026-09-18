@@ -10,6 +10,7 @@ import {
 } from "../lib/messageMediaUpload.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
+import { enforceApiEndpointRateLimit } from "../lib/apiEndpointRateLimit.js";
 
 export async function messageRoutes(app: FastifyInstance): Promise<void> {
   /** Upload de áudio (reconhecimento de voz / microfone) — WebM, OGG, MP4, … */
@@ -52,7 +53,15 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(out);
   });
 
-  app.post("/", { preHandler: [authenticateSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
+  app.post(
+    "/",
+    {
+      preHandler: [
+        authenticateSessionOrUserApiTokenForApplicationApis,
+        enforceApiEndpointRateLimit("messages_post"),
+      ],
+    },
+    async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 

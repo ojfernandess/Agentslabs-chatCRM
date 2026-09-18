@@ -20,6 +20,7 @@ import {
 } from "../lib/evolutionTemplatePayload.js";
 import { evolutionCreateBusinessTemplate } from "../providers/evolution.js";
 import type { Prisma } from "@prisma/client";
+import { enforceApiEndpointRateLimit } from "../lib/apiEndpointRateLimit.js";
 
 const templateSchema = z.object({
   name: z.string().min(1).max(100),
@@ -56,7 +57,7 @@ function shouldRunWabaSync(organizationId: string, inboxId?: string): boolean {
 export async function templateRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticateSessionOrUserApiTokenForApplicationApis);
 
-  app.get("/", async (request, reply) => {
+  app.get("/", { preHandler: [enforceApiEndpointRateLimit("templates_list")] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     const q = request.query as { inboxId?: string; sync?: string };

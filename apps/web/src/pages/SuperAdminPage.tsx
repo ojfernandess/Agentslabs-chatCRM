@@ -26,6 +26,7 @@ import {
   type SuperSection,
 } from "@/components/super-admin/SuperAdminShell";
 import { SuperAdminPublicDocsPanel } from "@/components/super-admin/SuperAdminPublicDocsPanel";
+import { SuperAdminApiRateLimitPanel } from "@/components/super-admin/SuperAdminApiRateLimitPanel";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 import { ResendBillingReminderTemplateEditor } from "@/components/ResendBillingReminderTemplateEditor";
@@ -2034,6 +2035,7 @@ export function SuperAdminPage() {
                 <p className="mt-1 text-sm text-ink-600">{t("superAdmin.globalSettingsSubtitle")}</p>
               </div>
               <SuperAdminPublicDocsPanel />
+              <SuperAdminApiRateLimitPanel />
               <section className="card-surface p-6">
                 <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.mediaStorageTitle")}</h2>
                 <p className="mb-4 text-sm text-ink-600">{t("superAdmin.mediaStorageSubtitle")}</p>

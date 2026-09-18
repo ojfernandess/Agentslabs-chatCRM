@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { authenticateSessionOrUserApiTokenForApplicationApis } from "../middleware/auth.js";
+import { enforceApiEndpointRateLimit } from "../lib/apiEndpointRateLimit.js";
 import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import {
   executeExternalSendTemplate,
@@ -18,7 +19,15 @@ function isTenantAdminLike(user: { role: string; actingOrganizationId?: string |
  * Base: `/api/v1`
  */
 export async function externalAutomationRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/sendTemplate", { preHandler: [authenticateSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
+  app.post(
+    "/sendTemplate",
+    {
+      preHandler: [
+        authenticateSessionOrUserApiTokenForApplicationApis,
+        enforceApiEndpointRateLimit("send_template"),
+      ],
+    },
+    async (request, reply) => {
     if (!isTenantAdminLike(request.user)) {
       return reply.status(403).send({
         error: "Forbidden",

@@ -47,7 +47,7 @@ export const PUBLIC_API_DOCUMENTATION_CONVENTIONS: PublicApiDocConventions = {
   filtersPt:
     "Filtros comuns (nem todas as rotas suportam todos):\n• `search` — texto livre (contactos, utilizadores)\n• `status` — estado (conversas: OPEN, PENDING, RESOLVED)\n• `inboxId`, `teamId`, `assignedToId`, `leadTypeId`, `mine` — conversas\n• `trash`, `starred`, `emailFolderId`, `q` — workspace de e-mail (com inboxId)\n• `hasEmail=1` — contactos com e-mail\n• `tag`, `stage`, `assignee` — contactos\n• `from` / `to` — relatórios e algumas listagens temporais",
   rateLimitPt:
-    "Limite global: 400 pedidos por minuto por IP ou por prefixo de JWT de sessão (`@fastify/rate-limit` em server.ts). Rotas públicas (webhooks, /api/v1/public/*, media, WebSocket) estão na allowList e não contam esse limite. POST /api/v1/auth/login tem limite adicional: 15 tentativas por 15 minutos por IP.",
+    "Limite global: 400 pedidos por minuto por IP ou por prefixo de JWT de sessão (`@fastify/rate-limit` em server.ts). Rotas públicas (webhooks, /api/v1/public/*, media, WebSocket) estão na allowList e não contam esse limite. POST /api/v1/auth/login tem limite adicional: 15 tentativas por 15 minutos por IP. Limites adicionais configuráveis (Super Admin): POST /api/v1/sendTemplate, POST /api/v1/messages e GET /api/v1/templates — por organização, token ou IP; resposta HTTP 429 quando excedido.",
   versioningPt:
     "Todas as rotas documentadas estão sob o prefixo `/api/v1`. O campo `schemaVersion` no JSON desta documentação indica a versão do catálogo (não da API). Versões futuras (`/api/v2`) serão anunciadas no changelog; `/v1` mantém-se estável para integradores existentes.",
   authTable: [
