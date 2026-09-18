@@ -117,13 +117,17 @@ type PublicDocsPayloadConventions = {
   }[];
 };
 
+type PublicDocsPayloadNormalized = Omit<PublicDocsPayload, "schemas" | "changelog" | "visibility"> & {
+  schemas: PublicDocsSchema[];
+  changelog: PublicDocsChangelogEntry[];
+  visibility: { sections: PublicDocsSectionVisibility };
+};
+
 function resolveDocsVisibility(payload: PublicDocsPayload): PublicDocsSectionVisibility {
   return payload.visibility?.sections ?? DEFAULT_SECTION_VISIBILITY;
 }
 
-function normalizeDocsPayload(raw: PublicDocsPayload): PublicDocsPayload & {
-  visibility: { sections: PublicDocsSectionVisibility };
-} {
+function normalizeDocsPayload(raw: PublicDocsPayload): PublicDocsPayloadNormalized {
   return {
     ...raw,
     schemas: raw.schemas ?? [],
@@ -215,7 +219,7 @@ function isAuthEndpointForBotAutomation(e: PublicEndpoint): boolean {
   return e.path === "/api/v1/auth/login" || e.path === "/api/v1/auth/me/access-token";
 }
 
-function buildBotAutomationGroups(data: PublicDocsPayload): PublicDocsPayload["groups"] {
+function buildBotAutomationGroups(data: PublicDocsPayloadNormalized): PublicDocsPayloadNormalized["groups"] {
   const auth = data.groups.find((g) => g.id === "auth");
   const tenant = data.groups.find((g) => g.id === "tenant_api");
   const agentBot = data.groups.find((g) => g.id === "agent_bot");
@@ -401,7 +405,7 @@ function DocsEndpointGroupSection({ g }: { g: PublicDocsPayload["groups"][number
 }
 
 export function PublicApiDocsPage() {
-  const [data, setData] = useState<(PublicDocsPayload & { visibility: { sections: PublicDocsSectionVisibility } }) | null>(null);
+  const [data, setData] = useState<PublicDocsPayloadNormalized | null>(null);
   const [phase404, setPhase404] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
