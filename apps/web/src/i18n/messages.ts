@@ -2914,11 +2914,11 @@ export const messages = {
         YOUTUBE: "Vídeos",
       },
       aiTitle: "Copiloto IA",
-      aiHint: "Análise operacional com contexto das conversas da equipa.",
+      aiHint: "Análise operacional com contexto das conversas da equipe.",
       aiEmpty: "Faça uma pergunta sobre produtividade, fila ou próximos passos.",
       aiPlaceholder: "Ex.: Quais conversas precisam de atenção urgente?",
       aiAsk: "Perguntar",
-      aiBusy: "A pensar…",
+      aiBusy: "Pensando",
       aiError: "Não foi possível obter resposta da IA.",
       adminTitle: "Administração operacional",
       adminOperationalTeamHint:

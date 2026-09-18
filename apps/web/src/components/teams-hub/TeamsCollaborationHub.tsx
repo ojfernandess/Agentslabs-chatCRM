@@ -248,11 +248,13 @@ export function TeamsCollaborationHub() {
   };
 
   const runAi = async () => {
-    if (!selected?.id || !aiPrompt.trim()) return;
+    const prompt = aiPrompt.trim();
+    if (!selected?.id || !prompt) return;
+    setAiPrompt("");
     setAiBusy(true);
     try {
       const res = await api.post<{ answer: string }>(`/teams/${selected.id}/hub/ai`, {
-        prompt: aiPrompt.trim(),
+        prompt,
       });
       setAiAnswer(res.answer);
     } catch {
@@ -787,7 +789,20 @@ export function TeamsCollaborationHub() {
                 <p className="mt-1 text-xs text-ink-500">{t("teamsHub.aiHint")}</p>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                {aiAnswer ? (
+                {aiBusy ? (
+                  <div
+                    className="flex items-center gap-2 text-sm text-ink-600 dark:text-ink-300"
+                    aria-live="polite"
+                    aria-busy="true"
+                  >
+                    <span>{t("teamsHub.aiBusy")}</span>
+                    <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-violet-500 [animation-delay:-0.2s] dark:bg-violet-400" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-violet-500 [animation-delay:-0.1s] dark:bg-violet-400" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-violet-500 dark:bg-violet-400" />
+                    </span>
+                  </div>
+                ) : aiAnswer ? (
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink-800 dark:text-ink-100">{aiAnswer}</p>
                 ) : (
                   <p className="text-sm text-ink-500">{t("teamsHub.aiEmpty")}</p>
@@ -800,9 +815,15 @@ export function TeamsCollaborationHub() {
                   rows={3}
                   placeholder={t("teamsHub.aiPlaceholder")}
                   className="input-field mb-2 w-full resize-none text-sm"
+                  disabled={aiBusy}
                 />
-                <button type="button" disabled={aiBusy} onClick={() => void runAi()} className="btn-primary w-full text-sm">
-                  {aiBusy ? t("teamsHub.aiBusy") : t("teamsHub.aiAsk")}
+                <button
+                  type="button"
+                  disabled={aiBusy || !aiPrompt.trim()}
+                  onClick={() => void runAi()}
+                  className="btn-primary w-full text-sm disabled:opacity-50"
+                >
+                  {t("teamsHub.aiAsk")}
                 </button>
               </div>
             </aside>
