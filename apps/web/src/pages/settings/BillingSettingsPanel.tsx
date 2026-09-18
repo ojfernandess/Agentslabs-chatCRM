@@ -13,6 +13,13 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
+import {
+  AI_CREDIT_RECOMMENDED_PACKAGE_SLUG,
+  aiCreditPackageTierLabel,
+  formatAiCreditsBalance,
+  formatAiCreditsHistoryAmount,
+  formatAiCreditsPackageCount,
+} from "@/lib/aiCreditsDisplay";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   settingsCard,
@@ -174,21 +181,6 @@ function formatDate(iso: string | null, locale: string): string {
   return new Date(iso).toLocaleDateString(locale);
 }
 
-function formatAiCreditsAmount(value: string, currency: string, locale: string): string {
-  const amount = Number.parseFloat(value);
-  if (!Number.isFinite(amount)) return value;
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: "currency",
-      currency: currency.toUpperCase(),
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    }).format(amount);
-  } catch {
-    return `${amount.toFixed(4)} ${currency.toUpperCase()}`;
-  }
-}
-
 function statusLabelKey(status: string): string {
   return `settings.billingStatus_${status}`;
 }
@@ -313,24 +305,10 @@ export function BillingSettingsPanel() {
   const stripeConfigured = Boolean(overview?.stripeConfigured && overview?.providers?.stripe?.enabled !== false);
 
   const visibleAiCreditPackages = useMemo(() => {
-    const all = overview?.aiCreditPackages ?? [];
-    if (mercadoPagoConfigured && !stripeConfigured) {
-      const brl = all.filter((pkg) => pkg.currency.toUpperCase() === "BRL");
-      return brl.length > 0 ? brl : all;
-    }
-    if (stripeConfigured && !mercadoPagoConfigured) {
-      const usd = all.filter((pkg) => pkg.currency.toUpperCase() === "USD");
-      return usd.length > 0 ? usd : all;
-    }
-    return all;
-  }, [overview?.aiCreditPackages, mercadoPagoConfigured, stripeConfigured]);
-
-  const aiCreditPackageHint =
-    mercadoPagoConfigured && !stripeConfigured
-      ? t("settings.aiCreditsPackagesMpHint")
-      : stripeConfigured && !mercadoPagoConfigured
-        ? t("settings.aiCreditsPackagesStripeHint")
-        : null;
+    return [...(overview?.aiCreditPackages ?? [])]
+      .filter((pkg) => pkg.isActive)
+      .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
+  }, [overview?.aiCreditPackages]);
 
   const aiCreditPurchaseStatusLabel = (status: string) => {
     const key = `settings.aiCreditsPurchaseStatus_${status.toLowerCase()}`;
@@ -533,12 +511,8 @@ export function BillingSettingsPanel() {
   };
 
   const buyAiCreditPackage = async (pkg: AiCreditPackageRow) => {
-    if (mercadoPagoConfigured && pkg.currency.toUpperCase() !== "BRL") {
-      setError("Este pacote não está disponível para Pix. Escolha um pacote em BRL.");
-      return;
-    }
-    if (stripeConfigured && !mercadoPagoConfigured && pkg.currency.toUpperCase() !== "USD") {
-      setError("Este pacote não está disponível para Stripe. Escolha um pacote em USD.");
+    if (!checkoutAvailable) {
+      setError(t("settings.aiCreditsCheckoutUnavailable"));
       return;
     }
     if (mercadoPagoConfigured) {
@@ -549,7 +523,7 @@ export function BillingSettingsPanel() {
       await startAiCreditCheckout(pkg, "stripe");
       return;
     }
-    setError("Nenhum provedor de pagamento configurado para compra de créditos.");
+    setError(t("settings.aiCreditsCheckoutUnavailable"));
   };
 
   const handleAiCreditPaymentMethod = async (
@@ -695,85 +669,101 @@ export function BillingSettingsPanel() {
       ) : null}
 
       {overview?.aiBillingMode === "PLATFORM_CREDITS" && overview.aiCredits ? (
-        <section className={clsx(settingsCard, "space-y-4")}>
+        <section className={clsx(settingsCard, "space-y-6")}>
           <div>
-            <h3 className={settingsTitle}>Créditos de IA</h3>
-            <p className={settingsSubtitle}>
-              Consumo faturado pela plataforma. O saldo disponível inclui reservas em curso.
-            </p>
+            <h3 className={settingsTitle}>{t("settings.aiCreditsSectionTitle")}</h3>
+            <p className={settingsSubtitle}>{t("settings.aiCreditsSectionSubtitle")}</p>
           </div>
           {aiCreditsNotice === "success" ? (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
-              Compra de créditos concluída. O saldo será atualizado em instantes.
+              {t("settings.aiCreditsPurchaseSuccess")}
             </div>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-ink-200/80 p-3 dark:border-ink-700/80">
-              <p className={settingsMuted}>Disponível</p>
-              <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-ink-50">
-                {formatAiCreditsAmount(
-                  overview.aiCredits.availableBalance,
-                  overview.aiCredits.currency,
-                  locale,
+          <div className="rounded-xl border border-ink-200/80 bg-ink-50/40 p-4 dark:border-ink-700/80 dark:bg-ink-900/20">
+            <p className={settingsMuted}>{t("settings.aiCreditsAvailableLabel")}</p>
+            <p className="mt-1 text-2xl font-semibold text-ink-900 dark:text-ink-50">
+              {formatAiCreditsBalance(
+                overview.aiCredits.availableBalance,
+                localeTag,
+                t("settings.aiCreditsUnitShort"),
+              )}
+            </p>
+            <div className="mt-3 grid gap-2 text-xs text-ink-500 dark:text-ink-400 sm:grid-cols-2">
+              <p>
+                {t("settings.aiCreditsTotalLabel")}:{" "}
+                {formatAiCreditsBalance(
+                  overview.aiCredits.balance,
+                  localeTag,
+                  t("settings.aiCreditsUnitShort"),
                 )}
               </p>
-            </div>
-            <div className="rounded-lg border border-ink-200/80 p-3 dark:border-ink-700/80">
-              <p className={settingsMuted}>Saldo total</p>
-              <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-ink-50">
-                {formatAiCreditsAmount(overview.aiCredits.balance, overview.aiCredits.currency, locale)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-ink-200/80 p-3 dark:border-ink-700/80">
-              <p className={settingsMuted}>Reservado</p>
-              <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-ink-50">
-                {formatAiCreditsAmount(
+              <p>
+                {t("settings.aiCreditsReservedLabel")}:{" "}
+                {formatAiCreditsBalance(
                   overview.aiCredits.reservedBalance,
-                  overview.aiCredits.currency,
-                  locale,
+                  localeTag,
+                  t("settings.aiCreditsUnitShort"),
                 )}
               </p>
             </div>
           </div>
 
           {visibleAiCreditPackages.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-semibold text-ink-900 dark:text-ink-50">Comprar créditos</h4>
-                {aiCreditPackageHint ? (
-                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{aiCreditPackageHint}</p>
-                ) : null}
+                <h4 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+                  {t("settings.aiCreditsPackagesTitle")}
+                </h4>
+                <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                  {t("settings.aiCreditsPackagesIntro")}
+                </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
-                {visibleAiCreditPackages.map((pkg) => (
-                  <div
-                    key={pkg.id}
-                    className="rounded-lg border border-ink-200/80 p-4 dark:border-ink-700/80"
-                  >
-                    <p className="font-medium text-ink-900 dark:text-ink-50">{pkg.name}</p>
-                    {pkg.description ? (
-                      <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{pkg.description}</p>
-                    ) : null}
-                    <p className="mt-3 text-sm text-ink-700 dark:text-ink-200">
-                      +{formatAiCreditsAmount(pkg.creditAmount, "USD", locale)}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-ink-900 dark:text-ink-50">
-                      {formatMoney(pkg.amountCents, pkg.currency, localeTag)}
-                    </p>
-                    <button
-                      type="button"
-                      className="btn-primary mt-4 w-full"
-                      disabled={busy === `ai-credit-${pkg.id}` || !checkoutAvailable}
-                      onClick={() => void buyAiCreditPackage(pkg)}
-                    >
-                      {busy === `ai-credit-${pkg.id}` ? (
-                        <Loader2 className="mx-auto h-4 w-4 animate-spin" />
-                      ) : (
-                        "Comprar"
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+                {visibleAiCreditPackages.map((pkg) => {
+                  const isRecommended = pkg.slug === AI_CREDIT_RECOMMENDED_PACKAGE_SLUG;
+                  const creditCount = formatAiCreditsPackageCount(pkg.creditAmount, localeTag);
+                  return (
+                    <div
+                      key={pkg.id}
+                      className={clsx(
+                        "relative flex min-h-[220px] flex-col rounded-xl border p-5",
+                        isRecommended
+                          ? "border-brand-500/50 bg-brand-50/40 shadow-sm ring-1 ring-brand-500/20 dark:border-brand-500/40 dark:bg-brand-950/20"
+                          : "border-ink-200/80 dark:border-ink-700/80",
                       )}
-                    </button>
-                  </div>
-                ))}
+                    >
+                      {isRecommended ? (
+                        <span className="absolute -top-2.5 left-4 rounded-full bg-brand-600 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          {t("settings.aiCreditsRecommendedBadge")}
+                        </span>
+                      ) : null}
+                      <p className="text-xs font-semibold uppercase tracking-wider text-ink-500 dark:text-ink-400">
+                        {aiCreditPackageTierLabel(pkg.slug)}
+                      </p>
+                      <p className="mt-3 text-2xl font-semibold text-ink-900 dark:text-ink-50">
+                        {t("settings.aiCreditsPackageCreditsLine").replace("{count}", creditCount)}
+                      </p>
+                      <p className="mt-2 flex-1 text-sm leading-relaxed text-ink-600 dark:text-ink-300">
+                        {pkg.description ?? ""}
+                      </p>
+                      <p className="mt-4 text-xl font-semibold text-ink-900 dark:text-ink-50">
+                        {formatMoney(pkg.amountCents, pkg.currency, localeTag)}
+                      </p>
+                      <button
+                        type="button"
+                        className={clsx("btn-primary mt-4 w-full", isRecommended && "shadow-sm")}
+                        disabled={busy === `ai-credit-${pkg.id}` || !checkoutAvailable}
+                        onClick={() => void buyAiCreditPackage(pkg)}
+                      >
+                        {busy === `ai-credit-${pkg.id}` ? (
+                          <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                        ) : (
+                          t("settings.aiCreditsBuyButton")
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -791,18 +781,24 @@ export function BillingSettingsPanel() {
                 <table className="min-w-full text-sm">
                   <thead className="bg-ink-50 text-left text-xs uppercase tracking-wide text-ink-500 dark:bg-ink-900/40">
                     <tr>
-                      <th className="px-3 py-2">Pacote</th>
-                      <th className="px-3 py-2">Créditos</th>
-                      <th className="px-3 py-2">Valor</th>
-                      <th className="px-3 py-2">Estado</th>
-                      <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2">{t("settings.aiCreditsHistoryColPackage")}</th>
+                      <th className="px-3 py-2">{t("settings.aiCreditsHistoryColCredits")}</th>
+                      <th className="px-3 py-2">{t("settings.aiCreditsHistoryColAmount")}</th>
+                      <th className="px-3 py-2">{t("settings.aiCreditsHistoryColStatus")}</th>
+                      <th className="px-3 py-2">{t("settings.aiCreditsHistoryColDate")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {aiCreditPurchases.map((row) => (
                       <tr key={row.id} className="border-t border-ink-100 dark:border-ink-800">
                         <td className="px-3 py-2">{row.packageName}</td>
-                        <td className="px-3 py-2">{formatAiCreditsAmount(row.creditAmount, "USD", locale)}</td>
+                        <td className="px-3 py-2">
+                          {formatAiCreditsHistoryAmount(
+                            row.creditAmount,
+                            localeTag,
+                            t("settings.aiCreditsUnitShort"),
+                          )}
+                        </td>
                         <td className="px-3 py-2">{formatMoney(row.amountCents, row.currency, localeTag)}</td>
                         <td className="px-3 py-2">{aiCreditPurchaseStatusLabel(row.status)}</td>
                         <td className="px-3 py-2 text-xs text-ink-500">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Coins, Loader2, Pencil, Plus } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
+import { formatAiCreditsAdminUnits } from "@/lib/aiCreditsDisplay";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
@@ -57,15 +58,7 @@ function formatMoney(cents: number, currency: string, locale: string): string {
 }
 
 function formatCredits(value: string, locale: string): string {
-  const amount = Number.parseFloat(value);
-  if (!Number.isFinite(amount)) return value;
-  try {
-    return new Intl.NumberFormat(locale, { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(
-      amount,
-    );
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
+  return formatAiCreditsAdminUnits(value, locale);
 }
 
 function formatDateTime(iso: string | null, locale: string): string {
