@@ -86,6 +86,17 @@ export async function authenticate(
           "Esta rota exige JWT de POST /api/v1/auth/login. O token ocb_ do bot funciona em GET /api/v1/bots e GET /api/v1/bots/:id (só o próprio bot, leitura), em /api/v1/agent-bot/*, mas não em POST/PATCH/DELETE em /api/v1/bots.",
       });
     }
+    if (raw?.startsWith("ocu_")) {
+      return reply.status(401).send({
+        error: "Unauthorized",
+        statusCode: 401,
+        code: "PROFILE_API_TOKEN_NOT_ALLOWED",
+        message:
+          "This route requires a session JWT from POST /api/v1/auth/login. Use the profile API token (ocu_) via Authorization: Bearer ocu_... or header api_access_token on application API routes (e.g. GET /api/v1/templates, POST /api/v1/messages).",
+        messagePt:
+          "Esta rota exige JWT de POST /api/v1/auth/login. Use o token de perfil (ocu_) com Authorization: Bearer ocu_... ou cabeçalho api_access_token nas rotas de API pública (ex.: GET /api/v1/templates, POST /api/v1/messages).",
+      });
+    }
     return reply.status(401).send({ error: "Unauthorized", message: "Invalid or expired token", statusCode: 401 });
   }
 }
@@ -119,6 +130,23 @@ export async function requireAdmin(
 ): Promise<void> {
   await authenticate(request, reply);
   if (reply.sent) return;
+  const u = request.user;
+  if (!u) return;
+
+  if (await isUserTenantAdmin(u)) return;
+
+  reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+}
+
+/** Admin check for application APIs authenticated with JWT or profile `ocu_` token. */
+export async function requireAdminSessionOrUserApiTokenForApplicationApis(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  if (!request.user?.id) {
+    await authenticateSessionOrUserApiTokenForApplicationApis(request, reply);
+    if (reply.sent) return;
+  }
   const u = request.user;
   if (!u) return;
 

@@ -207,6 +207,8 @@ function isTenantEndpointForBotAutomation(e: PublicEndpoint): boolean {
     p === "/api/v1/pipeline/stages/:id" ||
     p === "/api/v1/lead-types" ||
     p === "/api/v1/lead-types/:id" ||
+    p === "/api/v1/templates" ||
+    p.startsWith("/api/v1/templates") ||
     p === "/api/v1/contacts/:id/stage"
   );
 }
@@ -583,6 +585,7 @@ export function PublicApiDocsPage() {
                   className="scroll-mt-24 rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/90 to-white px-4 py-4 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60"
                 >
                   <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.authLegendTitle")}</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-700 dark:text-ink-300">{tDoc("publicDocs.authLegendBody")}</p>
                   <AuthTable rows={data.conventions.authTable} />
                 </section>
 

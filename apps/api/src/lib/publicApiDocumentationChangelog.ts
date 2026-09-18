@@ -8,6 +8,19 @@ export type PublicApiDocChangelogEntry = {
 
 export const PUBLIC_API_DOCUMENTATION_CHANGELOG: PublicApiDocChangelogEntry[] = [
   {
+    date: "2026-09-18",
+    schemaVersion: 15,
+    titlePt: "Tokens ocu_/ocp_, paridade de auth e docs sem duplicados",
+    changesPt: [
+      "GET /api/v1/templates, POST /api/v1/messages e rotas de automação/funil aceitam token de perfil ocu_ (além de JWT)",
+      "Token ocp_ documentado para /api/v1/platform/* — emitido apenas mediante autorização da plataforma",
+      "POST /api/v1/messages e POST /api/v1/agent-bot/messages unificados (TEXT + TEMPLATE numa entrada)",
+      "Removida duplicação de GET /api/v1/automations/teams na secção de ferramentas nativas",
+      "Tabela de autenticação simplificada; upload de mídia permanece só com JWT",
+    ],
+    breaking: false,
+  },
+  {
     date: "2026-08-08",
     schemaVersion: 14,
     titlePt: "Send Message e Send Template na documentação",

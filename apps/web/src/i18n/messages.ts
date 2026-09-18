@@ -56,7 +56,7 @@ export const messages = {
       loadError: "Não foi possível carregar a documentação.",
       jsonLink: "JSON bruto",
       postmanLink: "Exportar Postman",
-      postmanHint: "Coleção v2.1 com variáveis jwt, ocu_, ocb_ e baseUrl — importe em Postman → Import.",
+      postmanHint: "Coleção v2.1 com variáveis jwt, ocu_, ocb_, ocp_ e baseUrl — importe em Postman → Import.",
       authHeading: "Auth",
       generatedAt: "Gerado em",
       colMethod: "Método",
@@ -65,7 +65,7 @@ export const messages = {
       colExample: "Exemplo (payload)",
       authLegendTitle: "Guia rápido de autenticação",
       authLegendBody:
-        "• JWT de sessão — POST /api/v1/auth/login com email e senha de usuário ADMIN ou SUPER_ADMIN. Envie o campo `token` da resposta em Authorization: Bearer <jwt> nas rotas do painel (/api/v1/…).\n\n• Token de perfil (ocu_) — gerado em Configurações → Perfil. Use o cabeçalho `api_access_token: ocu_…` ou `Authorization: Bearer ocu_…` nas rotas de automação e funil. SUPER_ADMIN com ocu_ deve enviar também o UUID do tenant (`organization-id`, `x-organization-id` ou `?organizationId=`).\n\n• Token do bot (ocb_) — gerado na página Bots. Use Authorization: Bearer ocb_… em /api/v1/agent-bot/*. Para só consultar o bot: GET /api/v1/bots.\n\n• Criar, editar ou apagar bots: apenas JWT de admin, nunca só com ocb_.",
+        "Consulte a tabela abaixo para saber qual token usar em cada rota. Prefixos: JWT (sessão), ocu_ (integrações do tenant), ocb_ (bot), ocp_ (aplicação de plataforma — emitido apenas mediante autorização).",
       auth: {
         none: "Nenhuma",
         session_jwt: "JWT de sessão (usuário)",
@@ -74,7 +74,7 @@ export const messages = {
           "JWT ou ocb_ (só GET /api/v1/bots e GET /bots/:id)",
         super_admin_jwt: "JWT super admin",
         agent_bot_bearer: "Bearer ocb_ (token de inbox do bot)",
-        platform_app_bearer: "Bearer app de plataforma",
+        platform_app_bearer: "Bearer ocp_ (app de plataforma autorizada)",
         path_ingest_token: "Token no path (ingestão)",
       },
       navTitle: "Navegação",
@@ -6902,7 +6902,7 @@ export const messages = {
       loadError: "Could not load documentation.",
       jsonLink: "Raw JSON",
       postmanLink: "Export to Postman",
-      postmanHint: "v2.1 collection with jwt, ocu_, ocb_ and baseUrl variables — Postman → Import.",
+      postmanHint: "v2.1 collection with jwt, ocu_, ocb_, ocp_ and baseUrl variables — Postman → Import.",
       authHeading: "Auth",
       generatedAt: "Generated at",
       colMethod: "Method",
@@ -6911,7 +6911,7 @@ export const messages = {
       colExample: "Example (payload)",
       authLegendTitle: "Authentication quick guide",
       authLegendBody:
-        "• Session JWT — POST /api/v1/auth/login with an ADMIN or SUPER_ADMIN email and password. Send the response `token` as Authorization: Bearer <jwt> on /api/v1/… routes.\n\n• Profile token (ocu_) — from Settings → Profile. Use header `api_access_token: ocu_…` or `Authorization: Bearer ocu_…` on automation and funnel routes. SUPER_ADMIN with ocu_ must also send the tenant UUID (`organization-id`, `x-organization-id`, or `?organizationId=`).\n\n• Bot token (ocb_) — from Bots page. Use Authorization: Bearer ocb_… on /api/v1/agent-bot/*. Read-only bot lookup: GET /api/v1/bots.\n\n• Create/update/delete bots: JWT only, not ocb_.",
+        "Use the table below to choose the right token per route. Prefixes: JWT (session), ocu_ (tenant integrations), ocb_ (bot), ocp_ (platform app — issued only upon authorization).",
       auth: {
         none: "None",
         session_jwt: "Session JWT (user)",
@@ -6920,7 +6920,7 @@ export const messages = {
           "JWT or ocb_ (GET /api/v1/bots and GET /bots/:id only)",
         super_admin_jwt: "Super admin JWT",
         agent_bot_bearer: "Bearer ocb_ (bot inbox token)",
-        platform_app_bearer: "Platform application bearer",
+        platform_app_bearer: "Bearer ocp_ (authorized platform app)",
         path_ingest_token: "Secret token in path (ingest)",
       },
       navTitle: "Navigation",

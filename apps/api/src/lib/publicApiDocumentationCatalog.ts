@@ -361,22 +361,11 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         path: "/api/v1/agent-bot/messages",
         auth: "agent_bot_bearer",
         descriptionEn:
-          "Send Message (agent bot) — outbound text via bot Bearer token (ocb_). Same schema as POST /api/v1/messages without isPrivate.",
+          "Send Message (TEXT) or Send Template (WhatsApp Business) via bot Bearer token (ocb_). Same schema as POST /api/v1/messages without isPrivate. templateBodyParameters map to Meta components body parameters.",
         descriptionPt:
-          "Send Message (agent bot) — envia texto de saída com Bearer do bot (ocb_). Mesmo schema que POST /api/v1/messages, sem isPrivate.",
+          "Send Message (TEXT) ou Send Template (WhatsApp Business) com Bearer do bot (ocb_). Mesmo schema que POST /api/v1/messages, sem isPrivate. templateBodyParameters mapeia para components (body) da API Meta.",
         examplePayloadPt:
-          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST /api/v1/agent-bot/messages\nContent-Type: application/json\n\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Olá! Sou o assistente virtual. Em que posso ajudar?"\n}\n\nResposta 201:\n{\n  "message": { "id": "<uuid>", "type": "TEXT", "direction": "OUTBOUND", "body": "…" },\n  "conversationId": "<uuid>",\n  "agent_bot_id": "<uuid-do-bot>"\n}',
-      },
-      {
-        method: "POST",
-        path: "/api/v1/agent-bot/messages",
-        auth: "agent_bot_bearer",
-        descriptionEn:
-          "Send Template (agent bot) — WhatsApp Business template with dynamic parameters via bot token. templateBodyParameters map to Meta components body parameters.",
-        descriptionPt:
-          "Send Template (agent bot) — template WhatsApp Business com parâmetros dinâmicos via token do bot. templateBodyParameters mapeia para components (body) da API Meta.",
-        examplePayloadPt:
-          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST /api/v1/agent-bot/messages\nContent-Type: application/json\n\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo>",\n  "templateBodyParameters": ["Maria Silva", "Pedido #4521"]\n}\n\nEquivalente Meta (montado pela plataforma):\ncomponents: [{ type: "body", parameters: [{ type: "text", text: "Maria Silva" }, { type: "text", text: "Pedido #4521" }] }]',
+          'Authorization: Bearer ocb_<token-do-bot>\n\nPOST /api/v1/agent-bot/messages\nContent-Type: application/json\n\n— Send Message (texto):\n{\n  "contactId": "<uuid>",\n  "conversationId": "<uuid-opcional>",\n  "type": "TEXT",\n  "body": "Olá! Sou o assistente virtual. Em que posso ajudar?"\n}\n\nResposta 201:\n{\n  "message": { "id": "<uuid>", "type": "TEXT", "direction": "OUTBOUND", "body": "…" },\n  "conversationId": "<uuid>",\n  "agent_bot_id": "<uuid-do-bot>"\n}\n\n— Send Template:\n{\n  "contactId": "<uuid>",\n  "type": "TEMPLATE",\n  "templateId": "<uuid-modelo>",\n  "templateBodyParameters": ["Maria Silva", "Pedido #4521"]\n}',
       },
       {
         method: "PATCH",
@@ -420,8 +409,9 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         path: "/api/v1/platform/me",
         auth: "platform_app_bearer",
         descriptionEn: "Verify platform app token and return identity metadata.",
-        descriptionPt: "Validar token da aplicação de plataforma e metadados.",
-        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <platform_app_token>",
+        descriptionPt: "Validar token da aplicação de plataforma (prefixo ocp_) e metadados.",
+        examplePayloadPt:
+          "Sem corpo.\n\nAuthorization: Bearer ocp_<token>\n\nO token ocp_ é emitido apenas mediante autorização da plataforma — não é gerado no painel do tenant.",
       },
       {
         method: "GET",
@@ -429,7 +419,8 @@ export const PUBLIC_API_DOCUMENTATION_GROUPS: PublicApiDocGroup[] = [
         auth: "platform_app_bearer",
         descriptionEn: "Aggregated stats scoped to platform app credentials.",
         descriptionPt: "Estatísticas agregadas no âmbito da app de plataforma.",
-        examplePayloadPt: "Sem corpo. Cabeçalho: Authorization: Bearer <platform_app_token>",
+        examplePayloadPt:
+          "Sem corpo.\n\nAuthorization: Bearer ocp_<token>\n\nRequer token ocp_ previamente autorizado pela plataforma.",
       },
     ],
   },

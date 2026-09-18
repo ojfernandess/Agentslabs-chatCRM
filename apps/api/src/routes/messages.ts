@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../db.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, authenticateSessionOrUserApiTokenForApplicationApis } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { sendMessageSchema } from "../lib/messagePayload.js";
 import {
@@ -12,10 +12,8 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 
 export async function messageRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook("preHandler", authenticate);
-
   /** Upload de áudio (reconhecimento de voz / microfone) — WebM, OGG, MP4, … */
-  app.post("/upload-audio", async (request, reply) => {
+  app.post("/upload-audio", { preHandler: [authenticate] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -35,7 +33,7 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /** Upload imagem / vídeo / PDF / áudio para URL pública (Evolution sendMedia, Meta link, …). */
-  app.post("/upload-media", async (request, reply) => {
+  app.post("/upload-media", { preHandler: [authenticate] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -54,7 +52,7 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(out);
   });
 
-  app.post("/", async (request, reply) => {
+  app.post("/", { preHandler: [authenticateSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -125,7 +123,7 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/:id", { preHandler: [authenticate] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 

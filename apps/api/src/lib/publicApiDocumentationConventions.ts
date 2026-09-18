@@ -62,8 +62,9 @@ export const PUBLIC_API_DOCUMENTATION_CONVENTIONS: PublicApiDocConventions = {
       tokenTypePt: "Token de perfil",
       prefix: "ocu_",
       howToObtainPt: "POST /api/v1/auth/me/access-token (admin no tenant)",
-      whereToUsePt: "Cabeçalho `api_access_token: ocu_…` ou `Authorization: Bearer ocu_…`",
-      whoCanUsePt: "ADMIN (e SUPER_ADMIN com header `organization-id` / `?organizationId=`)",
+      whereToUsePt:
+        "Cabeçalho `api_access_token: ocu_…` ou `Authorization: Bearer ocu_…` em rotas de automação, mensagens, modelos e funil",
+      whoCanUsePt: "Administradores do tenant (multi-tenant: enviar também `organization-id` ou `?organizationId=`)",
     },
     {
       tokenTypePt: "Token de bot (inbox)",
@@ -82,9 +83,9 @@ export const PUBLIC_API_DOCUMENTATION_CONVENTIONS: PublicApiDocConventions = {
     {
       tokenTypePt: "App de plataforma",
       prefix: "ocp_",
-      howToObtainPt: "Criado em Super Admin → Aplicações",
-      whereToUsePt: "Bearer em /api/v1/platform/*",
-      whoCanUsePt: "Integrações de plataforma autorizadas",
+      howToObtainPt: "Emitido apenas mediante autorização da plataforma (contacte o suporte ou a sua conta gestora)",
+      whereToUsePt: "Cabeçalho `Authorization: Bearer ocp_…` em /api/v1/platform/*",
+      whoCanUsePt: "Integrações de plataforma previamente autorizadas",
     },
   ],
 };

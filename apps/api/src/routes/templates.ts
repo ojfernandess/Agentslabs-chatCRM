@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { authenticate, requireAdmin } from "../middleware/auth.js";
+import {
+  authenticateSessionOrUserApiTokenForApplicationApis,
+  requireAdminSessionOrUserApiTokenForApplicationApis,
+} from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { maxBodyPlaceholderIndex } from "../lib/templateVariables.js";
 import { syncWabaTemplatesForOrganization } from "../lib/syncWabaTemplates.js";
@@ -51,7 +54,7 @@ function shouldRunWabaSync(organizationId: string, inboxId?: string): boolean {
 }
 
 export async function templateRoutes(app: FastifyInstance): Promise<void> {
-  app.addHook("preHandler", authenticate);
+  app.addHook("preHandler", authenticateSessionOrUserApiTokenForApplicationApis);
 
   app.get("/", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
@@ -81,7 +84,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.post("/meta/sync", { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post("/meta/sync", { preHandler: [requireAdminSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -104,7 +107,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     return { enabled: inboxes.length > 0, inboxes };
   });
 
-  app.post("/evolution", { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post("/evolution", { preHandler: [requireAdminSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -211,7 +214,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(template);
   });
 
-  app.put<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.put<{ Params: { id: string } }>("/:id", { preHandler: [requireAdminSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
@@ -256,7 +259,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.delete<{ Params: { id: string } }>("/:id", { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.delete<{ Params: { id: string } }>("/:id", { preHandler: [requireAdminSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
