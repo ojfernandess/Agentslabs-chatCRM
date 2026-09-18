@@ -261,7 +261,7 @@ export function ConversationsPage({
   useEffect(() => {
     async function loadTeams() {
       try {
-        const res = await api.get<{ data: { id: string; name: string }[] }>("/teams");
+        const res = await api.get<{ data: { id: string; name: string }[] }>("/teams?operationalOnly=1");
         setTeamOptions(res.data.map((x) => ({ id: x.id, name: x.name })));
       } catch {
         setTeamOptions([]);

@@ -46,6 +46,8 @@ export async function loadTeamForHub(
       id: string;
       name: string;
       description: string | null;
+      purpose: string;
+      isOrgCollaborationSpace: boolean;
       members: { userId: string }[];
     }
   | null
@@ -56,10 +58,13 @@ export async function loadTeamForHub(
       id: true,
       name: true,
       description: true,
+      purpose: true,
+      isOrgCollaborationSpace: true,
       members: { select: { userId: true } },
     },
   });
   if (!team) return null;
+  if (team.isOrgCollaborationSpace) return team;
   if (user.role === "AGENT") {
     const isMember = team.members.some((m) => m.userId === user.id);
     if (!isMember) return null;

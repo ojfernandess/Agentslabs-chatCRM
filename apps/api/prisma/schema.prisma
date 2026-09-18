@@ -111,6 +111,11 @@ enum TeamMemberRole {
   MEMBER
 }
 
+enum TeamPurpose {
+  OPERATIONAL
+  COMMUNICATION
+}
+
 enum TeamChannelKind {
   GENERAL
   ANNOUNCEMENTS
@@ -351,14 +356,16 @@ model InboxMember {
 }
 
 model Team {
-  id                   String   @id @default(uuid()) @db.Uuid
+  id                   String      @id @default(uuid()) @db.Uuid
   name                 String
-  description          String?  @db.Text
-  avatarUrl            String?  @map("avatar_url") @db.VarChar(2048)
-  businessHours        Json?    @map("business_hours")
-  notificationSettings Json?    @map("notification_settings")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  description          String?     @db.Text
+  avatarUrl            String?     @map("avatar_url") @db.VarChar(2048)
+  businessHours        Json?       @map("business_hours")
+  notificationSettings Json?       @map("notification_settings")
+  purpose              TeamPurpose @default(OPERATIONAL)
+  isOrgCollaborationSpace Boolean  @default(false) @map("is_org_collaboration_space")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
 
   organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -370,6 +377,7 @@ model Team {
   workspaceItems TeamWorkspaceItem[]
 
   @@index([organizationId])
+  @@index([organizationId, purpose])
   @@map("teams")
 }
 

@@ -1052,7 +1052,7 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
     if (!organizationId) return;
 
     const teams = await prisma.team.findMany({
-      where: { organizationId },
+      where: { organizationId, purpose: "OPERATIONAL", isOrgCollaborationSpace: false },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     });

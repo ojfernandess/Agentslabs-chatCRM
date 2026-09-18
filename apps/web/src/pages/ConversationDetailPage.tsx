@@ -911,7 +911,7 @@ export function ConversationDetailPage() {
   useEffect(() => {
     async function loadTeams() {
       try {
-        const res = await api.get<{ data: { id: string; name: string }[] }>("/teams");
+        const res = await api.get<{ data: { id: string; name: string }[] }>("/teams?operationalOnly=1");
         setTeamOptions(Array.isArray(res.data) ? res.data.map((x) => ({ id: x.id, name: x.name })) : []);
       } catch {
         setTeamOptions([]);

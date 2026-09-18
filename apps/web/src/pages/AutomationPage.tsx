@@ -1435,7 +1435,7 @@ export function AutomationPage() {
     if (!agentModalOpen) return;
     let cancelled = false;
     void api
-      .get<{ data: { id: string; name: string }[] }>("/teams")
+      .get<{ data: { id: string; name: string }[] }>("/teams?operationalOnly=1")
       .then((res) => {
         if (!cancelled) setOrgTeamsForAgent(res.data ?? []);
       })

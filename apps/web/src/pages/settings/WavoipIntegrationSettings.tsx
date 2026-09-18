@@ -149,7 +149,7 @@ export function WavoipIntegrationSettings() {
         api.get<WavoipDeviceRow[]>("/settings/wavoip/devices"),
         api.get<InboxOption[]>("/settings/wavoip/inboxes"),
         api.get<{ id: string; name: string }[]>("/users"),
-        api.get<{ data: { id: string; name: string }[] }>("/teams"),
+        api.get<{ data: { id: string; name: string }[] }>("/teams?operationalOnly=1"),
       ]);
       setDevices(devs);
       setInboxes(inboxList);

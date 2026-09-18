@@ -184,7 +184,7 @@ export function ConversationContextMenu({
           setAgents((Array.isArray(rows) ? rows : []).map(mapAssignableAgent));
         }
         if (key === "teams" && teams.length === 0) {
-          const res = await api.get<{ data: { id: string; name: string }[] }>("/teams");
+          const res = await api.get<{ data: { id: string; name: string }[] }>("/teams?operationalOnly=1");
           setTeams(res.data.map((x) => ({ id: x.id, name: x.name })));
         }
       } catch {

@@ -2780,7 +2780,7 @@ export const messages = {
       removeMember: "Remover",
       empty: "Nenhum time ainda. Crie o primeiro acima.",
       agentNoTeams:
-        "Você ainda não pertence a nenhuma equipa. Peça a um administrador para o adicionar em Times → Administração.",
+        "Utilize o espaço de colaboração da organização ou peça a um administrador para o adicionar a um time operacional.",
       namePlaceholder: "Ex.: Suporte nível 1",
       selectUser: "Selecione o usuário…",
       description: "Descrição",
@@ -2831,6 +2831,23 @@ export const messages = {
       tabChannels: "Canais",
       tabWorkspace: "Workspace",
       tabAdmin: "Administração",
+      orgWorkspaceName: "Colaboração da organização",
+      orgWorkspaceBadge: "Espaço da organização",
+      communicationTeamBadge: "Comunicação interna",
+      orgWorkspaceOverviewTitle: "Espaço de colaboração da organização",
+      orgWorkspaceOverviewHint:
+        "Utilize Visão geral, Canais e Workspace sem precisar criar um time operacional. Todos os utilizadores da organização têm acesso.",
+      communicationOverviewTitle: "Time de comunicação",
+      communicationOverviewHint:
+        "Este time é dedicado a canais internos e workspace. Para filas de atendimento, transferências e horários comerciais, crie um time operacional.",
+      createPurposeLegend: "Tipo de time",
+      createPurposeOperationalTitle: "Operacional (atendimento)",
+      createPurposeOperationalHint:
+        "Filas de conversas, transferências, horário comercial e administração completa — modelo atual da plataforma.",
+      createPurposeCommunicationTitle: "Comunicação da equipa",
+      createPurposeCommunicationHint:
+        "Apenas canais internos, workspace e visão geral de colaboração — sem fila operacional de atendimento.",
+      collaborationLoading: "A preparar o espaço de colaboração…",
       hubDisabledTitle: "Hub de colaboração desactivado",
       hubDisabledHint:
         "Active «Hub de colaboração (Times)» no Super Admin para ver visão geral, canais e workspace. Pode gerir membros na aba Administração.",
@@ -9578,7 +9595,7 @@ export const messages = {
       removeMember: "Remove",
       empty: "No teams yet. Create one above.",
       agentNoTeams:
-        "You are not a member of any team yet. Ask an administrator to add you under Teams → Administration.",
+        "Use the organization collaboration space, or ask an administrator to add you to an operational team.",
       namePlaceholder: "e.g. Tier 1 support",
       selectUser: "Select user…",
       description: "Description",
@@ -9629,6 +9646,23 @@ export const messages = {
       tabChannels: "Channels",
       tabWorkspace: "Workspace",
       tabAdmin: "Administration",
+      orgWorkspaceName: "Organization collaboration",
+      orgWorkspaceBadge: "Organization space",
+      communicationTeamBadge: "Internal communication",
+      orgWorkspaceOverviewTitle: "Organization collaboration space",
+      orgWorkspaceOverviewHint:
+        "Use Overview, Channels, and Workspace without creating an operational team. All organization users have access.",
+      communicationOverviewTitle: "Communication team",
+      communicationOverviewHint:
+        "This team is dedicated to internal channels and workspace. For queues, transfers, and business hours, create an operational team.",
+      createPurposeLegend: "Team type",
+      createPurposeOperationalTitle: "Operational (support)",
+      createPurposeOperationalHint:
+        "Conversation queues, transfers, business hours, and full administration — the current platform model.",
+      createPurposeCommunicationTitle: "Team communication",
+      createPurposeCommunicationHint:
+        "Internal channels, workspace, and collaboration overview only — no operational support queue.",
+      collaborationLoading: "Preparing collaboration space…",
       hubDisabledTitle: "Collaboration hub disabled",
       hubDisabledHint:
         "Enable «Collaboration hub (Teams)» in Super Admin for overview, channels, and workspace. You can still manage members in the Administration tab.",

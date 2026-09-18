@@ -43,7 +43,12 @@ export async function assignConversationTeamForOrg(
 
   if (body.teamId) {
     const team = await prisma.team.findFirst({
-      where: { id: body.teamId, organizationId },
+      where: {
+        id: body.teamId,
+        organizationId,
+        purpose: "OPERATIONAL",
+        isOrgCollaborationSpace: false,
+      },
       select: { id: true },
     });
     if (!team) {

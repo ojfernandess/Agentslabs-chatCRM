@@ -285,7 +285,12 @@ export function Layout() {
   );
 
   /** Agentes membros de equipa precisam aceder ao centro de colaboração (não só admins). */
-  const showTeamsNav = tenantAdmin || sidebarTeams.length > 0;
+  const collaborationNavOn = Boolean(
+    user?.organizationFeatures?.teams_collaboration_hub ||
+      user?.organizationFeatures?.teams_channels ||
+      user?.organizationFeatures?.teams_workspace,
+  );
+  const showTeamsNav = tenantAdmin || sidebarTeams.length > 0 || collaborationNavOn;
 
   const conversationTeamId =
     location.pathname.startsWith("/conversations")
@@ -303,7 +308,7 @@ export function Layout() {
       return;
     }
     void api
-      .get<{ data: { id: string; name: string; unseenTransferCount?: number }[] }>("/teams")
+      .get<{ data: { id: string; name: string; unseenTransferCount?: number }[] }>("/teams?operationalOnly=1")
       .then((res) =>
         setSidebarTeams(
           res.data.map((x) => ({

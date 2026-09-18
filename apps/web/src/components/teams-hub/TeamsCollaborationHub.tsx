@@ -31,6 +31,8 @@ interface TeamRow {
   id: string;
   name: string;
   description: string | null;
+  purpose?: "OPERATIONAL" | "COMMUNICATION";
+  isOrgCollaborationSpace?: boolean;
   _count?: { members: number; conversations: number };
   unseenTransferCount?: number;
 }
@@ -80,6 +82,7 @@ export function TeamsCollaborationHub() {
   const workspaceOn = user?.organizationFeatures?.teams_workspace ?? false;
   const aiOn = user?.organizationFeatures?.teams_ai_copilot ?? false;
   const realtimeOn = user?.organizationFeatures?.teams_realtime_ops ?? false;
+  const collaborationEnabled = hubOn || channelsOn || workspaceOn;
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -91,6 +94,7 @@ export function TeamsCollaborationHub() {
   const [tab, setTab] = useState<HubTab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamPurpose, setNewTeamPurpose] = useState<"OPERATIONAL" | "COMMUNICATION">("OPERATIONAL");
   const [creating, setCreating] = useState(false);
   const [overview, setOverview] = useState<HubOverview | null>(null);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
@@ -104,21 +108,33 @@ export function TeamsCollaborationHub() {
   const [channelDeletingId, setChannelDeletingId] = useState<string | null>(null);
 
   const selected = teams.find((x) => x.id === selectedId) ?? teams[0] ?? null;
+  const selectedIsOperational =
+    selected?.purpose === "OPERATIONAL" && !selected?.isOrgCollaborationSpace;
+
+  const teamDisplayName = useCallback(
+    (team: TeamRow) => (team.isOrgCollaborationSpace ? t("teamsHub.orgWorkspaceName") : team.name),
+    [t],
+  );
 
   const loadTeams = useCallback(async () => {
     try {
+      if (collaborationEnabled) {
+        await api.get("/teams/collaboration/workspace");
+      }
       const res = await api.get<{ data: TeamRow[] }>("/teams");
       setTeams(res.data);
       const teamFromUrl = searchParams.get("teamId")?.trim();
+      const orgWorkspace = res.data.find((team) => team.isOrgCollaborationSpace);
       setSelectedId((prev) => {
-        if (teamFromUrl && res.data.some((t) => t.id === teamFromUrl)) return teamFromUrl;
-        if (prev && res.data.some((t) => t.id === prev)) return prev;
+        if (teamFromUrl && res.data.some((team) => team.id === teamFromUrl)) return teamFromUrl;
+        if (prev && res.data.some((team) => team.id === prev)) return prev;
+        if (orgWorkspace) return orgWorkspace.id;
         return res.data[0]?.id ?? null;
       });
     } catch {
       setTeams([]);
     }
-  }, [searchParams]);
+  }, [searchParams, collaborationEnabled]);
 
   const loadOverview = useCallback(
     async (teamId: string) => {
@@ -205,8 +221,9 @@ export function TeamsCollaborationHub() {
     if (!name || !isAdmin) return;
     setCreating(true);
     try {
-      await api.post("/teams", { name });
+      await api.post("/teams", { name, purpose: newTeamPurpose });
       setNewTeamName("");
+      setNewTeamPurpose("OPERATIONAL");
       await loadTeams();
     } finally {
       setCreating(false);
@@ -238,19 +255,23 @@ export function TeamsCollaborationHub() {
     if (workspaceOn) {
       list.push({ id: "tab-workspace", label: t("teamsHub.tabWorkspace"), onRun: () => setTab("workspace") });
     }
-    if (isAdmin) {
+    if (isAdmin && selectedIsOperational) {
       list.push({ id: "tab-admin", label: t("teamsHub.tabAdmin"), onRun: () => setTab("admin") });
     }
     for (const team of teams) {
       list.push({
         id: `team-${team.id}`,
-        label: team.name,
+        label: teamDisplayName(team),
         hint: t("teamsHub.selectTeam"),
         onRun: () => setSelectedId(team.id),
       });
     }
     return list;
-  }, [channelsOn, workspaceOn, isAdmin, teams, t]);
+  }, [channelsOn, workspaceOn, isAdmin, selectedIsOperational, teams, t, teamDisplayName]);
+
+  useEffect(() => {
+    if (tab === "admin" && !selectedIsOperational) setTab("overview");
+  }, [tab, selectedIsOperational]);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) ?? null;
 
@@ -318,7 +339,7 @@ export function TeamsCollaborationHub() {
               >
                 {teams.map((team) => (
                   <option key={team.id} value={team.id}>
-                    {team.name}
+                    {teamDisplayName(team)}
                   </option>
                 ))}
               </select>
@@ -353,6 +374,43 @@ export function TeamsCollaborationHub() {
                   placeholder={t("teams.namePlaceholder")}
                   className="input-field mb-2 h-9 w-full text-sm"
                 />
+                <fieldset className="mb-2 space-y-1.5">
+                  <legend className="sr-only">{t("teamsHub.createPurposeLegend")}</legend>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-ink-200/80 px-2.5 py-2 text-xs dark:border-ink-700">
+                    <input
+                      type="radio"
+                      name="teamPurpose"
+                      checked={newTeamPurpose === "OPERATIONAL"}
+                      onChange={() => setNewTeamPurpose("OPERATIONAL")}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-semibold text-ink-800 dark:text-ink-100">
+                        {t("teamsHub.createPurposeOperationalTitle")}
+                      </span>
+                      <span className="mt-0.5 block text-ink-500 dark:text-ink-400">
+                        {t("teamsHub.createPurposeOperationalHint")}
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-ink-200/80 px-2.5 py-2 text-xs dark:border-ink-700">
+                    <input
+                      type="radio"
+                      name="teamPurpose"
+                      checked={newTeamPurpose === "COMMUNICATION"}
+                      onChange={() => setNewTeamPurpose("COMMUNICATION")}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-semibold text-ink-800 dark:text-ink-100">
+                        {t("teamsHub.createPurposeCommunicationTitle")}
+                      </span>
+                      <span className="mt-0.5 block text-ink-500 dark:text-ink-400">
+                        {t("teamsHub.createPurposeCommunicationHint")}
+                      </span>
+                    </span>
+                  </label>
+                </fieldset>
                 <button type="submit" disabled={creating || !newTeamName.trim()} className="btn-primary w-full text-xs">
                   <Plus className="mr-1 inline h-3.5 w-3.5" />
                   {t("teams.create")}
@@ -373,10 +431,21 @@ export function TeamsCollaborationHub() {
                     )}
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-brand-500/20 text-xs font-bold text-violet-800 dark:text-violet-200">
-                      {team.name.charAt(0).toUpperCase()}
+                      {teamDisplayName(team).charAt(0).toUpperCase()}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{team.name}</span>
-                    {(team.unseenTransferCount ?? 0) > 0 ? (
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{teamDisplayName(team)}</span>
+                      {team.isOrgCollaborationSpace ? (
+                        <span className="block truncate text-[10px] font-medium text-brand-700 dark:text-brand-200">
+                          {t("teamsHub.orgWorkspaceBadge")}
+                        </span>
+                      ) : team.purpose === "COMMUNICATION" ? (
+                        <span className="block truncate text-[10px] font-medium text-violet-700 dark:text-violet-200">
+                          {t("teamsHub.communicationTeamBadge")}
+                        </span>
+                      ) : null}
+                    </span>
+                    {(team.unseenTransferCount ?? 0) > 0 && team.purpose === "OPERATIONAL" ? (
                       <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
                         {team.unseenTransferCount}
                       </span>
@@ -396,7 +465,9 @@ export function TeamsCollaborationHub() {
                       { id: "overview" as const, label: t("teamsHub.tabOverview"), icon: LayoutDashboard },
                       { id: "channels" as const, label: t("teamsHub.tabChannels"), icon: Hash },
                       { id: "workspace" as const, label: t("teamsHub.tabWorkspace"), icon: BookOpen },
-                      isAdmin ? { id: "admin" as const, label: t("teamsHub.tabAdmin"), icon: UsersRound } : null,
+                      isAdmin && selectedIsOperational
+                        ? { id: "admin" as const, label: t("teamsHub.tabAdmin"), icon: UsersRound }
+                        : null,
                     ].filter(Boolean) as { id: HubTab; label: string; icon: typeof LayoutDashboard }[]
                   ).map((item) => (
                     <button
@@ -433,12 +504,35 @@ export function TeamsCollaborationHub() {
                   {tab === "overview" && hubOn && overview ? (
                     <div className="space-y-6">
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        {[
-                          { key: "OPEN", label: t("conversations.filterOpen"), color: "emerald" },
-                          { key: "PENDING", label: t("conversations.filterPending"), color: "amber" },
-                          { key: "RESOLVED", label: t("conversations.filterResolved"), color: "slate" },
-                          { key: "members", label: t("teams.memberCount"), val: overview.stats.memberCount, color: "violet" },
-                        ].map((card) => (
+                        {(selectedIsOperational
+                          ? [
+                              { key: "OPEN", label: t("conversations.filterOpen") },
+                              { key: "PENDING", label: t("conversations.filterPending") },
+                              { key: "RESOLVED", label: t("conversations.filterResolved") },
+                              {
+                                key: "members",
+                                label: t("teams.memberCount"),
+                                val: overview.stats.memberCount,
+                              },
+                            ]
+                          : [
+                              {
+                                key: "channels",
+                                label: t("teamsHub.tabChannels"),
+                                val: overview.stats.channelCount,
+                              },
+                              {
+                                key: "workspace",
+                                label: t("teamsHub.tabWorkspace"),
+                                val: overview.stats.workspaceCount,
+                              },
+                              {
+                                key: "members",
+                                label: t("teams.memberCount"),
+                                val: overview.stats.memberCount,
+                              },
+                            ]
+                        ).map((card) => (
                           <motion.div
                             key={card.key}
                             initial={{ opacity: 0, y: 6 }}
@@ -447,32 +541,49 @@ export function TeamsCollaborationHub() {
                           >
                             <p className="text-xs font-medium uppercase tracking-wide text-ink-500">{card.label}</p>
                             <p className="mt-2 text-2xl font-bold tabular-nums text-ink-900 dark:text-ink-50">
-                              {"val" in card ? card.val : overview.stats.conversations[card.key] ?? 0}
+                              {"val" in card
+                                ? card.val
+                                : overview.stats.conversations[card.key as "OPEN" | "PENDING" | "RESOLVED"] ?? 0}
                             </p>
                           </motion.div>
                         ))}
                       </div>
 
                       <section className="grid gap-4 lg:grid-cols-2">
-                        <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-ink-800 dark:bg-ink-950/60">
-                          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
-                            <MessageSquare className="h-4 w-4 text-brand-500" />
-                            {t("teamsHub.recentConversations")}
-                          </h2>
-                          <ul className="space-y-2">
-                            {overview.recentConversations.map((c) => (
-                              <li key={c.id}>
-                                <Link
-                                  to={`/conversations/${c.id}`}
-                                  className="flex items-center justify-between rounded-xl border border-ink-100 px-3 py-2 text-sm hover:border-brand-300 hover:bg-brand-50/50 dark:border-ink-800 dark:hover:bg-brand-950/20"
-                                >
-                                  <span className="font-medium text-ink-900 dark:text-ink-100">{c.contact.name}</span>
-                                  <span className="text-xs text-ink-500">{c.status}</span>
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                        {selectedIsOperational ? (
+                          <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-ink-800 dark:bg-ink-950/60">
+                            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
+                              <MessageSquare className="h-4 w-4 text-brand-500" />
+                              {t("teamsHub.recentConversations")}
+                            </h2>
+                            <ul className="space-y-2">
+                              {overview.recentConversations.map((c) => (
+                                <li key={c.id}>
+                                  <Link
+                                    to={`/conversations/${c.id}`}
+                                    className="flex items-center justify-between rounded-xl border border-ink-100 px-3 py-2 text-sm hover:border-brand-300 hover:bg-brand-50/50 dark:border-ink-800 dark:hover:bg-brand-950/20"
+                                  >
+                                    <span className="font-medium text-ink-900 dark:text-ink-100">{c.contact.name}</span>
+                                    <span className="text-xs text-ink-500">{c.status}</span>
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-ink-800 dark:bg-ink-950/60">
+                            <h2 className="mb-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
+                              {selected?.isOrgCollaborationSpace
+                                ? t("teamsHub.orgWorkspaceOverviewTitle")
+                                : t("teamsHub.communicationOverviewTitle")}
+                            </h2>
+                            <p className="text-sm text-ink-600 dark:text-ink-300">
+                              {selected?.isOrgCollaborationSpace
+                                ? t("teamsHub.orgWorkspaceOverviewHint")
+                                : t("teamsHub.communicationOverviewHint")}
+                            </p>
+                          </div>
+                        )}
                         <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-ink-800 dark:bg-ink-950/60">
                           <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
                             <Activity className="h-4 w-4 text-violet-500" />
@@ -589,7 +700,7 @@ export function TeamsCollaborationHub() {
                     <TeamWorkspacePanel teamId={selected.id} onMutated={refreshTeamContext} />
                   ) : null}
 
-                  {tab === "admin" && isAdmin && selected ? (
+                  {tab === "admin" && isAdmin && selectedIsOperational && selected ? (
                     <TeamOperationalAdmin
                       embedded
                       teamId={selected.id}
@@ -599,9 +710,15 @@ export function TeamsCollaborationHub() {
                 </div>
               </>
             ) : (
-              <p className="p-8 text-ink-500">
-                {isAdmin ? t("teams.empty") : t("teams.agentNoTeams")}
-              </p>
+              <div className="p-8 text-ink-500">
+                {collaborationEnabled ? (
+                  <p>{t("teamsHub.collaborationLoading")}</p>
+                ) : isAdmin ? (
+                  <p>{t("teams.empty")}</p>
+                ) : (
+                  <p>{t("teams.agentNoTeams")}</p>
+                )}
+              </div>
             )}
           </main>
 

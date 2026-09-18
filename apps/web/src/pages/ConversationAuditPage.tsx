@@ -85,7 +85,7 @@ export function ConversationAuditPage() {
         const [u, lt, tm] = await Promise.all([
           api.get<TeamUser[]>("/users"),
           api.get<LeadTypeRow[]>("/lead-types"),
-          api.get<{ data: { id: string; name: string }[] }>("/teams"),
+          api.get<{ data: { id: string; name: string }[] }>("/teams?operationalOnly=1"),
         ]);
         setUsers(u);
         setLeadTypes(lt);

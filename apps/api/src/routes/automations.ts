@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { TeamPurpose } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticateSessionOrUserApiTokenForApplicationApis } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
@@ -43,9 +44,15 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
+    const operationalWhere = {
+      organizationId,
+      purpose: TeamPurpose.OPERATIONAL,
+      isOrgCollaborationSpace: false,
+    };
+
     if (request.user.role === "AGENT") {
       const teams = await prisma.team.findMany({
-        where: { organizationId, members: { some: { userId: request.user.id } } },
+        where: { ...operationalWhere, members: { some: { userId: request.user.id } } },
         orderBy: { name: "asc" },
         select: { id: true, name: true, description: true, _count: { select: { members: true } } },
       });
@@ -53,7 +60,7 @@ export async function automationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const teams = await prisma.team.findMany({
-      where: { organizationId },
+      where: operationalWhere,
       orderBy: { name: "asc" },
       select: { id: true, name: true, description: true, _count: { select: { members: true } } },
     });

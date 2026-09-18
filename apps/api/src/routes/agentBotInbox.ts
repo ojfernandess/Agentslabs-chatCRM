@@ -63,7 +63,11 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
   app.get("/teams", async (request) => {
     const bot = request.agentBot!;
     const teams = await prisma.team.findMany({
-      where: { organizationId: bot.organizationId },
+      where: {
+        organizationId: bot.organizationId,
+        purpose: "OPERATIONAL",
+        isOrgCollaborationSpace: false,
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true, description: true, _count: { select: { members: true } } },
     });
