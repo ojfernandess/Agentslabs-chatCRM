@@ -183,6 +183,8 @@ export const config = {
     .replace(/\/+$/, ""),
   /** Provedor LLM usado quando organization.ai_billing_mode = PLATFORM_CREDITS. */
   platformCreditsLlmProvider: optionalEnv("PLATFORM_CREDITS_LLM_PROVIDER", "openai").trim(),
+  /** Taxa USD→BRL para conciliação de custos de IA (Super Admin). */
+  platformCreditsUsdBrlRate: optionalEnv("PLATFORM_CREDITS_USD_BRL_RATE", "5.45").trim(),
   /** Modelo de embeddings para indexação semântica da KB (requer chave OpenAI no servidor). */
   openAiEmbeddingModel: optionalEnv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").trim(),
   /** Modelo OpenAI para `POST /v1/audio/transcriptions` (ex.: whisper-1, gpt-4o-mini-transcribe). */

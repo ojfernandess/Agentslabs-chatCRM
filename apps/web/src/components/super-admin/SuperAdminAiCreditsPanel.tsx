@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Coins, Loader2, Pencil, Plus } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
@@ -35,7 +35,21 @@ type AiCreditPurchaseRow = {
   createdAt: string;
 };
 
-type AiCreditsTab = "packages" | "purchases";
+type AiCreditsTab = "packages" | "packages_inactive" | "purchases" | "clients";
+
+type OrgOption = { id: string; name: string; slug: string };
+
+type AiCreditsClientSummary = {
+  organization: { id: string; name: string; aiBillingMode: string };
+  creditsAvailable: string;
+  creditsConsumed: string;
+  providerCostUsd: string;
+  convertedCostBrl: string;
+  billedBrl: string;
+  marginBrl: string;
+  usdBrlRate: number;
+  usageRecordCount: number;
+};
 
 const EMPTY_PACKAGE_FORM = {
   slug: "",
@@ -57,8 +71,25 @@ function formatMoney(cents: number, currency: string, locale: string): string {
   }
 }
 
-function formatCredits(value: string, locale: string): string {
-  return formatAiCreditsAdminUnits(value, locale);
+function formatUsd(value: string, locale: string): string {
+  const amount = Number.parseFloat(value);
+  if (!Number.isFinite(amount)) return value;
+  return new Intl.NumberFormat(locale, { style: "currency", currency: "USD" }).format(amount);
+}
+
+function formatBrl(value: string, locale: string): string {
+  const amount = Number.parseFloat(value);
+  if (!Number.isFinite(amount)) return value;
+  return new Intl.NumberFormat(locale, { style: "currency", currency: "BRL" }).format(amount);
+}
+
+function SummaryMetricRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-slate-100 py-3 last:border-b-0">
+      <span className="text-sm text-slate-600">{label}</span>
+      <span className="text-sm font-semibold tabular-nums text-slate-900">{value}</span>
+    </div>
+  );
 }
 
 function formatDateTime(iso: string | null, locale: string): string {
@@ -86,6 +117,10 @@ export function SuperAdminAiCreditsPanel() {
   const [editingPackage, setEditingPackage] = useState<AiCreditPackageRow | null>(null);
   const [packageForm, setPackageForm] = useState(EMPTY_PACKAGE_FORM);
   const [packageSaving, setPackageSaving] = useState(false);
+  const [organizations, setOrganizations] = useState<OrgOption[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
+  const [clientSummary, setClientSummary] = useState<AiCreditsClientSummary | null>(null);
+  const [clientsLoading, setClientsLoading] = useState(false);
 
   const loadPackages = useCallback(async () => {
     const res = await api.get<{ packages: AiCreditPackageRow[] }>("/super/billing/ai-credits/packages");
@@ -123,6 +158,112 @@ export function SuperAdminAiCreditsPanel() {
     if (tab !== "purchases") return;
     void loadPurchases().catch(() => {});
   }, [tab, loadPurchases]);
+
+  const loadOrganizations = useCallback(async () => {
+    const res = await api.get<{ organizations: OrgOption[] }>("/super/organizations");
+    const rows = [...res.organizations].sort((a, b) => a.name.localeCompare(b.name));
+    setOrganizations(rows);
+    if (!selectedOrganizationId && rows.length > 0) {
+      setSelectedOrganizationId(rows[0]!.id);
+    }
+  }, [selectedOrganizationId]);
+
+  const loadClientSummary = useCallback(async (organizationId: string) => {
+    if (!organizationId) {
+      setClientSummary(null);
+      return;
+    }
+    setClientsLoading(true);
+    setError("");
+    try {
+      const res = await api.get<AiCreditsClientSummary>(
+        `/super/billing/ai-credits/organizations/${organizationId}/summary`,
+      );
+      setClientSummary(res);
+    } catch (e) {
+      setClientSummary(null);
+      setError(e instanceof ApiError ? e.message : t("superAdmin.aiCreditsLoadError"));
+    } finally {
+      setClientsLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (tab !== "clients") return;
+    void loadOrganizations().catch((e) => {
+      setError(e instanceof ApiError ? e.message : t("superAdmin.aiCreditsLoadError"));
+    });
+  }, [tab, loadOrganizations, t]);
+
+  useEffect(() => {
+    if (tab !== "clients" || !selectedOrganizationId) return;
+    void loadClientSummary(selectedOrganizationId);
+  }, [tab, selectedOrganizationId, loadClientSummary]);
+
+  const activePackages = useMemo(
+    () =>
+      [...packages]
+        .filter((pkg) => pkg.isActive)
+        .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)),
+    [packages],
+  );
+
+  const inactivePackages = useMemo(
+    () =>
+      [...packages]
+        .filter((pkg) => !pkg.isActive)
+        .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name)),
+    [packages],
+  );
+
+  const renderPackageTable = (rows: AiCreditPackageRow[], emptyLabel: string) => (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="px-4 py-3">{t("superAdmin.billingColPlan")}</th>
+            <th className="px-4 py-3">{t("superAdmin.aiCreditsColCredits")}</th>
+            <th className="px-4 py-3">{t("superAdmin.billingColPrice")}</th>
+            <th className="px-4 py-3">Stripe Price</th>
+            <th className="px-4 py-3">{t("superAdmin.aiCreditsColOrder")}</th>
+            <th className="px-4 py-3" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
+                {emptyLabel}
+              </td>
+            </tr>
+          ) : (
+            rows.map((pkg) => (
+              <tr key={pkg.id} className="border-t border-slate-100">
+                <td className="px-4 py-3">
+                  <div className="font-medium text-slate-900">{pkg.name}</div>
+                  <div className="text-xs text-slate-500">{pkg.slug}</div>
+                </td>
+                <td className="px-4 py-3">{formatAiCreditsAdminUnits(pkg.creditAmount, localeTag)}</td>
+                <td className="px-4 py-3">{formatMoney(pkg.amountCents, pkg.currency, localeTag)}</td>
+                <td className="px-4 py-3 text-xs text-slate-600">{pkg.stripePriceId || "—"}</td>
+                <td className="px-4 py-3 text-slate-600">{pkg.displayOrder}</td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    type="button"
+                    onClick={() => openEditPackage(pkg)}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    {t("superAdmin.billingEditPlan")}
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const openCreatePackage = () => {
     setEditingPackage(null);
@@ -194,7 +335,7 @@ export function SuperAdminAiCreditsPanel() {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {(["packages", "purchases"] as const).map((id) => (
+        {(["packages", "packages_inactive", "purchases", "clients"] as const).map((id) => (
           <button
             key={id}
             type="button"
@@ -207,6 +348,19 @@ export function SuperAdminAiCreditsPanel() {
             )}
           >
             {t(`superAdmin.aiCreditsTab_${id}`)}
+            {id === "packages" && activePackages.length > 0 ? (
+              <span className="ml-1.5 rounded-full bg-white/20 px-1.5 text-xs">{activePackages.length}</span>
+            ) : null}
+            {id === "packages_inactive" && inactivePackages.length > 0 ? (
+              <span
+                className={clsx(
+                  "ml-1.5 rounded-full px-1.5 text-xs",
+                  tab === id ? "bg-white/20" : "bg-slate-100 text-slate-600",
+                )}
+              >
+                {inactivePackages.length}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -223,60 +377,27 @@ export function SuperAdminAiCreditsPanel() {
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
               <Coins className="h-4 w-4" />
-              {t("superAdmin.aiCreditsPackagesTitle")}
+              {t("superAdmin.aiCreditsPackagesActiveTitle")}
             </div>
             <button type="button" onClick={openCreatePackage} className="btn-primary inline-flex items-center gap-1.5 text-sm">
               <Plus className="h-4 w-4" />
               {t("superAdmin.aiCreditsPackageCreate")}
             </button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">{t("superAdmin.billingColPlan")}</th>
-                  <th className="px-4 py-3">{t("superAdmin.aiCreditsColCredits")}</th>
-                  <th className="px-4 py-3">{t("superAdmin.billingColPrice")}</th>
-                  <th className="px-4 py-3">Stripe Price</th>
-                  <th className="px-4 py-3">{t("superAdmin.billingColStatus")}</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {packages.map((pkg) => (
-                  <tr key={pkg.id} className="border-t border-slate-100">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{pkg.name}</div>
-                      <div className="text-xs text-slate-500">{pkg.slug}</div>
-                    </td>
-                    <td className="px-4 py-3">{formatCredits(pkg.creditAmount, localeTag)}</td>
-                    <td className="px-4 py-3">{formatMoney(pkg.amountCents, pkg.currency, localeTag)}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{pkg.stripePriceId || "—"}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={clsx(
-                          "rounded-full px-2 py-0.5 text-xs font-medium",
-                          pkg.isActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600",
-                        )}
-                      >
-                        {pkg.isActive ? t("superAdmin.billingActive") : t("superAdmin.billingInactive")}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEditPackage(pkg)}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        {t("superAdmin.billingEditPlan")}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {renderPackageTable(activePackages, t("superAdmin.aiCreditsPackagesActiveEmpty"))}
+        </SuperAdminPanel>
+      ) : null}
+
+      {tab === "packages_inactive" && !loading ? (
+        <SuperAdminPanel className="overflow-hidden p-0">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+              <Coins className="h-4 w-4" />
+              {t("superAdmin.aiCreditsPackagesInactiveTitle")}
+            </div>
+            <p className="mt-1 text-xs text-slate-500">{t("superAdmin.aiCreditsPackagesInactiveHint")}</p>
           </div>
+          {renderPackageTable(inactivePackages, t("superAdmin.aiCreditsPackagesInactiveEmpty"))}
         </SuperAdminPanel>
       ) : null}
 
@@ -321,7 +442,7 @@ export function SuperAdminAiCreditsPanel() {
                       <div className="font-medium text-slate-900">{row.organizationName ?? row.organizationId}</div>
                     </td>
                     <td className="px-4 py-3">{row.packageName}</td>
-                    <td className="px-4 py-3">{formatCredits(row.creditAmount, localeTag)}</td>
+                    <td className="px-4 py-3">{formatAiCreditsAdminUnits(row.creditAmount, localeTag)}</td>
                     <td className="px-4 py-3">{formatMoney(row.amountCents, row.currency, localeTag)}</td>
                     <td className="px-4 py-3">{purchaseStatusLabel(row.status, t)}</td>
                     <td className="px-4 py-3 uppercase text-xs text-slate-600">{row.paymentProvider}</td>
@@ -332,6 +453,99 @@ export function SuperAdminAiCreditsPanel() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </SuperAdminPanel>
+      ) : null}
+
+      {tab === "clients" && !loading ? (
+        <SuperAdminPanel className="p-4 sm:p-6">
+          <div className="max-w-2xl">
+            <h3 className="text-sm font-semibold text-slate-900">{t("superAdmin.aiCreditsClientsTitle")}</h3>
+            <p className="mt-1 text-xs text-slate-500">{t("superAdmin.aiCreditsClientsIntro")}</p>
+
+            <div className="mt-4">
+              <label className="block text-xs font-medium text-slate-600">
+                {t("superAdmin.aiCreditsClientsSelectOrg")}
+              </label>
+              <select
+                value={selectedOrganizationId}
+                onChange={(e) => setSelectedOrganizationId(e.target.value)}
+                className="input-field mt-1 w-full max-w-md"
+              >
+                <option value="">{t("superAdmin.aiCreditsClientsSelectPlaceholder")}</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {clientsLoading ? (
+              <div className="mt-6 flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("common.loading")}
+              </div>
+            ) : null}
+
+            {!clientsLoading && !selectedOrganizationId ? (
+              <p className="mt-6 text-sm text-slate-500">{t("superAdmin.aiCreditsClientsEmpty")}</p>
+            ) : null}
+
+            {!clientsLoading && clientSummary && selectedOrganizationId ? (
+              <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
+                <p className="text-sm text-slate-600">
+                  {t("superAdmin.aiCreditsClientsLabel")}:{" "}
+                  <span className="font-semibold text-slate-900">{clientSummary.organization.name}</span>
+                </p>
+
+                {clientSummary.organization.aiBillingMode !== "PLATFORM_CREDITS" ? (
+                  <p className="mt-4 text-sm text-amber-700">{t("superAdmin.aiCreditsClientsNotPlatformCredits")}</p>
+                ) : (
+                  <div className="mt-4">
+                    <SummaryMetricRow
+                      label={t("superAdmin.aiCreditsClientsAvailable")}
+                      value={formatAiCreditsAdminUnits(clientSummary.creditsAvailable, localeTag)}
+                    />
+                    <SummaryMetricRow
+                      label={t("superAdmin.aiCreditsClientsConsumed")}
+                      value={formatAiCreditsAdminUnits(clientSummary.creditsConsumed, localeTag)}
+                    />
+                    <SummaryMetricRow
+                      label={t("superAdmin.aiCreditsClientsOpenAiCost")}
+                      value={formatUsd(clientSummary.providerCostUsd, localeTag)}
+                    />
+                    <SummaryMetricRow
+                      label={t("superAdmin.aiCreditsClientsConvertedCost")}
+                      value={formatBrl(clientSummary.convertedCostBrl, localeTag)}
+                    />
+                    <SummaryMetricRow
+                      label={t("superAdmin.aiCreditsClientsBilled")}
+                      value={formatBrl(clientSummary.billedBrl, localeTag)}
+                    />
+                    <SummaryMetricRow
+                      label={t("superAdmin.aiCreditsClientsMargin")}
+                      value={formatBrl(clientSummary.marginBrl, localeTag)}
+                    />
+                  </div>
+                )}
+
+                <p className="mt-4 text-xs text-slate-500">
+                  {t("superAdmin.aiCreditsClientsUsageCount").replace(
+                    "{count}",
+                    String(clientSummary.usageRecordCount),
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {t("superAdmin.aiCreditsClientsFxHint").replace(
+                    "{rate}",
+                    new Intl.NumberFormat(localeTag, { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(
+                      clientSummary.usdBrlRate,
+                    ),
+                  )}
+                </p>
+              </div>
+            ) : null}
           </div>
         </SuperAdminPanel>
       ) : null}

@@ -57,7 +57,7 @@ import {
   patchAiPlatformMarkupSettings,
 } from "../lib/ai-billing/aiPlatformMarkupSettings.js";
 import { creditAiWallet } from "../lib/ai-billing/AiWalletService.js";
-import { getOrganizationAiCreditsBalance } from "../lib/ai-billing/AiUsageBillingService.js";
+import { getOrganizationAiCreditsBalance, getOrganizationAiCreditsFinancialSummary } from "../lib/ai-billing/AiUsageBillingService.js";
 import { listAllAiCreditPurchases } from "../lib/ai-billing/AiCreditPurchaseService.js";
 import { money, moneyToApiString } from "../lib/ai-billing/money.js";
 import { ensureMercadoPagoSubscriptionBillingPeriod } from "../lib/billing/subscriptionSync.js";
@@ -1130,6 +1130,28 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
     }
     return getOrganizationAiCreditsBalance(org.id);
+    },
+  );
+
+  app.get<{ Params: { organizationId: string } }>(
+    "/ai-credits/organizations/:organizationId/summary",
+    async (request, reply) => {
+      const summary = await getOrganizationAiCreditsFinancialSummary(request.params.organizationId);
+      if (!summary) {
+        return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+      }
+      return {
+        organization: summary.organization,
+        wallet: summary.wallet,
+        usageRecordCount: summary.usageRecordCount,
+        creditsAvailable: moneyToApiString(summary.creditsAvailable),
+        creditsConsumed: moneyToApiString(summary.creditsConsumed),
+        providerCostUsd: moneyToApiString(summary.providerCostUsd),
+        convertedCostBrl: moneyToApiString(summary.convertedCostBrl),
+        billedBrl: moneyToApiString(summary.billedBrl),
+        marginBrl: moneyToApiString(summary.marginBrl),
+        usdBrlRate: summary.usdBrlRate,
+      };
     },
   );
 

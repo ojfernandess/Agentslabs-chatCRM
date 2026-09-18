@@ -11,7 +11,15 @@ import {
 } from "./AiWalletService.js";
 import { getOrganizationAiBillingMode } from "./getOrganizationAiBillingMode.js";
 import { mergeLlmUsageDetails, type LlmUsageDetails } from "./llmUsageDetails.js";
-import { money, moneySub, moneyToApiString, moneyZero, type MoneyDecimal } from "./money.js";
+import { getAiPlatformUsdBrlRate } from "./aiPlatformFxSettings.js";
+import {
+  money,
+  moneyMul,
+  moneySub,
+  moneyToApiString,
+  moneyZero,
+  type MoneyDecimal,
+} from "./money.js";
 
 export type PlatformCreditsBillingHandle =
   | { ok: false; reason: "insufficient_balance" | "not_platform_credits" }
@@ -200,6 +208,52 @@ export async function cancelPlatformCreditsLlmUsage(
     idempotencyKey: handle.releaseIdempotencyKey,
     metadata: { sessionId: handle.sessionId },
   });
+}
+
+export async function getOrganizationAiCreditsFinancialSummary(organizationId: string) {
+  const [organization, wallet, usageAgg, debitAgg, usdBrlRate] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true, name: true, aiBillingMode: true },
+    }),
+    getOrCreateAiWallet(organizationId),
+    prisma.aiUsageRecord.aggregate({
+      where: { organizationId },
+      _sum: { providerCost: true, platformCost: true },
+      _count: { _all: true },
+    }),
+    prisma.aiWalletLedgerEntry.aggregate({
+      where: { organizationId, entryType: "USAGE_DEBIT" },
+      _sum: { amount: true },
+    }),
+    getAiPlatformUsdBrlRate(),
+  ]);
+
+  if (!organization) return null;
+
+  const providerCostUsd = money(usageAgg._sum.providerCost ?? 0);
+  const platformCostUsd = money(usageAgg._sum.platformCost ?? 0);
+  const convertedCostBrl = moneyMul(providerCostUsd, usdBrlRate);
+  const billedBrl = moneyMul(platformCostUsd, usdBrlRate);
+  const marginBrl = moneySub(billedBrl, convertedCostBrl);
+  const creditsConsumed = money(debitAgg._sum.amount ?? 0).abs();
+
+  return {
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      aiBillingMode: organization.aiBillingMode,
+    },
+    wallet: serializeAiWalletSnapshot(wallet),
+    usageRecordCount: usageAgg._count._all,
+    creditsAvailable: wallet.availableBalance,
+    creditsConsumed,
+    providerCostUsd,
+    convertedCostBrl,
+    billedBrl,
+    marginBrl,
+    usdBrlRate,
+  };
 }
 
 export async function listOrganizationAiUsageRecords(organizationId: string, limit = 24) {
