@@ -9,6 +9,7 @@ import {
   getBillingPlatformSettings,
   patchBillingPlatformSettings,
 } from "../lib/billing/billingSettings.js";
+import { syncBillingOverageMeters } from "../lib/billing/StripeMeterService.js";
 import {
   clearAllOrganizationStripeBindings,
   clearPlanStripeIds,
@@ -439,14 +440,29 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       limitEnforcementMode: parsed.data.limitEnforcementMode,
       overage: parsed.data.overage,
     });
+    const overageMeterSync =
+      settings.limitEnforcementMode === "overage" ? await syncBillingOverageMeters(settings) : null;
     await recordAuditLog({
       actorUserId: request.user!.id,
       action: "super.billing.settings.update",
       resourceType: "billing_settings",
-      metadata: parsed.data,
+      metadata: { ...parsed.data, overageMeterSync },
       ip: clientIp(request),
     });
-    return { settings };
+    return { settings, overageMeterSync };
+  });
+
+  app.post("/sync-overage-meters", async (request) => {
+    const settings = await getBillingPlatformSettings();
+    const overageMeterSync = await syncBillingOverageMeters(settings);
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "super.billing.overage_meters.sync",
+      resourceType: "billing_settings",
+      metadata: { overageMeterSync },
+      ip: clientIp(request),
+    });
+    return { settings, overageMeterSync };
   });
 
   app.get("/plans", async () => {
