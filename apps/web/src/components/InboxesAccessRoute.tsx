@@ -25,18 +25,24 @@ export function InboxesAccessRoute({ children }: { children: React.ReactNode }) 
       return;
     }
     let cancelled = false;
-    void api
-      .get<{ agentsInboxesVisible?: boolean }>("/settings/channel")
-      .then((res) => {
-        if (!cancelled) setAgentsInboxesVisible(res.agentsInboxesVisible === true);
-      })
-      .catch(() => {
-        if (!cancelled) setAgentsInboxesVisible(false);
-      });
+    const load = () => {
+      void api
+        .get<{ agentsInboxesVisible?: boolean }>("/settings/channel")
+        .then((res) => {
+          if (!cancelled) setAgentsInboxesVisible(res.agentsInboxesVisible === true);
+        })
+        .catch(() => {
+          if (!cancelled) setAgentsInboxesVisible(false);
+        });
+    };
+    load();
+    const onSettingsChanged = () => load();
+    window.addEventListener("openconduit:channel-settings-changed", onSettingsChanged);
     return () => {
       cancelled = true;
+      window.removeEventListener("openconduit:channel-settings-changed", onSettingsChanged);
     };
-  }, [loading, tenantAdmin, user]);
+  }, [loading, tenantAdmin, user?.id, user?.role, user?.actingOrganizationId]);
 
   if (loading || agentsInboxesVisible === null) {
     return (

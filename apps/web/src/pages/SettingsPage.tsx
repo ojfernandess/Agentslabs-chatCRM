@@ -783,6 +783,7 @@ export function SettingsPage() {
         setWfSplitViewSize(splitSize);
         writeCachedConversationsSplitViewSize(splitSize, user?.organizationId);
       }
+      window.dispatchEvent(new CustomEvent("openconduit:channel-settings-changed"));
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : t("settings.workflowSaveError"));
     } finally {

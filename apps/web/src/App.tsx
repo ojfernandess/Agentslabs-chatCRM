@@ -237,7 +237,14 @@ export function App() {
           }
         />
         <Route path="teams" element={<TeamsPage />} />
-        <Route path="inboxes/:inboxId/email" element={<EmailInboxLayout />}>
+        <Route
+          path="inboxes/:inboxId/email"
+          element={
+            <InboxesAccessRoute>
+              <EmailInboxLayout />
+            </InboxesAccessRoute>
+          }
+        >
           <Route index element={<EmailInboxThreadPlaceholder />} />
           <Route path="c/:id" element={<ConversationDetailPage />} />
         </Route>

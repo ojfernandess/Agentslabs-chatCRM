@@ -183,6 +183,7 @@ export function Layout() {
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
   const [emailInboxUnread, setEmailInboxUnread] = useState<EmailInboxUnreadCounts>({});
   const [agentsInboxesVisible, setAgentsInboxesVisible] = useState(false);
+  const showInboxesNav = tenantAdmin || agentsInboxesVisible;
 
   const showRemindersFeature = user?.organizationFeatures?.reminders !== false;
   const { reminders: actionableReminders, completingId, completeReminder } = useActionableReminders(
@@ -349,21 +350,27 @@ export function Layout() {
       return;
     }
     let cancelled = false;
-    void api
-      .get<{ agentsInboxesVisible?: boolean }>("/settings/channel")
-      .then((res) => {
-        if (!cancelled) setAgentsInboxesVisible(res.agentsInboxesVisible === true);
-      })
-      .catch(() => {
-        if (!cancelled) setAgentsInboxesVisible(false);
-      });
+    const load = () => {
+      void api
+        .get<{ agentsInboxesVisible?: boolean }>("/settings/channel")
+        .then((res) => {
+          if (!cancelled) setAgentsInboxesVisible(res.agentsInboxesVisible === true);
+        })
+        .catch(() => {
+          if (!cancelled) setAgentsInboxesVisible(false);
+        });
+    };
+    load();
+    const onSettingsChanged = () => load();
+    window.addEventListener("openconduit:channel-settings-changed", onSettingsChanged);
     return () => {
       cancelled = true;
+      window.removeEventListener("openconduit:channel-settings-changed", onSettingsChanged);
     };
   }, [tenantAdmin, user?.id, orgThemeKey]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !showInboxesNav) {
       setSidebarInboxes([]);
       return;
     }
@@ -379,10 +386,10 @@ export function Layout() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, orgThemeKey]);
+  }, [showInboxesNav, user?.id, orgThemeKey]);
 
   const fetchEmailInboxUnreadCounts = useCallback(() => {
-    if (!user) {
+    if (!user || !showInboxesNav) {
       setEmailInboxUnread({});
       return;
     }
@@ -390,7 +397,7 @@ export function Layout() {
       .get<{ counts: EmailInboxUnreadCounts }>("/inboxes/email-unread-counts")
       .then((res) => setEmailInboxUnread(res.counts ?? {}))
       .catch(() => setEmailInboxUnread({}));
-  }, [user?.id, orgThemeKey]);
+  }, [showInboxesNav, user, user?.id, orgThemeKey]);
 
   useEffect(() => {
     fetchEmailInboxUnreadCounts();
@@ -611,7 +618,7 @@ export function Layout() {
                     ) : null}
                   </div>
                 ) : null}
-                {sidebarInboxes.length > 0 ? (
+                {showInboxesNav && sidebarInboxes.length > 0 ? (
                   <div className="mb-1 mt-0.5 space-y-0.5">
                     {!collapsed ? (
                       <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
@@ -691,7 +698,7 @@ export function Layout() {
             {!collapsed ? <span className="min-w-0 truncate">{t("nav.teams")}</span> : null}
           </NavLink>
         ) : null}
-        {tenantAdmin || agentsInboxesVisible ? (
+        {showInboxesNav ? (
           <NavLink
             to="/inboxes"
             title={collapsed ? t("nav.inboxes") : undefined}

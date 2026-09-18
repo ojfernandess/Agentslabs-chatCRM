@@ -181,6 +181,21 @@ async function agentsInboxesVisibleForOrg(organizationId: string): Promise<boole
   return settings?.agentsInboxesVisible ?? false;
 }
 
+async function blockAgentInboxManagementWhenDisabled(
+  role: string,
+  organizationId: string,
+  reply: import("fastify").FastifyReply,
+): Promise<boolean> {
+  if (role !== "AGENT") return false;
+  if (await agentsInboxesVisibleForOrg(organizationId)) return false;
+  reply.status(403).send({
+    error: "Forbidden",
+    message: "Inbox management is not enabled for agents in this organization",
+    statusCode: 403,
+  });
+  return true;
+}
+
 export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -243,6 +258,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.get("/email-unread-counts", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (await blockAgentInboxManagementWhenDisabled(request.user.role, organizationId, reply)) return;
 
     const emailInboxes = await prisma.inbox.findMany({
       where: {
@@ -716,6 +732,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string } }>("/:id/email-folders", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (await blockAgentInboxManagementWhenDisabled(request.user.role, organizationId, reply)) return;
 
     const inbox = await prisma.inbox.findFirst({
       where: { id: request.params.id, organizationId },
@@ -743,6 +760,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>("/:id/email-folders", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (await blockAgentInboxManagementWhenDisabled(request.user.role, organizationId, reply)) return;
 
     const body = createEmailFolderSchema.parse(request.body);
     const inbox = await prisma.inbox.findFirst({
@@ -862,6 +880,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>("/:id/compose-email", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (await blockAgentInboxManagementWhenDisabled(request.user.role, organizationId, reply)) return;
 
     const inbox = await prisma.inbox.findFirst({
       where: { id: request.params.id, organizationId },
@@ -963,6 +982,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>("/:id/sync-email", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (await blockAgentInboxManagementWhenDisabled(request.user.role, organizationId, reply)) return;
 
     const inbox = await prisma.inbox.findFirst({
       where: { id: request.params.id, organizationId },
@@ -1058,6 +1078,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    if (await blockAgentInboxManagementWhenDisabled(request.user.role, organizationId, reply)) return;
 
     const inbox = await prisma.inbox.findFirst({
       where: { id: request.params.id, organizationId },
