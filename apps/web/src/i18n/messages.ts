@@ -4679,8 +4679,8 @@ export const messages = {
       selectThread: "Selecione uma conversa",
       selectThreadHint:
         "Escolha uma conversa à esquerda para ler e responder. Enquanto isso, explore o guia abaixo para conhecer melhor a plataforma.",
-      emptyWorkspaceWelcome: "Tudo pronto para atender",
-      emptyWorkspaceQuickSteps: "Primeiro atendimento — passo a passo",
+      emptyWorkspaceGreeting: "Olá, {name}! 👋",
+      emptyWorkspaceGreetingFallback: "Olá! 👋",
       emptyWorkspaceGuideTitle: "Guia de Uso — Conversas",
       emptyWorkspaceGuideDesc:
         "Artigos selecionados para dominar filtros, atribuição, encerramento e contatos.",
@@ -11508,8 +11508,8 @@ export const messages = {
       selectThread: "Select a conversation",
       selectThreadHint:
         "Pick a conversation on the left to read and reply. While you wait, explore the guide below to learn the platform.",
-      emptyWorkspaceWelcome: "Ready to help customers",
-      emptyWorkspaceQuickSteps: "First conversation — step by step",
+      emptyWorkspaceGreeting: "Hi, {name}! 👋",
+      emptyWorkspaceGreetingFallback: "Hi! 👋",
       emptyWorkspaceGuideTitle: "Usage Guide — Conversations",
       emptyWorkspaceGuideDesc:
         "Selected articles to master filters, assignment, closing, and contacts.",

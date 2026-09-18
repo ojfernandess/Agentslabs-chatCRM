@@ -1,10 +1,11 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, ChevronRight, Clock, MessageSquare, Sparkles } from "lucide-react";
+import { BookOpen, ChevronRight, Clock, MessageSquare } from "lucide-react";
 import { motion, staggerContainer, staggerItem, useReducedMotion } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin } from "@/lib/authRole";
+import { attendantDisplayName } from "@/lib/cannedResponseVariables";
 import { getArticleBySlug } from "@/lib/help/articles";
 import { getContextualArticles } from "@/lib/help/routeContext";
 import { isArticleVisible } from "@/lib/help/search";
@@ -34,15 +35,6 @@ function collectGuideArticles(isAdmin: boolean, features: Record<string, boolean
   return articles.slice(0, 4);
 }
 
-function getFirstConversationSteps(isAdmin: boolean, features: Record<string, boolean | undefined>) {
-  const article = getArticleBySlug("conversations/first-conversation");
-  if (!article || !isArticleVisible(article, { isAdmin, features })) return [];
-  for (const block of article.blocks) {
-    if (block.type === "steps") return block.steps;
-  }
-  return [];
-}
-
 export function ConversationsThreadPlaceholder() {
   const { t } = useI18n();
   const { user } = useAuth();
@@ -53,8 +45,11 @@ export function ConversationsThreadPlaceholder() {
   const features = user?.organizationFeatures ?? {};
 
   const guideArticles = useMemo(() => collectGuideArticles(isAdmin, features), [isAdmin, features]);
-  const quickSteps = useMemo(() => getFirstConversationSteps(isAdmin, features), [isAdmin, features]);
   const showGuide = config.guide.enabled && guideArticles.length > 0;
+  const agentName = attendantDisplayName(user);
+  const greeting = agentName
+    ? t("conversations.emptyWorkspaceGreeting").replace("{name}", agentName)
+    : t("conversations.emptyWorkspaceGreetingFallback");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-gradient-to-b from-brand-50/80 via-ink-50 to-ink-50 dark:from-brand-950/20 dark:via-[#0F1420] dark:to-[#0F1420]">
@@ -91,61 +86,19 @@ export function ConversationsThreadPlaceholder() {
             </div>
           </motion.div>
 
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-brand-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 dark:border-brand-800/60 dark:bg-ink-900/60 dark:text-brand-300">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden />
-            {t("conversations.emptyWorkspaceWelcome")}
-          </div>
+          <h2 className="text-xl font-semibold text-ink-900 dark:text-ink-50 sm:text-2xl">{greeting}</h2>
 
-          <h2 className="mt-4 text-lg font-semibold text-ink-900 dark:text-ink-50">
+          <p className="mt-3 text-base font-medium text-ink-800 dark:text-ink-100">
             {t("conversations.selectThread")}
-          </h2>
+          </p>
           <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-600 dark:text-ink-400">
             {t("conversations.selectThreadHint")}
           </p>
         </motion.div>
 
-        {quickSteps.length > 0 ? (
-          <motion.section
-            className="mt-10 w-full rounded-2xl border border-brand-200/70 bg-white/80 p-5 shadow-sm backdrop-blur-sm dark:border-brand-900/40 dark:bg-ink-900/50"
-            initial={reduceMotion ? false : { opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: "easeOut", delay: 0.12 }}
-          >
-            <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">
-              {t("conversations.emptyWorkspaceQuickSteps")}
-            </h3>
-            <motion.ol
-              className="mt-4 space-y-2"
-              variants={reduceMotion ? undefined : staggerContainer}
-              initial={reduceMotion ? undefined : "hidden"}
-              animate={reduceMotion ? undefined : "show"}
-            >
-              {quickSteps.map((step, index) => (
-                <motion.li
-                  key={step.title}
-                  variants={reduceMotion ? undefined : staggerItem}
-                  className="flex items-start gap-3 rounded-xl px-2 py-1.5"
-                >
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
-                    {index + 1}
-                  </span>
-                  <span className="min-w-0 text-left">
-                    <span className="block text-sm font-medium text-ink-900 dark:text-ink-100">{step.title}</span>
-                    {step.body ? (
-                      <span className="mt-0.5 block text-xs leading-relaxed text-ink-500 dark:text-ink-400">
-                        {step.body}
-                      </span>
-                    ) : null}
-                  </span>
-                </motion.li>
-              ))}
-            </motion.ol>
-          </motion.section>
-        ) : null}
-
         {showGuide ? (
           <motion.section
-            className="mt-6 w-full"
+            className="mt-10 w-full"
             initial={reduceMotion ? false : { opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, ease: "easeOut", delay: 0.2 }}
