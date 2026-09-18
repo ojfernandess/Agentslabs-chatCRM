@@ -4,7 +4,11 @@ import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { assignTagsToConversationContact } from "../lib/assignContactTags.js";
-import { getAssistOpenAiCredentialsForOrganization } from "../lib/agentAssistLlm.js";
+import {
+  isAssistLlmConfiguredForOrganization,
+  replyAssistLlmUnavailable,
+  resolveAssistLlmForOrganization,
+} from "../lib/agentAssistLlm.js";
 import {
   loadIntelligentTaggingConfig,
   runIntelligentTagging,
@@ -26,7 +30,7 @@ export async function intelligentTaggingRoutes(app: FastifyInstance): Promise<vo
 
     const [config, openAiConfigured, settings, featureFlagEnabled] = await Promise.all([
       loadIntelligentTaggingConfig(organizationId),
-      getAssistOpenAiCredentialsForOrganization(organizationId),
+      isAssistLlmConfiguredForOrganization(organizationId),
       prisma.settings.findUnique({
         where: { organizationId },
         select: {
@@ -46,7 +50,7 @@ export async function intelligentTaggingRoutes(app: FastifyInstance): Promise<vo
       minConfidence: settings?.intelligentTaggingMinConfidence ?? config.minConfidence,
       maxTags: settings?.intelligentTaggingMaxTags ?? config.maxTags,
       trigger: parseIntelligentTaggingTrigger(settings?.intelligentTaggingTrigger),
-      openAiConfigured: Boolean(openAiConfigured),
+      openAiConfigured: openAiConfigured,
     };
   });
 
@@ -66,14 +70,9 @@ export async function intelligentTaggingRoutes(app: FastifyInstance): Promise<vo
         });
       }
 
-      const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
-      if (!creds) {
-        return reply.status(503).send({
-          error: "Service Unavailable",
-          message: "OpenAI credentials required for intelligent tagging",
-          code: "missing_openai_key",
-          statusCode: 503,
-        });
+      const assist = await resolveAssistLlmForOrganization(organizationId);
+      if (!assist.ok) {
+        return replyAssistLlmUnavailable(reply, assist);
       }
 
       const exists = await prisma.conversation.findFirst({

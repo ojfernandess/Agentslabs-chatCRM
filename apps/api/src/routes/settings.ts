@@ -34,7 +34,8 @@ import {
 import { ensureDefaultInboxForOrganization } from "../lib/defaultInbox.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { putMessageMediaFile } from "../lib/mediaStorage.js";
-import { getAssistOpenAiCredentialsForOrganization } from "../lib/agentAssistLlm.js";
+import { isAssistLlmConfiguredForOrganization } from "../lib/agentAssistLlm.js";
+import { getOrganizationAiBillingMode } from "../lib/ai-billing/getOrganizationAiBillingMode.js";
 import { computeAgentBotTriageActive, getAgentBotDispatchContext, getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import {
   evolutionGoConnectInstance,
@@ -488,12 +489,16 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       settings = await prisma.settings.create({ data: { organizationId } });
     }
 
-    const openAiConfigured = !!(await getAssistOpenAiCredentialsForOrganization(organizationId));
+    const [openAiConfigured, aiBillingMode] = await Promise.all([
+      isAssistLlmConfiguredForOrganization(organizationId),
+      getOrganizationAiBillingMode(organizationId),
+    ]);
 
     return {
       assistantAiEnabled: settings.assistantAiEnabled,
       aiPilotAccessEnabled: settings.aiPilotAccessEnabled,
       openAiConfigured,
+      aiBillingMode,
     };
   });
 
@@ -515,6 +520,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
 
       return {
         ...maskSettings(settings, organizationId),
+        aiBillingMode: await getOrganizationAiBillingMode(organizationId),
         evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
         evolutionGoPlatformMode: await evolutionGoPlatformModeActive(),
       };
@@ -764,6 +770,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
 
       return {
         ...maskSettings(settings, organizationId),
+        aiBillingMode: await getOrganizationAiBillingMode(organizationId),
         evolutionPlatformQrMode: await evolutionPlatformQrModeActive(),
         evolutionGoPlatformMode: await evolutionGoPlatformModeActive(),
       };

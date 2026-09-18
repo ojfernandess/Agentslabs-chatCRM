@@ -5717,6 +5717,10 @@ export const messages = {
       assistantTitle: "OpenAI (sugestão de resposta e insights)",
       assistantIntro:
         "Opcional: chave API só para esta organização. «Gerar resposta» na conversa e a página IA & Insights usam esta chave e URL base; se estiverem vazias, usa-se a chave global do servidor (OPENAI_API_KEY ou OPENAI_PROMPT_PREVIEW_KEY).",
+      assistantIntroPlatformCredits:
+        "Esta organização utiliza Créditos de IA da plataforma. Sugestão de resposta, IA & Insights e funções relacionadas consomem créditos da carteira — não é necessário configurar chave OpenAI aqui.",
+      assistantPlatformCreditsNotice:
+        "O provedor e a API Key são geridos centralmente pela plataforma. O consumo destas funções debita os créditos de IA da organização.",
       assistantApiKeyLabel: "Chave API da organização",
       assistantApiKeyHint:
         "Deixe em branco ao guardar para manter a chave actual. Para definir uma chave nova, cole o valor completo.",
@@ -12531,6 +12535,10 @@ export const messages = {
       assistantTitle: "OpenAI (reply suggestions & insights)",
       assistantIntro:
         "Optional: an API key used only for this organization. \"Generate reply\" on a conversation and the IA & Insights page use this key and base URL; when empty, the server-wide key applies (OPENAI_API_KEY or OPENAI_PROMPT_PREVIEW_KEY).",
+      assistantIntroPlatformCredits:
+        "This organization uses Platform AI credits. Reply suggestions, AI & Insights, and related features consume wallet credits — no OpenAI key is required here.",
+      assistantPlatformCreditsNotice:
+        "Provider and API key are managed centrally by the platform. Usage of these features debits the organization's AI credits.",
       assistantApiKeyLabel: "Organization API key",
       assistantApiKeyHint:
         "Leave blank when saving to keep the current key. Paste a full new key only when you want to replace it.",

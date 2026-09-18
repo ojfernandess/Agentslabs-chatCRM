@@ -1,46 +1,24 @@
-import { config } from "../config.js";
-import { prisma } from "../db.js";
-import { decrypt } from "./encryption.js";
-import { callOpenAiCompatibleChat } from "./promptModulePreviewLlm.js";
+import {
+  callAssistLlmChat,
+  type ResolvedAssistLlmContext,
+} from "./assistLlmBilling.js";
 
-export type AssistOpenAiCredentials = { apiKey: string; baseUrl: string };
-
-/** Só chave global do servidor (sem organização). */
-export function serverAssistCredentials(): AssistOpenAiCredentials | null {
-  const apiKey = config.openAiPromptPreviewKey.trim();
-  if (!apiKey) return null;
-  return { apiKey, baseUrl: config.openAiApiBaseUrl.replace(/\/+$/, "") };
-}
-
-export function openAiKeyForAssistFeatures(): string | null {
-  return serverAssistCredentials()?.apiKey ?? null;
-}
-
-/**
- * Chave OpenAI para assistência no painel: primeiro `settings` da organização, senão servidor.
- */
-export async function getAssistOpenAiCredentialsForOrganization(
-  organizationId: string,
-): Promise<AssistOpenAiCredentials | null> {
-  const row = await prisma.settings.findUnique({
-    where: { organizationId },
-    select: { assistantOpenaiApiKey: true, assistantOpenaiApiBaseUrl: true },
-  });
-  const orgKeyEncrypted = row?.assistantOpenaiApiKey?.trim();
-  if (orgKeyEncrypted) {
-    const orgKey = decrypt(orgKeyEncrypted);
-    if (orgKey) {
-      const baseRaw = row?.assistantOpenaiApiBaseUrl?.trim();
-      const baseUrl = (baseRaw || config.openAiApiBaseUrl).replace(/\/+$/, "");
-      return { apiKey: orgKey, baseUrl };
-    }
-  }
-  return serverAssistCredentials();
-}
-
-export function assistOpenAiModel(): string {
-  return process.env.OPENAI_ASSIST_MODEL?.trim() || "gpt-4o-mini";
-}
+export type { AssistOpenAiCredentials } from "./assistLlmCredentials.js";
+export {
+  assistOpenAiModel,
+  getAssistOpenAiCredentialsForOrganization,
+  openAiKeyForAssistFeatures,
+  serverAssistCredentials,
+} from "./assistLlmCredentials.js";
+export {
+  AssistLlmError,
+  isAssistLlmConfiguredForOrganization,
+  replyAssistLlmCallError,
+  replyAssistLlmUnavailable,
+  resolveAssistLlmForOrganization,
+  type AssistLlmResolveResult,
+  type ResolvedAssistLlmContext,
+} from "./assistLlmBilling.js";
 
 type PublicMsg = { direction: string; body: string | null; isPrivate?: boolean | null };
 
@@ -70,7 +48,8 @@ export async function suggestAgentReplyText(
       recentDeals?: { name: string; amountCents: number; status: string; currency: string }[];
     };
   },
-  credentials: AssistOpenAiCredentials,
+  ctx: ResolvedAssistLlmContext,
+  billingMeta?: { conversationId?: string | null },
 ): Promise<string> {
   const lang = input.language || "pt";
   const systemPrompts: Record<string, string[]> = {
@@ -130,17 +109,18 @@ export async function suggestAgentReplyText(
     );
   }
 
-  const { text } = await callOpenAiCompatibleChat({
-    baseUrl: credentials.baseUrl,
-    apiKey: credentials.apiKey,
-    model: assistOpenAiModel(),
-    temperature: 0.45,
-    maxTokens: 700,
-    system,
-    history: [],
-    userMessage: userParts.join("\n"),
-    signal: AbortSignal.timeout(45_000),
-  });
+  const { text } = await callAssistLlmChat(
+    ctx,
+    {
+      temperature: 0.45,
+      maxTokens: 700,
+      system,
+      history: [],
+      userMessage: userParts.join("\n"),
+      signal: AbortSignal.timeout(45_000),
+    },
+    billingMeta,
+  );
   const out = text.trim();
   if (!out) throw new Error("empty_suggestion");
   return out.slice(0, 8000);
@@ -198,7 +178,8 @@ export async function analyzeConversationForInsights(
       recentDeals?: { name: string; amountCents: number; status: string; currency: string }[];
     };
   },
-  credentials: AssistOpenAiCredentials,
+  ctx: ResolvedAssistLlmContext,
+  billingMeta?: { conversationId?: string | null },
 ): Promise<ConversationInsightPayload> {
   const lang = input.language || "pt";
   const systemPrompts: Record<string, string[]> = {
@@ -252,17 +233,18 @@ export async function analyzeConversationForInsights(
 
   const userMessage = userParts.join("\n");
 
-  const { text } = await callOpenAiCompatibleChat({
-    baseUrl: credentials.baseUrl,
-    apiKey: credentials.apiKey,
-    model: assistOpenAiModel(),
-    temperature: 0.35,
-    maxTokens: 900,
-    system,
-    history: [],
-    userMessage,
-    signal: AbortSignal.timeout(55_000),
-  });
+  const { text } = await callAssistLlmChat(
+    ctx,
+    {
+      temperature: 0.35,
+      maxTokens: 900,
+      system,
+      history: [],
+      userMessage,
+      signal: AbortSignal.timeout(55_000),
+    },
+    billingMeta,
+  );
 
   let parsed: unknown;
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
@@ -325,7 +307,8 @@ export async function generateBotTransferHandoffBrief(
     transferReason: string | null;
     language?: string;
   },
-  credentials: AssistOpenAiCredentials,
+  ctx: ResolvedAssistLlmContext,
+  billingMeta?: { conversationId?: string | null },
 ): Promise<BotTransferHandoffBrief> {
   const lang = input.language || "pt";
   const systemPrompts: Record<string, string[]> = {
@@ -358,17 +341,18 @@ export async function generateBotTransferHandoffBrief(
     input.transcript.trim() || (lang === "en" ? "(empty)" : "(vazio)"),
   ].filter((x): x is string => x !== null);
 
-  const { text } = await callOpenAiCompatibleChat({
-    baseUrl: credentials.baseUrl,
-    apiKey: credentials.apiKey,
-    model: assistOpenAiModel(),
-    temperature: 0.3,
-    maxTokens: 900,
-    system,
-    history: [],
-    userMessage: userParts.join("\n"),
-    signal: AbortSignal.timeout(22_000),
-  });
+  const { text } = await callAssistLlmChat(
+    ctx,
+    {
+      temperature: 0.3,
+      maxTokens: 900,
+      system,
+      history: [],
+      userMessage: userParts.join("\n"),
+      signal: AbortSignal.timeout(22_000),
+    },
+    billingMeta,
+  );
 
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
   try {
@@ -439,8 +423,8 @@ export type AggregateHealthPayload = {
 
 export async function analyzeAggregateHealth(
   insights: ConversationInsightPayload[],
-  credentials: AssistOpenAiCredentials,
-  language = "pt"
+  ctx: ResolvedAssistLlmContext,
+  language = "pt",
 ): Promise<AggregateHealthPayload> {
   const systemPrompts: Record<string, string[]> = {
     pt: [
@@ -470,10 +454,7 @@ export async function analyzeAggregateHealth(
     JSON.stringify(insights.map(i => ({ summary: i.summary, sentiment: i.sentiment, alerts: i.alerts })), null, 2),
   ].join("\n");
 
-  const { text } = await callOpenAiCompatibleChat({
-    baseUrl: credentials.baseUrl,
-    apiKey: credentials.apiKey,
-    model: assistOpenAiModel(),
+  const { text } = await callAssistLlmChat(ctx, {
     temperature: 0.3,
     maxTokens: 1000,
     system,

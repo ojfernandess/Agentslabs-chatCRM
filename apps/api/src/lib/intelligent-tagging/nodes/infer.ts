@@ -1,9 +1,9 @@
 import {
   assistOpenAiModel,
   buildPublicConversationTranscript,
-  getAssistOpenAiCredentialsForOrganization,
+  resolveAssistLlmForOrganization,
 } from "../../agentAssistLlm.js";
-import { callOpenAiCompatibleChat } from "../../promptModulePreviewLlm.js";
+import { callAssistLlmChat, type ResolvedAssistLlmContext } from "../../assistLlmBilling.js";
 import type {
   InferTagsFn,
   IntelligentTaggingGraphState,
@@ -22,7 +22,8 @@ export async function inferTagsWithLlm(input: {
   maxTags: number;
   language: string;
   trigger: IntelligentTaggingTrigger;
-  credentials: { apiKey: string; baseUrl: string };
+  ctx: ResolvedAssistLlmContext;
+  conversationId?: string | null;
 }): Promise<LlmTaggingResult> {
   const catalogJson = JSON.stringify(
     input.tagCatalog.map((t) => ({ id: t.id, name: t.name })),
@@ -59,17 +60,18 @@ export async function inferTagsWithLlm(input: {
   }
   userParts.push(`Catálogo de etiquetas: ${catalogJson}`, "", "Conversa:", input.transcript.trim() || "(vazio)");
 
-  const { text } = await callOpenAiCompatibleChat({
-    baseUrl: input.credentials.baseUrl,
-    apiKey: input.credentials.apiKey,
-    model: assistOpenAiModel(),
-    temperature: 0.2,
-    maxTokens: 800,
-    system,
-    history: [],
-    userMessage: userParts.join("\n"),
-    signal: AbortSignal.timeout(55_000),
-  });
+  const { text } = await callAssistLlmChat(
+    input.ctx,
+    {
+      temperature: 0.2,
+      maxTokens: 800,
+      system,
+      history: [],
+      userMessage: userParts.join("\n"),
+      signal: AbortSignal.timeout(55_000),
+    },
+    { conversationId: input.conversationId ?? null },
+  );
 
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
   let parsed: unknown;
@@ -95,11 +97,15 @@ export async function inferNode(
   const infer =
     inferFn ??
     (async (input) => {
-      const credentials = await getAssistOpenAiCredentialsForOrganization(state.organizationId);
-      if (!credentials) {
+      const resolved = await resolveAssistLlmForOrganization(state.organizationId);
+      if (!resolved.ok) {
         throw new Error("openai_not_configured");
       }
-      return inferTagsWithLlm({ ...input, credentials });
+      return inferTagsWithLlm({
+        ...input,
+        ctx: resolved.ctx,
+        conversationId: state.conversationId ?? null,
+      });
     });
 
   try {

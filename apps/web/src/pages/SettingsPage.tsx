@@ -147,6 +147,7 @@ interface AppSettings {
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
+  aiBillingMode?: "OWN_API_KEY" | "PLATFORM_CREDITS";
   conversationBubbleClientColor?: string | null;
   conversationBubbleAgentColor?: string | null;
   conversationBubbleClientColorDark?: string | null;
@@ -1242,6 +1243,7 @@ export function SettingsPage() {
   };
 
   const assistantKeyMasked = settings?.assistantOpenaiApiKey === "••••••••";
+  const assistantPlatformCreditsMode = settings?.aiBillingMode === "PLATFORM_CREDITS";
   const leadFinderKeyMasked = settings?.leadFinderSerpApiKey === "••••••••";
 
   if (!isAdmin) {
@@ -2811,12 +2813,22 @@ export function SettingsPage() {
                     <Sparkles className="h-5 w-5" />
                     {t("settings.assistantTitle")}
                   </h2>
-                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.assistantIntro")}</p>
-                  {assistantKeyMasked ? (
+                  <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">
+                    {assistantPlatformCreditsMode
+                      ? t("settings.assistantIntroPlatformCredits")
+                      : t("settings.assistantIntro")}
+                  </p>
+                  {assistantPlatformCreditsMode ? (
+                    <p className="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-100">
+                      {t("settings.assistantPlatformCreditsNotice")}
+                    </p>
+                  ) : null}
+                  {!assistantPlatformCreditsMode && assistantKeyMasked ? (
                     <p className="mb-4 rounded-lg border border-brand-100 bg-brand-50/50 px-3 py-2 text-sm text-brand-900">
                       {t("settings.assistantKeyActiveHint")}
                     </p>
                   ) : null}
+                  {!assistantPlatformCreditsMode ? (
                   <div className="space-y-4">
                     <div>
                       <label htmlFor="assistantOpenaiKey" className="block text-sm font-medium text-ink-700 dark:text-ink-300">
@@ -2848,12 +2860,14 @@ export function SettingsPage() {
                       <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("settings.assistantApiBaseUrlHint")}</p>
                     </div>
                   </div>
+                  ) : null}
                   {assistantSaveError ? (
                     <p className="mt-4 text-sm text-red-600" role="alert">
                       {assistantSaveError}
                     </p>
                   ) : null}
                   <div className="mt-6 flex flex-wrap items-center gap-3">
+                    {!assistantPlatformCreditsMode ? (
                     <button
                       type="submit"
                       disabled={saving}
@@ -2861,7 +2875,8 @@ export function SettingsPage() {
                     >
                       {saving ? t("common.loading") : t("settings.assistantSave")}
                     </button>
-                    {assistantKeyMasked ? (
+                    ) : null}
+                    {!assistantPlatformCreditsMode && assistantKeyMasked ? (
                       <button
                         type="button"
                         disabled={saving}

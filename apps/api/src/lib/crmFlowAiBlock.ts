@@ -1,6 +1,6 @@
 import { prisma } from "../db.js";
-import { callOpenAiCompatibleChat } from "./promptModulePreviewLlm.js";
-import { getAssistOpenAiCredentialsForOrganization } from "./agentAssistLlm.js";
+import { resolveAssistLlmForOrganization } from "./agentAssistLlm.js";
+import { callAssistLlmChat } from "./assistLlmBilling.js";
 import type { CrmFlowContext } from "./crmFlowContext.js";
 
 const HOT_KEYWORDS = ["urgente", "comprar", "fechar", "orçamento", "proposta", "hoje", "agora"];
@@ -29,12 +29,10 @@ async function llmClassifyTemperature(text: string, organizationId: string): Pro
     select: { assistantAiEnabled: true },
   });
   if (settings?.assistantAiEnabled === false) return null;
-  const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
-  if (!creds) return null;
+  const assist = await resolveAssistLlmForOrganization(organizationId);
+  if (!assist.ok) return null;
   try {
-    const { text: reply } = await callOpenAiCompatibleChat({
-      baseUrl: creds.baseUrl,
-      apiKey: creds.apiKey,
+    const { text: reply } = await callAssistLlmChat(assist.ctx, {
       model: "gpt-4o-mini",
       temperature: 0.2,
       maxTokens: 16,

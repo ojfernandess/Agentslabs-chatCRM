@@ -10,11 +10,12 @@ import {
   mapTeamChannelMessageReactions,
 } from "../lib/teamChannelMessagePayload.js";
 import {
-  getAssistOpenAiCredentialsForOrganization,
-  assistOpenAiModel,
+  AssistLlmError,
   buildPublicConversationTranscript,
+  replyAssistLlmUnavailable,
+  resolveAssistLlmForOrganization,
 } from "../lib/agentAssistLlm.js";
-import { callOpenAiCompatibleChat } from "../lib/promptModulePreviewLlm.js";
+import { callAssistLlmChat } from "../lib/assistLlmBilling.js";
 
 const channelMessageBodySchema = z
   .object({
@@ -628,13 +629,9 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
-    if (!creds) {
-      return reply.status(503).send({
-        error: "Service Unavailable",
-        message: "OpenAI API key not configured",
-        statusCode: 503,
-      });
+    const assist = await resolveAssistLlmForOrganization(organizationId);
+    if (!assist.ok) {
+      return replyAssistLlmUnavailable(reply, assist);
     }
 
     const [openCount, pendingCount, recentConvos] = await Promise.all([
@@ -677,17 +674,20 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       `Pedido do utilizador:\n${parsed.data.prompt}`,
     ].join("\n\n");
 
-    const { text } = await callOpenAiCompatibleChat({
-      apiKey: creds.apiKey,
-      baseUrl: creds.baseUrl,
-      model: assistOpenAiModel(),
-      temperature: 0.4,
-      maxTokens: 900,
-      system,
-      history: [],
-      userMessage: userContent,
-    });
-
-    return { answer: text.trim() };
+    try {
+      const { text } = await callAssistLlmChat(assist.ctx, {
+        temperature: 0.4,
+        maxTokens: 900,
+        system,
+        history: [],
+        userMessage: userContent,
+      });
+      return { answer: text.trim() };
+    } catch (err) {
+      if (err instanceof AssistLlmError) {
+        return replyAssistLlmUnavailable(reply, { ok: false, reason: err.code });
+      }
+      throw err;
+    }
   });
 }

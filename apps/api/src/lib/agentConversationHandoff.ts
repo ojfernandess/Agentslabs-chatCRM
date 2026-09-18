@@ -3,7 +3,7 @@ import {
   buildPublicConversationTranscript,
   formatBotTransferHandoffNote,
   generateBotTransferHandoffBrief,
-  getAssistOpenAiCredentialsForOrganization,
+  resolveAssistLlmForOrganization,
 } from "./agentAssistLlm.js";
 import { buildNativeAgentTranscriptWhere } from "./agentConversationHistory.js";
 import { loadAutomationConversationContext } from "./automationConversationContextLib.js";
@@ -32,14 +32,14 @@ export async function recordNativeAgentTransferHandoff(input: {
 }): Promise<void> {
   let brief = null;
   try {
-    const [conv, credentials, automationCtx] = await Promise.all([
+    const [conv, assist, automationCtx] = await Promise.all([
       prisma.conversation.findFirst({
         where: { id: input.conversationId, organizationId: input.organizationId },
         select: {
           contact: { select: { name: true } },
         },
       }),
-      getAssistOpenAiCredentialsForOrganization(input.organizationId),
+      resolveAssistLlmForOrganization(input.organizationId),
       loadAutomationConversationContext(input.conversationId),
     ]);
     const messages = await prisma.message.findMany({
@@ -51,7 +51,7 @@ export async function recordNativeAgentTransferHandoff(input: {
       take: 60,
       select: { direction: true, body: true, isPrivate: true },
     });
-    if (conv && credentials) {
+    if (conv && assist.ok) {
       const transcript = buildPublicConversationTranscript(messages, 45);
       brief = await generateBotTransferHandoffBrief(
         {
@@ -60,7 +60,8 @@ export async function recordNativeAgentTransferHandoff(input: {
           transferReason: input.reason,
           language: "pt",
         },
-        credentials,
+        assist.ctx,
+        { conversationId: input.conversationId },
       );
     }
   } catch {

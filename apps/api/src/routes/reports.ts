@@ -9,8 +9,10 @@ import { resolveAgentBotFromOrgSettingsRow } from "../lib/agentBotTriage.js";
 import {
   analyzeAggregateHealth,
   analyzeConversationForInsights,
+  AssistLlmError,
   buildPublicConversationTranscript,
-  getAssistOpenAiCredentialsForOrganization,
+  replyAssistLlmUnavailable,
+  resolveAssistLlmForOrganization,
 } from "../lib/agentAssistLlm.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
 import { buildTelephonyReports } from "../lib/telephonyReports.js";
@@ -641,13 +643,9 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
-    if (!creds) {
-      return reply.status(503).send({
-        error: "Service Unavailable",
-        message: "OpenAI API key not configured",
-        statusCode: 503,
-      });
+    const assist = await resolveAssistLlmForOrganization(organizationId);
+    if (!assist.ok) {
+      return replyAssistLlmUnavailable(reply, assist);
     }
 
     const conversations = await prisma.conversation.findMany({
@@ -673,32 +671,40 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const lang = (request.headers["accept-language"]?.split(",")[0]?.split("-")[0] || "pt") as string;
-    const insights = await Promise.all(
-      conversations.map(async (c) => {
-        const transcript = buildPublicConversationTranscript(c.messages);
-        return analyzeConversationForInsights(
-          {
-            contactName: c.contact.name ?? "",
-            transcript,
-            language: lang,
-          },
-          creds,
-        );
-      }),
-    );
+    try {
+      const insights = await Promise.all(
+        conversations.map(async (c) => {
+          const transcript = buildPublicConversationTranscript(c.messages);
+          return analyzeConversationForInsights(
+            {
+              contactName: c.contact.name ?? "",
+              transcript,
+              language: lang,
+            },
+            assist.ctx,
+            { conversationId: c.id },
+          );
+        }),
+      );
 
-    const report = await analyzeAggregateHealth(insights, creds, lang);
+      const report = await analyzeAggregateHealth(insights, assist.ctx, lang);
 
-    void recordAuditLog({
-      actorUserId: request.user.id,
-      organizationId,
-      action: "ai.aggregate_health",
-      resourceType: "REPORT",
-      ip: clientIp(request),
-      metadata: { conversationCount: conversations.length },
-    });
+      void recordAuditLog({
+        actorUserId: request.user.id,
+        organizationId,
+        action: "ai.aggregate_health",
+        resourceType: "REPORT",
+        ip: clientIp(request),
+        metadata: { conversationCount: conversations.length },
+      });
 
-    return report;
+      return report;
+    } catch (err) {
+      if (err instanceof AssistLlmError) {
+        return replyAssistLlmUnavailable(reply, { ok: false, reason: err.code });
+      }
+      throw err;
+    }
   });
 }
 

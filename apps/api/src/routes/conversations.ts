@@ -63,8 +63,10 @@ import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 import { dispatchAiAlertWebhook } from "../lib/aiAlertWebhook.js";
 import {
   analyzeConversationForInsights,
+  AssistLlmError,
   buildPublicConversationTranscript,
-  getAssistOpenAiCredentialsForOrganization,
+  replyAssistLlmUnavailable,
+  resolveAssistLlmForOrganization,
   suggestAgentReplyText,
 } from "../lib/agentAssistLlm.js";
 import { loadActiveVoiceCallsByConversation } from "../lib/activeVoiceCalls.js";
@@ -1220,15 +1222,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
-    if (!creds) {
-      return reply.status(503).send({
-        error: "Service Unavailable",
-        message:
-          "No OpenAI API key available: configure it for this organization in Settings, or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY on the server.",
-        code: "missing_openai_key",
-        statusCode: 503,
-      });
+    const assist = await resolveAssistLlmForOrganization(organizationId);
+    if (!assist.ok) {
+      return replyAssistLlmUnavailable(reply, assist);
     }
 
     const parsedBody = suggestReplyBodySchema.safeParse(request.body ?? {});
@@ -1285,7 +1281,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             recentDeals: existing.contact.dealsPrimary,
           },
         },
-        creds,
+        assist.ctx,
+        { conversationId: existing.id },
       );
 
       void recordAuditLog({
@@ -1303,6 +1300,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       return { suggestion };
     } catch (err) {
+      if (err instanceof AssistLlmError) {
+        return replyAssistLlmUnavailable(reply, { ok: false, reason: err.code });
+      }
       const msg = err instanceof Error ? err.message : String(err);
       request.log.warn({ err, conversationId: existing.id }, "suggest-reply failed");
       return reply.status(502).send({
@@ -1353,15 +1353,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
-    if (!creds) {
-      return reply.status(503).send({
-        error: "Service Unavailable",
-        message:
-          "No OpenAI API key available: configure it for this organization in Settings, or set OPENAI_API_KEY / OPENAI_PROMPT_PREVIEW_KEY on the server.",
-        code: "missing_openai_key",
-        statusCode: 503,
-      });
+    const assist = await resolveAssistLlmForOrganization(organizationId);
+    if (!assist.ok) {
+      return replyAssistLlmUnavailable(reply, assist);
     }
 
     const existing = await prisma.conversation.findFirst({
@@ -1412,7 +1406,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             recentDeals: existing.contact.dealsPrimary,
           },
         },
-        creds,
+        assist.ctx,
+        { conversationId: existing.id },
       );
 
       void recordAuditLog({
@@ -1432,6 +1427,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       return { insights };
     } catch (err) {
+      if (err instanceof AssistLlmError) {
+        return replyAssistLlmUnavailable(reply, { ok: false, reason: err.code });
+      }
       const msg = err instanceof Error ? err.message : String(err);
       request.log.warn({ err, conversationId: existing.id }, "conversation insights failed");
       return reply.status(502).send({

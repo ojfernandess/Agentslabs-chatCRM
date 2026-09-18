@@ -3,8 +3,8 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { authenticate } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { callOpenAiCompatibleChat } from "../lib/promptModulePreviewLlm.js";
-import { getAssistOpenAiCredentialsForOrganization, assistOpenAiModel } from "../lib/agentAssistLlm.js";
+import { resolveAssistLlmForOrganization } from "../lib/agentAssistLlm.js";
+import { callAssistLlmChat } from "../lib/assistLlmBilling.js";
 import { fireCrmFlowTriggers } from "../lib/crmFlowHooks.js";
 
 const reminderSchema = z.object({
@@ -254,8 +254,8 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
       ];
     };
 
-    const creds = await getAssistOpenAiCredentialsForOrganization(organizationId);
-    if (!creds) {
+    const assist = await resolveAssistLlmForOrganization(organizationId);
+    if (!assist.ok) {
       return reply.send({ suggestions: fallback() });
     }
 
@@ -274,10 +274,7 @@ export async function reminderRoutes(app: FastifyInstance): Promise<void> {
           : `Objetivo: ${goal}\nAgora: ${now.toISOString()}\nDevolva JSON: {"suggestions":[{"note":"...","dueAt":"ISO","score":0-100,"reasons":["..."]}]}\nCrie 3 sugestões para os próximos 1-4 dias.`;
 
     try {
-      const { text } = await callOpenAiCompatibleChat({
-        baseUrl: creds.baseUrl,
-        apiKey: creds.apiKey,
-        model: assistOpenAiModel(),
+      const { text } = await callAssistLlmChat(assist.ctx, {
         temperature: 0.35,
         maxTokens: 500,
         system,
