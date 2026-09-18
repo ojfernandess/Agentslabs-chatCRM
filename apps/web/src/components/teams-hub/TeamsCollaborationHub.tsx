@@ -111,11 +111,17 @@ export function TeamsCollaborationHub() {
   const selected = teams.find((x) => x.id === selectedId) ?? teams[0] ?? null;
   const isOperationalTeam = (team: TeamRow) =>
     !team.isOrgCollaborationSpace && (team.purpose === "OPERATIONAL" || team.purpose == null);
+  const isCommunicationTeam = (team: TeamRow) =>
+    !team.isOrgCollaborationSpace && team.purpose === "COMMUNICATION";
+  const isManageableAdminTeam = (team: TeamRow) => !team.isOrgCollaborationSpace;
   const operationalTeams = useMemo(() => teams.filter(isOperationalTeam), [teams]);
+  const manageableAdminTeams = useMemo(() => teams.filter(isManageableAdminTeam), [teams]);
   const selectedIsOperational = selected != null && isOperationalTeam(selected);
   const adminTeam =
-    selectedIsOperational && selected ? selected : operationalTeams[0] ?? null;
-  const showAdminTab = isAdmin && operationalTeams.length > 0;
+    selected && isManageableAdminTeam(selected)
+      ? selected
+      : operationalTeams[0] ?? manageableAdminTeams[0] ?? null;
+  const showAdminTab = isAdmin && manageableAdminTeams.length > 0;
 
   const teamDisplayName = useCallback(
     (team: TeamRow) => (team.isOrgCollaborationSpace ? t("teamsHub.orgWorkspaceName") : team.name),
@@ -740,15 +746,19 @@ export function TeamsCollaborationHub() {
 
                   {tab === "admin" && showAdminTab && adminTeam ? (
                     <>
-                      {!selectedIsOperational ? (
+                      {selected?.id !== adminTeam.id ? (
                         <p className="mb-4 rounded-xl border border-ink-200/80 bg-ink-50/80 px-4 py-3 text-sm text-ink-600 dark:border-ink-800 dark:bg-ink-900/40 dark:text-ink-300">
-                          {t("teamsHub.adminOperationalTeamHint").replace("{team}", adminTeam.name)}
+                          {(adminTeam.purpose === "COMMUNICATION"
+                            ? t("teamsHub.adminCommunicationTeamHint")
+                            : t("teamsHub.adminOperationalTeamHint")
+                          ).replace("{team}", adminTeam.name)}
                         </p>
                       ) : null}
                       <TeamOperationalAdmin
                         embedded
                         teamId={adminTeam.id}
                         onTeamMutated={refreshTeamContext}
+                        onTeamDeleted={() => setTab("overview")}
                       />
                     </>
                   ) : null}

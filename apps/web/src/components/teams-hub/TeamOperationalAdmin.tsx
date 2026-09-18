@@ -41,6 +41,8 @@ interface AdminTeam {
   id: string;
   name: string;
   description: string | null;
+  purpose?: "OPERATIONAL" | "COMMUNICATION";
+  isOrgCollaborationSpace?: boolean;
   businessHours?: unknown;
   members: TeamMemberRow[];
   _count: { members: number; conversations: number };
@@ -54,9 +56,16 @@ interface Props {
   /** Renders inside hub tabs (no full-page chrome). */
   embedded?: boolean;
   onTeamMutated?: () => void;
+  onTeamDeleted?: () => void;
 }
 
-export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamMutated }: Props) {
+export function TeamOperationalAdmin({
+  teamId,
+  onBack,
+  embedded = false,
+  onTeamMutated,
+  onTeamDeleted,
+}: Props) {
   const { t } = useI18n();
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -78,7 +87,8 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
       if (!teamId) {
         setSelectedId((prev) => {
           if (prev && res.data.some((x) => x.id === prev)) return prev;
-          return res.data[0]?.id ?? null;
+          const manageable = res.data.filter((x) => !x.isOrgCollaborationSpace);
+          return manageable[0]?.id ?? res.data[0]?.id ?? null;
         });
       }
     } catch {
@@ -104,6 +114,8 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
     return teams.find((x) => x.id === id) ?? null;
   }, [teams, teamId, selectedId]);
 
+  const isCommunicationTeam = team?.purpose === "COMMUNICATION";
+
   useEffect(() => {
     if (!team) return;
     setName(team.name);
@@ -124,10 +136,10 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
     team != null &&
     (name.trim() !== team.name ||
       (description.trim() || "") !== (team.description ?? "") ||
-      (bhEnabled
-        ? JSON.stringify(businessHoursToJson(bhValue)) !==
-          JSON.stringify(team.businessHours ?? null)
-        : team.businessHours != null));
+      (!isCommunicationTeam &&
+        (bhEnabled
+          ? JSON.stringify(businessHoursToJson(bhValue)) !== JSON.stringify(team.businessHours ?? null)
+          : team.businessHours != null)));
 
   const handleSave = async () => {
     if (!team || !name.trim()) return;
@@ -136,8 +148,10 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
       const body: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim() || null,
-        businessHours: bhEnabled ? businessHoursToJson(bhValue) : null,
       };
+      if (!isCommunicationTeam) {
+        body.businessHours = bhEnabled ? businessHoursToJson(bhValue) : null;
+      }
       await api.patch(`/teams/${team.id}`, body);
       await loadTeams();
       onTeamMutated?.();
@@ -148,8 +162,13 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
 
   const handleDelete = async () => {
     if (!team) return;
+    const confirmHint = isCommunicationTeam
+      ? t("teams.deleteCommunicationConfirmHint")
+      : t("teams.deleteConfirmHint");
     const ok = window.confirm(
-      `${t("teams.deleteTeam")}: "${team.name}"?\n\n${t("teams.memberCount")}: ${team._count.members}\n${t("teams.conversations")}: ${team._count.conversations}\n\n${t("teams.deleteConfirmHint")}`,
+      `${t("teams.deleteTeam")}: "${team.name}"?\n\n${t("teams.memberCount")}: ${team._count.members}${
+        isCommunicationTeam ? "" : `\n${t("teams.conversations")}: ${team._count.conversations}`
+      }\n\n${confirmHint}`,
     );
     if (!ok) return;
     setDeleting(true);
@@ -157,6 +176,7 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
       await api.delete(`/teams/${team.id}`);
       await loadTeams();
       onTeamMutated?.();
+      onTeamDeleted?.();
       if (teamId && onBack) onBack();
     } finally {
       setDeleting(false);
@@ -199,6 +219,19 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
 
   const memberIds = new Set(team.members.map((m) => m.userId));
   const candidates = orgUsers.filter((u) => !memberIds.has(u.id));
+  const manageableTeams = teams.filter((row) => !row.isOrgCollaborationSpace);
+  const stats = isCommunicationTeam
+    ? [{ icon: UsersRound, label: t("teams.memberCount"), value: team._count.members, tone: "violet" }]
+    : [
+        { icon: UsersRound, label: t("teams.memberCount"), value: team._count.members, tone: "violet" },
+        { icon: MessageSquare, label: t("teams.conversations"), value: team._count.conversations, tone: "brand" },
+        {
+          icon: CalendarClock,
+          label: t("teams.businessHours.status"),
+          value: bhEnabled ? t("teams.businessHours.enabled") : t("teams.businessHours.disabled"),
+          tone: "emerald",
+        },
+      ];
 
   const inner = (
     <>
@@ -233,7 +266,9 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
               >
                 {team.name}
               </h1>
-              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">{t("teamsHub.adminSubtitle")}</p>
+              <p className="mt-1 text-sm text-ink-500 dark:text-ink-400">
+                {isCommunicationTeam ? t("teamsHub.adminCommunicationSubtitle") : t("teamsHub.adminSubtitle")}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -258,17 +293,8 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
           </div>
         </header>
 
-        <div className="mb-6 grid gap-3 sm:grid-cols-3">
-          {[
-            { icon: UsersRound, label: t("teams.memberCount"), value: team._count.members, tone: "violet" },
-            { icon: MessageSquare, label: t("teams.conversations"), value: team._count.conversations, tone: "brand" },
-            {
-              icon: CalendarClock,
-              label: t("teams.businessHours.status"),
-              value: bhEnabled ? t("teams.businessHours.enabled") : t("teams.businessHours.disabled"),
-              tone: "emerald",
-            },
-          ].map((stat) => (
+        <div className={clsx("mb-6 grid gap-3", isCommunicationTeam ? "sm:grid-cols-1" : "sm:grid-cols-3")}>
+          {stats.map((stat) => (
             <motion.div
               key={stat.label}
               initial={{ opacity: 0, y: 6 }}
@@ -282,9 +308,9 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
           ))}
         </div>
 
-        {!teamId && teams.length > 1 ? (
+        {!teamId && manageableTeams.length > 1 ? (
           <div className="mb-6 flex flex-wrap gap-2">
-            {teams.map((row) => (
+            {manageableTeams.map((row) => (
               <button
                 key={row.id}
                 type="button"
@@ -334,12 +360,14 @@ export function TeamOperationalAdmin({ teamId, onBack, embedded = false, onTeamM
               </div>
             </div>
 
-            <BusinessHoursEditor
-              enabled={bhEnabled}
-              value={bhValue}
-              onEnabledChange={setBhEnabled}
-              onChange={setBhValue}
-            />
+            {!isCommunicationTeam ? (
+              <BusinessHoursEditor
+                enabled={bhEnabled}
+                value={bhValue}
+                onEnabledChange={setBhEnabled}
+                onChange={setBhValue}
+              />
+            ) : null}
           </section>
 
           <aside className="space-y-6">

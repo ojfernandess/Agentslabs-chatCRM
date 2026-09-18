@@ -2789,6 +2789,8 @@ export const messages = {
       deleteTeam: "Excluir time",
       deleteConfirmHint:
         "Esta ação não pode ser desfeita. As conversas deste time ficam sem equipe (pool da organização, visível para administradores e agentes conforme as regras atuais).",
+      deleteCommunicationConfirmHint:
+        "Esta ação não pode ser desfeita. Canais, workspace e membros deste time de comunicação serão removidos.",
       saving: "Salvando…",
       deleting: "A eliminar…",
       teamDetails: "Dados do time",
@@ -2921,6 +2923,9 @@ export const messages = {
       adminTitle: "Administração operacional",
       adminOperationalTeamHint:
         "A administração operacional aplica-se ao time {team}. Selecione-o na barra lateral para gerir esse time directamente.",
+      adminCommunicationTeamHint:
+        "A administração aplica-se ao time {team}. Selecione-o na barra lateral para gerir ou excluir esse time de comunicação.",
+      adminCommunicationSubtitle: "Configure membros e dados do time de comunicação interna.",
       adminSubtitle: "Configure a equipa, horários, papéis e capacidade de atendimento.",
       channelCreate: "Novo canal",
       channelEdit: "Editar canal",
@@ -9606,6 +9611,8 @@ export const messages = {
       deleteTeam: "Delete team",
       deleteConfirmHint:
         "This cannot be undone. Conversations assigned to this team will lose their team (organization pool, visibility per your current rules).",
+      deleteCommunicationConfirmHint:
+        "This cannot be undone. This communication team's channels, workspace, and members will be removed.",
       saving: "Saving…",
       deleting: "Deleting…",
       teamDetails: "Team details",
@@ -9738,6 +9745,9 @@ export const messages = {
       adminTitle: "Operational administration",
       adminOperationalTeamHint:
         "Operational administration applies to team {team}. Select it in the sidebar to manage that team directly.",
+      adminCommunicationTeamHint:
+        "Administration applies to team {team}. Select it in the sidebar to manage or delete this communication team.",
+      adminCommunicationSubtitle: "Configure members and details for this internal communication team.",
       adminSubtitle: "Configure the team, schedule, roles, and support capacity.",
       channelCreate: "New channel",
       channelEdit: "Edit channel",
