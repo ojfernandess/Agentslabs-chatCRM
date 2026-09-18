@@ -231,6 +231,10 @@ function buildEnforcementMeta(settings: Awaited<ReturnType<typeof getBillingPlat
   };
 }
 
+function planLimitContext(snap: EffectivePlanSnapshot) {
+  return { planName: snap.planName, planSlug: snap.planSlug };
+}
+
 export async function getOrganizationUsage(organizationId: string): Promise<OrganizationUsageSnapshot> {
   const [snap, settings, usageCounts, messageStats] = await Promise.all([
     requireSnapshot(organizationId),
@@ -294,11 +298,22 @@ export async function assertPlanFeature(
   await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
   if (!snap.features[feature]) {
+    const planLabel = snap.planName?.trim() ? `«${snap.planName.trim()}»` : "seu plano atual";
     throw new PlanEnforcementError(
-      `Feature not included in current plan: ${feature}`,
+      `A funcionalidade «${feature}» não está incluída no plano ${planLabel}. ` +
+        `Para utilizá-la, faça upgrade do plano em Configurações → Plano e faturação.`,
       "plan_feature_unavailable",
       403,
-      { feature, planSlug: snap.planSlug },
+      {
+        feature,
+        planSlug: snap.planSlug,
+        planName: snap.planName,
+        messageEn:
+          `The «${feature}» feature is not included in your ${snap.planName?.trim() ? `«${snap.planName.trim()}»` : "current"} plan. ` +
+          `Please upgrade your plan in Settings → Billing to use it.`,
+        upgradeHint: true,
+        upgradePath: "/settings/billing",
+      },
     );
   }
 }
@@ -328,6 +343,7 @@ export async function assertCanAddTeamMembers(
     additional,
     idempotencyKey: options?.idempotencyKey,
     actorUserId: options?.actorUserId,
+    planContext: planLimitContext(snap),
   });
 }
 
@@ -349,6 +365,7 @@ export async function assertCanAddAiAgents(
     additional,
     idempotencyKey: options?.idempotencyKey,
     actorUserId: options?.actorUserId,
+    planContext: planLimitContext(snap),
   });
 }
 
@@ -379,6 +396,7 @@ export async function assertCanAddAutomations(
     additional,
     idempotencyKey: options?.idempotencyKey,
     actorUserId: options?.actorUserId,
+    planContext: planLimitContext(snap),
   });
 }
 
@@ -400,6 +418,7 @@ export async function assertCanAddContacts(
     additional,
     idempotencyKey: options?.idempotencyKey,
     actorUserId: options?.actorUserId,
+    planContext: planLimitContext(snap),
   });
 }
 
@@ -421,6 +440,7 @@ export async function assertCanSendOutboundMessage(
     additional: 1,
     idempotencyKey: options?.idempotencyKey,
     actorUserId: options?.actorUserId,
+    planContext: planLimitContext(snap),
   });
 }
 

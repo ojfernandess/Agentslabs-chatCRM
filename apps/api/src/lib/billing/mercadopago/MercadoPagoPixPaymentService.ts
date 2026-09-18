@@ -3,7 +3,7 @@ import type { Plan } from "@prisma/client";
 import { getPublicOrigin } from "../../../config.js";
 import { prisma } from "../../../db.js";
 import { recordBillingAudit } from "../billingAudit.js";
-import { mapMercadoPagoPaymentStatus } from "../billingTypes.js";
+import { mapMercadoPagoPaymentStatus, resolveSubscriptionStatusUpdate } from "../billingTypes.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { syncSubscriptionSnapshot, resolveMercadoPagoBillingPeriod, parseMercadoPagoDateString } from "../subscriptionSync.js";
@@ -226,17 +226,23 @@ export async function syncMercadoPagoPixPaymentIfApproved(
   organizationId: string,
   payment: MercadoPagoPayment,
 ): Promise<MercadoPagoCheckoutStatusResult> {
+  const paymentId = String(payment.id);
   const paymentStatus = payment.status ?? "pending";
-  const subscriptionStatus = mapMercadoPagoPaymentStatus(paymentStatus);
-  const approved = subscriptionStatus === "active";
+  const mappedStatus = mapMercadoPagoPaymentStatus(paymentStatus);
+  const approved = mappedStatus === "active";
 
   const sub = await prisma.organizationSubscription.findUnique({
     where: { organizationId },
     select: {
+      status: true,
+      checkoutSessionId: true,
       planId: true,
       plan: { select: { mercadopagoPlanId: true, interval: true } },
     },
   });
+
+  const isCheckoutPayment = sub?.checkoutSessionId === paymentId;
+  let effectiveStatus = sub?.status ?? mappedStatus;
 
   if (approved) {
     const periodStart =
@@ -253,25 +259,30 @@ export async function syncMercadoPagoPixPaymentIfApproved(
       planId: sub?.planId ?? null,
       paymentProvider: "mercadopago",
       status: "active",
-      externalSubscriptionId: String(payment.id),
+      externalSubscriptionId: paymentId,
       externalPriceId: sub?.plan?.mercadopagoPlanId ?? null,
-      checkoutSessionId: String(payment.id),
+      checkoutSessionId: paymentId,
       currentPeriodStart: billingPeriod.currentPeriodStart,
       currentPeriodEnd: billingPeriod.currentPeriodEnd,
       clearPaymentDue: true,
     });
-  } else {
-    await prisma.organizationSubscription.update({
-      where: { organizationId },
-      data: { status: subscriptionStatus },
-    });
+    effectiveStatus = "active";
+  } else if (isCheckoutPayment) {
+    const nextStatus = resolveSubscriptionStatusUpdate(effectiveStatus, mappedStatus);
+    if (nextStatus !== sub?.status) {
+      await prisma.organizationSubscription.update({
+        where: { organizationId },
+        data: { status: nextStatus },
+      });
+    }
+    effectiveStatus = nextStatus;
   }
 
   return {
-    sessionId: String(payment.id),
+    sessionId: paymentId,
     paymentStatus,
-    subscriptionStatus: approved ? "active" : subscriptionStatus,
-    approved,
+    subscriptionStatus: approved ? "active" : effectiveStatus,
+    approved: approved || effectiveStatus === "active" || effectiveStatus === "trialing",
   };
 }
 

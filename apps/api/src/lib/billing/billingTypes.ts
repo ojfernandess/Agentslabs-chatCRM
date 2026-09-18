@@ -259,6 +259,59 @@ export function mapMercadoPagoPaymentStatus(mpStatus: string): SubscriptionStatu
   }
 }
 
+const SUBSCRIPTION_STATUS_PRECEDENCE: Record<SubscriptionStatus, number> = {
+  active: 100,
+  trialing: 100,
+  past_due: 80,
+  pending_payment: 60,
+  paused: 55,
+  incomplete: 40,
+  incomplete_expired: 30,
+  unpaid: 20,
+  inactive: 10,
+  canceled: 0,
+};
+
+const SUBSCRIPTION_TERMINAL_STATUSES = new Set<SubscriptionStatus>([
+  "canceled",
+  "paused",
+  "past_due",
+  "unpaid",
+]);
+
+function isSubscriptionStatus(value: string): value is SubscriptionStatus {
+  return (SUBSCRIPTION_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * Evita regressão de assinatura já activa (ex.: webhook MP "pending" após pagamento aprovado).
+ * Estados terminais (cancelado, pausado, etc.) continuam a ser aplicados.
+ */
+export function resolveSubscriptionStatusUpdate(
+  currentStatus: string,
+  incomingStatus: SubscriptionStatus,
+): SubscriptionStatus {
+  if (SUBSCRIPTION_TERMINAL_STATUSES.has(incomingStatus)) {
+    return incomingStatus;
+  }
+
+  const current = isSubscriptionStatus(currentStatus) ? currentStatus : "inactive";
+
+  if (
+    (current === "active" || current === "trialing") &&
+    (incomingStatus === "pending_payment" ||
+      incomingStatus === "incomplete" ||
+      incomingStatus === "inactive" ||
+      incomingStatus === "incomplete_expired")
+  ) {
+    return current;
+  }
+
+  const currentRank = SUBSCRIPTION_STATUS_PRECEDENCE[current] ?? 0;
+  const incomingRank = SUBSCRIPTION_STATUS_PRECEDENCE[incomingStatus] ?? 0;
+  return incomingRank >= currentRank ? incomingStatus : current;
+}
+
 export function isAccessGrantingStatus(status: string): boolean {
   return ACCESS_GRANTING_STATUSES.has(status as SubscriptionStatus);
 }

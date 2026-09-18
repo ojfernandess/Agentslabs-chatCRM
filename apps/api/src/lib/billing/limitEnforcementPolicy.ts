@@ -1,7 +1,13 @@
 import { getBillingPlatformSettings } from "./billingSettings.js";
 import type { UsageDimensionKey } from "./billingTypes.js";
+import { buildPlanLimitExceededDetails, buildPlanLimitExceededMessages } from "./planLimitErrorMessages.js";
 import { PlanEnforcementError, resolveUsageCountKey } from "./planEnforcement.js";
 import { reportOverageMeterEvent } from "./StripeMeterService.js";
+
+export type PlanLimitEnforcementContext = {
+  planName: string | null;
+  planSlug?: string | null;
+};
 
 function isOverLimit(used: number, limit: number | null, additional = 0): boolean {
   if (limit === null) return false;
@@ -15,23 +21,10 @@ const LIMIT_ERROR_CODES: Record<UsageDimensionKey, string> = {
   messages: "plan_limit_messages",
 };
 
-const LIMIT_MESSAGES: Record<UsageDimensionKey, string> = {
-  agents: "Agent limit reached for current plan",
-  automations: "Automation limit reached for current plan",
-  contacts: "Contact limit reached for current plan",
-  messages: "Monthly message quota reached for current plan",
-};
-
 const CATALOG_LIMIT_ERROR_CODES: Record<string, string> = {
   users: "plan_limit_users",
   seats: "plan_limit_seats",
   ...LIMIT_ERROR_CODES,
-};
-
-const CATALOG_LIMIT_MESSAGES: Record<string, string> = {
-  users: "User limit reached for current plan",
-  seats: "Seat limit reached for current plan",
-  ...LIMIT_MESSAGES,
 };
 
 function resolveLimitErrorCode(limitKey: string): string {
@@ -39,9 +32,32 @@ function resolveLimitErrorCode(limitKey: string): string {
   return CATALOG_LIMIT_ERROR_CODES[canonical] ?? `plan_limit_${canonical}`;
 }
 
-function resolveLimitMessage(limitKey: string): string {
-  const canonical = resolveUsageCountKey(limitKey);
-  return CATALOG_LIMIT_MESSAGES[canonical] ?? `Plan limit reached for ${canonical}`;
+function resolveLimitExceededPayload(input: {
+  dimension: string;
+  used: number;
+  limit: number;
+  additional: number;
+  planContext?: PlanLimitEnforcementContext;
+}): { message: string; details: Record<string, unknown> } {
+  const planName = input.planContext?.planName ?? null;
+  const messages = buildPlanLimitExceededMessages({
+    planName,
+    dimension: input.dimension,
+    used: input.used,
+    limit: input.limit,
+    additional: input.additional,
+  });
+  const details = buildPlanLimitExceededDetails({
+    planName,
+    dimension: input.dimension,
+    used: input.used,
+    limit: input.limit,
+    additional: input.additional,
+  });
+  if (input.planContext?.planSlug) {
+    details.planSlug = input.planContext.planSlug;
+  }
+  return { message: messages.message, details };
 }
 
 async function enforceLimitCore(input: {
@@ -52,6 +68,7 @@ async function enforceLimitCore(input: {
   additional?: number;
   idempotencyKey?: string;
   actorUserId?: string | null;
+  planContext?: PlanLimitEnforcementContext;
 }): Promise<{ overage: boolean }> {
   const additional = input.additional ?? 1;
   if (!isOverLimit(input.used, input.limit, additional)) {
@@ -60,24 +77,27 @@ async function enforceLimitCore(input: {
 
   const settings = await getBillingPlatformSettings();
   const code = resolveLimitErrorCode(input.dimension);
-  const message = resolveLimitMessage(input.dimension);
-  const baseDetails = { used: input.used, limit: input.limit, additional, dimension: input.dimension };
+  const limit = input.limit as number;
+  const { message, details: limitDetails } = resolveLimitExceededPayload({
+    dimension: input.dimension,
+    used: input.used,
+    limit,
+    additional,
+    planContext: input.planContext,
+  });
+  const baseDetails = { ...limitDetails, enforcementMode: "block" as const };
 
   if (settings.limitEnforcementMode !== "overage") {
-    throw new PlanEnforcementError(message, code, 402, {
-      ...baseDetails,
-      enforcementMode: "block",
-    });
+    throw new PlanEnforcementError(message, code, 402, baseDetails);
   }
 
   const dimConfig = settings.overage[input.dimension];
   if (!dimConfig?.enabled || !dimConfig.stripeMeterEventName?.trim()) {
-    throw new PlanEnforcementError(
-      `${message} (overage billing not configured for this dimension)`,
-      code,
-      402,
-      { ...baseDetails, enforcementMode: "overage", overageConfigured: false },
-    );
+    throw new PlanEnforcementError(message, code, 402, {
+      ...baseDetails,
+      enforcementMode: "overage",
+      overageConfigured: false,
+    });
   }
 
   const overUnits =
@@ -92,17 +112,12 @@ async function enforceLimitCore(input: {
   });
 
   if (!report.reported) {
-    throw new PlanEnforcementError(
-      `${message} (could not report overage to Stripe: ${report.reason})`,
-      code,
-      402,
-      {
-        ...baseDetails,
-        enforcementMode: "overage",
-        overageReportError: report.reason,
-        overageReportMessage: "message" in report ? report.message : undefined,
-      },
-    );
+    throw new PlanEnforcementError(message, code, 402, {
+      ...baseDetails,
+      enforcementMode: "overage",
+      overageReportError: report.reason,
+      overageReportMessage: "message" in report ? report.message : undefined,
+    });
   }
 
   return { overage: true };
@@ -120,6 +135,7 @@ export async function enforceUsageLimit(input: {
   additional?: number;
   idempotencyKey?: string;
   actorUserId?: string | null;
+  planContext?: PlanLimitEnforcementContext;
 }): Promise<{ overage: boolean }> {
   return enforceLimitCore(input);
 }
@@ -133,6 +149,7 @@ export async function enforceCatalogPlanLimit(input: {
   additional?: number;
   idempotencyKey?: string;
   actorUserId?: string | null;
+  planContext?: PlanLimitEnforcementContext;
 }): Promise<{ overage: boolean }> {
   return enforceLimitCore({ ...input, dimension: input.limitKey });
 }

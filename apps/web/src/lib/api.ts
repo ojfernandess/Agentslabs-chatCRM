@@ -53,10 +53,12 @@ class ApiClient {
     if (!response.ok) {
       const error = await response.json().catch(() => ({
         message: response.statusText,
-      }));
+      })) as { message?: string; error?: string; details?: Record<string, unknown> };
       throw new ApiError(
-        error.message || "Request failed",
+        resolveClientApiErrorMessage(error),
         response.status,
+        typeof error.error === "string" ? error.error : undefined,
+        error.details,
       );
     }
 
@@ -104,8 +106,13 @@ class ApiClient {
     if (!response.ok) {
       const error = await response.json().catch(() => ({
         message: response.statusText,
-      }));
-      throw new ApiError(error.message || "Upload failed", response.status);
+      })) as { message?: string; error?: string; details?: Record<string, unknown> };
+      throw new ApiError(
+        resolveClientApiErrorMessage(error),
+        response.status,
+        typeof error.error === "string" ? error.error : undefined,
+        error.details,
+      );
     }
     return response.json();
   }
@@ -172,10 +179,26 @@ class ApiClient {
   }
 }
 
+function resolveClientApiErrorMessage(error: {
+  message?: string;
+  details?: Record<string, unknown>;
+}): string {
+  const message = error.message || "Request failed";
+  if (typeof document !== "undefined") {
+    const lang = document.documentElement.lang || "pt";
+    if (lang.startsWith("en") && typeof error.details?.messageEn === "string") {
+      return error.details.messageEn;
+    }
+  }
+  return message;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code?: string,
+    public details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";

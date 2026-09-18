@@ -4,6 +4,7 @@ import { prisma } from "../../db.js";
 import {
   mapStripeSubscriptionStatus,
   mapMercadoPagoPreapprovalStatus,
+  resolveSubscriptionStatusUpdate,
   type PaymentProviderName,
   type SubscriptionStatus,
 } from "./billingTypes.js";
@@ -325,7 +326,14 @@ export async function syncSubscriptionFromMercadoPago(
         })
       )?.planId ?? null;
 
-  const status = mapMercadoPagoPreapprovalStatus(preapproval.status ?? "pending");
+  const incomingStatus = mapMercadoPagoPreapprovalStatus(preapproval.status ?? "pending");
+  const existingSub = await prisma.organizationSubscription.findUnique({
+    where: { organizationId },
+    select: { status: true },
+  });
+  const status = existingSub
+    ? resolveSubscriptionStatusUpdate(existingSub.status, incomingStatus)
+    : incomingStatus;
   const payerId = preapproval.payer_id != null ? String(preapproval.payer_id) : null;
 
   const plan = planId
