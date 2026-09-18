@@ -56,6 +56,12 @@ describe("Mercado Pago webhook reference parsing", () => {
     assert.equal(resolveOrganizationIdFromMercadoPagoReference(ref), orgId);
   });
 
+  it("resolveOrganizationIdFromMercadoPagoReference extracts UUID from ONX-AI prefix", () => {
+    const orgId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    const ref = `ONX-AI-${orgId}-${randomUUID()}`;
+    assert.equal(resolveOrganizationIdFromMercadoPagoReference(ref), orgId);
+  });
+
   it("resolveOrganizationIdFromMercadoPagoReference returns null for invalid ref", () => {
     assert.equal(resolveOrganizationIdFromMercadoPagoReference("invalid"), null);
     assert.equal(resolveOrganizationIdFromMercadoPagoReference(null), null);

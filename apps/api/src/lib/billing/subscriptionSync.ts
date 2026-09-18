@@ -286,6 +286,12 @@ export function resolveOrganizationIdFromMercadoPagoReference(
   const ref = externalReference?.trim();
   if (!ref?.startsWith("ONX-")) return null;
   const parts = ref.split("-");
+  // ONX-AI-{uuid}-{attempt}
+  if (parts[1] === "AI") {
+    if (parts.length < 8) return null;
+    return parts.slice(2, 7).join("-");
+  }
+  // ONX-{uuid}-{attempt}
   if (parts.length < 7) return null;
   return parts.slice(1, 6).join("-");
 }

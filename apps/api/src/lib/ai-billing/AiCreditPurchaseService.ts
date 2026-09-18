@@ -31,6 +31,7 @@ import { creditAiWallet } from "./AiWalletService.js";
 import { money, moneyToApiString } from "./money.js";
 
 export const AI_CREDITS_CHECKOUT_MODE = "ai_credits";
+export const AI_CREDITS_EXTERNAL_REFERENCE_PREFIX = "ONX-AI-";
 
 type MercadoPagoPayment = {
   id: number | string;
@@ -326,7 +327,7 @@ async function createMercadoPagoAiCreditPixCheckout(
   }
 
   const checkoutAttemptId = randomUUID();
-  const externalReference = `ONX-AI-${input.organizationId}-${checkoutAttemptId}`;
+  const externalReference = `${AI_CREDITS_EXTERNAL_REFERENCE_PREFIX}${input.organizationId}-${checkoutAttemptId}`;
   const purchase = await createPendingPurchase({
     organizationId: input.organizationId,
     pkg,
@@ -466,44 +467,80 @@ export async function fulfillAiCreditPurchase(input: {
   return { alreadyCompleted: false, walletBalance: moneyToApiString(wallet.balance) };
 }
 
+export function isAiCreditsMercadoPagoExternalReference(
+  externalReference: string | null | undefined,
+): boolean {
+  return externalReference?.trim().startsWith(AI_CREDITS_EXTERNAL_REFERENCE_PREFIX) ?? false;
+}
+
 export function isAiCreditsMercadoPagoPayment(payment: MercadoPagoPayment): boolean {
-  return payment.metadata?.checkoutMode === AI_CREDITS_CHECKOUT_MODE;
+  if (payment.metadata?.checkoutMode === AI_CREDITS_CHECKOUT_MODE) return true;
+  return isAiCreditsMercadoPagoExternalReference(payment.external_reference);
+}
+
+async function resolveAiCreditPurchaseIdFromMercadoPagoPayment(
+  payment: MercadoPagoPayment,
+): Promise<string | null> {
+  const fromMeta =
+    typeof payment.metadata?.purchaseId === "string" ? payment.metadata.purchaseId.trim() : "";
+  if (fromMeta) return fromMeta;
+
+  const sessionId = String(payment.id ?? "").trim();
+  if (sessionId) {
+    const bySession = await prisma.aiCreditPurchase.findFirst({
+      where: { checkoutSessionId: sessionId },
+      select: { id: true },
+    });
+    if (bySession) return bySession.id;
+  }
+
+  const externalReference = payment.external_reference?.trim();
+  if (externalReference) {
+    const byReference = await prisma.aiCreditPurchase.findFirst({
+      where: { externalReference },
+      select: { id: true },
+    });
+    if (byReference) return byReference.id;
+  }
+
+  return null;
 }
 
 export async function fulfillAiCreditPurchaseFromMercadoPagoPayment(
   payment: MercadoPagoPayment,
 ): Promise<AiCreditCheckoutStatusResult | null> {
   if (!isAiCreditsMercadoPagoPayment(payment)) return null;
-  if ((payment.status ?? "").toLowerCase() !== "approved") {
-    const purchaseId =
-      typeof payment.metadata?.purchaseId === "string" ? payment.metadata.purchaseId.trim() : "";
+
+  const purchaseId = await resolveAiCreditPurchaseIdFromMercadoPagoPayment(payment);
+  const sessionId = String(payment.id ?? "").trim();
+  const paymentStatus = (payment.status ?? "pending").toLowerCase();
+
+  if (paymentStatus !== "approved") {
     if (purchaseId) {
       await prisma.aiCreditPurchase.updateMany({
         where: { id: purchaseId, status: "PENDING" },
-        data: { status: payment.status === "cancelled" ? "CANCELED" : "FAILED" },
+        data: { status: paymentStatus === "cancelled" ? "CANCELED" : "FAILED" },
       });
     }
     return {
       purchaseId: purchaseId || "",
-      sessionId: String(payment.id),
+      sessionId,
       status: payment.status ?? "pending",
       approved: false,
     };
   }
 
-  const purchaseId =
-    typeof payment.metadata?.purchaseId === "string" ? payment.metadata.purchaseId.trim() : "";
   if (!purchaseId) return null;
 
   const result = await fulfillAiCreditPurchase({
     purchaseId,
-    paymentReference: String(payment.id),
+    paymentReference: sessionId,
     provider: "mercadopago",
   });
 
   return {
     purchaseId,
-    sessionId: String(payment.id),
+    sessionId,
     status: "approved",
     approved: true,
     walletBalance: result.walletBalance,
@@ -557,8 +594,30 @@ export async function getAiCreditPurchaseCheckoutStatus(
   if (purchase.paymentProvider === "mercadopago") {
     const accessToken = await resolveMercadoPagoAccessTokenForBilling(organizationId, null);
     const payment = await getMercadoPagoPayment(accessToken, sessionId);
-    const fulfilled = await fulfillAiCreditPurchaseFromMercadoPagoPayment(payment);
-    if (fulfilled) return fulfilled;
+    const paymentStatus = (payment.status ?? "pending").toLowerCase();
+
+    if (paymentStatus === "approved") {
+      const result = await fulfillAiCreditPurchase({
+        purchaseId: purchase.id,
+        paymentReference: sessionId,
+        provider: "mercadopago",
+      });
+      return {
+        purchaseId: purchase.id,
+        sessionId,
+        status: "completed",
+        approved: true,
+        walletBalance: result.walletBalance,
+      };
+    }
+
+    if (paymentStatus === "cancelled" || paymentStatus === "rejected") {
+      await prisma.aiCreditPurchase.updateMany({
+        where: { id: purchase.id, status: "PENDING" },
+        data: { status: paymentStatus === "cancelled" ? "CANCELED" : "FAILED" },
+      });
+    }
+
     return {
       purchaseId: purchase.id,
       sessionId,
