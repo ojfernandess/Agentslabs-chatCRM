@@ -78,6 +78,7 @@ import {
 } from "../lib/conversationUserEmailState.js";
 import {
   applyAllConversationsHumanAttendanceScope,
+  botAttendanceStatuses,
   isOrgAllConversationsListScope,
 } from "../lib/conversationListScope.js";
 
@@ -333,8 +334,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (triageInboxIds.length === 0) {
         return { data: [], total: 0, page: query.page, pageSize: query.pageSize };
       }
+      const orgSettings = await prisma.settings.findUnique({
+        where: { organizationId },
+        select: { conversationsAllScopeHumanOnly: true },
+      });
       where.inboxId = { in: triageInboxIds };
-      where.status = { in: ["OPEN", "PENDING"] };
+      where.status = {
+        in: botAttendanceStatuses(orgSettings?.conversationsAllScopeHumanOnly === true),
+      };
       where.assignedToId = null;
       where.awaitingHumanHandoff = false;
     }

@@ -25,6 +25,7 @@ export function isOrgAllConversationsListScope(input: {
 
 /**
  * Restringe «Todas as conversas» a atendimento humano: exclui RESOLVED e fila do bot.
+ * Conversas RESOLVED em caixas de triagem do bot aparecem na aba Bot (ver botAttendanceStatuses).
  * Retorna false quando o pedido pede explicitamente RESOLVED (lista vazia).
  */
 export async function applyAllConversationsHumanAttendanceScope(
@@ -51,4 +52,9 @@ export async function applyAllConversationsHumanAttendanceScope(
   });
 
   return true;
+}
+
+/** Estados incluídos na aba «Bot em atendimento». Com separação activa, inclui finalizadas do bot. */
+export function botAttendanceStatuses(includeResolvedFromAllScope: boolean): Array<"OPEN" | "PENDING" | "RESOLVED"> {
+  return includeResolvedFromAllScope ? ["OPEN", "PENDING", "RESOLVED"] : ["OPEN", "PENDING"];
 }
