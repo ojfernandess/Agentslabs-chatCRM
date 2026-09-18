@@ -1119,7 +1119,9 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     return { markup };
   });
 
-  app.get("/ai-credits/organizations/:organizationId/balance", async (request, reply) => {
+  app.get<{ Params: { organizationId: string } }>(
+    "/ai-credits/organizations/:organizationId/balance",
+    async (request, reply) => {
     const org = await prisma.organization.findUnique({
       where: { id: request.params.organizationId },
       select: { id: true },
@@ -1128,9 +1130,12 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
     }
     return getOrganizationAiCreditsBalance(org.id);
-  });
+    },
+  );
 
-  app.post("/ai-credits/organizations/:organizationId/credit", async (request, reply) => {
+  app.post<{ Params: { organizationId: string } }>(
+    "/ai-credits/organizations/:organizationId/credit",
+    async (request, reply) => {
     const parsed = aiCreditBodySchema.safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
@@ -1171,7 +1176,8 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { wallet: { ...wallet, balance: moneyToApiString(wallet.balance), reservedBalance: moneyToApiString(wallet.reservedBalance), availableBalance: moneyToApiString(wallet.availableBalance) } };
-  });
+    },
+  );
 
   const aiCreditPackageBodySchema = z.object({
     slug: z.string().min(2).max(64),
@@ -1208,7 +1214,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     return { package: pkg };
   });
 
-  app.patch("/ai-credits/packages/:packageId", async (request, reply) => {
+  app.patch<{ Params: { packageId: string } }>("/ai-credits/packages/:packageId", async (request, reply) => {
     const parsed = aiCreditPackagePatchSchema.safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });

@@ -83,7 +83,7 @@ export async function creditAiWallet(input: {
 
     const wallet = await tx.organizationAiWallet.upsert({
       where: { organizationId: input.organizationId },
-      create: { organizationId },
+      create: { organizationId: input.organizationId },
       update: {},
     });
 
@@ -150,7 +150,7 @@ export async function reserveAiWalletBalance(input: {
 
     const wallet = await tx.organizationAiWallet.upsert({
       where: { organizationId: input.organizationId },
-      create: { organizationId },
+      create: { organizationId: input.organizationId },
       update: {},
     });
 
