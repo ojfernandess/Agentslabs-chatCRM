@@ -4296,6 +4296,7 @@ export const messages = {
       title: "Bots",
       subtitle: "Integrações e webhooks por organização",
       create: "Novo bot",
+      createError: "Não foi possível criar o bot.",
       name: "Nome",
       type: "Tipo",
       webhookUrl: "URL do webhook",
@@ -4335,7 +4336,7 @@ export const messages = {
       testWebhookHint:
         "Envia POST de prova (evento webhook_test) com a mesma estrutura que message_created — o destino deve responder 2xx e ignorar quando test for true.",
       botIdExplain:
-        "Cada bot tem um UUID único (estilo Chatwoot). Com só o token ocb_: GET /api/v1/bots ou GET /api/v1/agent-bot/profile — não precisa de JWT. Para criar/editar bots use JWT de POST /api/v1/auth/login (ADMIN).",
+        "Cada bot tem um UUID único. Com só o token ocb_: GET /api/v1/bots ou GET /api/v1/agent-bot/profile — não precisa de JWT. Para criar/editar bots use JWT de POST /api/v1/auth/login (ADMIN).",
     },
     login: {
       title: "Bem-vindo ao OpenNexo CRM",
@@ -11168,6 +11169,7 @@ export const messages = {
       title: "Bots",
       subtitle: "Integrations and webhooks for this organization",
       create: "New bot",
+      createError: "Could not create the bot.",
       name: "Name",
       type: "Type",
       webhookUrl: "Webhook URL",
@@ -11207,7 +11209,7 @@ export const messages = {
       testWebhookHint:
         "Sends a probe POST (webhook_test) with the same JSON shape as message_created — return 2xx; skip processing when test is true.",
       botIdExplain:
-        "Each bot has a unique UUID (Chatwoot-style). With only the ocb_ token: GET /api/v1/bots or GET /api/v1/agent-bot/profile — no JWT needed. To create/edit bots use JWT from POST /api/v1/auth/login (ADMIN).",
+        "Each bot has a unique UUID. With only the ocb_ token: GET /api/v1/bots or GET /api/v1/agent-bot/profile — no JWT needed. To create/edit bots use JWT from POST /api/v1/auth/login (ADMIN).",
     },
     login: {
       title: "Welcome to OpenNexo CRM",

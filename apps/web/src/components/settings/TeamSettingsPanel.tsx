@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Trash2, Users, Mail } from "lucide-react";
 import clsx from "clsx";
-import { api, ApiError } from "@/lib/api";
+import { api, formatApiErrorMessage } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { TeamInviteSendForm } from "./TeamInviteSendForm";
@@ -76,7 +76,7 @@ export function TeamSettingsPanel({ isAdmin, currentUserId }: TeamSettingsPanelP
       setNewUserRole("AGENT");
       await loadUsers();
     } catch (err) {
-      setUserFormError(err instanceof ApiError ? err.message : t("settings.teamAddUserError"));
+      setUserFormError(formatApiErrorMessage(err, t("settings.teamAddUserError")));
     } finally {
       setUserFormSubmitting(false);
     }
@@ -91,7 +91,7 @@ export function TeamSettingsPanel({ isAdmin, currentUserId }: TeamSettingsPanelP
       setRemoveTarget(null);
       await loadUsers();
     } catch (err) {
-      setRemoveError(err instanceof ApiError ? err.message : t("settings.teamRemoveUserError"));
+      setRemoveError(formatApiErrorMessage(err, t("settings.teamRemoveUserError")));
     } finally {
       setRemoveBusy(false);
     }

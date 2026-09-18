@@ -193,6 +193,13 @@ function resolveClientApiErrorMessage(error: {
   return message;
 }
 
+/** Mensagem amigável para erros de API (ex.: limites de plano). */
+export function formatApiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return fallback;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

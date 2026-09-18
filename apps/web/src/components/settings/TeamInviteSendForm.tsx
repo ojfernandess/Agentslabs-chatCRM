@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Copy, Mail } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { api, formatApiErrorMessage } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 
 type TeamInviteSendFormProps = {
@@ -30,7 +30,7 @@ export function TeamInviteSendForm({ onSent }: TeamInviteSendFormProps) {
       setInviteEmail("");
       onSent?.();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("settings.invitesSendError"));
+      setError(formatApiErrorMessage(err, t("settings.invitesSendError")));
     } finally {
       setSending(false);
     }

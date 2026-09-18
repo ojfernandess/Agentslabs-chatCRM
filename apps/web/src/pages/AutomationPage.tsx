@@ -26,7 +26,7 @@ import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { isTenantAdmin, isSuperAdminRole } from "@/lib/authRole";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, formatApiErrorMessage } from "@/lib/api";
 import {
   isInboxWhatsappConfigured,
   isWhatsAppCloudApiProvider,
@@ -201,6 +201,14 @@ const OPENAI_MODEL_CUSTOM = "__oc_openai_custom_model__";
 
 /** Limite alinhado ao endpoint /prompt-builder/suggest-instruction (LLM usa ~6000). */
 const PROMPT_SUGGEST_CONTEXT_MAX = 6000;
+
+function formatAutomationPageError(error: string, t: (key: string) => string): string {
+  if (error === "validation") return t("automationPage.agentValidation");
+  if (error === "agent_eil_invalid") return t("automationPage.agentEilSaveInvalid");
+  if (error === "prompt_validation") return t("automationPage.promptValidation");
+  if (error === "load_failed") return t("automationPage.loadError");
+  return error;
+}
 
 function prepareSuggestInstructionPayload(body: Record<string, unknown>): Record<string, unknown> {
   const next = { ...body };
@@ -1712,8 +1720,8 @@ export function AutomationPage() {
       await loadAgentProfiles();
       await loadBots();
       await loadDashboard();
-    } catch {
-      setError("load_failed");
+    } catch (err) {
+      setError(formatApiErrorMessage(err, t("automationPage.loadError")));
     } finally {
       setLoading(false);
     }
@@ -1881,15 +1889,7 @@ export function AutomationPage() {
 
         {error ? (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-            {error === "validation"
-              ? t("automationPage.agentValidation")
-              : error === "agent_eil_invalid"
-                ? t("automationPage.agentEilSaveInvalid")
-              : error === "prompt_validation"
-                ? t("automationPage.promptValidation")
-                : error === "load_failed"
-                  ? t("automationPage.loadError")
-                  : error}
+            {formatAutomationPageError(error, t)}
           </div>
         ) : null}
 
@@ -2039,6 +2039,8 @@ export function AutomationPage() {
             }
             metaCloudInboxes={metaCloudInboxes}
             platformCreditsMode={platformCreditsMode}
+            formError={error}
+            formatFormError={(value) => formatAutomationPageError(value, t)}
           />
         ) : null}
 
@@ -2265,6 +2267,8 @@ function AgentsTab({
   showSuggestErrorDetails,
   metaCloudInboxes,
   platformCreditsMode,
+  formError,
+  formatFormError,
 }: {
   t: Translate;
   loading: boolean;
@@ -2294,6 +2298,8 @@ function AgentsTab({
   showSuggestErrorDetails: boolean;
   metaCloudInboxes: Array<{ id: string; name: string; provider: string }>;
   platformCreditsMode: boolean;
+  formError: string;
+  formatFormError: (value: string) => string;
 }) {
   const agentModelCatalogProvider = platformCreditsMode ? "openai" : agentForm.provider;
   const promptUserCoreRef = useRef<HTMLTextAreaElement | null>(null);
@@ -3637,6 +3643,15 @@ function AgentsTab({
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-5 py-4">
+              {formError ? (
+                <div
+                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+                  role="alert"
+                >
+                  {formatFormError(formError)}
+                </div>
+              ) : null}
+
               {agentForm.mode === "edit" && agentForm.editBotId ? (
                 agentProfiles.find((p) => p.botId === agentForm.editBotId)?.bot.editInExternalAutomation ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">

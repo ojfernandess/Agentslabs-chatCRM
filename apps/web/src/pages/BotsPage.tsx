@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { api } from "@/lib/api";
+import { api, formatApiErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
@@ -64,6 +64,7 @@ export function BotsPage() {
   const [nativeDiagBusyId, setNativeDiagBusyId] = useState<string | null>(null);
   const [nativeDiagMessage, setNativeDiagMessage] = useState<string | null>(null);
   const [nativeDiagTone, setNativeDiagTone] = useState<"ok" | "warn" | "err" | null>(null);
+  const [createError, setCreateError] = useState("");
 
   const load = async () => {
     try {
@@ -209,6 +210,7 @@ export function BotsPage() {
     const n = name.trim();
     if (!n) return;
     setCreating(true);
+    setCreateError("");
     try {
       const body: Record<string, unknown> = {
         name: n,
@@ -224,8 +226,8 @@ export function BotsPage() {
       setBotType("WEBHOOK");
       setIsActiveNew(false);
       await load();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      setCreateError(formatApiErrorMessage(err, t("bots.createError")));
     } finally {
       setCreating(false);
     }
@@ -390,6 +392,15 @@ export function BotsPage() {
             </button>
           </div>
         </form>
+
+        {createError ? (
+          <div
+            className="mb-6 rounded-lg border border-red-200 bg-red-50/90 p-3 text-sm text-red-950 shadow-sm dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100"
+            role="alert"
+          >
+            {createError}
+          </div>
+        ) : null}
 
         {revealedInboxToken ? (
           <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
