@@ -785,6 +785,7 @@ async function handleWhatsAppPost(
         organizationId,
         providerMessageId: status.waMessageId,
         status: status.status,
+        metaPricing: status.metaPricing ?? null,
       });
       if (targetMsg) {
         broadcastConversationUpdated(organizationId, targetMsg.conversationId);

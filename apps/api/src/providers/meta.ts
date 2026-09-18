@@ -150,6 +150,12 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
               status: string;
               timestamp: string;
               errors?: { title: string }[];
+              pricing?: {
+                billable?: boolean;
+                pricing_model?: string;
+                type?: string;
+                category?: string;
+              };
             }[];
           };
         }[];
@@ -245,8 +251,18 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
           statusUpdates.push({
             waMessageId: status.id,
             status: statusMap[status.status] ?? "SENT",
-            timestamp: new Date(parseInt(status.timestamp) * 1000),
+            timestamp: new Date(parseInt(status.timestamp, 10) * 1000),
             errorMessage: status.errors?.[0]?.title,
+            ...(status.pricing && typeof status.pricing.billable === "boolean"
+              ? {
+                  metaPricing: {
+                    billable: status.pricing.billable,
+                    pricingModel: status.pricing.pricing_model ?? null,
+                    type: status.pricing.type ?? null,
+                    category: status.pricing.category ?? null,
+                  },
+                }
+              : {}),
           });
         }
       }

@@ -327,6 +327,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         organizationId,
         conversationId: conversation.id,
         contactId,
+        inboxId: conversation.inboxId,
         channel: "WHATSAPP",
         provider: isMetaCloudWhatsapp ? "meta_cloud_api" : (providerKind ?? null),
         category: "UNKNOWN",
@@ -631,6 +632,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
           organizationId,
           conversationId: conversation.id,
           contactId,
+          inboxId: conversation.inboxId,
           messageId: message.id,
           providerMessageId: providerMsgId ?? null,
           channel: deliveryChannelOverride ?? inboxChannelType,
@@ -643,6 +645,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
               : inboxChannelType.toLowerCase(),
           category: deliveryChannelOverride ? "SERVICE" : policy.category,
           templateId: type === "TEMPLATE" ? (templateRow?.id ?? null) : null,
+          isTemplate: type === "TEMPLATE",
+          serviceWindowOpenAtSend:
+            deliveryChannelOverride || policy.windowStatus === "NOT_APPLICABLE"
+              ? null
+              : policy.windowStatus === "OPEN",
           billingStatus: outboundStatus === "FAILED" ? "FAILED" : "SENT",
           policyDecision: policy.decision,
           policyReason: policy.reason,

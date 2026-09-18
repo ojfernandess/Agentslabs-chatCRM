@@ -262,6 +262,7 @@ model Organization {
   webchatSessions                WebchatSession[]
   messageBillingLedgers          MessageBillingLedgerEntry[]
   whatsappPricingRules           WhatsappPricingRule[]
+  whatsappPricingVolumeTiers     WhatsappPricingVolumeTier[]
 
   @@map("organizations")
 }
@@ -3151,6 +3152,13 @@ model MessageBillingLedgerEntry {
   /// SERVICE | UTILITY | MARKETING | AUTHENTICATION | UNKNOWN
   messageCategory   String       @default("UNKNOWN") @map("message_category") @db.VarChar(24)
   templateId        String?      @map("template_id") @db.Uuid
+  /// Prefixo E.164 do destinatário (auditoria de mercado Meta).
+  recipientPhone           String?  @map("recipient_phone") @db.VarChar(32)
+  /// Caixa de origem (proxy para número business — franquia Service/mês).
+  inboxId                  String?  @map("inbox_id") @db.Uuid
+  /// Mercado Meta resolvido pelo prefixo do destinatário (ex.: Brazil).
+  market                   String?  @db.VarChar(80)
+  serviceWindowOpenAtSend  Boolean? @map("service_window_open_at_send")
   interactionNumber Int?         @map("interaction_number")
   sentAt            DateTime     @default(now()) @map("sent_at")
   deliveredAt       DateTime?    @map("delivered_at")
@@ -3161,12 +3169,23 @@ model MessageBillingLedgerEntry {
   estimatedCost     Decimal?     @map("estimated_cost") @db.Decimal(12, 6)
   currency          String?      @db.VarChar(8)
   pricingVersion    String?      @map("pricing_version") @db.VarChar(64)
+  /// Valores reportados pela Meta no webhook de status (quando disponível).
+  metaBillable          Boolean? @map("meta_billable")
+  metaPricingType       String?  @map("meta_pricing_type") @db.VarChar(48)
+  metaPricingCategory   String?  @map("meta_pricing_category") @db.VarChar(24)
+  metaPricingModel      String?  @map("meta_pricing_model") @db.VarChar(16)
+  /// Tarifa de lista antes de desconto por volume.
+  listUnitPrice             Decimal? @map("list_unit_price") @db.Decimal(12, 6)
+  volumeTierDiscountPercent Decimal? @map("volume_tier_discount_percent") @db.Decimal(5, 2)
+  /// Mensagem coberta pela franquia Service grátis (1000/mês/número — Out/2026+).
+  serviceFreeTierApplied    Boolean  @default(false) @map("service_free_tier_applied")
   /// ALLOW | ALLOW_TEMPLATE | BLOCKED_WINDOW | SKIP_PROVIDER_WEBCHAT | ...
   policyDecision    String?      @map("policy_decision") @db.VarChar(48)
   policyReason      String?      @map("policy_reason") @db.VarChar(255)
   createdAt         DateTime     @default(now()) @map("created_at")
 
   @@index([organizationId, sentAt])
+  @@index([organizationId, inboxId, deliveredAt])
   @@index([conversationId])
   @@index([providerMessageId])
   @@map("message_billing_ledger")
@@ -3197,4 +3216,27 @@ model WhatsappPricingRule {
   @@index([countryCode, category])
   @@index([organizationId])
   @@map("whatsapp_pricing_rules")
+}
+
+/// Volume tiers Meta (Utility/Authentication) — descontos por faixa mensal.
+model WhatsappPricingVolumeTier {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  market         String        @db.VarChar(80)
+  countryCode    String        @map("country_code") @db.VarChar(8)
+  category       String        @db.VarChar(24)
+  currency       String        @db.VarChar(8)
+  fromMessage    Int           @map("from_message")
+  toMessage      Int?          @map("to_message")
+  discountPercent Decimal      @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  effectiveFrom  DateTime      @map("effective_from")
+  effectiveUntil DateTime?     @map("effective_until")
+  source         String?       @db.VarChar(255)
+  version        String?       @db.VarChar(64)
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([countryCode, category, version])
+  @@index([organizationId])
+  @@map("whatsapp_pricing_volume_tiers")
 }

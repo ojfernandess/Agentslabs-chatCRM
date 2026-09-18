@@ -60,3 +60,37 @@ test("MetaCloudApiProvider parses button quick replies", () => {
   });
   assert.equal(parsed.messages[0]?.body, "Quero saber mais");
 });
+
+test("MetaCloudApiProvider parses status pricing from delivered webhook", () => {
+  const provider = new MetaCloudApiProvider("token", "123");
+  const parsed = provider.parseWebhook({}, {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              metadata: { phone_number_id: "1" },
+              statuses: [
+                {
+                  id: "wamid.delivered",
+                  status: "delivered",
+                  timestamp: "1710000100",
+                  pricing: {
+                    billable: false,
+                    pricing_model: "PMP",
+                    type: "free_customer_service",
+                    category: "service",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(parsed.statusUpdates.length, 1);
+  assert.equal(parsed.statusUpdates[0]?.status, "DELIVERED");
+  assert.equal(parsed.statusUpdates[0]?.metaPricing?.billable, false);
+  assert.equal(parsed.statusUpdates[0]?.metaPricing?.type, "free_customer_service");
+});

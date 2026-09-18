@@ -34,6 +34,7 @@ import { SuperAdminConversationMediaSection } from "@/components/super-admin/Sup
 import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSection";
 import { SuperAdminBillingSection } from "@/components/super-admin/SuperAdminBillingSection";
 import { SuperAdminHelpCenterPanel } from "@/components/super-admin/SuperAdminHelpCenterPanel";
+import { SuperAdminWhatsappPricingPanel } from "@/components/super-admin/SuperAdminWhatsappPricingPanel";
 import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
 
@@ -2570,6 +2571,7 @@ export function SuperAdminPage() {
                   </button>
                 </form>
               )}
+              <SuperAdminWhatsappPricingPanel />
             </div>
           )}
 

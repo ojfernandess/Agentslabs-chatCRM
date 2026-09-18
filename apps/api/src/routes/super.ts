@@ -41,6 +41,19 @@ import {
 import { EVOLUTION_GO_PLATFORM_KEY, parseEvolutionGoPlatformValue } from "../lib/evolutionGoPlatform.js";
 import { getMetaPolicyVersions, saveMetaPolicyVersions } from "../lib/metaPolicyConfig.js";
 import {
+  getMetaBillingPolicyPhases,
+  saveMetaBillingPolicyPhases,
+  resolveActiveBillingPolicyPhase,
+  getActiveBillingPolicyPhase,
+  type MetaBillingPolicyPhase,
+} from "../lib/metaBillingPolicy.js";
+import { listWhatsappRateCardCatalogs } from "../lib/whatsappRateCardCatalog.js";
+import {
+  getWhatsappPricingRuleSummary,
+  importCustomWhatsappRateCard,
+  syncWhatsappRateCardToDatabase,
+} from "../lib/whatsappPricingSyncService.js";
+import {
   HELP_CENTER_PLATFORM_KEY,
   parseHelpCenterConfig,
   type HelpCenterConfig,
@@ -2236,5 +2249,134 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return { ok: true };
+  });
+
+  /** Catálogos embarcados de rate cards Meta (somente leitura). */
+  app.get("/whatsapp-pricing-rules/catalogs", async () => {
+    const catalogs = listWhatsappRateCardCatalogs();
+    return {
+      catalogs: catalogs.map((c) => ({
+        id: c.id,
+        version: c.version,
+        label: c.label,
+        effectiveFrom: c.effectiveFrom,
+        effectiveUntil: c.effectiveUntil ?? null,
+        source: c.source,
+        currency: c.currency,
+        entryCount: c.entries.length,
+      })),
+    };
+  });
+
+  app.get("/whatsapp-pricing-rules/summary", async () => {
+    const [summary, phases, activePhase] = await Promise.all([
+      getWhatsappPricingRuleSummary(),
+      getMetaBillingPolicyPhases(),
+      getActiveBillingPolicyPhase(),
+    ]);
+    return { summary, billingPolicyPhases: phases, activeBillingPolicyPhase: activePhase };
+  });
+
+  const syncCatalogSchema = z.object({
+    catalogId: z.string().min(1).max(64),
+    replaceVersion: z.boolean().optional(),
+  });
+
+  app.post("/whatsapp-pricing-rules/sync", async (request, reply) => {
+    const parsed = syncCatalogSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    try {
+      const result = await syncWhatsappRateCardToDatabase({
+        catalogId: parsed.data.catalogId,
+        replaceVersion: parsed.data.replaceVersion ?? true,
+      });
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        action: "super.whatsapp_pricing_rules.sync",
+        resourceType: "whatsapp_pricing_rule",
+        resourceId: parsed.data.catalogId,
+        metadata: {
+          version: result.version,
+          created: result.created,
+          replaced: result.replaced,
+          volumeTiersCreated: result.volumeTiersCreated,
+          volumeTiersReplaced: result.volumeTiersReplaced,
+        },
+        ip: clientIp(request),
+      });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(400).send({ error: "Bad Request", message, statusCode: 400 });
+    }
+  });
+
+  app.post("/whatsapp-pricing-rules/import", async (request, reply) => {
+    const body = request.body;
+    if (!body || typeof body !== "object") {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid JSON body", statusCode: 400 });
+    }
+    const replaceVersion =
+      "replaceVersion" in body && typeof (body as { replaceVersion?: unknown }).replaceVersion === "boolean"
+        ? (body as { replaceVersion: boolean }).replaceVersion
+        : true;
+    try {
+      const result = await importCustomWhatsappRateCard(body, replaceVersion);
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        action: "super.whatsapp_pricing_rules.import",
+        resourceType: "whatsapp_pricing_rule",
+        resourceId: result.catalogId,
+        metadata: {
+          version: result.version,
+          created: result.created,
+          volumeTiersCreated: result.volumeTiersCreated,
+        },
+        ip: clientIp(request),
+      });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(400).send({ error: "Bad Request", message, statusCode: 400 });
+    }
+  });
+
+  const billingPhaseSchema = z.object({
+    id: z.string().min(1).max(64),
+    label: z.string().max(255),
+    effectiveFrom: z.string().min(1).max(32),
+    effectiveUntil: z.string().max(32).nullable(),
+    serviceInWindowFree: z.boolean(),
+    utilityInWindowFree: z.boolean(),
+    serviceFreeTierPerNumberPerMonth: z.number().int().nonnegative().nullable(),
+    source: z.string().max(255),
+  });
+
+  app.get("/meta-billing-policy", async () => {
+    const phases = await getMetaBillingPolicyPhases();
+    return {
+      phases,
+      activePhase: resolveActiveBillingPolicyPhase(phases),
+    };
+  });
+
+  app.put("/meta-billing-policy", async (request, reply) => {
+    const parsed = z.array(billingPhaseSchema).min(1).safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const phases = parsed.data as MetaBillingPolicyPhase[];
+    await saveMetaBillingPolicyPhases(phases);
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.meta_billing_policy.upsert",
+      resourceType: "platform_setting",
+      resourceId: "meta_billing_policy_phases",
+      metadata: { phaseCount: phases.length },
+      ip: clientIp(request),
+    });
+    return { phases, activePhase: resolveActiveBillingPolicyPhase(phases) };
   });
 }

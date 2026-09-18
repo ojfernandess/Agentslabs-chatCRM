@@ -62,18 +62,21 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
       {
         messageCategory: "SERVICE",
         billingStatus: "SENT",
+        currency: null,
         _count: { _all: 5 },
         _sum: { estimatedCost: null },
       },
       {
         messageCategory: "SERVICE",
         billingStatus: "DELIVERED",
+        currency: null,
         _count: { _all: 3 },
         _sum: { estimatedCost: null },
       },
       {
         messageCategory: "SERVICE",
         billingStatus: "FAILED",
+        currency: null,
         _count: { _all: 1 },
         _sum: { estimatedCost: null },
       },
@@ -84,5 +87,21 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
     assert.equal(service.failed, 1);
     assert.equal(service.billable, null);
     assert.equal(service.estimatedCost, null);
+  });
+
+  it("propagates currency from delivered rows with cost", () => {
+    const rows = foldLedgerAggregation([
+      {
+        messageCategory: "MARKETING",
+        billingStatus: "DELIVERED",
+        currency: "USD",
+        _count: { _all: 2 },
+        _sum: { estimatedCost: 0.125 },
+      },
+    ]);
+    const m = rows.find((r) => r.category === "MARKETING")!;
+    assert.equal(m.estimatedCost, 0.125);
+    assert.equal(m.billable, 2);
+    assert.equal(m.currency, "USD");
   });
 });

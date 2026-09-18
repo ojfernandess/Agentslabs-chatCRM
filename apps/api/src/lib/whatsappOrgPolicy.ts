@@ -2,6 +2,7 @@ import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { prisma } from "../db.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 import { getMetaPolicyVersions } from "./metaPolicyConfig.js";
+import { getActiveBillingPolicyPhase } from "./metaBillingPolicy.js";
 
 export const WHATSAPP_CONSUMPTION_CATEGORIES = [
   "SERVICE",
@@ -94,6 +95,7 @@ export type CategoryConsumptionRow = {
 type LedgerAggRow = {
   messageCategory: string;
   billingStatus: string;
+  currency: string | null;
   _count: { _all: number };
   _sum: { estimatedCost: unknown };
 };
@@ -143,6 +145,11 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
       bucket.estimatedCost += cost;
       bucket.costSamples += count;
       if (cost > 0) bucket.billable += count;
+      const rowCurrency = row.currency?.trim().toUpperCase() || null;
+      if (rowCurrency) {
+        if (!bucket.currency) bucket.currency = rowCurrency;
+        else if (bucket.currency !== rowCurrency) bucket.currency = null;
+      }
     }
   }
 
@@ -166,7 +173,7 @@ export async function getWhatsappConsumption(params: {
   to: Date;
 }): Promise<CategoryConsumptionRow[]> {
   const rows = await prisma.messageBillingLedgerEntry.groupBy({
-    by: ["messageCategory", "billingStatus"],
+    by: ["messageCategory", "billingStatus", "currency"],
     where: {
       organizationId: params.organizationId,
       channel: "WHATSAPP",
@@ -194,7 +201,10 @@ export type WhatsappPolicyOverview = {
 
 export async function getWhatsappPolicyOverview(organizationId: string): Promise<WhatsappPolicyOverview> {
   const versions = await getMetaPolicyVersions();
-  const quota = versions.serviceFreeMessagesPerNumberPerMonth;
+  const activeBillingPhase = await getActiveBillingPolicyPhase();
+  const quota =
+    versions.serviceFreeMessagesPerNumberPerMonth ??
+    activeBillingPhase.serviceFreeTierPerNumberPerMonth;
   const [billingActive, messagePolicyActive] = await Promise.all([
     isOrganizationFeatureEnabled(organizationId, "cost_aware_messaging"),
     isOrganizationFeatureEnabled(organizationId, "whatsapp_message_policy"),
@@ -203,7 +213,7 @@ export async function getWhatsappPolicyOverview(organizationId: string): Promise
   let serviceUsed: number | null = null;
   try {
     const rows = await getWhatsappConsumption({ organizationId, from, to });
-    serviceUsed = rows.find((r) => r.category === "SERVICE")?.sent ?? 0;
+    serviceUsed = rows.find((r) => r.category === "SERVICE")?.delivered ?? 0;
   } catch {
     serviceUsed = null;
   }

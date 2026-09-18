@@ -38,11 +38,22 @@ export interface IncomingMessage {
   metaFileName?: string;
 }
 
+/** Pricing object from Meta status webhooks — authoritative billable flag when present. */
+export type MetaWebhookPricing = {
+  billable: boolean;
+  pricingModel?: string | null;
+  /** e.g. free_customer_service | regular */
+  type?: string | null;
+  /** service | utility | marketing | authentication */
+  category?: string | null;
+};
+
 export interface StatusUpdate {
   waMessageId: string;
   status: "SENT" | "DELIVERED" | "READ" | "FAILED";
   timestamp: Date;
   errorMessage?: string;
+  metaPricing?: MetaWebhookPricing;
 }
 
 /** Evolution (Baileys) CONTACTS_* webhooks — outros provedores podem devolver vazio. */
