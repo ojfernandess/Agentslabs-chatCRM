@@ -568,38 +568,38 @@ export function Layout() {
                   {!collapsed ? <span className="min-w-0 flex-1">{t("nav.conversations")}</span> : null}
                   {!collapsed ? unreadBadge(teamTransferTotalUnseen, false) : null}
                 </Link>
-                {sidebarTeams.length > 0 ? (
+                {sidebarTeams.length > 0 || showTeamsNav ? (
                   <div className="mb-1 mt-0.5 space-y-0.5">
-                    {!collapsed ? (
-                      <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
-                        {t("nav.teamInboxes")}
-                      </p>
+                    {sidebarTeams.length > 0 ? (
+                      <>
+                        {!collapsed ? (
+                          <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">
+                            {t("nav.teamInboxes")}
+                          </p>
+                        ) : null}
+                        {sidebarTeams.map((team) => {
+                          const n = team.unseenTransferCount ?? 0;
+                          return (
+                            <Link
+                              key={team.id}
+                              to={`/conversations?teamId=${encodeURIComponent(team.id)}`}
+                              className={teamNavItemClass(conversationTeamId === team.id && !conversationInboxId, collapsed)}
+                              title={team.name}
+                            >
+                              <span className="relative shrink-0">
+                                <MessageSquare className={clsx(collapsed ? "h-5 w-5" : "h-4 w-4 opacity-70")} />
+                                {collapsed ? unreadBadge(n, true) : null}
+                              </span>
+                              {!collapsed ? <span className="min-w-0 flex-1 truncate">{team.name}</span> : null}
+                              {!collapsed ? unreadBadge(n, false) : null}
+                            </Link>
+                          );
+                        })}
+                      </>
                     ) : null}
-                    {sidebarTeams.map((team) => {
-                      const n = team.unseenTransferCount ?? 0;
-                      return (
-                        <Link
-                          key={team.id}
-                          to={`/conversations?teamId=${encodeURIComponent(team.id)}`}
-                          className={teamNavItemClass(conversationTeamId === team.id && !conversationInboxId, collapsed)}
-                          title={team.name}
-                        >
-                          <span className="relative shrink-0">
-                            <MessageSquare className={clsx(collapsed ? "h-5 w-5" : "h-4 w-4 opacity-70")} />
-                            {collapsed ? unreadBadge(n, true) : null}
-                          </span>
-                          {!collapsed ? <span className="min-w-0 flex-1 truncate">{team.name}</span> : null}
-                          {!collapsed ? unreadBadge(n, false) : null}
-                        </Link>
-                      );
-                    })}
                     {showTeamsNav ? (
                       <Link
-                        to={
-                          sidebarTeams.length === 1
-                            ? `/teams?teamId=${encodeURIComponent(sidebarTeams[0]!.id)}`
-                            : "/teams"
-                        }
+                        to="/teams"
                         className={teamNavItemClass(location.pathname === "/teams", collapsed)}
                         title={t("nav.teamCollaboration")}
                       >

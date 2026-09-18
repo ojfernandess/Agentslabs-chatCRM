@@ -95,6 +95,7 @@ export function TeamsCollaborationHub() {
   const [loading, setLoading] = useState(true);
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamPurpose, setNewTeamPurpose] = useState<"OPERATIONAL" | "COMMUNICATION">("OPERATIONAL");
+  const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [overview, setOverview] = useState<HubOverview | null>(null);
   const [channels, setChannels] = useState<ChannelRow[]>([]);
@@ -108,8 +109,13 @@ export function TeamsCollaborationHub() {
   const [channelDeletingId, setChannelDeletingId] = useState<string | null>(null);
 
   const selected = teams.find((x) => x.id === selectedId) ?? teams[0] ?? null;
-  const selectedIsOperational =
-    selected?.purpose === "OPERATIONAL" && !selected?.isOrgCollaborationSpace;
+  const isOperationalTeam = (team: TeamRow) =>
+    !team.isOrgCollaborationSpace && (team.purpose === "OPERATIONAL" || team.purpose == null);
+  const operationalTeams = useMemo(() => teams.filter(isOperationalTeam), [teams]);
+  const selectedIsOperational = selected != null && isOperationalTeam(selected);
+  const adminTeam =
+    selectedIsOperational && selected ? selected : operationalTeams[0] ?? null;
+  const showAdminTab = isAdmin && operationalTeams.length > 0;
 
   const teamDisplayName = useCallback(
     (team: TeamRow) => (team.isOrgCollaborationSpace ? t("teamsHub.orgWorkspaceName") : team.name),
@@ -215,6 +221,12 @@ export function TeamsCollaborationHub() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const closeCreateTeam = () => {
+    setCreateTeamOpen(false);
+    setNewTeamName("");
+    setNewTeamPurpose("OPERATIONAL");
+  };
+
   const handleCreateTeam = async (e: FormEvent) => {
     e.preventDefault();
     const name = newTeamName.trim();
@@ -222,8 +234,7 @@ export function TeamsCollaborationHub() {
     setCreating(true);
     try {
       await api.post("/teams", { name, purpose: newTeamPurpose });
-      setNewTeamName("");
-      setNewTeamPurpose("OPERATIONAL");
+      closeCreateTeam();
       await loadTeams();
     } finally {
       setCreating(false);
@@ -255,7 +266,7 @@ export function TeamsCollaborationHub() {
     if (workspaceOn) {
       list.push({ id: "tab-workspace", label: t("teamsHub.tabWorkspace"), onRun: () => setTab("workspace") });
     }
-    if (isAdmin && selectedIsOperational) {
+    if (showAdminTab) {
       list.push({ id: "tab-admin", label: t("teamsHub.tabAdmin"), onRun: () => setTab("admin") });
     }
     for (const team of teams) {
@@ -267,11 +278,11 @@ export function TeamsCollaborationHub() {
       });
     }
     return list;
-  }, [channelsOn, workspaceOn, isAdmin, selectedIsOperational, teams, t, teamDisplayName]);
+  }, [channelsOn, workspaceOn, showAdminTab, teams, t, teamDisplayName]);
 
   useEffect(() => {
-    if (tab === "admin" && !selectedIsOperational) setTab("overview");
-  }, [tab, selectedIsOperational]);
+    if (tab === "admin" && !showAdminTab) setTab("overview");
+  }, [tab, showAdminTab]);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) ?? null;
 
@@ -367,55 +378,82 @@ export function TeamsCollaborationHub() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
           <aside className="hidden w-64 shrink-0 flex-col border-r border-ink-200/80 bg-white/60 dark:border-ink-800 dark:bg-ink-950/40 md:flex">
             {isAdmin ? (
-              <form onSubmit={handleCreateTeam} className="border-b border-ink-100 p-3 dark:border-ink-800">
-                <input
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder={t("teams.namePlaceholder")}
-                  className="input-field mb-2 h-9 w-full text-sm"
-                />
-                <fieldset className="mb-2 space-y-1.5">
-                  <legend className="sr-only">{t("teamsHub.createPurposeLegend")}</legend>
-                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-ink-200/80 px-2.5 py-2 text-xs dark:border-ink-700">
+              <div className="border-b border-ink-100 p-3 dark:border-ink-800">
+                {createTeamOpen ? (
+                  <form onSubmit={handleCreateTeam}>
                     <input
-                      type="radio"
-                      name="teamPurpose"
-                      checked={newTeamPurpose === "OPERATIONAL"}
-                      onChange={() => setNewTeamPurpose("OPERATIONAL")}
-                      className="mt-0.5"
+                      value={newTeamName}
+                      onChange={(e) => setNewTeamName(e.target.value)}
+                      placeholder={t("teams.namePlaceholder")}
+                      className="input-field mb-2 h-9 w-full text-sm"
+                      autoFocus
                     />
-                    <span>
-                      <span className="font-semibold text-ink-800 dark:text-ink-100">
-                        {t("teamsHub.createPurposeOperationalTitle")}
-                      </span>
-                      <span className="mt-0.5 block text-ink-500 dark:text-ink-400">
-                        {t("teamsHub.createPurposeOperationalHint")}
-                      </span>
-                    </span>
-                  </label>
-                  <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-ink-200/80 px-2.5 py-2 text-xs dark:border-ink-700">
-                    <input
-                      type="radio"
-                      name="teamPurpose"
-                      checked={newTeamPurpose === "COMMUNICATION"}
-                      onChange={() => setNewTeamPurpose("COMMUNICATION")}
-                      className="mt-0.5"
-                    />
-                    <span>
-                      <span className="font-semibold text-ink-800 dark:text-ink-100">
-                        {t("teamsHub.createPurposeCommunicationTitle")}
-                      </span>
-                      <span className="mt-0.5 block text-ink-500 dark:text-ink-400">
-                        {t("teamsHub.createPurposeCommunicationHint")}
-                      </span>
-                    </span>
-                  </label>
-                </fieldset>
-                <button type="submit" disabled={creating || !newTeamName.trim()} className="btn-primary w-full text-xs">
-                  <Plus className="mr-1 inline h-3.5 w-3.5" />
-                  {t("teams.create")}
-                </button>
-              </form>
+                    <fieldset className="mb-2 space-y-1.5">
+                      <legend className="sr-only">{t("teamsHub.createPurposeLegend")}</legend>
+                      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-ink-200/80 px-2.5 py-2 text-xs dark:border-ink-700">
+                        <input
+                          type="radio"
+                          name="teamPurpose"
+                          checked={newTeamPurpose === "OPERATIONAL"}
+                          onChange={() => setNewTeamPurpose("OPERATIONAL")}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-semibold text-ink-800 dark:text-ink-100">
+                            {t("teamsHub.createPurposeOperationalTitle")}
+                          </span>
+                          <span className="mt-0.5 block text-ink-500 dark:text-ink-400">
+                            {t("teamsHub.createPurposeOperationalHint")}
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-ink-200/80 px-2.5 py-2 text-xs dark:border-ink-700">
+                        <input
+                          type="radio"
+                          name="teamPurpose"
+                          checked={newTeamPurpose === "COMMUNICATION"}
+                          onChange={() => setNewTeamPurpose("COMMUNICATION")}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-semibold text-ink-800 dark:text-ink-100">
+                            {t("teamsHub.createPurposeCommunicationTitle")}
+                          </span>
+                          <span className="mt-0.5 block text-ink-500 dark:text-ink-400">
+                            {t("teamsHub.createPurposeCommunicationHint")}
+                          </span>
+                        </span>
+                      </label>
+                    </fieldset>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={closeCreateTeam}
+                        disabled={creating}
+                        className="btn-secondary flex-1 text-xs"
+                      >
+                        {t("common.cancel")}
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={creating || !newTeamName.trim()}
+                        className="btn-primary flex-1 text-xs"
+                      >
+                        {creating ? t("teams.saving") : t("teams.create")}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCreateTeamOpen(true)}
+                    className="btn-secondary inline-flex w-full items-center justify-center gap-1.5 text-xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("teams.create")}
+                  </button>
+                )}
+              </div>
             ) : null}
             <ul className="min-h-0 flex-1 overflow-y-auto p-2">
               {teams.map((team) => (
@@ -465,7 +503,7 @@ export function TeamsCollaborationHub() {
                       { id: "overview" as const, label: t("teamsHub.tabOverview"), icon: LayoutDashboard },
                       { id: "channels" as const, label: t("teamsHub.tabChannels"), icon: Hash },
                       { id: "workspace" as const, label: t("teamsHub.tabWorkspace"), icon: BookOpen },
-                      isAdmin && selectedIsOperational
+                      isAdmin && showAdminTab
                         ? { id: "admin" as const, label: t("teamsHub.tabAdmin"), icon: UsersRound }
                         : null,
                     ].filter(Boolean) as { id: HubTab; label: string; icon: typeof LayoutDashboard }[]
@@ -700,12 +738,19 @@ export function TeamsCollaborationHub() {
                     <TeamWorkspacePanel teamId={selected.id} onMutated={refreshTeamContext} />
                   ) : null}
 
-                  {tab === "admin" && isAdmin && selectedIsOperational && selected ? (
-                    <TeamOperationalAdmin
-                      embedded
-                      teamId={selected.id}
-                      onTeamMutated={refreshTeamContext}
-                    />
+                  {tab === "admin" && showAdminTab && adminTeam ? (
+                    <>
+                      {!selectedIsOperational ? (
+                        <p className="mb-4 rounded-xl border border-ink-200/80 bg-ink-50/80 px-4 py-3 text-sm text-ink-600 dark:border-ink-800 dark:bg-ink-900/40 dark:text-ink-300">
+                          {t("teamsHub.adminOperationalTeamHint").replace("{team}", adminTeam.name)}
+                        </p>
+                      ) : null}
+                      <TeamOperationalAdmin
+                        embedded
+                        teamId={adminTeam.id}
+                        onTeamMutated={refreshTeamContext}
+                      />
+                    </>
                   ) : null}
                 </div>
               </>

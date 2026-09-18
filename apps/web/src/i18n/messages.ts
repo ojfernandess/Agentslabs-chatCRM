@@ -2919,6 +2919,8 @@ export const messages = {
       aiBusy: "A pensar…",
       aiError: "Não foi possível obter resposta da IA.",
       adminTitle: "Administração operacional",
+      adminOperationalTeamHint:
+        "A administração operacional aplica-se ao time {team}. Selecione-o na barra lateral para gerir esse time directamente.",
       adminSubtitle: "Configure a equipa, horários, papéis e capacidade de atendimento.",
       channelCreate: "Novo canal",
       channelEdit: "Editar canal",
@@ -9734,6 +9736,8 @@ export const messages = {
       aiBusy: "Thinking…",
       aiError: "Could not get an AI response.",
       adminTitle: "Operational administration",
+      adminOperationalTeamHint:
+        "Operational administration applies to team {team}. Select it in the sidebar to manage that team directly.",
       adminSubtitle: "Configure the team, schedule, roles, and support capacity.",
       channelCreate: "New channel",
       channelEdit: "Edit channel",
