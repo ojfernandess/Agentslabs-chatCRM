@@ -3,7 +3,6 @@ import { prisma } from "../../db.js";
 import { isStripeBillingConfigured } from "../../config.js";
 import { recordBillingAudit } from "./billingAudit.js";
 import { getBillingPlatformSettings } from "./billingSettings.js";
-import type { UsageDimensionKey } from "./billingTypes.js";
 import { getStripeClient } from "./stripeClient.js";
 
 export type ReportOverageResult =
@@ -30,7 +29,7 @@ async function resolveStripeCustomerId(organizationId: string): Promise<string |
  */
 export async function reportOverageMeterEvent(input: {
   organizationId: string;
-  dimension: UsageDimensionKey;
+  dimension: string;
   quantity?: number;
   idempotencyKey?: string;
   actorUserId?: string | null;
@@ -66,11 +65,16 @@ export async function reportOverageMeterEvent(input: {
       },
       identifier,
     });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { reported: false, reason: "stripe_error", message };
+  }
 
+  try {
     await recordBillingAudit({
       action: "billing.overage_meter_reported",
       organizationId: input.organizationId,
-      actorUserId: input.actorUserId ?? "system",
+      actorUserId: input.actorUserId,
       metadata: {
         dimension: input.dimension,
         quantity,
@@ -78,10 +82,9 @@ export async function reportOverageMeterEvent(input: {
         identifier,
       },
     });
-
-    return { reported: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { reported: false, reason: "stripe_error", message };
+  } catch {
+    // Audit failure must not block overage reporting already accepted by Stripe.
   }
+
+  return { reported: true };
 }

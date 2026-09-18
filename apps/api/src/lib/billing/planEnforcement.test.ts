@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
+
+process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/test";
+process.env.JWT_SECRET ??= "test-secret";
+
+const {
   PlanEnforcementError,
   normalizePlanLimitUsageKey,
   resolveUsedCountForPlanLimitKey,
   resolveUsageCountKey,
-} from "./planEnforcement.js";
-import { resolveLimitValue } from "./PlanEntitlementService.js";
+} = await import("./planEnforcement.js");
+const { resolveLimitValue } = await import("./PlanEntitlementService.js");
 
 describe("planEnforcement", () => {
   it("PlanEnforcementError carries code and status", () => {
@@ -41,5 +45,9 @@ describe("planEnforcement", () => {
     assert.equal(resolveUsedCountForPlanLimitKey("seats", counts), 2);
     assert.equal(resolveUsedCountForPlanLimitKey("agents", counts), 1);
     assert.equal(resolveUsedCountForPlanLimitKey("unknown_metric", counts), 0);
+  });
+
+  it("team member invites use users limit rather than AI agents pool", () => {
+    assert.notEqual(resolveUsageCountKey("users"), resolveUsageCountKey("agents"));
   });
 });

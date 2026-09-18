@@ -10,7 +10,7 @@ import {
 import type { LimitEnforcementMode, PlanFeatures } from "./billingTypes.js";
 import { isPlanLimitEnabled, orderPlanLimitKeys } from "./billingTypes.js";
 import { getBillingPlatformSettings } from "./billingSettings.js";
-import { computeOverLimitAmount, enforceUsageLimit } from "./limitEnforcementPolicy.js";
+import { computeOverLimitAmount, enforceCatalogPlanLimit, enforceUsageLimit } from "./limitEnforcementPolicy.js";
 import { getOrganizationAiBillingMode } from "../ai-billing/getOrganizationAiBillingMode.js";
 import { getOrCreateAiWallet } from "../ai-billing/AiWalletService.js";
 import { moneyIsPositive } from "../ai-billing/money.js";
@@ -63,25 +63,28 @@ async function countHumanAgentSeats(organizationId: string): Promise<number> {
   });
 }
 
-async function countAgentLimitUsage(organizationId: string): Promise<number> {
-  const [aiAgents, humanSeats, pendingInvites] = await Promise.all([
-    countAiAgents(organizationId),
-    countHumanAgentSeats(organizationId),
-    countPendingAgentInvites(organizationId),
-  ]);
-  return aiAgents + humanSeats + pendingInvites;
-}
-
-async function countPendingAgentInvites(organizationId: string): Promise<number> {
+async function countPendingTeamInvites(organizationId: string): Promise<number> {
   return prisma.userInvitation.count({
     where: {
       organizationId,
-      role: "AGENT",
       acceptedAt: null,
       revokedAt: null,
       expiresAt: { gt: new Date() },
     },
   });
+}
+
+function resolveTeamMemberLimitKey(snap: EffectivePlanSnapshot): string | null {
+  if (isEnforcedLimit(snap, "users")) return "users";
+  if (isEnforcedLimit(snap, "seats")) return "seats";
+  return null;
+}
+
+async function countTeamMemberLimitUsage(organizationId: string, limitKey: string): Promise<number> {
+  const usageCounts = await buildUsageCounts(organizationId);
+  const baseUsed = resolveUsedCountForPlanLimitKey(limitKey, usageCounts);
+  const pendingInvites = await countPendingTeamInvites(organizationId);
+  return baseUsed + pendingInvites;
 }
 
 /** Total de bots da organização — exibido em «Automações / bots» (inclui agentes nativos OpenConduit). */
@@ -305,6 +308,29 @@ function isEnforcedLimit(snap: EffectivePlanSnapshot, key: string): boolean {
   return isPlanLimitEnabled(key, snap.limitEnabled);
 }
 
+/** Convites e membros humanos — respeita limits.users (ou limits.seats). */
+export async function assertCanAddTeamMembers(
+  organizationId: string,
+  additional = 1,
+  options?: { idempotencyKey?: string; actorUserId?: string | null },
+): Promise<void> {
+  await assertOrganizationBillingAccess(organizationId);
+  const snap = await requireSnapshot(organizationId);
+  const limitKey = resolveTeamMemberLimitKey(snap);
+  if (!limitKey) return;
+  const limit = resolveLimitValue(snap.limits[limitKey]);
+  const used = await countTeamMemberLimitUsage(organizationId, limitKey);
+  await enforceCatalogPlanLimit({
+    organizationId,
+    limitKey,
+    used,
+    limit,
+    additional,
+    idempotencyKey: options?.idempotencyKey,
+    actorUserId: options?.actorUserId,
+  });
+}
+
 export async function assertCanAddAiAgents(
   organizationId: string,
   additional = 1,
@@ -326,26 +352,13 @@ export async function assertCanAddAiAgents(
   });
 }
 
-/** Convites / lugares humanos AGENT — pool partilhado (IA + humanos + convites pendentes). */
+/** Agentes IA — respeita limits.agents (legado; preferir assertCanAddAiAgents). */
 export async function assertCanAddAgents(
   organizationId: string,
   additional = 1,
   options?: { idempotencyKey?: string; actorUserId?: string | null },
 ): Promise<void> {
-  await assertOrganizationBillingAccess(organizationId);
-  const snap = await requireSnapshot(organizationId);
-  if (!isEnforcedLimit(snap, "agents")) return;
-  const limit = resolveLimitValue(snap.limits.agents);
-  const used = await countAgentLimitUsage(organizationId);
-  await enforceUsageLimit({
-    organizationId,
-    dimension: "agents",
-    used,
-    limit,
-    additional,
-    idempotencyKey: options?.idempotencyKey,
-    actorUserId: options?.actorUserId,
-  });
+  return assertCanAddAiAgents(organizationId, additional, options);
 }
 
 export async function assertCanAddAutomations(

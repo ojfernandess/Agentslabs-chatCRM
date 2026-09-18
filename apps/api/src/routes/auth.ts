@@ -24,7 +24,7 @@ import {
   type AvailabilityClient,
 } from "../lib/userAvailability.js";
 import { broadcastUserAvailabilityChanged } from "../lib/workspaceHub.js";
-import { assertCanAddAgents, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
+import { assertCanAddTeamMembers, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import {
   activateOrganizationForUser,
   ensureMembership,
@@ -250,13 +250,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
     const inviteRole = row.role;
 
-    if (inviteRole === "AGENT") {
-      try {
-        await assertCanAddAgents(row.organizationId);
-      } catch (err) {
-        if (replyPlanEnforcementError(reply, err)) return;
-        throw err;
-      }
+    try {
+      await assertCanAddTeamMembers(row.organizationId, 0);
+    } catch (err) {
+      if (replyPlanEnforcementError(reply, err)) return;
+      throw err;
     }
 
     const existing = await prisma.user.findUnique({

@@ -1,5 +1,8 @@
 import { recordAuditLog } from "../audit.js";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type BillingAuditAction =
   | "billing.checkout_created"
   | "billing.subscription_created"
@@ -30,8 +33,11 @@ export async function recordBillingAudit(input: {
   const metadata: Record<string, unknown> = { ...(input.metadata ?? {}) };
   if (input.stripeEventId) metadata.stripeEventId = input.stripeEventId;
 
+  const actorUserId = input.actorUserId?.trim();
+  if (!actorUserId || !UUID_RE.test(actorUserId)) return;
+
   await recordAuditLog({
-    actorUserId: input.actorUserId ?? "system",
+    actorUserId,
     organizationId: input.organizationId,
     action: input.action,
     resourceType: "billing",
