@@ -4677,7 +4677,14 @@ export const messages = {
       emptySearchTitle: "Nenhuma conversa coincide com a pesquisa",
       emptySearchHint: "Limpe a pesquisa ou altere os filtros.",
       selectThread: "Selecione uma conversa",
-      selectThreadHint: "Escolha uma conversa à esquerda para ler e responder.",
+      selectThreadHint:
+        "Escolha uma conversa à esquerda para ler e responder. Enquanto isso, explore o guia abaixo para conhecer melhor a plataforma.",
+      emptyWorkspaceWelcome: "Tudo pronto para atender",
+      emptyWorkspaceQuickSteps: "Primeiro atendimento — passo a passo",
+      emptyWorkspaceGuideTitle: "Guia de Uso — Conversas",
+      emptyWorkspaceGuideDesc:
+        "Artigos selecionados para dominar filtros, atribuição, encerramento e contatos.",
+      emptyWorkspaceViewGuide: "Ver Guia de Uso completo",
       contextMenu: {
         markUnread: "Marcar como não lida",
         markRead: "Marcar como lida",
@@ -11499,7 +11506,14 @@ export const messages = {
       emptySearchTitle: "No conversations match your search",
       emptySearchHint: "Clear the search or change the filters.",
       selectThread: "Select a conversation",
-      selectThreadHint: "Pick a conversation on the left to read and reply.",
+      selectThreadHint:
+        "Pick a conversation on the left to read and reply. While you wait, explore the guide below to learn the platform.",
+      emptyWorkspaceWelcome: "Ready to help customers",
+      emptyWorkspaceQuickSteps: "First conversation — step by step",
+      emptyWorkspaceGuideTitle: "Usage Guide — Conversations",
+      emptyWorkspaceGuideDesc:
+        "Selected articles to master filters, assignment, closing, and contacts.",
+      emptyWorkspaceViewGuide: "Open full Usage Guide",
       contextMenu: {
         markUnread: "Mark as unread",
         markRead: "Mark as read",

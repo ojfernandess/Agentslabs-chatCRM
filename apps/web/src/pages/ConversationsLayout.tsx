@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Outlet, useMatch } from "react-router-dom";
-import { MessageSquare } from "lucide-react";
-import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
 import {
@@ -103,15 +101,4 @@ export function ConversationsLayout() {
   );
 }
 
-export function ConversationsThreadPlaceholder() {
-  const { t } = useI18n();
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-ink-50 p-8 text-center dark:bg-[#0F1420]">
-      <MessageSquare className="mb-3 h-12 w-12 text-brand-500/70" />
-      <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
-        {t("conversations.selectThread")}
-      </p>
-      <p className="mt-1 max-w-sm text-xs text-ink-500">{t("conversations.selectThreadHint")}</p>
-    </div>
-  );
-}
+export { ConversationsThreadPlaceholder } from "@/components/conversations/ConversationsThreadPlaceholder";
