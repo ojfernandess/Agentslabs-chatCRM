@@ -2914,7 +2914,8 @@ export const messages = {
         YOUTUBE: "Vídeos",
       },
       aiTitle: "Copiloto IA",
-      aiHint: "Análise operacional com contexto das conversas da equipe.",
+      aiHint:
+        "Análise operacional com status, caixas, etiquetas, leads, funil e histórico recente das conversas da equipe.",
       aiEmpty: "Faça uma pergunta sobre produtividade, fila ou próximos passos.",
       aiPlaceholder: "Ex.: Quais conversas precisam de atenção urgente?",
       aiAsk: "Perguntar",
@@ -9740,7 +9741,8 @@ export const messages = {
         YOUTUBE: "Videos",
       },
       aiTitle: "AI copilot",
-      aiHint: "Operational insights using this team's conversation context.",
+      aiHint:
+        "Operational analysis with status, inboxes, tags, leads, pipeline stage, and recent conversation history for this team.",
       aiEmpty: "Ask about queue health, priorities, or next steps.",
       aiPlaceholder: "E.g. Which conversations need urgent attention?",
       aiAsk: "Ask",

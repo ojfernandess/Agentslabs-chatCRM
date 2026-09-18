@@ -11,11 +11,15 @@ import {
 } from "../lib/teamChannelMessagePayload.js";
 import {
   AssistLlmError,
-  buildPublicConversationTranscript,
   replyAssistLlmUnavailable,
   resolveAssistLlmForOrganization,
 } from "../lib/agentAssistLlm.js";
 import { callAssistLlmChat } from "../lib/assistLlmBilling.js";
+import {
+  formatTeamHubCopilotSystemPrompt,
+  formatTeamHubCopilotUserContext,
+  loadTeamHubCopilotContext,
+} from "../lib/teamHubCopilotContext.js";
 
 const channelMessageBodySchema = z
   .object({
@@ -634,50 +638,20 @@ export async function teamHubRoutes(app: FastifyInstance): Promise<void> {
       return replyAssistLlmUnavailable(reply, assist);
     }
 
-    const [openCount, pendingCount, recentConvos] = await Promise.all([
-      prisma.conversation.count({ where: { teamId: team.id, status: "OPEN" } }),
-      prisma.conversation.count({ where: { teamId: team.id, status: "PENDING" } }),
-      prisma.conversation.findMany({
-        where: { teamId: team.id },
-        orderBy: { updatedAt: "desc" },
-        take: 3,
-        include: {
-          contact: { select: { name: true } },
-          messages: { orderBy: { createdAt: "desc" }, take: 6 },
-        },
-      }),
-    ]);
+    const copilotContext = await loadTeamHubCopilotContext(organizationId, {
+      id: team.id,
+      name: team.name,
+      isOrgCollaborationSpace: team.isOrgCollaborationSpace,
+      purpose: team.purpose,
+    });
 
-    const snippets = recentConvos
-      .map((c) => {
-        const transcript = buildPublicConversationTranscript(
-          c.messages.map((m) => ({
-            direction: m.direction,
-            body: m.body,
-            isPrivate: m.isPrivate,
-          })),
-          6,
-        );
-        return `Conversa com ${c.contact.name} (${c.status}):\n${transcript}`;
-      })
-      .join("\n\n");
-
-    const system = [
-      "És copiloto operacional de uma equipa de atendimento num CRM.",
-      `Equipa: ${team.name}.`,
-      `Métricas: ${openCount} abertas, ${pendingCount} pendentes.`,
-      "Responde em português, de forma concisa e acionável para supervisores e agentes.",
-    ].join("\n");
-
-    const userContent = [
-      snippets ? `Contexto recente:\n${snippets}` : "Sem conversas recentes.",
-      `Pedido do utilizador:\n${parsed.data.prompt}`,
-    ].join("\n\n");
+    const system = formatTeamHubCopilotSystemPrompt(copilotContext);
+    const userContent = formatTeamHubCopilotUserContext(copilotContext, parsed.data.prompt);
 
     try {
       const { text } = await callAssistLlmChat(assist.ctx, {
         temperature: 0.4,
-        maxTokens: 900,
+        maxTokens: 1500,
         system,
         history: [],
         userMessage: userContent,
