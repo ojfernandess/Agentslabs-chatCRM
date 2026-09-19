@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import clsx from "clsx";
 import { translate } from "@/i18n/messages";
+import { DocsThemeToggle } from "@/components/public/DocsThemeToggle";
+import { useDocsThemeIsolation } from "@/hooks/useDocsThemeIsolation";
 import { PublicApiN8nGuideSection } from "@/pages/PublicApiN8nGuideSection";
 import { DocCodeBlock } from "@/pages/publicApiDocsShared";
 
@@ -405,6 +408,7 @@ function DocsEndpointGroupSection({ g }: { g: PublicDocsPayload["groups"][number
 }
 
 export function PublicApiDocsPage() {
+  const { docsTheme, isDark, setDocsTheme } = useDocsThemeIsolation();
   const [data, setData] = useState<PublicDocsPayloadNormalized | null>(null);
   const [phase404, setPhase404] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -472,7 +476,12 @@ export function PublicApiDocsPage() {
   }, [data, effectiveNavMode, search]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900 dark:from-ink-950 dark:via-ink-950 dark:to-[#0d1218] dark:text-ink-100 print:bg-white">
+    <div
+      className={clsx(
+        "min-h-screen bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900 dark:from-ink-950 dark:via-ink-950 dark:to-[#0d1218] dark:text-ink-100 print:bg-white",
+        isDark && "dark",
+      )}
+    >
       <header className="sticky top-0 z-10 border-b border-ink-200/80 bg-white/80 shadow-sm backdrop-blur-md dark:border-ink-800/80 dark:bg-ink-900/75 print:static">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-5">
           <div className="space-y-1">
@@ -487,6 +496,13 @@ export function PublicApiDocsPage() {
             <p className="max-w-2xl text-sm leading-relaxed text-ink-600 dark:text-ink-400">{tDoc("publicDocs.subtitle")}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <DocsThemeToggle
+              theme={docsTheme}
+              onChange={setDocsTheme}
+              lightLabel={tDoc("publicDocs.themeLight")}
+              darkLabel={tDoc("publicDocs.themeDark")}
+              ariaLabel={tDoc("publicDocs.themeToggleLabel")}
+            />
             <a href="/api/v1/public/system-documentation" className="btn-secondary text-sm shadow-sm" target="_blank" rel="noopener noreferrer">
               {tDoc("publicDocs.jsonLink")}
             </a>
@@ -536,7 +552,7 @@ export function PublicApiDocsPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={tDoc("publicDocs.searchPlaceholder")}
-                  className="mb-3 w-full rounded-md border border-ink-200 bg-white px-2.5 py-1.5 text-sm dark:border-ink-700 dark:bg-ink-950"
+                  className="mb-3 w-full rounded-md border border-ink-200 bg-white px-2.5 py-1.5 text-sm text-ink-900 placeholder:text-ink-400 dark:border-ink-700 dark:bg-ink-950 dark:text-ink-100 dark:placeholder:text-ink-500"
                 />
                 {sections.botAutomationNav ? (
                 <div className="mb-3 flex rounded-lg border border-ink-200/90 p-0.5 dark:border-ink-700">

@@ -14,6 +14,13 @@
       })();
       (function () {
         try {
+          var path = window.location.pathname || "";
+          if (path === "/docs" || path.indexOf("/docs/") === 0) {
+            var docsPref = localStorage.getItem("openconduit_docs_theme");
+            var docsDark = docsPref === "dark";
+            document.documentElement.style.colorScheme = docsDark ? "dark" : "light";
+            return;
+          }
           var pref = localStorage.getItem("openconduit_theme");
           if (pref !== "light" && pref !== "dark" && pref !== "system") pref = "system";
           var dark =

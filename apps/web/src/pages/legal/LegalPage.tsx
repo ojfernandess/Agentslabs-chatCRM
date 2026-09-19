@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { getLegalDocument, isLegalSlug } from "@/content/legalDocuments";
 import { LoginFooter } from "@/components/auth/LoginFooter";
+import { PublicThemeToggle } from "@/components/public/PublicThemeToggle";
 import { brandAssetUrl, systemLogoDarkModeClass } from "@/lib/brandingAssets";
 
 export function LegalPage() {
@@ -16,19 +17,30 @@ export function LegalPage() {
   const doc = getLegalDocument(slug, locale);
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[#f6f4fb] dark:bg-ink-950">
+    <div className="relative flex min-h-dvh flex-col bg-[#f6f4fb] text-ink-900 dark:bg-ink-950 dark:text-ink-100">
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 bg-[#f6f4fb] dark:bg-ink-950"
+        aria-hidden
+      />
+
       <header className="border-b border-ink-200 bg-white px-6 py-4 dark:border-ink-800 dark:bg-ink-900">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-4">
-          <Link to="/login" className="inline-flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+          >
             <ArrowLeft className="h-4 w-4" />
             {t("legal.backToLogin")}
           </Link>
-          <img
-            src={brandAssetUrl("/logo.svg")}
-            alt="OpenNexo CRM"
-            className={`h-8 w-auto ${systemLogoDarkModeClass}`}
-            decoding="async"
-          />
+          <div className="flex items-center gap-3">
+            <PublicThemeToggle />
+            <img
+              src={brandAssetUrl("/logo.svg")}
+              alt="OpenNexo CRM"
+              className={`h-8 w-auto ${systemLogoDarkModeClass}`}
+              decoding="async"
+            />
+          </div>
         </div>
       </header>
 
@@ -65,7 +77,7 @@ export function LegalPage() {
         </article>
       </main>
 
-      <LoginFooter />
+      <LoginFooter variant="themed" />
     </div>
   );
 }

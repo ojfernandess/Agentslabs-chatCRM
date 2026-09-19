@@ -58,6 +58,9 @@ export const messages = {
     },
     publicDocs: {
       title: "Documentação da API — OpenNexo CRM",
+      themeLight: "Claro",
+      themeDark: "Escuro",
+      themeToggleLabel: "Tema da documentação",
       subtitle:
         "Referência HTTP do OpenNexo CRM com exemplos de pedido, resposta e erros. Sem tokens nem IDs reais.",
       disabledTitle: "Documentação indisponível",
@@ -6971,6 +6974,9 @@ export const messages = {
     },
     publicDocs: {
       title: "API documentation — OpenNexo CRM",
+      themeLight: "Light",
+      themeDark: "Dark",
+      themeToggleLabel: "Documentation theme",
       subtitle:
         "HTTP reference for OpenNexo CRM with request, response, and error examples. No real tokens or IDs.",
       disabledTitle: "Documentation unavailable",
