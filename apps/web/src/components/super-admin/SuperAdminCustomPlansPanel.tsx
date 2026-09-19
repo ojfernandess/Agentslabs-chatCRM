@@ -17,6 +17,7 @@ type CustomPlanRow = {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   amountCents: number;
   currency: string;
   interval: string;
@@ -37,6 +38,7 @@ type CustomPlanForm = {
   organizationId: string;
   name: string;
   description: string;
+  badgeLabel: string;
   currency: string;
   amountCents: string;
   interval: string;
@@ -56,6 +58,7 @@ const EMPTY_CUSTOM_FORM: CustomPlanForm = {
   organizationId: "",
   name: "",
   description: "",
+  badgeLabel: "",
   currency: "BRL",
   amountCents: "9900",
   interval: "month",
@@ -84,6 +87,7 @@ function planToForm(plan: CustomPlanRow): CustomPlanForm {
     organizationId: plan.organization?.id ?? "",
     name: plan.name,
     description: plan.description ?? "",
+    badgeLabel: plan.badgeLabel ?? "",
     currency: plan.currency,
     amountCents: String(plan.amountCents),
     interval: plan.interval,
@@ -182,6 +186,7 @@ export function SuperAdminCustomPlansPanel() {
       const payload = {
         name: form.name.trim(),
         description: form.description.trim() || null,
+        badgeLabel: form.badgeLabel.trim() || null,
         currency: form.currency.trim(),
         amountCents,
         interval: form.interval,
@@ -452,6 +457,17 @@ export function SuperAdminCustomPlansPanel() {
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   className="input-field mt-1 min-h-[72px]"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingBadgeLabel")}</label>
+                <input
+                  value={form.badgeLabel}
+                  onChange={(e) => setForm((f) => ({ ...f, badgeLabel: e.target.value }))}
+                  className="input-field mt-1"
+                  placeholder={t("superAdmin.billingBadgeLabelPlaceholder")}
+                  maxLength={80}
+                />
+                <p className="mt-1 text-xs text-ink-500">{t("superAdmin.billingBadgeLabelHint")}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingColPrice")}</label>

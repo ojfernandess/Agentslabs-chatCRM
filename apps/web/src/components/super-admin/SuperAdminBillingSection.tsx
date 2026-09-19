@@ -26,6 +26,7 @@ type PlanRow = {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   currency: string;
   amountCents: number;
   interval: string;
@@ -178,6 +179,7 @@ const EMPTY_PLAN_FORM = {
   slug: "",
   name: "",
   description: "",
+  badgeLabel: "",
   currency: "BRL",
   amountCents: "0",
   interval: "month",
@@ -335,6 +337,7 @@ export function SuperAdminBillingSection() {
       slug: plan.slug,
       name: plan.name,
       description: plan.description ?? "",
+      badgeLabel: plan.badgeLabel ?? "",
       currency: plan.currency,
       amountCents: String(plan.amountCents),
       interval: plan.interval,
@@ -378,6 +381,7 @@ export function SuperAdminBillingSection() {
         slug: planForm.slug.trim(),
         name: planForm.name.trim(),
         description: planForm.description.trim() || null,
+        badgeLabel: planForm.badgeLabel.trim() || null,
         currency: planForm.currency.trim(),
         amountCents,
         interval: planForm.interval as "month" | "year",
@@ -1034,6 +1038,17 @@ export function SuperAdminBillingSection() {
                   onChange={(e) => setPlanForm((f) => ({ ...f, description: e.target.value }))}
                   className="input-field mt-1 min-h-[72px]"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingBadgeLabel")}</label>
+                <input
+                  value={planForm.badgeLabel}
+                  onChange={(e) => setPlanForm((f) => ({ ...f, badgeLabel: e.target.value }))}
+                  className="input-field mt-1"
+                  placeholder={t("superAdmin.billingBadgeLabelPlaceholder")}
+                  maxLength={80}
+                />
+                <p className="mt-1 text-xs text-ink-500">{t("superAdmin.billingBadgeLabelHint")}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingColPrice")}</label>

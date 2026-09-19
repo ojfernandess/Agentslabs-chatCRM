@@ -70,10 +70,21 @@ const paymentProvidersSchema = z.object({
   mercadopago: z.boolean(),
 });
 
+const optionalBadgeLabelSchema = z
+  .union([z.string().max(80), z.literal("")])
+  .nullable()
+  .optional()
+  .transform((value) => {
+    if (value == null) return null;
+    const trimmed = value.trim();
+    return trimmed || null;
+  });
+
 const createPlanSchema = z.object({
   slug: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1).max(120),
   description: z.string().max(4000).nullable().optional(),
+  badgeLabel: optionalBadgeLabelSchema,
   currency: z.string().min(3).max(8).default("BRL"),
   amountCents: z.number().int().min(0),
   interval: z.enum(["month", "year"]).default("month"),
@@ -115,6 +126,7 @@ const billingSettingsPatchSchema = z
 const customPlanFieldsSchema = {
   name: z.string().min(1).max(120),
   description: z.string().max(4000).nullable().optional(),
+  badgeLabel: optionalBadgeLabelSchema,
   currency: z.string().min(3).max(8).default("BRL"),
   amountCents: z.number().int().min(0),
   interval: z.enum(["month", "year"]).default("month"),
@@ -179,6 +191,7 @@ function serializePlan(plan: {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   currency: string;
   amountCents: number;
   interval: string;
@@ -205,6 +218,7 @@ function serializePlan(plan: {
     slug: plan.slug,
     name: plan.name,
     description: plan.description,
+    badgeLabel: plan.badgeLabel?.trim() || null,
     currency: plan.currency,
     amountCents: plan.amountCents,
     interval: plan.interval,
@@ -498,6 +512,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       const plan = await updateCustomPlan(request.params.id, {
         name: p.name,
         description: p.description,
+        badgeLabel: p.badgeLabel,
         currency: p.currency,
         amountCents: p.amountCents,
         interval: p.interval,
@@ -575,6 +590,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
         organizationId: p.organizationId,
         name: p.name,
         description: p.description,
+        badgeLabel: p.badgeLabel,
         currency: p.currency,
         amountCents: p.amountCents,
         interval: p.interval,
@@ -642,6 +658,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
           slug: p.slug,
           name: p.name.trim(),
           description: p.description?.trim() || null,
+          badgeLabel: p.badgeLabel ?? null,
           currency: p.currency.toUpperCase(),
           amountCents: p.amountCents,
           interval: p.interval,
@@ -729,6 +746,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       if (p.slug !== undefined) data.slug = p.slug;
       if (p.name !== undefined) data.name = p.name.trim();
       if (p.description !== undefined) data.description = p.description?.trim() || null;
+      if (p.badgeLabel !== undefined) data.badgeLabel = p.badgeLabel;
       if (p.currency !== undefined) data.currency = p.currency.toUpperCase();
       if (p.amountCents !== undefined) data.amountCents = p.amountCents;
       if (p.interval !== undefined) data.interval = p.interval;
@@ -1221,6 +1239,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     slug: z.string().min(2).max(64),
     name: z.string().min(1).max(120),
     description: z.string().max(2000).nullable().optional(),
+    badgeLabel: optionalBadgeLabelSchema,
     creditAmount: z.union([z.string(), z.number()]),
     amountCents: z.number().int().positive(),
     currency: z.string().min(3).max(8).optional(),

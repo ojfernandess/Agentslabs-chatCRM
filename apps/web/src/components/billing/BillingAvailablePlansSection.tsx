@@ -1,7 +1,10 @@
 import { useMemo } from "react";
 import clsx from "clsx";
+import { BillingHorizontalCardRow } from "@/components/billing/BillingHorizontalCardRow";
 import { BillingPlanCard, type BillingPlanCardPlan } from "@/components/billing/BillingPlanCard";
 import { settingsCard } from "@/components/settings/settingsUi";
+
+const PLAN_CAROUSEL_THRESHOLD = 4;
 
 type BillingAvailablePlansSectionProps = {
   plans: BillingPlanCardPlan[];
@@ -37,6 +40,14 @@ export function BillingAvailablePlansSection({
   onSubscribe,
 }: BillingAvailablePlansSectionProps) {
   const featuredPlanId = useMemo(() => resolveFeaturedPlanId(plans), [plans]);
+  const plansGridClassName = clsx(
+    "grid items-stretch gap-6 lg:gap-8",
+    plans.length === 1
+      ? "mx-auto max-w-md grid-cols-1"
+      : plans.length === 2
+        ? "mx-auto max-w-4xl grid-cols-1 md:grid-cols-2"
+        : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
+  );
 
   return (
     <section className={settingsCard}>
@@ -52,15 +63,13 @@ export function BillingAvailablePlansSection({
           </p>
         </header>
 
-        <div
-          className={clsx(
-            "grid items-stretch gap-6 lg:gap-8",
-            plans.length === 1
-              ? "mx-auto max-w-md grid-cols-1"
-              : plans.length === 2
-                ? "mx-auto max-w-4xl grid-cols-1 md:grid-cols-2"
-                : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3",
-          )}
+        <BillingHorizontalCardRow
+          itemCount={plans.length}
+          scrollThreshold={PLAN_CAROUSEL_THRESHOLD}
+          gridClassName={plansGridClassName}
+          scrollItemClassName="h-full w-[min(100%,320px)] shrink-0 sm:w-[300px] lg:w-[320px]"
+          ariaLabelPrev={t("settings.billingCarouselPrev")}
+          ariaLabelNext={t("settings.billingCarouselNext")}
         >
           {plans.map((plan) => (
             <div
@@ -84,7 +93,7 @@ export function BillingAvailablePlansSection({
               />
             </div>
           ))}
-        </div>
+        </BillingHorizontalCardRow>
       </div>
     </section>
   );

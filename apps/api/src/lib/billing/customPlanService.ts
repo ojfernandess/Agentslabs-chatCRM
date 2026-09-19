@@ -12,6 +12,7 @@ import { assignCustomPlanToOrganization } from "./planAssignment.js";
 export type UpdateCustomPlanInput = {
   name?: string;
   description?: string | null;
+  badgeLabel?: string | null;
   currency?: string;
   amountCents?: number;
   interval?: "month" | "year";
@@ -32,6 +33,7 @@ export type CreateCustomPlanInput = {
   organizationId: string;
   name: string;
   description?: string | null;
+  badgeLabel?: string | null;
   currency?: string;
   amountCents: number;
   interval?: "month" | "year";
@@ -119,6 +121,7 @@ export async function createCustomPlanForOrganization(input: CreateCustomPlanInp
       slug,
       name: input.name.trim(),
       description: input.description?.trim() || null,
+      badgeLabel: input.badgeLabel?.trim() || null,
       currency: (input.currency ?? "BRL").toUpperCase(),
       amountCents: input.amountCents,
       interval: input.interval ?? "month",
@@ -177,6 +180,7 @@ export async function updateCustomPlan(planId: string, input: UpdateCustomPlanIn
   const data: Prisma.PlanUpdateInput = {};
   if (input.name !== undefined) data.name = input.name.trim();
   if (input.description !== undefined) data.description = input.description?.trim() || null;
+  if (input.badgeLabel !== undefined) data.badgeLabel = input.badgeLabel?.trim() || null;
   if (input.currency !== undefined) data.currency = input.currency.toUpperCase();
   if (input.amountCents !== undefined) data.amountCents = input.amountCents;
   if (input.interval !== undefined) data.interval = input.interval;

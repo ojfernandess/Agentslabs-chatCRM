@@ -8,6 +8,7 @@ export function serializeAiCreditPackage(row: AiCreditPackage) {
     slug: row.slug,
     name: row.name,
     description: row.description,
+    badgeLabel: row.badgeLabel?.trim() || null,
     creditAmount: moneyToApiString(row.creditAmount),
     amountCents: row.amountCents,
     currency: row.currency,
@@ -42,6 +43,7 @@ export async function createAiCreditPackage(input: {
   slug: string;
   name: string;
   description?: string | null;
+  badgeLabel?: string | null;
   creditAmount: string | number;
   amountCents: number;
   currency?: string;
@@ -54,6 +56,7 @@ export async function createAiCreditPackage(input: {
       slug: input.slug.trim().toLowerCase(),
       name: input.name.trim(),
       description: input.description?.trim() || null,
+      badgeLabel: input.badgeLabel?.trim() || null,
       creditAmount: money(input.creditAmount),
       amountCents: input.amountCents,
       currency: input.currency?.trim().toUpperCase() || "USD",
@@ -71,6 +74,7 @@ export async function updateAiCreditPackage(
     slug: string;
     name: string;
     description: string | null;
+    badgeLabel: string | null;
     creditAmount: string | number;
     amountCents: number;
     currency: string;
@@ -85,6 +89,7 @@ export async function updateAiCreditPackage(
       ...(patch.slug !== undefined ? { slug: patch.slug.trim().toLowerCase() } : {}),
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.description !== undefined ? { description: patch.description?.trim() || null } : {}),
+      ...(patch.badgeLabel !== undefined ? { badgeLabel: patch.badgeLabel?.trim() || null } : {}),
       ...(patch.creditAmount !== undefined ? { creditAmount: money(patch.creditAmount) } : {}),
       ...(patch.amountCents !== undefined ? { amountCents: patch.amountCents } : {}),
       ...(patch.currency !== undefined ? { currency: patch.currency.trim().toUpperCase() } : {}),

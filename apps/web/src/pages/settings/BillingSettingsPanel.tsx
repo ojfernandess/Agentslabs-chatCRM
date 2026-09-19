@@ -28,6 +28,7 @@ import {
   settingsTitle,
 } from "@/components/settings/settingsUi";
 import { BillingAvailablePlansSection } from "@/components/billing/BillingAvailablePlansSection";
+import { BillingHorizontalCardRow } from "@/components/billing/BillingHorizontalCardRow";
 import {
   MercadoPagoPixCheckoutModal,
   type MercadoPagoPixCheckoutState,
@@ -45,6 +46,7 @@ type PlanRow = {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   currency: string;
   amountCents: number;
   interval: string;
@@ -82,6 +84,7 @@ type AiCreditPackageRow = {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   creditAmount: string;
   amountCents: number;
   currency: string;
@@ -718,23 +721,36 @@ export function BillingSettingsPanel() {
                   {t("settings.aiCreditsPackagesIntro")}
                 </p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+              <BillingHorizontalCardRow
+                itemCount={visibleAiCreditPackages.length}
+                scrollThreshold={6}
+                gridClassName="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
+                scrollGapClassName="gap-4"
+                scrollItemClassName="w-[min(100%,260px)] shrink-0 sm:w-[220px] xl:w-[210px] 2xl:w-[200px]"
+                ariaLabelPrev={t("settings.billingCarouselPrev")}
+                ariaLabelNext={t("settings.billingCarouselNext")}
+              >
                 {visibleAiCreditPackages.map((pkg) => {
-                  const isRecommended = pkg.slug === AI_CREDIT_RECOMMENDED_PACKAGE_SLUG;
+                  const badgeText =
+                    pkg.badgeLabel?.trim() ||
+                    (pkg.slug === AI_CREDIT_RECOMMENDED_PACKAGE_SLUG
+                      ? t("settings.aiCreditsRecommendedBadge")
+                      : null);
+                  const highlighted = Boolean(badgeText);
                   const creditCount = formatAiCreditsPackageCount(pkg.creditAmount, localeTag);
                   return (
                     <div
                       key={pkg.id}
                       className={clsx(
                         "relative flex min-h-[220px] flex-col rounded-xl border p-5",
-                        isRecommended
+                        highlighted
                           ? "border-brand-500/50 bg-brand-50/40 shadow-sm ring-1 ring-brand-500/20 dark:border-brand-500/40 dark:bg-brand-950/20"
                           : "border-ink-200/80 dark:border-ink-700/80",
                       )}
                     >
-                      {isRecommended ? (
+                      {badgeText ? (
                         <span className="absolute -top-2.5 left-4 rounded-full bg-brand-600 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                          {t("settings.aiCreditsRecommendedBadge")}
+                          {badgeText}
                         </span>
                       ) : null}
                       <p className="text-xs font-semibold uppercase tracking-wider text-ink-500 dark:text-ink-400">
@@ -751,7 +767,7 @@ export function BillingSettingsPanel() {
                       </p>
                       <button
                         type="button"
-                        className={clsx("btn-primary mt-4 w-full", isRecommended && "shadow-sm")}
+                        className={clsx("btn-primary mt-4 w-full", highlighted && "shadow-sm")}
                         disabled={busy === `ai-credit-${pkg.id}` || !checkoutAvailable}
                         onClick={() => void buyAiCreditPackage(pkg)}
                       >
@@ -764,7 +780,7 @@ export function BillingSettingsPanel() {
                     </div>
                   );
                 })}
-              </div>
+              </BillingHorizontalCardRow>
             </div>
           ) : null}
 

@@ -153,6 +153,7 @@ function serializePlanForClient(plan: {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   currency: string;
   amountCents: number;
   interval: string;
@@ -169,6 +170,7 @@ function serializePlanForClient(plan: {
     slug: plan.slug,
     name: plan.name,
     description: plan.description,
+    badgeLabel: plan.badgeLabel?.trim() || null,
     currency: plan.currency,
     amountCents: plan.amountCents,
     interval: plan.interval,

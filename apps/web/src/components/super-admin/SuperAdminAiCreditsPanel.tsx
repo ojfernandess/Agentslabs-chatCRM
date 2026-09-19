@@ -12,6 +12,7 @@ type AiCreditPackageRow = {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   creditAmount: string;
   amountCents: number;
   currency: string;
@@ -55,6 +56,7 @@ const EMPTY_PACKAGE_FORM = {
   slug: "",
   name: "",
   description: "",
+  badgeLabel: "",
   creditAmount: "10",
   amountCents: "1000",
   currency: "USD",
@@ -277,6 +279,7 @@ export function SuperAdminAiCreditsPanel() {
       slug: pkg.slug,
       name: pkg.name,
       description: pkg.description ?? "",
+      badgeLabel: pkg.badgeLabel ?? "",
       creditAmount: pkg.creditAmount,
       amountCents: String(pkg.amountCents),
       currency: pkg.currency,
@@ -297,6 +300,7 @@ export function SuperAdminAiCreditsPanel() {
         slug: packageForm.slug.trim(),
         name: packageForm.name.trim(),
         description: packageForm.description.trim() || null,
+        badgeLabel: packageForm.badgeLabel.trim() || null,
         creditAmount: packageForm.creditAmount.trim(),
         amountCents: Number(packageForm.amountCents) || 0,
         currency: packageForm.currency.trim().toUpperCase(),
@@ -583,6 +587,17 @@ export function SuperAdminAiCreditsPanel() {
                   onChange={(e) => setPackageForm((f) => ({ ...f, description: e.target.value }))}
                   className="input-field mt-1 min-h-[72px]"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-ink-600">{t("superAdmin.billingBadgeLabel")}</label>
+                <input
+                  value={packageForm.badgeLabel}
+                  onChange={(e) => setPackageForm((f) => ({ ...f, badgeLabel: e.target.value }))}
+                  className="input-field mt-1"
+                  placeholder={t("superAdmin.billingBadgeLabelPlaceholder")}
+                  maxLength={80}
+                />
+                <p className="mt-1 text-xs text-ink-500">{t("superAdmin.billingBadgeLabelHint")}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink-600">{t("superAdmin.aiCreditsColCredits")}</label>

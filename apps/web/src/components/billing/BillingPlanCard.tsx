@@ -25,6 +25,7 @@ export type BillingPlanCardPlan = {
   slug: string;
   name: string;
   description: string | null;
+  badgeLabel?: string | null;
   currency: string;
   amountCents: number;
   interval: string;
@@ -113,6 +114,9 @@ export function BillingPlanCard({
   );
   const enabledFeatures = Object.entries(plan.features).filter(([, enabled]) => enabled === true);
   const planExtras = Object.entries(plan.planExtras ?? {}).filter(([, value]) => Boolean(value?.trim()));
+  const badgeText =
+    plan.badgeLabel?.trim() || (featured ? t("settings.billingPopularPlanBadge") : null);
+  const highlighted = Boolean(badgeText) || featured;
 
   const isPaid = plan.amountCents > 0;
   const planCheckoutReady =
@@ -129,18 +133,18 @@ export function BillingPlanCard({
     <article
       className={clsx(
         "relative flex h-full w-full flex-col overflow-hidden rounded-2xl border bg-white shadow-[0_8px_30px_rgba(103,52,255,0.08)] transition-shadow dark:bg-ink-900/50",
-        featured
+        highlighted
           ? "border-brand-400 ring-2 ring-brand-500/20 dark:border-brand-600 dark:ring-brand-500/30"
           : plan.isCurrent
             ? "border-brand-200 dark:border-brand-800/60"
             : "border-slate-200/90 dark:border-soft-border",
-        featured && "shadow-[0_12px_40px_rgba(103,52,255,0.18)]",
+        highlighted && "shadow-[0_12px_40px_rgba(103,52,255,0.18)]",
       )}
     >
-      {featured ? (
+      {badgeText ? (
         <div className="flex items-center justify-center gap-1.5 bg-brand-600 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
           <Crown className="h-3.5 w-3.5" strokeWidth={2.25} />
-          {t("settings.billingPopularPlanBadge")}
+          {badgeText}
         </div>
       ) : null}
 
@@ -251,7 +255,7 @@ export function BillingPlanCard({
                 onClick={onSubscribe}
                 className={clsx(
                   "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60",
-                  featured
+                  highlighted
                     ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
                     : "border-2 border-brand-600 bg-white text-brand-600 hover:bg-brand-50 dark:bg-transparent dark:hover:bg-brand-950/30",
                 )}
@@ -266,7 +270,7 @@ export function BillingPlanCard({
                 onClick={onSubscribe}
                 className={clsx(
                   "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60",
-                  featured
+                  highlighted
                     ? "bg-brand-600 text-white shadow-sm hover:bg-brand-700"
                     : "border-2 border-brand-600 bg-white text-brand-600 hover:bg-brand-50 dark:bg-transparent dark:hover:bg-brand-950/30",
                 )}

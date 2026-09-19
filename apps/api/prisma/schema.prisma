@@ -1874,6 +1874,8 @@ model AiCreditPackage {
   stripePriceId String?  @map("stripe_price_id") @db.VarChar(255)
   displayOrder  Int      @default(0) @map("display_order")
   isActive      Boolean  @default(true) @map("is_active")
+  /// Badge opcional exibido no card (ex.: «Mais popular», «Econômico»).
+  badgeLabel    String?  @map("badge_label") @db.VarChar(80)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
   purchases     AiCreditPurchase[]
@@ -1920,6 +1922,8 @@ model Plan {
   trialDays       Int?     @map("trial_days")
   displayOrder    Int      @default(0) @map("display_order")
   isActive        Boolean  @default(true) @map("is_active")
+  /// Badge opcional exibido no card (ex.: «Mais popular», «Econômico»).
+  badgeLabel      String?  @map("badge_label") @db.VarChar(80)
   stripeProductId     String?  @map("stripe_product_id") @db.VarChar(255)
   stripePriceId       String?  @map("stripe_price_id") @db.VarChar(255)
   mercadopagoPlanId   String?  @map("mercadopago_plan_id") @db.VarChar(255)
