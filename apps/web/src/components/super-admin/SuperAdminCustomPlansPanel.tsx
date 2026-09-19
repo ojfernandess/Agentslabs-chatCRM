@@ -11,7 +11,13 @@ import {
   type PlanPaymentProvidersForm,
 } from "@/components/super-admin/PlanBillingProvidersEditor";
 import { parseSuperAdminOrgList, type SuperAdminOrgOption } from "@/lib/superAdminOrganizations";
-import { featuresToJson, parseFeaturesObject } from "@/lib/planCatalog";
+import {
+  extrasDocumentToJson,
+  featuresToJson,
+  parseExtrasDocument,
+  parseFeaturesObject,
+  planExtrasToApiPayload,
+} from "@/lib/planCatalog";
 
 type CustomPlanRow = {
   id: string;
@@ -101,7 +107,7 @@ function planToForm(plan: CustomPlanRow): CustomPlanForm {
     paymentProviders: plan.paymentProviders ?? { stripe: true, mercadopago: true },
     limitsJson: JSON.stringify(plan.limits, null, 2),
     featuresJson: featuresToJson(parseFeaturesObject(plan.features)),
-    extrasJson: JSON.stringify(plan.planExtras ?? {}, null, 2),
+    extrasJson: extrasDocumentToJson(parseExtrasDocument(plan.planExtras ?? {})),
   };
 }
 
@@ -174,7 +180,7 @@ export function SuperAdminCustomPlansPanel() {
       try {
         limits = JSON.parse(form.limitsJson) as Record<string, unknown>;
         features = parseFeaturesObject(JSON.parse(form.featuresJson)) as Record<string, unknown>;
-        planExtras = JSON.parse(form.extrasJson) as Record<string, unknown>;
+        planExtras = planExtrasToApiPayload(JSON.parse(form.extrasJson));
       } catch {
         throw new ApiError(t("superAdmin.billingInvalidJson"), 400);
       }

@@ -2,16 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { useI18n } from "@/i18n/I18nProvider";
+import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 import {
   ALL_CATALOG_FEATURE_KEYS,
   ALL_CATALOG_LIMIT_KEYS,
   KNOWN_PLAN_FEATURE_KEYS,
   KNOWN_PLAN_LIMIT_KEYS,
+  PLAN_EXTRA_IMPLEMENTATION_KEY,
   SUGGESTED_PLAN_EXTRA_KEYS,
   catalogExtraLabelKey,
   catalogFeatureLabelKey,
   catalogLimitLabelKey,
-  extrasToJson,
+  createEmptyImplementationExtra,
+  extrasDocumentToJson,
   featuresToJson,
   isKnownFeatureKey,
   isKnownLimitKey,
@@ -21,9 +24,11 @@ import {
   isSuggestedFeatureKey,
   isSuggestedLimitKey,
   limitsDocumentToJson,
-  parseExtrasObject,
+  parseExtrasDocument,
   parseFeaturesObject,
   parseLimitsDocument,
+  type PlanExtraEditorValue,
+  type PlanExtraImplementationValue,
 } from "@/lib/planCatalog";
 
 type PlanLimitsFeaturesEditorProps = {
@@ -88,7 +93,7 @@ export function PlanLimitsFeaturesEditor({
 
   const extras = useMemo(() => {
     try {
-      return parseExtrasObject(JSON.parse(extrasJson));
+      return parseExtrasDocument(JSON.parse(extrasJson));
     } catch {
       return {};
     }
@@ -164,8 +169,8 @@ export function PlanLimitsFeaturesEditor({
   );
 
   const updateExtras = useCallback(
-    (next: Record<string, string>) => {
-      onExtrasJsonChange?.(extrasToJson(next));
+    (next: Record<string, PlanExtraEditorValue>) => {
+      onExtrasJsonChange?.(extrasDocumentToJson(next));
     },
     [onExtrasJsonChange],
   );
@@ -188,12 +193,14 @@ export function PlanLimitsFeaturesEditor({
     updateFeatures({ ...features, [key]: enabled });
   };
 
-  const setExtraValue = (key: string, value: string) => {
-    const next = { ...extras };
-    const trimmed = value.trim();
-    if (!trimmed) delete next[key];
-    else next[key] = trimmed;
-    updateExtras(next);
+  const setExtraTextValue = (key: string, text: string) => {
+    updateExtras({ ...extras, [key]: { type: "text", text } });
+  };
+
+  const setImplementationExtra = (key: string, patch: Partial<PlanExtraImplementationValue>) => {
+    const current =
+      extras[key]?.type === "implementation" ? extras[key] : createEmptyImplementationExtra();
+    updateExtras({ ...extras, [key]: { ...current, ...patch, type: "implementation" } });
   };
 
   const removeLimit = (key: string) => {
@@ -237,7 +244,13 @@ export function PlanLimitsFeaturesEditor({
   const addExtra = (key: string) => {
     const trimmed = key.trim();
     if (!trimmed || trimmed in extras) return;
-    updateExtras({ ...extras, [trimmed]: "" });
+    updateExtras({
+      ...extras,
+      [trimmed]:
+        trimmed === PLAN_EXTRA_IMPLEMENTATION_KEY
+          ? createEmptyImplementationExtra()
+          : ({ type: "text", text: "" } as PlanExtraEditorValue),
+    });
     setPickExtraKey("");
     setCustomExtraKey("");
   };
@@ -382,10 +395,10 @@ export function PlanLimitsFeaturesEditor({
     );
   };
 
-  const renderExtraRow = (key: string, removable: boolean) => (
+  const renderImplementationRow = (key: string, value: PlanExtraImplementationValue, removable: boolean) => (
     <div
       key={key}
-      className="space-y-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30"
+      className="space-y-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium text-ink-800 dark:text-ink-100">{extraLabel(key)}</span>
@@ -400,14 +413,78 @@ export function PlanLimitsFeaturesEditor({
           </button>
         ) : null}
       </div>
+      <div className="flex flex-wrap gap-3">
+        <label className="flex items-center gap-2 text-sm text-ink-700 dark:text-ink-200">
+          <input
+            type="radio"
+            name={`${key}-billing`}
+            checked={value.billing === "free"}
+            onChange={() => setImplementationExtra(key, { billing: "free" })}
+          />
+          {t("superAdmin.billingImplementationFree")}
+        </label>
+        <label className="flex items-center gap-2 text-sm text-ink-700 dark:text-ink-200">
+          <input
+            type="radio"
+            name={`${key}-billing`}
+            checked={value.billing === "paid"}
+            onChange={() => setImplementationExtra(key, { billing: "paid" })}
+          />
+          {t("superAdmin.billingImplementationPaid")}
+        </label>
+      </div>
+      {value.billing === "paid" ? (
+        <MoneyCentsInput
+          valueCents={value.amountCents}
+          onChangeCents={(amountCents) => setImplementationExtra(key, { amountCents })}
+          currency={value.currency || "BRL"}
+          inputClassName="py-1.5 text-sm"
+        />
+      ) : null}
       <textarea
-        value={extras[key] ?? ""}
-        onChange={(e) => setExtraValue(key, e.target.value)}
+        value={value.description}
+        onChange={(e) => setImplementationExtra(key, { description: e.target.value })}
         className="input-field min-h-[64px] w-full text-sm"
-        placeholder={t("superAdmin.billingExtraValuePlaceholder")}
+        placeholder={t("superAdmin.billingImplementationDescriptionPlaceholder")}
       />
     </div>
   );
+
+  const renderExtraRow = (key: string, removable: boolean) => {
+    const value = extras[key];
+    if (value?.type === "implementation") {
+      return renderImplementationRow(key, value, removable);
+    }
+
+    const text = value?.type === "text" ? value.text : "";
+
+    return (
+      <div
+        key={key}
+        className="space-y-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5 dark:border-soft-border dark:bg-ink-900/30"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-ink-800 dark:text-ink-100">{extraLabel(key)}</span>
+          {removable ? (
+            <button
+              type="button"
+              onClick={() => removeExtra(key)}
+              className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+              title={t("common.delete")}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setExtraTextValue(key, e.target.value)}
+          className="input-field min-h-[64px] w-full text-sm"
+          placeholder={t("superAdmin.billingExtraValuePlaceholder")}
+        />
+      </div>
+    );
+  };
 
   if (jsonMode) {
     return (

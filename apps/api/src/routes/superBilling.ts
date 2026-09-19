@@ -254,7 +254,10 @@ function serializePlan(plan: {
       stripePriceId: plan.stripePriceId,
       mercadopagoPlanId: plan.mercadopagoPlanId,
     }),
-    planExtras: parsePlanExtras(plan.planExtras ?? {}),
+    planExtras:
+      plan.planExtras && typeof plan.planExtras === "object" && !Array.isArray(plan.planExtras)
+        ? (plan.planExtras as Record<string, unknown>)
+        : {},
     subscriptionCount: plan._count?.subscriptions ?? 0,
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),

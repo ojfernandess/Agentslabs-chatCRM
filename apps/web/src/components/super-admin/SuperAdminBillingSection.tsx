@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { CreditCard, ChevronDown, ChevronUp, Loader2, Mail, Pencil, Plus, RefreshCw } from "lucide-react";
+import { CreditCard, ChevronDown, ChevronUp, GripVertical, Loader2, Mail, Pencil, Plus, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -25,6 +25,9 @@ import {
   featuresToJson,
   sortPlansByDisplayOrder,
   nextPlanDisplayOrder,
+  parseExtrasDocument,
+  extrasDocumentToJson,
+  planExtrasToApiPayload,
 } from "@/lib/planCatalog";
 
 type PlanRow = {
@@ -45,7 +48,7 @@ type PlanRow = {
   legacyPlanTier: string | null;
   limits: Record<string, number | null | undefined>;
   features: Record<string, boolean | undefined>;
-  planExtras?: Record<string, string | undefined>;
+  planExtras?: Record<string, unknown>;
   paymentProviders?: PlanPaymentProvidersForm;
   subscriptionCount: number;
 };
@@ -252,6 +255,8 @@ export function SuperAdminBillingSection() {
   const planSlugTouchedRef = useRef(false);
   const [planSaving, setPlanSaving] = useState(false);
   const [reorderingPlanId, setReorderingPlanId] = useState<string | null>(null);
+  const [draggingPlanId, setDraggingPlanId] = useState<string | null>(null);
+  const [dragOverPlanId, setDragOverPlanId] = useState<string | null>(null);
   const [billingEmailDrafts, setBillingEmailDrafts] = useState<Record<string, string>>({});
   const [billingEmailSaving, setBillingEmailSaving] = useState<string | null>(null);
   const [reminderModal, setReminderModal] = useState<ReminderModalState | null>(null);
@@ -367,7 +372,7 @@ export function SuperAdminBillingSection() {
       paymentProviders: plan.paymentProviders ?? { stripe: true, mercadopago: true },
       limitsJson: JSON.stringify(plan.limits, null, 2),
       featuresJson: featuresToJson(parseFeaturesObject(plan.features)),
-      extrasJson: JSON.stringify(plan.planExtras ?? {}, null, 2),
+      extrasJson: extrasDocumentToJson(parseExtrasDocument(plan.planExtras ?? {})),
     });
     setPlanModalOpen(true);
   };
@@ -383,7 +388,7 @@ export function SuperAdminBillingSection() {
       try {
         limits = JSON.parse(planForm.limitsJson) as Record<string, unknown>;
         features = parseFeaturesObject(JSON.parse(planForm.featuresJson)) as Record<string, unknown>;
-        planExtras = JSON.parse(planForm.extrasJson) as Record<string, unknown>;
+        planExtras = planExtrasToApiPayload(JSON.parse(planForm.extrasJson));
       } catch {
         throw new ApiError(t("superAdmin.billingInvalidJson"), 400);
       }
@@ -440,33 +445,18 @@ export function SuperAdminBillingSection() {
     }
   };
 
-  const reorderPlan = async (planId: string, direction: "up" | "down") => {
-    const ordered = sortPlansByDisplayOrder(plans);
-    const index = ordered.findIndex((plan) => plan.id === planId);
-    const swapIndex = direction === "up" ? index - 1 : index + 1;
-    if (index < 0 || swapIndex < 0 || swapIndex >= ordered.length) return;
-
-    const current = ordered[index];
-    const neighbor = ordered[swapIndex];
-    setReorderingPlanId(planId);
+  const persistPlansDisplayOrder = async (orderedPlans: PlanRow[]) => {
+    setReorderingPlanId("__bulk__");
     setError("");
     try {
-      const [currentRes, neighborRes] = await Promise.all([
-        api.patch<{ plan: PlanRow }>(`/super/billing/plans/${current.id}`, {
-          displayOrder: neighbor.displayOrder,
-        }),
-        api.patch<{ plan: PlanRow }>(`/super/billing/plans/${neighbor.id}`, {
-          displayOrder: current.displayOrder,
-        }),
-      ]);
-      setPlans((rows) =>
-        sortPlansByDisplayOrder(
-          rows.map((row) => {
-            if (row.id === current.id) return currentRes.plan;
-            if (row.id === neighbor.id) return neighborRes.plan;
-            return row;
-          }),
+      const responses = await Promise.all(
+        orderedPlans.map((plan, index) =>
+          api.patch<{ plan: PlanRow }>(`/super/billing/plans/${plan.id}`, { displayOrder: index }),
         ),
+      );
+      const updatedById = new Map(responses.map((response) => [response.plan.id, response.plan]));
+      setPlans((rows) =>
+        sortPlansByDisplayOrder(rows.map((row) => updatedById.get(row.id) ?? row)),
       );
       setBillingSuccess(t("superAdmin.billingPlanOrderSaved"));
     } catch (err) {
@@ -474,6 +464,30 @@ export function SuperAdminBillingSection() {
     } finally {
       setReorderingPlanId(null);
     }
+  };
+
+  const reorderPlan = async (planId: string, direction: "up" | "down") => {
+    const ordered = sortPlansByDisplayOrder(plans);
+    const index = ordered.findIndex((plan) => plan.id === planId);
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || swapIndex < 0 || swapIndex >= ordered.length) return;
+
+    const next = [...ordered];
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+    await persistPlansDisplayOrder(next);
+  };
+
+  const reorderPlanByDrag = async (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    const ordered = sortPlansByDisplayOrder(plans);
+    const fromIndex = ordered.findIndex((plan) => plan.id === sourceId);
+    const toIndex = ordered.findIndex((plan) => plan.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const next = [...ordered];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    await persistPlansDisplayOrder(next);
   };
 
   const generateMercadoPagoPlanId = async () => {
@@ -717,6 +731,9 @@ export function SuperAdminBillingSection() {
             </button>
           </div>
           <div className="overflow-x-auto">
+            <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+              {t("superAdmin.billingPlanDragHint")}
+            </p>
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -732,22 +749,62 @@ export function SuperAdminBillingSection() {
               </thead>
               <tbody>
                 {sortedPlans.map((plan, index) => (
-                  <tr key={plan.id} className="border-t border-slate-100">
+                  <tr
+                    key={plan.id}
+                    draggable={reorderingPlanId == null}
+                    onDragStart={(event) => {
+                      setDraggingPlanId(plan.id);
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => {
+                      setDraggingPlanId(null);
+                      setDragOverPlanId(null);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      if (draggingPlanId && draggingPlanId !== plan.id) {
+                        setDragOverPlanId(plan.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverPlanId === plan.id) setDragOverPlanId(null);
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      if (draggingPlanId) void reorderPlanByDrag(draggingPlanId, plan.id);
+                      setDraggingPlanId(null);
+                      setDragOverPlanId(null);
+                    }}
+                    className={clsx(
+                      "border-t border-slate-100 transition-colors",
+                      draggingPlanId === plan.id && "opacity-50",
+                      dragOverPlanId === plan.id && draggingPlanId !== plan.id && "bg-brand-50",
+                    )}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          draggable={false}
+                          className="cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing"
+                          title={t("superAdmin.billingDragPlan")}
+                          aria-label={t("superAdmin.billingDragPlan")}
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </button>
                         <span className="inline-flex min-w-[1.75rem] justify-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700">
-                          {plan.displayOrder}
+                          {index}
                         </span>
                         <div className="flex flex-col gap-0.5">
                           <button
                             type="button"
-                            disabled={index === 0 || reorderingPlanId === plan.id}
+                            disabled={index === 0 || reorderingPlanId != null}
                             onClick={() => void reorderPlan(plan.id, "up")}
                             className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30"
                             aria-label={t("superAdmin.billingMovePlanUp")}
                             title={t("superAdmin.billingMovePlanUp")}
                           >
-                            {reorderingPlanId === plan.id ? (
+                            {reorderingPlanId != null ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                               <ChevronUp className="h-3.5 w-3.5" />
@@ -755,7 +812,7 @@ export function SuperAdminBillingSection() {
                           </button>
                           <button
                             type="button"
-                            disabled={index === sortedPlans.length - 1 || reorderingPlanId === plan.id}
+                            disabled={index === sortedPlans.length - 1 || reorderingPlanId != null}
                             onClick={() => void reorderPlan(plan.id, "down")}
                             className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30"
                             aria-label={t("superAdmin.billingMovePlanDown")}

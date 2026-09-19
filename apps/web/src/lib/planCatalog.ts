@@ -60,7 +60,22 @@ export const SUGGESTED_PLAN_EXTRA_KEYS = [
   "onboarding",
   "included_services",
   "notes",
+  "implementation",
 ] as const;
+
+export const PLAN_EXTRA_IMPLEMENTATION_KEY = "implementation";
+
+export type PlanExtraTextValue = { type: "text"; text: string };
+
+export type PlanExtraImplementationValue = {
+  type: "implementation";
+  billing: "free" | "paid";
+  amountCents: string;
+  currency: string;
+  description: string;
+};
+
+export type PlanExtraEditorValue = PlanExtraTextValue | PlanExtraImplementationValue;
 
 export type SuggestedPlanExtraKey = (typeof SUGGESTED_PLAN_EXTRA_KEYS)[number];
 
@@ -184,11 +199,130 @@ export function isSuggestedExtraKey(key: string): key is SuggestedPlanExtraKey {
   return (SUGGESTED_PLAN_EXTRA_KEYS as readonly string[]).includes(key);
 }
 
-export function parseExtrasObject(raw: unknown): Record<string, string> {
+function parseImplementationExtraValue(value: unknown): PlanExtraImplementationValue {
+  if (typeof value === "string") {
+    return {
+      type: "implementation",
+      billing: "free",
+      amountCents: "",
+      currency: "BRL",
+      description: value,
+    };
+  }
+  const o = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const billing = o.billing === "paid" ? "paid" : "free";
+  const amountCents =
+    typeof o.amountCents === "number" && Number.isFinite(o.amountCents)
+      ? String(Math.round(o.amountCents))
+      : typeof o.amountCents === "string"
+        ? o.amountCents
+        : "";
+  return {
+    type: "implementation",
+    billing,
+    amountCents,
+    currency: typeof o.currency === "string" && o.currency.trim() ? o.currency : "BRL",
+    description:
+      typeof o.description === "string"
+        ? o.description
+        : typeof o.text === "string"
+          ? o.text
+          : "",
+  };
+}
+
+function isStructuredImplementationExtra(value: unknown): boolean {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    ((value as Record<string, unknown>).billing === "free" ||
+      (value as Record<string, unknown>).billing === "paid")
+  );
+}
+
+export function createEmptyImplementationExtra(): PlanExtraImplementationValue {
+  return {
+    type: "implementation",
+    billing: "free",
+    amountCents: "",
+    currency: "BRL",
+    description: "",
+  };
+}
+
+export function parseExtrasDocument(raw: unknown): Record<string, PlanExtraEditorValue> {
   if (!raw || typeof raw !== "object") return {};
-  const out: Record<string, string> = {};
+  const out: Record<string, PlanExtraEditorValue> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof value === "string") out[key] = value.trim();
+    if (key === PLAN_EXTRA_IMPLEMENTATION_KEY || isStructuredImplementationExtra(value)) {
+      out[key] = parseImplementationExtraValue(value);
+    } else if (typeof value === "string") {
+      out[key] = { type: "text", text: value };
+    } else if (value && typeof value === "object" && typeof (value as Record<string, unknown>).text === "string") {
+      out[key] = { type: "text", text: (value as Record<string, unknown>).text as string };
+    }
+  }
+  return out;
+}
+
+/** @deprecated Prefer parseExtrasDocument for editors. */
+export function parseExtrasObject(raw: unknown): Record<string, string> {
+  const doc = parseExtrasDocument(raw);
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (value.type === "text") out[key] = value.text.trim();
+  }
+  return out;
+}
+
+export function serializeExtrasForEditor(extras: Record<string, PlanExtraEditorValue>): Record<string, unknown> {
+  const sorted = Object.keys(extras).sort((a, b) => a.localeCompare(b));
+  const out: Record<string, unknown> = {};
+  for (const key of sorted) {
+    const value = extras[key];
+    if (!value) continue;
+    if (value.type === "text") {
+      out[key] = value.text;
+    } else if (value.type === "implementation") {
+      if (value.billing === "free") {
+        out[key] = { billing: "free", description: value.description };
+      } else {
+        out[key] = {
+          billing: "paid",
+          amountCents: value.amountCents.trim() ? Number(value.amountCents) : 0,
+          currency: value.currency.trim() || "BRL",
+          description: value.description,
+        };
+      }
+    }
+  }
+  return out;
+}
+
+export function planExtrasToApiPayload(raw: unknown): Record<string, unknown> {
+  const doc = parseExtrasDocument(raw);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (value.type === "text") {
+      const text = value.text.trim();
+      if (text) out[key] = text;
+    } else if (value.type === "implementation") {
+      if (value.billing === "free") {
+        const description = value.description.trim();
+        out[key] = description ? { billing: "free", description } : { billing: "free" };
+      } else {
+        const cents = Number(value.amountCents);
+        if (Number.isFinite(cents) && cents >= 0) {
+          const description = value.description.trim();
+          out[key] = {
+            billing: "paid",
+            amountCents: Math.round(cents),
+            currency: (value.currency.trim() || "BRL").toUpperCase(),
+            ...(description ? { description } : {}),
+          };
+        }
+      }
+    }
   }
   return out;
 }
@@ -201,6 +335,10 @@ export function serializeExtras(extras: Record<string, string>): Record<string, 
     if (v) out[key] = v;
   }
   return out;
+}
+
+export function extrasDocumentToJson(extras: Record<string, PlanExtraEditorValue>): string {
+  return JSON.stringify(serializeExtrasForEditor(extras), null, 2);
 }
 
 export function extrasToJson(extras: Record<string, string>): string {

@@ -205,12 +205,33 @@ export function applyPlanPaymentProvidersToFeatures(
   };
 }
 
-export function parsePlanExtras(raw: unknown): PlanExtras {
+export function formatPlanExtraForDisplay(value: unknown, locale = "pt-BR"): string | null {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text || null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  if (o.billing === "free") {
+    const description = typeof o.description === "string" ? o.description.trim() : "";
+    return description || "Grátis";
+  }
+  if (o.billing === "paid" && typeof o.amountCents === "number" && Number.isFinite(o.amountCents)) {
+    const currency = typeof o.currency === "string" && o.currency.trim() ? o.currency : "BRL";
+    const formatted = new Intl.NumberFormat(locale, { style: "currency", currency }).format(o.amountCents / 100);
+    const description = typeof o.description === "string" ? o.description.trim() : "";
+    return description ? `${description} (${formatted})` : formatted;
+  }
+  return null;
+}
+
+export function parsePlanExtras(raw: unknown, locale = "pt-BR"): PlanExtras {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
   const out: PlanExtras = {};
   for (const [key, value] of Object.entries(o)) {
-    if (typeof value === "string" && value.trim()) out[key] = value.trim();
+    const formatted = formatPlanExtraForDisplay(value, locale);
+    if (formatted) out[key] = formatted;
   }
   return out;
 }

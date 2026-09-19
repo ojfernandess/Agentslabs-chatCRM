@@ -64,6 +64,18 @@ describe("billingTypes", () => {
     });
   });
 
+  it("parsePlanExtras formats structured implementation extras", () => {
+    assert.deepEqual(parsePlanExtras({ implementation: { billing: "free" } }), {
+      implementation: "Grátis",
+    });
+    assert.match(
+      parsePlanExtras({
+        implementation: { billing: "paid", amountCents: 150000, currency: "BRL", description: "Setup" },
+      }).implementation ?? "",
+      /Setup/,
+    );
+  });
+
   it("subscriptionHasStripeBilling detects stripe ids", () => {
     assert.equal(subscriptionHasStripeBilling({}), false);
     assert.equal(subscriptionHasStripeBilling({ stripeCustomerId: "cus_x" }), true);
