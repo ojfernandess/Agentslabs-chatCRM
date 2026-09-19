@@ -1309,6 +1309,9 @@ export async function runAutomationHttpLikeTool(input: {
     const hName = String(cfg.apiKeyHeader ?? "X-Api-Key");
     const hVal = String(cfg.apiKeyValue ?? "");
     if (hVal) headers.set(hName, hVal);
+  } else if (authType === "x_auth_iapi_token") {
+    const hVal = String(cfg.apiKeyValue ?? "");
+    if (hVal) headers.set("X-Auth-IApi-Token", hVal);
   } else if (authType === "basic") {
     const u = String(cfg.basicUser ?? "");
     const p = String(cfg.basicPassword ?? "");

@@ -36,7 +36,7 @@ function httpToolAuthStored(cfg: Record<string, unknown>): boolean {
   const authType = String(cfg.authType ?? "none");
   if (authType === "none") return true;
   if (authType === "bearer" || authType === "bearer_token") return cfg.bearerToken === "***";
-  if (authType === "api_key") return cfg.apiKeyValue === "***";
+  if (authType === "api_key" || authType === "x_auth_iapi_token") return cfg.apiKeyValue === "***";
   if (authType === "basic") return cfg.basicPassword === "***";
   if (authType === "custom_header") return cfg.customAuthValue === "***";
   return false;

@@ -45,6 +45,9 @@ export function truncateBody(s: string, max = 24_000): string {
   return `${s.slice(0, max)}\n… [truncated ${s.length - max} chars]`;
 }
 
+export const HTTP_TOOL_X_AUTH_IAPI_TOKEN_TYPE = "x_auth_iapi_token";
+export const HTTP_TOOL_X_AUTH_IAPI_TOKEN_HEADER = "X-Auth-IApi-Token";
+
 const SENSITIVE_HEADER_PATTERN = /authorization|api[-_]?key|token|secret|password|cookie/i;
 
 export function redactSensitiveHeader(name: string, value: string): string {
@@ -118,6 +121,17 @@ export function summarizeHttpToolAuth(cfg: Record<string, unknown>): {
     return token
       ? { type: authType, applied: true, headerName }
       : { type: authType, applied: false, headerName, reason: "missing_api_key_value" };
+  }
+  if (authType === HTTP_TOOL_X_AUTH_IAPI_TOKEN_TYPE) {
+    const token = String(cfg.apiKeyValue ?? "").trim();
+    return token
+      ? { type: authType, applied: true, headerName: HTTP_TOOL_X_AUTH_IAPI_TOKEN_HEADER }
+      : {
+          type: authType,
+          applied: false,
+          headerName: HTTP_TOOL_X_AUTH_IAPI_TOKEN_HEADER,
+          reason: "missing_api_key_value",
+        };
   }
   if (authType === "basic") {
     const user = String(cfg.basicUser ?? "").trim();

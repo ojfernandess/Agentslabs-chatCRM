@@ -220,6 +220,9 @@ export async function fetchHttpApiCustomJson(tool: {
     const hName = String(cfg.apiKeyHeader ?? "X-Api-Key");
     const hVal = String(cfg.apiKeyValue ?? "");
     if (hVal) headers.set(hName, hVal);
+  } else if (authType === "x_auth_iapi_token") {
+    const hVal = String(cfg.apiKeyValue ?? "");
+    if (hVal) headers.set("X-Auth-IApi-Token", hVal);
   } else if (authType === "basic" && cfg.basicUser) {
     const token = Buffer.from(`${cfg.basicUser}:${cfg.basicPassword ?? ""}`).toString("base64");
     headers.set("Authorization", `Basic ${token}`);

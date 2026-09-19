@@ -5007,6 +5007,8 @@ function HttpLikeToolEditor({
     } else if (authType === "api_key") {
       patch.apiKeyHeader = apiKeyHeader.trim() || "X-Api-Key";
       if (apiKeyValue.trim()) patch.apiKeyValue = apiKeyValue.trim();
+    } else if (authType === "x_auth_iapi_token") {
+      if (apiKeyValue.trim()) patch.apiKeyValue = apiKeyValue.trim();
     } else if (authType === "basic") {
       patch.basicUser = basicUser.trim();
       if (basicPassword.trim()) patch.basicPassword = basicPassword.trim();
@@ -5106,6 +5108,7 @@ function HttpLikeToolEditor({
           <option value="none">none</option>
           <option value="bearer">Bearer</option>
           <option value="api_key">API Key header</option>
+          <option value="x_auth_iapi_token">{t("automationPage.toolAuthTypeXAuthIApiToken")}</option>
           <option value="basic">Basic</option>
           <option value="custom_header">Custom header</option>
         </select>
@@ -5124,6 +5127,18 @@ function HttpLikeToolEditor({
           </label>
           <label className="block text-xs font-medium">
             API key
+            <input type="password" autoComplete="off" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={fieldCls} />
+          </label>
+          {c.apiKeyValue === "***" && !apiKeyValue.trim() ? (
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolHttpAuthSavedHint")}</p>
+          ) : null}
+        </>
+      )}
+      {authType === "x_auth_iapi_token" && (
+        <>
+          <p className="text-[11px] text-ink-500">{t("automationPage.toolAuthTypeXAuthIApiTokenHelp")}</p>
+          <label className="block text-xs font-medium">
+            {t("automationPage.toolAuthTypeXAuthIApiTokenValue")}
             <input type="password" autoComplete="off" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={fieldCls} />
           </label>
           {c.apiKeyValue === "***" && !apiKeyValue.trim() ? (

@@ -270,8 +270,11 @@ export function HttpApiCustomToolBuilder({
       },
     };
     if (bearerToken.trim() && bearerToken !== "***") patch.bearerToken = bearerToken.trim();
-    if (apiKeyValue.trim() && apiKeyValue !== "***") {
+    if (authType === "api_key" && apiKeyValue.trim() && apiKeyValue !== "***") {
       patch.apiKeyHeader = apiKeyHeader.trim();
+      patch.apiKeyValue = apiKeyValue.trim();
+    }
+    if (authType === "x_auth_iapi_token" && apiKeyValue.trim() && apiKeyValue !== "***") {
       patch.apiKeyValue = apiKeyValue.trim();
     }
     if (authType === "basic") {
@@ -414,6 +417,7 @@ export function HttpApiCustomToolBuilder({
               <option value="none">none</option>
               <option value="bearer">Bearer</option>
               <option value="api_key">API Key</option>
+              <option value="x_auth_iapi_token">{t("automationPage.toolAuthTypeXAuthIApiToken")}</option>
               <option value="basic">Basic</option>
               <option value="custom_header">Custom header</option>
             </select>
@@ -432,6 +436,18 @@ export function HttpApiCustomToolBuilder({
               </label>
               <label className="block text-xs font-medium">
                 API Key
+                <input type="password" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} placeholder="••••••••" className={fieldCls()} />
+              </label>
+              {cfg0.apiKeyValue === "***" && !apiKeyValue.trim() ? (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolHttpAuthSavedHint")}</p>
+              ) : null}
+            </>
+          ) : null}
+          {authType === "x_auth_iapi_token" ? (
+            <>
+              <p className="text-[11px] text-ink-500">{t("automationPage.toolAuthTypeXAuthIApiTokenHelp")}</p>
+              <label className="block text-xs font-medium">
+                {t("automationPage.toolAuthTypeXAuthIApiTokenValue")}
                 <input type="password" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} placeholder="••••••••" className={fieldCls()} />
               </label>
               {cfg0.apiKeyValue === "***" && !apiKeyValue.trim() ? (
