@@ -1,4 +1,6 @@
 const OPENAI_API_BASE = "https://api.openai.com/v1";
+const MAX_BUCKETS_PER_REQUEST = 180;
+const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
 
 export class OpenAiAdminApiError extends Error {
   readonly status: number;
@@ -69,60 +71,94 @@ async function openAiAdminFetch<T>(
     }
   }
 
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_FETCH_TIMEOUT_MS);
 
-  const text = await res.text();
-  if (!res.ok) {
-    throw new OpenAiAdminApiError(
-      `OpenAI Admin API error (${res.status})`,
-      res.status,
-      sanitizeErrorBody(text.slice(0, 4000)),
-    );
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      throw new OpenAiAdminApiError(
+        `OpenAI Admin API error (${res.status})`,
+        res.status,
+        sanitizeErrorBody(text.slice(0, 4000)),
+      );
+    }
+
+    return JSON.parse(text) as T;
+  } catch (err) {
+    if (err instanceof OpenAiAdminApiError) throw err;
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new OpenAiAdminApiError("OpenAI Admin API timeout", 408, "request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return JSON.parse(text) as T;
-}
-
-export async function fetchOpenAiOrganizationCosts(
-  apiKey: string,
-  startTime: number,
-  endTime?: number,
-  groupBy: "line_item" | "project_id" = "line_item",
-): Promise<OpenAiCostBucket[]> {
-  const query: Record<string, string | number | undefined> = {
-    start_time: startTime,
-    bucket_width: "1d",
-    limit: 180,
-  };
-  if (endTime != null) query.end_time = endTime;
-
-  return fetchAllCostPages(apiKey, query, { "group_by[]": [groupBy] });
 }
 
 async function fetchAllCostPages(
   apiKey: string,
   query: Record<string, string | number | undefined>,
-  arrayParams: Record<string, string[]> = {},
+  groupBy?: "line_item" | "project_id",
 ): Promise<OpenAiCostBucket[]> {
   const buckets: OpenAiCostBucket[] = [];
-  let page: string | null | undefined = undefined;
+  let page: string | undefined;
+
+  const arrayParams: Record<string, string[]> = groupBy ? { group_by: [groupBy] } : {};
 
   for (let i = 0; i < 50; i++) {
     const res: OpenAiPagedResponse<OpenAiCostBucket> = await openAiAdminFetch<
       OpenAiPagedResponse<OpenAiCostBucket>
-    >(apiKey, "/organization/costs", {
-      ...query,
-      page: page ?? undefined,
-    }, arrayParams);
+    >(
+      apiKey,
+      "/organization/costs",
+      {
+        ...query,
+        page,
+      },
+      arrayParams,
+    );
     buckets.push(...(res.data ?? []));
     if (!res.has_more || !res.next_page) break;
     page = res.next_page;
+  }
+
+  return buckets;
+}
+
+async function fetchCostsInWindows(
+  apiKey: string,
+  startTime: number,
+  endTime: number,
+  groupBy: "line_item" | "project_id",
+): Promise<OpenAiCostBucket[]> {
+  const buckets: OpenAiCostBucket[] = [];
+  const windowSeconds = MAX_BUCKETS_PER_REQUEST * 86_400;
+  let windowStart = startTime;
+
+  while (windowStart < endTime) {
+    const windowEnd = Math.min(windowStart + windowSeconds, endTime);
+    const chunk = await fetchAllCostPages(
+      apiKey,
+      {
+        start_time: windowStart,
+        end_time: windowEnd,
+        bucket_width: "1d",
+        limit: MAX_BUCKETS_PER_REQUEST,
+      },
+      groupBy,
+    );
+    buckets.push(...chunk);
+    windowStart = windowEnd;
   }
 
   return buckets;
@@ -132,18 +168,22 @@ async function fetchAllUsagePages(
   apiKey: string,
   path: string,
   query: Record<string, string | number | undefined>,
-  arrayParams: Record<string, string[]> = {},
 ): Promise<OpenAiUsageBucket[]> {
   const buckets: OpenAiUsageBucket[] = [];
-  let page: string | null | undefined = undefined;
+  let page: string | undefined;
 
   for (let i = 0; i < 50; i++) {
     const res: OpenAiPagedResponse<OpenAiUsageBucket> = await openAiAdminFetch<
       OpenAiPagedResponse<OpenAiUsageBucket>
-    >(apiKey, path, {
-      ...query,
-      page: page ?? undefined,
-    }, arrayParams);
+    >(
+      apiKey,
+      path,
+      {
+        ...query,
+        page,
+      },
+      { group_by: ["model"] },
+    );
     buckets.push(...(res.data ?? []));
     if (!res.has_more || !res.next_page) break;
     page = res.next_page;
@@ -162,18 +202,39 @@ export async function testOpenAiAdminConnection(apiKey: string): Promise<{ ok: t
   return { ok: true };
 }
 
+export async function fetchOpenAiOrganizationCosts(
+  apiKey: string,
+  startTime: number,
+  endTime?: number,
+  groupBy: "line_item" | "project_id" = "line_item",
+): Promise<OpenAiCostBucket[]> {
+  const end = endTime ?? Math.floor(Date.now() / 1000);
+  return fetchCostsInWindows(apiKey, startTime, end, groupBy);
+}
+
 export async function fetchOpenAiCompletionsUsage(
   apiKey: string,
   startTime: number,
   endTime?: number,
 ): Promise<OpenAiUsageBucket[]> {
-  const query: Record<string, string | number | undefined> = {
-    start_time: startTime,
-    bucket_width: "1d",
-    limit: 180,
-  };
-  if (endTime != null) query.end_time = endTime;
-  return fetchAllUsagePages(apiKey, "/organization/usage/completions", query, { "group_by[]": ["model"] });
+  const end = endTime ?? Math.floor(Date.now() / 1000);
+  const buckets: OpenAiUsageBucket[] = [];
+  const windowSeconds = MAX_BUCKETS_PER_REQUEST * 86_400;
+  let windowStart = startTime;
+
+  while (windowStart < end) {
+    const windowEnd = Math.min(windowStart + windowSeconds, end);
+    const chunk = await fetchAllUsagePages(apiKey, "/organization/usage/completions", {
+      start_time: windowStart,
+      end_time: windowEnd,
+      bucket_width: "1d",
+      limit: MAX_BUCKETS_PER_REQUEST,
+    });
+    buckets.push(...chunk);
+    windowStart = windowEnd;
+  }
+
+  return buckets;
 }
 
 export type { OpenAiCostBucket, OpenAiCostResult, OpenAiUsageBucket, OpenAiUsageResult };

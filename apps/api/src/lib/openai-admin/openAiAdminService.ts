@@ -11,7 +11,7 @@ import {
 } from "./openAiAdminClient.js";
 import { getOpenAiAdminSettingsFromDb, resolveOpenAiAdminApiKey } from "./openAiAdminSettings.js";
 
-const SYNC_LOOKBACK_DAYS = 365;
+const SYNC_LOOKBACK_DAYS = 90;
 
 export type OpenAiNormalizedDailyCost = {
   date: string;
@@ -31,9 +31,9 @@ export type OpenAiNormalizedUsageDay = {
 };
 
 export type OpenAiSyncPayload = {
-  costsLineItem: OpenAiCostBucket[];
-  costsProject: OpenAiCostBucket[];
-  usage: OpenAiUsageBucket[];
+  version: 2;
+  periodStart: string;
+  periodEnd: string;
   normalized: {
     dailyCosts: OpenAiNormalizedDailyCost[];
     usageDays: OpenAiNormalizedUsageDay[];
@@ -172,9 +172,16 @@ async function loadLatestSyncPayload(): Promise<{ syncedAt: Date; payload: OpenA
     orderBy: { syncedAt: "desc" },
   });
   if (!row) return null;
+  const raw = row.payload as unknown as OpenAiSyncPayload & { normalized?: OpenAiSyncPayload["normalized"] };
+  if (!raw?.normalized?.dailyCosts) return null;
   return {
     syncedAt: row.syncedAt,
-    payload: row.payload as unknown as OpenAiSyncPayload,
+    payload: {
+      version: 2,
+      periodStart: raw.periodStart ?? row.periodStart.toISOString(),
+      periodEnd: raw.periodEnd ?? row.periodEnd.toISOString(),
+      normalized: raw.normalized,
+    },
   };
 }
 
@@ -211,10 +218,22 @@ export async function syncOpenAiAdminData(): Promise<{
   try {
     const costsLineItem = await fetchOpenAiOrganizationCosts(apiKey, startTime, endTime, "line_item");
     const costsProject = await fetchOpenAiOrganizationCosts(apiKey, startTime, endTime, "project_id");
-    const usage = await fetchOpenAiCompletionsUsage(apiKey, startTime, endTime);
+
+    let usage: OpenAiUsageBucket[] = [];
+    try {
+      usage = await fetchOpenAiCompletionsUsage(apiKey, startTime, endTime);
+    } catch (usageErr) {
+      const usageMsg = usageErr instanceof OpenAiAdminApiError ? usageErr.message : "usage fetch failed";
+      console.warn("[openai-admin] usage sync skipped:", usageMsg);
+    }
 
     const normalized = normalizeOpenAiSyncPayload(costsLineItem, costsProject, usage);
-    const payload: OpenAiSyncPayload = { costsLineItem, costsProject, usage, normalized };
+    const payload: OpenAiSyncPayload = {
+      version: 2,
+      periodStart: periodStart.toISOString(),
+      periodEnd: now.toISOString(),
+      normalized,
+    };
     const totalUsd = normalized.dailyCosts.reduce((s, d) => s + d.amountUsd, 0);
 
     const row = await prisma.openAiAdminSyncSnapshot.create({
@@ -231,7 +250,12 @@ export async function syncOpenAiAdminData(): Promise<{
       summaryUsd: moneyToApiString(money(totalUsd)),
     };
   } catch (err) {
-    const message = err instanceof OpenAiAdminApiError ? err.message : "OpenAI sync failed";
+    const message =
+      err instanceof OpenAiAdminApiError
+        ? `${err.message}: ${err.body.slice(0, 500)}`
+        : err instanceof Error
+          ? err.message
+          : "OpenAI sync failed";
     console.error("[openai-admin] sync failed:", message);
     await prisma.openAiAdminSyncSnapshot.create({
       data: {
