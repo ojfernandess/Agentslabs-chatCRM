@@ -2,6 +2,16 @@ export type LocaleCode = "pt-BR" | "en";
 
 export const LOCALE_STORAGE_KEY = "openconduit_locale";
 
+export function readStoredLocale(): LocaleCode {
+  try {
+    const v = localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (v === "en" || v === "pt-BR") return v;
+  } catch {
+    /* ignore */
+  }
+  return "pt-BR";
+}
+
 export const messages = {
   "pt-BR": {
     common: {

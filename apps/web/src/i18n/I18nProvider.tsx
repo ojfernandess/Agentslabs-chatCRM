@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -9,6 +10,7 @@ import {
 import { ptBR as dateFnsPtBR, enUS as dateFnsEnUS } from "date-fns/locale";
 import {
   LOCALE_STORAGE_KEY,
+  readStoredLocale,
   translate,
   type LocaleCode,
 } from "@/i18n/messages";
@@ -21,16 +23,6 @@ interface I18nContextValue {
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
-
-function readStoredLocale(): LocaleCode {
-  try {
-    const v = localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (v === "en" || v === "pt-BR") return v;
-  } catch {
-    /* ignore */
-  }
-  return "pt-BR";
-}
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<LocaleCode>(() => {
@@ -46,6 +38,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   const t = useCallback((path: string) => translate(locale, path), [locale]);
 

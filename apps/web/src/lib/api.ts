@@ -1,3 +1,5 @@
+import { readStoredLocale } from "@/i18n/messages";
+
 const API_BASE = "/api/v1";
 const TOKEN_KEY = "openconduit_token";
 
@@ -184,11 +186,9 @@ function resolveClientApiErrorMessage(error: {
   details?: Record<string, unknown>;
 }): string {
   const message = error.message || "Request failed";
-  if (typeof document !== "undefined") {
-    const lang = document.documentElement.lang || "pt";
-    if (lang.startsWith("en") && typeof error.details?.messageEn === "string") {
-      return error.details.messageEn;
-    }
+  if (typeof window === "undefined") return message;
+  if (readStoredLocale() === "en" && typeof error.details?.messageEn === "string") {
+    return error.details.messageEn;
   }
   return message;
 }

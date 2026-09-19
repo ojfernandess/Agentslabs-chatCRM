@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#6734ff" />
     <script>
+      (function () {
+        try {
+          var locale = localStorage.getItem("openconduit_locale");
+          if (locale !== "en" && locale !== "pt-BR") locale = "pt-BR";
+          document.documentElement.lang = locale;
+        } catch (e) {}
+      })();
       (function () {
         try {
           var pref = localStorage.getItem("openconduit_theme");
