@@ -1,5 +1,7 @@
 import { prisma } from "../../db.js";
 import { getBillingPlatformSettings } from "./billingSettings.js";
+import { listPlansForOrganization } from "./customPlanService.js";
+import { findActiveCatalogPlanForTier } from "./planAssignment.js";
 import {
   isAccessGrantingStatus,
   parsePlanFeatures,
@@ -52,8 +54,17 @@ function buildSnapshotFromOrg(input: {
     cancelAtPeriodEnd: boolean;
     updatedAt: Date;
     paymentDueAt: Date | null;
+    customPlanAssignedAt: Date | null;
   } | null;
   gracePeriodDays: number;
+  tierCatalogPlan: {
+    id: string;
+    slug: string;
+    name: string;
+    limits: unknown;
+    features: unknown;
+    legacyPlanTier: string | null;
+  } | null;
 }): EffectivePlanSnapshot {
   const sub = input.subscription;
   const plan = sub?.plan ?? null;
@@ -80,23 +91,33 @@ function buildSnapshotFromOrg(input: {
   const grantsPaidEntitlements = subscriptionGrantsPaidPlanEntitlements({
     status,
     paymentDueAt: sub?.paymentDueAt ?? null,
+    customPlanAssignedAt: sub?.customPlanAssignedAt ?? null,
   });
   const entitledPlan = grantsPaidEntitlements ? plan : null;
   const pendingPlan = !grantsPaidEntitlements && plan ? plan : null;
 
+  const tierPlan = input.tierCatalogPlan;
   const limits = entitledPlan
     ? parsePlanLimits(entitledPlan.limits)
-    : fallbackLimitsForTier(input.planTier);
-  const limitEnabled = entitledPlan ? parsePlanLimitEnabledFlags(entitledPlan.limits) : {};
+    : tierPlan
+      ? parsePlanLimits(tierPlan.limits)
+      : fallbackLimitsForTier(input.planTier);
+  const limitEnabled = entitledPlan
+    ? parsePlanLimitEnabledFlags(entitledPlan.limits)
+    : tierPlan
+      ? parsePlanLimitEnabledFlags(tierPlan.limits)
+      : {};
   const features = entitledPlan
     ? parsePlanFeatures(entitledPlan.features)
-    : fallbackFeaturesForTier(input.planTier);
+    : tierPlan
+      ? parsePlanFeatures(tierPlan.features)
+      : fallbackFeaturesForTier(input.planTier);
 
   return {
     organizationId: input.organizationId,
     planId: entitledPlan?.id ?? null,
-    planSlug: entitledPlan?.slug ?? input.planTier,
-    planName: entitledPlan?.name ?? input.planTier,
+    planSlug: entitledPlan?.slug ?? tierPlan?.slug ?? input.planTier,
+    planName: entitledPlan?.name ?? tierPlan?.name ?? input.planTier,
     pendingPlanId: pendingPlan?.id ?? null,
     pendingPlanName: pendingPlan?.name ?? null,
     legacyPlanTier: entitledPlan?.legacyPlanTier ?? input.planTier,
@@ -144,7 +165,7 @@ function fallbackFeaturesForTier(tier: string): PlanFeatures {
 export async function getEffectivePlanForOrganization(
   organizationId: string,
 ): Promise<EffectivePlanSnapshot | null> {
-  const [org, settings] = await Promise.all([
+  const [org, settings, catalogPlans] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: organizationId },
       select: {
@@ -168,15 +189,28 @@ export async function getEffectivePlanForOrganization(
       },
     }),
     getBillingPlatformSettings(),
+    listPlansForOrganization(organizationId),
   ]);
 
   if (!org) return null;
+
+  const tierCatalogPlan = findActiveCatalogPlanForTier(catalogPlans, org.planTier);
 
   return buildSnapshotFromOrg({
     organizationId: org.id,
     planTier: org.planTier,
     subscription: org.subscription,
     gracePeriodDays: settings.gracePeriodDays,
+    tierCatalogPlan: tierCatalogPlan
+      ? {
+          id: tierCatalogPlan.id,
+          slug: tierCatalogPlan.slug,
+          name: tierCatalogPlan.name,
+          limits: tierCatalogPlan.limits,
+          features: tierCatalogPlan.features,
+          legacyPlanTier: tierCatalogPlan.legacyPlanTier,
+        }
+      : null,
   });
 }
 

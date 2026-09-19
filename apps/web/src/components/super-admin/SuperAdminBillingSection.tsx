@@ -97,6 +97,7 @@ type DimensionOverageForm = {
 
 type BillingPlatformSettings = {
   gracePeriodDays: number;
+  checkoutExpirationHours: number;
   limitEnforcementMode: "block" | "overage";
   overage: Record<string, DimensionOverageForm>;
 };
@@ -143,6 +144,7 @@ function buildOverageLimitKeys(standardPlans: PlanRow[], customPlanRows: PlanRow
 function settingsFromApi(
   raw: {
     gracePeriodDays: number;
+    checkoutExpirationHours?: number;
     limitEnforcementMode?: "block" | "overage";
     overage?: Partial<
       Record<string, { enabled?: boolean; stripeMeterEventName?: string | null; unitAmountCents?: number | null }>
@@ -170,6 +172,7 @@ function settingsFromApi(
   }
   return {
     gracePeriodDays: raw.gracePeriodDays,
+    checkoutExpirationHours: raw.checkoutExpirationHours ?? 48,
     limitEnforcementMode: raw.limitEnforcementMode === "overage" ? "overage" : "block",
     overage,
   };
@@ -232,6 +235,7 @@ export function SuperAdminBillingSection() {
   const [customPlans, setCustomPlans] = useState<PlanRow[]>([]);
   const [billingSettings, setBillingSettings] = useState<BillingPlatformSettings>(() => ({
     gracePeriodDays: 7,
+    checkoutExpirationHours: 48,
     limitEnforcementMode: "block",
     overage: emptyOverageForm(),
   }));
@@ -648,6 +652,7 @@ export function SuperAdminBillingSection() {
       }
       await api.patch("/super/billing/settings", {
         gracePeriodDays: billingSettings.gracePeriodDays,
+        checkoutExpirationHours: billingSettings.checkoutExpirationHours,
         limitEnforcementMode: billingSettings.limitEnforcementMode,
         overage: overagePayload,
       });
@@ -1007,6 +1012,26 @@ export function SuperAdminBillingSection() {
                 }
                 className="input-field mt-1 w-32"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-600">
+                {t("superAdmin.billingCheckoutExpirationHours")}
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={168}
+                value={billingSettings.checkoutExpirationHours}
+                onChange={(e) =>
+                  setBillingSettings((s) => ({
+                    ...s,
+                    checkoutExpirationHours: Number(e.target.value) || 1,
+                  }))
+                }
+                className="input-field mt-1 w-32"
+              />
+              <p className="mt-1 text-xs text-slate-500">{t("superAdmin.billingCheckoutExpirationHoursHint")}</p>
             </div>
 
             <div className="space-y-3 rounded-lg border border-slate-200 p-4">

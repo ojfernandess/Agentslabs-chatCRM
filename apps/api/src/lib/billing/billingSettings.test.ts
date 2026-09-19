@@ -20,6 +20,10 @@ describe("billingSettings", () => {
       ...DEFAULT_BILLING_PLATFORM_SETTINGS,
       gracePeriodDays: 14,
     });
+    assert.deepEqual(readBillingPlatformSettings({ checkoutExpirationHours: 500 }), {
+      ...DEFAULT_BILLING_PLATFORM_SETTINGS,
+      checkoutExpirationHours: 168,
+    });
   });
 
   it("readBillingPlatformSettings parses overage mode and meters", () => {

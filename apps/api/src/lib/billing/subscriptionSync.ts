@@ -88,7 +88,9 @@ export async function syncSubscriptionSnapshot(
     trialStart: input.trialStart ?? undefined,
     trialEnd: input.trialEnd ?? undefined,
     checkoutSessionId: input.checkoutSessionId ?? undefined,
-    ...(input.clearPaymentDue ? { paymentDueAt: null } : {}),
+    ...(input.clearPaymentDue
+      ? { paymentDueAt: null, checkoutPreviousPlanId: null, customPlanAssignedAt: null }
+      : {}),
   };
 
   await prisma.organizationSubscription.upsert({

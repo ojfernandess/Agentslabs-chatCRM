@@ -131,6 +131,7 @@ const resetStripeBindingsSchema = z.object({
 const billingSettingsPatchSchema = z
   .object({
     gracePeriodDays: z.number().int().min(0).max(90).optional(),
+    checkoutExpirationHours: z.number().int().min(1).max(168).optional(),
     limitEnforcementMode: z.enum(["block", "overage"]).optional(),
     overage: z.record(z.string().min(1).max(64), overageDimensionPatchSchema).optional(),
   })
@@ -467,6 +468,7 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
     }
     const settings = await patchBillingPlatformSettings({
       gracePeriodDays: parsed.data.gracePeriodDays,
+      checkoutExpirationHours: parsed.data.checkoutExpirationHours,
       limitEnforcementMode: parsed.data.limitEnforcementMode,
       overage: parsed.data.overage,
     });

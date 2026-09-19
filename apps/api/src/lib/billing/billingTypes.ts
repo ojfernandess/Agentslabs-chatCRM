@@ -99,6 +99,8 @@ export type DimensionOverageConfig = {
 export type BillingPlatformSettings = {
   /** Dias de tolerância após past_due antes de restringir acesso (Super Admin). */
   gracePeriodDays: number;
+  /** Horas para concluir checkout de catálogo antes de reverter ao plano anterior. */
+  checkoutExpirationHours: number;
   /** block = impede criação acima do limite; overage = permite e reporta meter events ao Stripe. */
   limitEnforcementMode: LimitEnforcementMode;
   /** Medidores Stripe por dimensão (catálogo + limites personalizados dos planos). */
@@ -349,11 +351,13 @@ export function isAccessGrantingStatus(status: string): boolean {
 export function subscriptionGrantsPaidPlanEntitlements(input: {
   status: string;
   paymentDueAt?: Date | null;
+  customPlanAssignedAt?: Date | null;
 }): boolean {
   const status = input.status as SubscriptionStatus;
   if (status === "active" || status === "trialing" || status === "past_due") return true;
   if (
     status === "pending_payment" &&
+    input.customPlanAssignedAt &&
     input.paymentDueAt &&
     input.paymentDueAt.getTime() > Date.now()
   ) {
@@ -379,7 +383,7 @@ export const CHECKOUT_PENDING_BILLING_RESET = {
   cancelAtPeriodEnd: false,
   canceledAt: null,
   trialEnd: null,
-  paymentDueAt: null,
+  customPlanAssignedAt: null,
 } as const;
 
 /** Assinatura paga via Stripe (exclui plano free virtual sem customer). */

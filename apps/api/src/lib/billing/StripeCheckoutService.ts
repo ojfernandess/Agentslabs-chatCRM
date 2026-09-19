@@ -3,6 +3,7 @@ import { config } from "../../config.js";
 import { recordBillingAudit } from "./billingAudit.js";
 import { assertCheckoutAllowed } from "./checkoutGuards.js";
 import { CHECKOUT_PENDING_BILLING_RESET } from "./billingTypes.js";
+import { resolveCatalogCheckoutPendingFields } from "./pendingCheckoutService.js";
 import { BillingError, ensureStripeCustomer } from "./StripeCustomerService.js";
 import { getStripeClient } from "./stripeClient.js";
 import { isStaleStripeBindingError } from "./stripeErrors.js";
@@ -83,6 +84,8 @@ export async function createCheckoutSession(
     throw new BillingError("Stripe Checkout did not return a URL", "checkout_no_url");
   }
 
+  const checkoutPending = await resolveCatalogCheckoutPendingFields(input.organizationId);
+
   await prisma.organizationSubscription.upsert({
     where: { organizationId: input.organizationId },
     create: {
@@ -95,6 +98,8 @@ export async function createCheckoutSession(
       externalPriceId: plan.stripePriceId,
       status: "incomplete",
       checkoutSessionId: session.id,
+      checkoutPreviousPlanId: checkoutPending.checkoutPreviousPlanId,
+      paymentDueAt: checkoutPending.paymentDueAt,
     },
     update: {
       planId: plan.id,
@@ -105,6 +110,8 @@ export async function createCheckoutSession(
       externalPriceId: plan.stripePriceId,
       status: "incomplete",
       checkoutSessionId: session.id,
+      checkoutPreviousPlanId: checkoutPending.checkoutPreviousPlanId,
+      paymentDueAt: checkoutPending.paymentDueAt,
       ...CHECKOUT_PENDING_BILLING_RESET,
     },
   });

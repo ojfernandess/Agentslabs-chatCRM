@@ -6525,8 +6525,11 @@ export const messages = {
       billingReminderError: "Não foi possível enviar o lembrete.",
       billingSettingsTitle: "Política de billing",
       billingSettingsHint:
-        "Configure tolerância por inadimplência e o comportamento quando os limites de uso do plano são atingidos.",
+        "Configure tolerância por inadimplência, prazo para concluir checkout pendente e o comportamento quando os limites de uso do plano são atingidos.",
       billingGraceDays: "Dias de tolerância",
+      billingCheckoutExpirationHours: "Prazo para concluir checkout (horas)",
+      billingCheckoutExpirationHoursHint:
+        "Se o tenant iniciar checkout e não pagar dentro deste prazo, o plano anterior é restaurado e a mensagem de pagamento pendente desaparece.",
       billingLimitEnforcementTitle: "Uso e limites",
       billingLimitEnforcementHint:
         "Escolha bloquear novas criações ao atingir o limite ou permitir uso extra com cobrança via Stripe Billing Meters.",
@@ -13418,8 +13421,11 @@ export const messages = {
       billingReminderError: "Could not send the reminder.",
       billingSettingsTitle: "Billing policy",
       billingSettingsHint:
-        "Configure delinquency grace and behavior when plan usage limits are reached.",
+        "Configure delinquency grace, pending checkout expiration, and behavior when plan usage limits are reached.",
       billingGraceDays: "Grace period days",
+      billingCheckoutExpirationHours: "Checkout completion window (hours)",
+      billingCheckoutExpirationHoursHint:
+        "If a tenant starts checkout but does not pay within this window, the previous plan is restored and the pending payment message is cleared.",
       billingLimitEnforcementTitle: "Usage & limits",
       billingLimitEnforcementHint:
         "Block new creations at the limit, or allow overage and report usage to Stripe Billing Meters.",

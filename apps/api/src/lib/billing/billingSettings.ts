@@ -20,6 +20,7 @@ function buildDefaultOverage(): Record<string, DimensionOverageConfig> {
 
 export const DEFAULT_BILLING_PLATFORM_SETTINGS: BillingPlatformSettings = {
   gracePeriodDays: 7,
+  checkoutExpirationHours: 48,
   limitEnforcementMode: "block",
   overage: buildDefaultOverage(),
 };
@@ -62,12 +63,19 @@ export function readBillingPlatformSettings(raw: unknown): BillingPlatformSettin
     gracePeriodDays = Math.max(0, Math.min(90, Math.floor(graceRaw)));
   }
 
+  const checkoutExpirationRaw = o.checkoutExpirationHours;
+  let checkoutExpirationHours = DEFAULT_BILLING_PLATFORM_SETTINGS.checkoutExpirationHours;
+  if (typeof checkoutExpirationRaw === "number" && Number.isFinite(checkoutExpirationRaw)) {
+    checkoutExpirationHours = Math.max(1, Math.min(168, Math.floor(checkoutExpirationRaw)));
+  }
+
   const modeRaw = o.limitEnforcementMode;
   const limitEnforcementMode =
     modeRaw === "overage" ? "overage" : DEFAULT_BILLING_PLATFORM_SETTINGS.limitEnforcementMode;
 
   return {
     gracePeriodDays,
+    checkoutExpirationHours,
     limitEnforcementMode,
     overage: readOverageConfig(o.overage),
   };
@@ -91,6 +99,7 @@ export async function saveBillingPlatformSettings(value: BillingPlatformSettings
 
 export type BillingPlatformSettingsPatch = {
   gracePeriodDays?: number;
+  checkoutExpirationHours?: number;
   limitEnforcementMode?: BillingPlatformSettings["limitEnforcementMode"];
   overage?: Partial<Record<string, Partial<DimensionOverageConfig>>>;
 };

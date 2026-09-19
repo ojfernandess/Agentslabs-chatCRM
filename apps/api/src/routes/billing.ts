@@ -28,6 +28,7 @@ import {
   ensureMercadoPagoSubscriptionBillingPeriod,
   type PaymentProviderName,
 } from "../lib/billing/index.js";
+import { expirePendingCheckoutIfNeeded } from "../lib/billing/pendingCheckoutService.js";
 import { mercadoPagoBillingErrorHttpStatus } from "../lib/billing/mercadopago/mercadoPagoClient.js";
 import {
   getOrganizationAiCreditsBalance,
@@ -210,6 +211,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
 
     await ensureMercadoPagoSubscriptionBillingPeriod(organizationId).catch(() => {});
+    await expirePendingCheckoutIfNeeded(organizationId);
 
     const [entitlements, usage, org, providers, aiBillingMode] = await Promise.all([
       getEffectivePlanForOrganization(organizationId),
@@ -250,6 +252,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const grantsPaidEntitlements = subscriptionGrantsPaidPlanEntitlements({
       status: sub?.status ?? "inactive",
       paymentDueAt: sub?.paymentDueAt ?? null,
+      customPlanAssignedAt: sub?.customPlanAssignedAt ?? null,
     });
     const catalogPlans = await listPlansForOrganization(organizationId);
     const tierPlan = findActiveCatalogPlanForTier(catalogPlans, org?.planTier ?? "free");
@@ -262,6 +265,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
       paymentDueAt: sub?.paymentDueAt ?? null,
       stripeSubscriptionId: sub?.stripeSubscriptionId ?? null,
       planIsCustom: assignedPlan?.isCustom ?? false,
+      customPlanAssignedAt: sub?.customPlanAssignedAt ?? null,
       pendingPlanName: pendingPlan?.name ?? null,
     });
     const showRenewalDate = subscriptionShowsRenewalDate({
@@ -392,12 +396,15 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
   app.get("/usage", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+    await expirePendingCheckoutIfNeeded(organizationId);
     return { usage: await getOrganizationUsage(organizationId) };
   });
 
   app.get("/plans", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+
+    await expirePendingCheckoutIfNeeded(organizationId);
 
     const [plans, sub, org, providers] = await Promise.all([
       listPlansForOrganization(organizationId),
@@ -407,6 +414,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
           planId: true,
           status: true,
           paymentDueAt: true,
+          customPlanAssignedAt: true,
         },
       }),
       prisma.organization.findUnique({
@@ -419,6 +427,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const grantsPaidEntitlements = subscriptionGrantsPaidPlanEntitlements({
       status: sub?.status ?? "inactive",
       paymentDueAt: sub?.paymentDueAt ?? null,
+      customPlanAssignedAt: sub?.customPlanAssignedAt ?? null,
     });
     const activePlanId = grantsPaidEntitlements
       ? sub?.planId ?? null

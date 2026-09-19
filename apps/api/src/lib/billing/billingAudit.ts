@@ -5,6 +5,7 @@ const UUID_RE =
 
 export type BillingAuditAction =
   | "billing.checkout_created"
+  | "billing.checkout_expired"
   | "billing.subscription_created"
   | "billing.plan_changed"
   | "billing.subscription_canceled"

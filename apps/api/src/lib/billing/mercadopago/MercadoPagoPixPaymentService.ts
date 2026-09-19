@@ -4,6 +4,7 @@ import { getPublicOrigin } from "../../../config.js";
 import { prisma } from "../../../db.js";
 import { recordBillingAudit } from "../billingAudit.js";
 import { mapMercadoPagoPaymentStatus, resolveSubscriptionStatusUpdate, CHECKOUT_PENDING_BILLING_RESET } from "../billingTypes.js";
+import { resolveCatalogCheckoutPendingFields } from "../pendingCheckoutService.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { syncSubscriptionSnapshot, resolveMercadoPagoBillingPeriod, parseMercadoPagoDateString } from "../subscriptionSync.js";
@@ -171,6 +172,7 @@ export async function createMercadoPagoPixCheckout(
 
   const pix = extractPixDetails(payment);
   const subscriptionStatus = mapMercadoPagoPaymentStatus(payment.status ?? "pending");
+  const checkoutPending = await resolveCatalogCheckoutPendingFields(input.organizationId);
 
   await prisma.organizationSubscription.upsert({
     where: { organizationId: input.organizationId },
@@ -181,6 +183,8 @@ export async function createMercadoPagoPixCheckout(
       externalPriceId: plan.mercadopagoPlanId,
       status: subscriptionStatus,
       checkoutSessionId: sessionId,
+      checkoutPreviousPlanId: checkoutPending.checkoutPreviousPlanId,
+      paymentDueAt: checkoutPending.paymentDueAt,
     },
     update: {
       planId: plan.id,
@@ -188,6 +192,8 @@ export async function createMercadoPagoPixCheckout(
       externalPriceId: plan.mercadopagoPlanId,
       status: subscriptionStatus,
       checkoutSessionId: sessionId,
+      checkoutPreviousPlanId: checkoutPending.checkoutPreviousPlanId,
+      paymentDueAt: checkoutPending.paymentDueAt,
       ...CHECKOUT_PENDING_BILLING_RESET,
     },
   });

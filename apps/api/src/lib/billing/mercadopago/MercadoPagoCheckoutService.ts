@@ -4,6 +4,7 @@ import { config } from "../../../config.js";
 import { recordBillingAudit } from "../billingAudit.js";
 import { assertCheckoutAllowed } from "../checkoutGuards.js";
 import { CHECKOUT_PENDING_BILLING_RESET } from "../billingTypes.js";
+import { resolveCatalogCheckoutPendingFields } from "../pendingCheckoutService.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import {
@@ -100,6 +101,8 @@ export async function createMercadoPagoCheckoutSession(
     throw new BillingError("Mercado Pago did not return a checkout URL", "checkout_no_url");
   }
 
+  const checkoutPending = await resolveCatalogCheckoutPendingFields(input.organizationId);
+
   await prisma.organizationSubscription.upsert({
     where: { organizationId: input.organizationId },
     create: {
@@ -110,6 +113,8 @@ export async function createMercadoPagoCheckoutSession(
       status: "incomplete",
       checkoutSessionId: preapproval.id,
       externalSubscriptionId: preapproval.id,
+      checkoutPreviousPlanId: checkoutPending.checkoutPreviousPlanId,
+      paymentDueAt: checkoutPending.paymentDueAt,
     },
     update: {
       planId: plan.id,
@@ -118,6 +123,8 @@ export async function createMercadoPagoCheckoutSession(
       status: "incomplete",
       checkoutSessionId: preapproval.id,
       externalSubscriptionId: preapproval.id,
+      checkoutPreviousPlanId: checkoutPending.checkoutPreviousPlanId,
+      paymentDueAt: checkoutPending.paymentDueAt,
       ...CHECKOUT_PENDING_BILLING_RESET,
     },
   });

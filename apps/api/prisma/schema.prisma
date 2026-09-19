@@ -1970,7 +1970,9 @@ model OrganizationSubscription {
   trialStart           DateTime?    @map("trial_start")
   trialEnd             DateTime?    @map("trial_end")
   checkoutSessionId    String?      @map("checkout_session_id") @db.VarChar(255)
-  /// Prazo para pagamento de plano personalizado (grace).
+  /// Plano anterior ao iniciar checkout (para revert se pagamento expirar).
+  checkoutPreviousPlanId String?    @map("checkout_previous_plan_id") @db.Uuid
+  /// Prazo para pagamento de plano personalizado (grace) ou checkout de catálogo.
   paymentDueAt         DateTime?    @map("payment_due_at")
   customPlanAssignedAt DateTime?    @map("custom_plan_assigned_at")
   createdAt            DateTime     @default(now()) @map("created_at")

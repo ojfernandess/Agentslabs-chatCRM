@@ -353,6 +353,7 @@ export function computePaymentGraceInfo(input: {
   paymentDueAt: Date | null;
   stripeSubscriptionId: string | null;
   planIsCustom: boolean;
+  customPlanAssignedAt?: Date | null;
   pendingPlanName?: string | null;
 }): {
   paymentPending: boolean;
@@ -388,13 +389,24 @@ export function computePaymentGraceInfo(input: {
   }
 
   const msLeft = due.getTime() - Date.now();
+  if (msLeft <= 0) {
+    return {
+      paymentPending: false,
+      canCompletePayment: false,
+      paymentDueAt: due.toISOString(),
+      daysRemaining: 0,
+      paymentOverdue: true,
+      pendingPlanName: null,
+    };
+  }
+
   const daysRemaining = Math.max(0, Math.ceil(msLeft / 86_400_000));
   return {
     paymentPending: true,
     canCompletePayment: true,
     paymentDueAt: due.toISOString(),
     daysRemaining,
-    paymentOverdue: msLeft <= 0,
+    paymentOverdue: false,
     pendingPlanName: input.pendingPlanName?.trim() || null,
   };
 }

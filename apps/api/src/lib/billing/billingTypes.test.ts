@@ -71,6 +71,21 @@ describe("billingTypes", () => {
       false,
     );
     assert.equal(
+      subscriptionGrantsPaidPlanEntitlements({
+        status: "pending_payment",
+        paymentDueAt: new Date(Date.now() + 86_400_000),
+      }),
+      false,
+    );
+    assert.equal(
+      subscriptionGrantsPaidPlanEntitlements({
+        status: "pending_payment",
+        paymentDueAt: new Date(Date.now() + 86_400_000),
+        customPlanAssignedAt: new Date(),
+      }),
+      true,
+    );
+    assert.equal(
       subscriptionGrantsPaidPlanEntitlements({ status: "active", paymentDueAt: null }),
       true,
     );
