@@ -39,7 +39,7 @@ import {
 } from "@/components/billing/MercadoPagoPaymentMethodModal";
 import { UsageMeter } from "@/components/settings/UsageMeter";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
-import { catalogLimitLabelKey, orderPlanLimitKeys } from "@/lib/planCatalog";
+import { catalogLimitLabelKey, orderPlanLimitKeys, sortPlansByDisplayOrder } from "@/lib/planCatalog";
 
 type PlanRow = {
   id: string;
@@ -51,6 +51,7 @@ type PlanRow = {
   amountCents: number;
   interval: string;
   trialDays: number | null;
+  displayOrder?: number;
   limits: Record<string, number | null | undefined>;
   limitEnabled?: Record<string, boolean>;
   features: Record<string, boolean | undefined>;
@@ -312,6 +313,8 @@ export function BillingSettingsPanel() {
       .filter((pkg) => pkg.isActive)
       .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
   }, [overview?.aiCreditPackages]);
+
+  const orderedPlans = useMemo(() => sortPlansByDisplayOrder(plans), [plans]);
 
   const aiCreditPurchaseStatusLabel = (status: string) => {
     const key = `settings.aiCreditsPurchaseStatus_${status.toLowerCase()}`;
@@ -974,7 +977,7 @@ export function BillingSettingsPanel() {
       </section>
 
       <BillingAvailablePlansSection
-        plans={plans}
+        plans={orderedPlans}
         hasCustomPlanCatalog={overview?.hasCustomPlanCatalog}
         checkoutAvailable={checkoutAvailable}
         busy={busy}

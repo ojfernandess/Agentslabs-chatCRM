@@ -16,6 +16,7 @@ import {
   isKnownFeatureKey,
   isKnownLimitKey,
   isSuggestedExtraKey,
+  isInternalPlanFeatureKey,
   isPlanLimitEnabled,
   isSuggestedFeatureKey,
   isSuggestedLimitKey,
@@ -112,7 +113,7 @@ export function PlanLimitsFeaturesEditor({
   const customFeatureKeys = useMemo(
     () =>
       Object.keys(features)
-        .filter((k) => !isKnownFeatureKey(k) && !isSuggestedFeatureKey(k))
+        .filter((k) => !isKnownFeatureKey(k) && !isSuggestedFeatureKey(k) && !isInternalPlanFeatureKey(k))
         .sort(),
     [features],
   );

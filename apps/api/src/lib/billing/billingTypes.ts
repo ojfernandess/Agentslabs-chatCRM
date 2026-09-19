@@ -155,6 +155,14 @@ export type PlanPaymentProviders = {
 export const PLAN_BILLING_STRIPE_KEY = "__billingStripe";
 export const PLAN_BILLING_MERCADOPAGO_KEY = "__billingMercadopago";
 
+/** Remove metadados internos de checkout antes de expor features ao catálogo/UI. */
+export function stripInternalPlanFeatureKeys(features: PlanFeatures): PlanFeatures {
+  const out: PlanFeatures = { ...features };
+  delete out[PLAN_BILLING_STRIPE_KEY];
+  delete out[PLAN_BILLING_MERCADOPAGO_KEY];
+  return out;
+}
+
 export function parsePlanPaymentProviders(
   features: unknown,
   fallback?: {
@@ -345,4 +353,22 @@ export function subscriptionIsProviderManaged(input: {
   // Mercado Pago (Pix / preapproval) não implementa changePlan no provider — checkout trata upgrades.
   if (input.paymentProvider === "mercadopago") return false;
   return Boolean(input.externalSubscriptionId?.trim() || input.stripeSubscriptionId?.trim());
+}
+
+/** Normaliza slug de plano para o formato aceito pela API (`a-z`, `0-9`, `-`). */
+export function normalizePlanSlug(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+export function isValidPlanSlug(slug: string): boolean {
+  return slug.length >= 1 && slug.length <= 64 && /^[a-z0-9-]+$/.test(slug);
 }

@@ -9,6 +9,7 @@ import {
   getEffectivePlanForOrganization,
   parsePlanExtras,
   parsePlanFeatures,
+  stripInternalPlanFeatureKeys,
   parsePlanLimitEnabledFlags,
   parsePlanLimits,
   parsePlanPaymentProviders,
@@ -178,7 +179,7 @@ function serializePlanForClient(plan: {
     displayOrder: plan.displayOrder ?? 0,
     limits: parsePlanLimits(plan.limits),
     limitEnabled: parsePlanLimitEnabledFlags(plan.limits),
-    features: parsePlanFeatures(plan.features),
+    features: stripInternalPlanFeatureKeys(parsePlanFeatures(plan.features)),
     planExtras: parsePlanExtras(plan.planExtras ?? {}),
   };
 }

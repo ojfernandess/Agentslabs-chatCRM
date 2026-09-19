@@ -1,6 +1,26 @@
 /** Metadado JSON em `plan.limits` — chaves com `false` ficam ocultas e sem enforcement. */
 export const PLAN_LIMITS_ENABLED_KEY = "__enabled";
 
+/** Metadados internos em `plan.features` — checkout Stripe/Mercado Pago (editados em Provedores de pagamento). */
+export const PLAN_BILLING_STRIPE_KEY = "__billingStripe";
+export const PLAN_BILLING_MERCADOPAGO_KEY = "__billingMercadopago";
+export const INTERNAL_PLAN_FEATURE_KEYS = [
+  PLAN_BILLING_STRIPE_KEY,
+  PLAN_BILLING_MERCADOPAGO_KEY,
+] as const;
+
+export function isInternalPlanFeatureKey(key: string): boolean {
+  return (INTERNAL_PLAN_FEATURE_KEYS as readonly string[]).includes(key);
+}
+
+export function stripInternalPlanFeatureKeys(features: Record<string, boolean>): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(features)) {
+    if (!isInternalPlanFeatureKey(key)) out[key] = value;
+  }
+  return out;
+}
+
 /** Limites reconhecidos pelo enforcement de billing (PlanEntitlementService / planEnforcement). */
 export const KNOWN_PLAN_LIMIT_KEYS = ["agents", "automations", "contacts", "messages"] as const;
 
@@ -97,6 +117,7 @@ export function parseFeaturesObject(raw: unknown): Record<string, boolean> {
   if (!raw || typeof raw !== "object") return {};
   const out: Record<string, boolean> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (isInternalPlanFeatureKey(key)) continue;
     if (typeof value === "boolean") out[key] = value;
   }
   return out;
@@ -167,7 +188,7 @@ export function parseExtrasObject(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== "object") return {};
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof value === "string" && value.trim()) out[key] = value.trim();
+    if (typeof value === "string") out[key] = value.trim();
   }
   return out;
 }
@@ -231,4 +252,32 @@ export function formatPlanLimitLabel(
     return t("settings.billingLimitUnlimitedNamed").replace("{label}", label);
   }
   return t("settings.billingLimitGeneric").replace("{count}", String(limit)).replace("{label}", label);
+}
+
+/** Normaliza slug de plano para o formato aceito pela API (`a-z`, `0-9`, `-`). */
+export function normalizePlanSlug(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+export function isValidPlanSlug(slug: string): boolean {
+  return slug.length >= 1 && slug.length <= 64 && /^[a-z0-9-]+$/.test(slug);
+}
+
+export function sortPlansByDisplayOrder<T extends { displayOrder?: number; name: string }>(plans: readonly T[]): T[] {
+  return [...plans].sort(
+    (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.name.localeCompare(b.name),
+  );
+}
+
+export function nextPlanDisplayOrder(plans: readonly { displayOrder?: number }[]): number {
+  return plans.reduce((max, plan) => Math.max(max, plan.displayOrder ?? 0), -1) + 1;
 }

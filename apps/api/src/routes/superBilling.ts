@@ -16,8 +16,10 @@ import {
 } from "../lib/billing/clearStripeBindings.js";
 import { getStripeKeyMode } from "../lib/billing/stripeErrors.js";
 import {
+  normalizePlanSlug,
   parsePlanExtras,
   parsePlanFeatures,
+  stripInternalPlanFeatureKeys,
   parsePlanLimitEnabledFlags,
   parsePlanLimits,
   parsePlanPaymentProviders,
@@ -80,8 +82,19 @@ const optionalBadgeLabelSchema = z
     return trimmed || null;
   });
 
+const planSlugSchema = z
+  .string()
+  .transform((value) => normalizePlanSlug(value))
+  .pipe(
+    z
+      .string()
+      .min(1, "Slug is required")
+      .max(64)
+      .regex(/^[a-z0-9-]+$/, "Use only lowercase letters, numbers, and hyphens"),
+  );
+
 const createPlanSchema = z.object({
-  slug: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/),
+  slug: planSlugSchema,
   name: z.string().min(1).max(120),
   description: z.string().max(4000).nullable().optional(),
   badgeLabel: optionalBadgeLabelSchema,
@@ -102,7 +115,7 @@ const createPlanSchema = z.object({
 });
 
 const patchPlanSchema = createPlanSchema.partial().omit({ slug: true }).extend({
-  slug: z.string().min(1).max(64).regex(/^[a-z0-9-]+$/).optional(),
+  slug: planSlugSchema.optional(),
 });
 
 const overageDimensionPatchSchema = z.object({
@@ -235,7 +248,7 @@ function serializePlan(plan: {
     organization: plan.organization ?? null,
     limits: parsePlanLimits(plan.limits),
     limitEnabled: parsePlanLimitEnabledFlags(plan.limits),
-    features: parsePlanFeatures(plan.features),
+    features: stripInternalPlanFeatureKeys(parsePlanFeatures(plan.features)),
     paymentProviders: parsePlanPaymentProviders(plan.features, {
       amountCents: plan.amountCents,
       stripePriceId: plan.stripePriceId,

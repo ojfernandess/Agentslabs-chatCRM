@@ -18,6 +18,7 @@ import {
   catalogLimitLabelKey,
   isPlanLimitEnabled,
   orderPlanLimitKeys,
+  isInternalPlanFeatureKey,
 } from "@/lib/planCatalog";
 
 export type BillingPlanCardPlan = {
@@ -112,7 +113,9 @@ export function BillingPlanCard({
   const limitKeys = orderPlanLimitKeys(Object.keys(plan.limits)).filter((key) =>
     isPlanLimitEnabled(key, plan.limitEnabled ?? {}),
   );
-  const enabledFeatures = Object.entries(plan.features).filter(([, enabled]) => enabled === true);
+  const enabledFeatures = Object.entries(plan.features).filter(
+    ([key, enabled]) => enabled === true && !isInternalPlanFeatureKey(key),
+  );
   const planExtras = Object.entries(plan.planExtras ?? {}).filter(([, value]) => Boolean(value?.trim()));
   const badgeText =
     plan.badgeLabel?.trim() || (featured ? t("settings.billingPopularPlanBadge") : null);
