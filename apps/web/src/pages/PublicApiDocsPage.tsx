@@ -478,7 +478,7 @@ export function PublicApiDocsPage() {
   return (
     <div
       className={clsx(
-        "min-h-screen print:bg-white",
+        "flex min-h-[100dvh] w-full flex-1 flex-col print:bg-white",
         isDark
           ? "dark bg-gradient-to-b from-ink-950 via-ink-950 to-[#0d1218] text-ink-100"
           : "bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900",

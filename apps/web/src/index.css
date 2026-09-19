@@ -50,9 +50,17 @@
     @apply dark:text-soft-text;
   }
 
-  /** /docs — tema isolado aplica .dark no wrapper, não em html */
+  /** /docs — tema isolado aplica .dark no wrapper, não em html.dark global */
+  html.docs-theme-dark {
+    @apply bg-ink-950;
+  }
+
   body.docs-theme-dark {
     @apply bg-ink-950 text-ink-100;
+  }
+
+  body.docs-theme-dark #root {
+    @apply bg-ink-950;
   }
 
   .dark body {
