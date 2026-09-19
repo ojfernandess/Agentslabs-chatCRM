@@ -36,6 +36,7 @@ export type BillingPlanCardPlan = {
   features: Record<string, boolean | undefined>;
   planExtras?: Record<string, string | undefined>;
   isCurrent: boolean;
+  isPendingCheckout?: boolean;
   requiresCheckout: boolean;
   isFree?: boolean;
   stripeReady?: boolean;
@@ -117,9 +118,10 @@ export function BillingPlanCard({
     ([key, enabled]) => enabled === true && !isInternalPlanFeatureKey(key),
   );
   const planExtras = Object.entries(plan.planExtras ?? {}).filter(([, value]) => Boolean(value?.trim()));
-  const badgeText =
-    plan.badgeLabel?.trim() || (featured ? t("settings.billingPopularPlanBadge") : null);
-  const highlighted = Boolean(badgeText) || featured;
+  const badgeText = plan.isPendingCheckout
+    ? null
+    : plan.badgeLabel?.trim() || (featured ? t("settings.billingPopularPlanBadge") : null);
+  const highlighted = (Boolean(badgeText) || featured) && !plan.isPendingCheckout;
 
   const isPaid = plan.amountCents > 0;
   const planCheckoutReady =
@@ -167,9 +169,14 @@ export function BillingPlanCard({
                 ) : null}
               </div>
             </div>
-            {plan.isCurrent ? (
+            {plan.isCurrent && !plan.isPendingCheckout ? (
               <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-700 dark:bg-brand-900/50 dark:text-brand-200">
                 {t("settings.billingCurrentPlanBadge")}
+              </span>
+            ) : null}
+            {plan.isPendingCheckout ? (
+              <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+                {t("settings.billingPendingCheckoutBadge")}
               </span>
             ) : null}
           </div>
@@ -290,7 +297,7 @@ export function BillingPlanCard({
                 {t("settings.billingPaidPlanRequiresPaymentProvider")}
               </p>
             ) : null
-          ) : plan.isCurrent ? (
+          ) : plan.isCurrent && !plan.isPendingCheckout ? (
             <div className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-200">
               <Check className="h-4 w-4" strokeWidth={2.5} />
               {t("settings.billingYourCurrentPlan")}

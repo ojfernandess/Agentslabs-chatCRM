@@ -11,9 +11,6 @@ import type { LimitEnforcementMode, PlanFeatures } from "./billingTypes.js";
 import { isPlanLimitEnabled, orderPlanLimitKeys } from "./billingTypes.js";
 import { getBillingPlatformSettings } from "./billingSettings.js";
 import { computeOverLimitAmount, enforceCatalogPlanLimit, enforceUsageLimit } from "./limitEnforcementPolicy.js";
-import { getOrganizationAiBillingMode } from "../ai-billing/getOrganizationAiBillingMode.js";
-import { getOrCreateAiWallet } from "../ai-billing/AiWalletService.js";
-import { moneyIsPositive } from "../ai-billing/money.js";
 
 export class PlanEnforcementError extends Error {
   constructor(
@@ -275,19 +272,15 @@ export async function assertOrganizationBillingAccess(organizationId: string): P
   const snap = await requireSnapshot(organizationId);
   if (snap.hasAccess) return;
 
-  const aiBillingMode = await getOrganizationAiBillingMode(organizationId);
-  if (aiBillingMode === "PLATFORM_CREDITS") {
-    const wallet = await getOrCreateAiWallet(organizationId);
-    if (moneyIsPositive(wallet.availableBalance)) {
-      return;
-    }
-  }
-
   throw new PlanEnforcementError(
     "Subscription inactive or payment overdue. Update billing to continue.",
     "billing_access_suspended",
     403,
-    { subscriptionStatus: snap.subscriptionStatus, inGracePeriod: snap.inGracePeriod },
+    {
+      subscriptionStatus: snap.subscriptionStatus,
+      inGracePeriod: snap.inGracePeriod,
+      pendingPlanName: snap.pendingPlanName,
+    },
   );
 }
 

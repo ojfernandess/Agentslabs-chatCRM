@@ -3,7 +3,7 @@ import type { Plan } from "@prisma/client";
 import { getPublicOrigin } from "../../../config.js";
 import { prisma } from "../../../db.js";
 import { recordBillingAudit } from "../billingAudit.js";
-import { mapMercadoPagoPaymentStatus, resolveSubscriptionStatusUpdate } from "../billingTypes.js";
+import { mapMercadoPagoPaymentStatus, resolveSubscriptionStatusUpdate, CHECKOUT_PENDING_BILLING_RESET } from "../billingTypes.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import { syncSubscriptionSnapshot, resolveMercadoPagoBillingPeriod, parseMercadoPagoDateString } from "../subscriptionSync.js";
@@ -188,6 +188,7 @@ export async function createMercadoPagoPixCheckout(
       externalPriceId: plan.mercadopagoPlanId,
       status: subscriptionStatus,
       checkoutSessionId: sessionId,
+      ...CHECKOUT_PENDING_BILLING_RESET,
     },
   });
 

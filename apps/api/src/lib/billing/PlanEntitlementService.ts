@@ -5,6 +5,7 @@ import {
   parsePlanFeatures,
   parsePlanLimitEnabledFlags,
   parsePlanLimits,
+  subscriptionGrantsPaidPlanEntitlements,
   subscriptionHasStripeBilling,
   type PlanFeatures,
   type PlanLimits,
@@ -15,10 +16,13 @@ export type EffectivePlanSnapshot = {
   planId: string | null;
   planSlug: string | null;
   planName: string | null;
+  pendingPlanId: string | null;
+  pendingPlanName: string | null;
   legacyPlanTier: string;
   subscriptionStatus: string;
   hasAccess: boolean;
   inGracePeriod: boolean;
+  grantsPaidEntitlements: boolean;
   limits: PlanLimits;
   /** false = limite desativado (oculto na UI, sem enforcement). */
   limitEnabled: Record<string, boolean>;
@@ -73,19 +77,33 @@ function buildSnapshotFromOrg(input: {
     (status !== "past_due" || inGracePeriod) &&
     (status !== "pending_payment" || pendingPaymentGrace);
 
-  const limits = plan ? parsePlanLimits(plan.limits) : fallbackLimitsForTier(input.planTier);
-  const limitEnabled = plan ? parsePlanLimitEnabledFlags(plan.limits) : {};
-  const features = plan ? parsePlanFeatures(plan.features) : fallbackFeaturesForTier(input.planTier);
+  const grantsPaidEntitlements = subscriptionGrantsPaidPlanEntitlements({
+    status,
+    paymentDueAt: sub?.paymentDueAt ?? null,
+  });
+  const entitledPlan = grantsPaidEntitlements ? plan : null;
+  const pendingPlan = !grantsPaidEntitlements && plan ? plan : null;
+
+  const limits = entitledPlan
+    ? parsePlanLimits(entitledPlan.limits)
+    : fallbackLimitsForTier(input.planTier);
+  const limitEnabled = entitledPlan ? parsePlanLimitEnabledFlags(entitledPlan.limits) : {};
+  const features = entitledPlan
+    ? parsePlanFeatures(entitledPlan.features)
+    : fallbackFeaturesForTier(input.planTier);
 
   return {
     organizationId: input.organizationId,
-    planId: plan?.id ?? null,
-    planSlug: plan?.slug ?? input.planTier,
-    planName: plan?.name ?? input.planTier,
-    legacyPlanTier: plan?.legacyPlanTier ?? input.planTier,
+    planId: entitledPlan?.id ?? null,
+    planSlug: entitledPlan?.slug ?? input.planTier,
+    planName: entitledPlan?.name ?? input.planTier,
+    pendingPlanId: pendingPlan?.id ?? null,
+    pendingPlanName: pendingPlan?.name ?? null,
+    legacyPlanTier: entitledPlan?.legacyPlanTier ?? input.planTier,
     subscriptionStatus: status,
     hasAccess,
     inGracePeriod,
+    grantsPaidEntitlements,
     limits,
     limitEnabled,
     features,
@@ -95,8 +113,8 @@ function buildSnapshotFromOrg(input: {
           stripeSubscriptionId: sub.stripeSubscriptionId,
         })
       : false,
-    currentPeriodEnd: sub?.currentPeriodEnd ?? null,
-    cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
+    currentPeriodEnd: grantsPaidEntitlements ? (sub?.currentPeriodEnd ?? null) : null,
+    cancelAtPeriodEnd: grantsPaidEntitlements ? (sub?.cancelAtPeriodEnd ?? false) : false,
   };
 }
 

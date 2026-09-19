@@ -345,6 +345,43 @@ export function isAccessGrantingStatus(status: string): boolean {
   return ACCESS_GRANTING_STATUSES.has(status as SubscriptionStatus);
 }
 
+/** Concede limites/features do plano associado à assinatura (pagamento confirmado ou grace de plano custom). */
+export function subscriptionGrantsPaidPlanEntitlements(input: {
+  status: string;
+  paymentDueAt?: Date | null;
+}): boolean {
+  const status = input.status as SubscriptionStatus;
+  if (status === "active" || status === "trialing" || status === "past_due") return true;
+  if (
+    status === "pending_payment" &&
+    input.paymentDueAt &&
+    input.paymentDueAt.getTime() > Date.now()
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Exibe data de renovação/próxima cobrança apenas com assinatura paga ativa. */
+export function subscriptionShowsRenewalDate(input: {
+  status: string;
+  grantsPaidEntitlements: boolean;
+  currentPeriodEnd: Date | null | undefined;
+}): boolean {
+  if (!input.grantsPaidEntitlements || !input.currentPeriodEnd) return false;
+  return input.status === "active" || input.status === "trialing" || input.status === "past_due";
+}
+
+/** Campos de ciclo de faturação limpos ao iniciar checkout pendente de pagamento. */
+export const CHECKOUT_PENDING_BILLING_RESET = {
+  currentPeriodStart: null,
+  currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+  canceledAt: null,
+  trialEnd: null,
+  paymentDueAt: null,
+} as const;
+
 /** Assinatura paga via Stripe (exclui plano free virtual sem customer). */
 export function subscriptionHasStripeBilling(input: {
   stripeCustomerId?: string | null;

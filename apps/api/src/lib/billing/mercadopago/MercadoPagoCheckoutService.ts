@@ -3,6 +3,7 @@ import { prisma } from "../../../db.js";
 import { config } from "../../../config.js";
 import { recordBillingAudit } from "../billingAudit.js";
 import { assertCheckoutAllowed } from "../checkoutGuards.js";
+import { CHECKOUT_PENDING_BILLING_RESET } from "../billingTypes.js";
 import { resolveBillingEmail } from "../billingEmailRecipients.js";
 import { BillingError } from "../StripeCustomerService.js";
 import {
@@ -117,6 +118,7 @@ export async function createMercadoPagoCheckoutSession(
       status: "incomplete",
       checkoutSessionId: preapproval.id,
       externalSubscriptionId: preapproval.id,
+      ...CHECKOUT_PENDING_BILLING_RESET,
     },
   });
 

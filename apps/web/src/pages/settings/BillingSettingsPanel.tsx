@@ -57,6 +57,7 @@ type PlanRow = {
   features: Record<string, boolean | undefined>;
   planExtras?: Record<string, string | undefined>;
   isCurrent: boolean;
+  isPendingCheckout?: boolean;
   requiresCheckout: boolean;
   isFree?: boolean;
   stripeReady?: boolean;
@@ -125,6 +126,7 @@ type BillingOverview = {
   };
   subscription: {
     status: string;
+    isPaid?: boolean;
     stripeManaged: boolean;
     providerManaged?: boolean;
     paymentProvider?: string | null;
@@ -133,11 +135,13 @@ type BillingOverview = {
     cancelAtPeriodEnd: boolean;
     canceledAt: string | null;
     trialEnd: string | null;
-    plan: Omit<PlanRow, "isCurrent" | "requiresCheckout"> | null;
+    plan: Omit<PlanRow, "isCurrent" | "isPendingCheckout" | "requiresCheckout"> | null;
+    pendingPlan?: Omit<PlanRow, "isCurrent" | "isPendingCheckout" | "requiresCheckout"> | null;
   } | null;
   entitlements?: {
     hasAccess: boolean;
     inGracePeriod: boolean;
+    grantsPaidEntitlements?: boolean;
     limits: Record<string, number | null | undefined>;
     features: Record<string, boolean | undefined>;
   } | null;
@@ -148,6 +152,7 @@ type BillingOverview = {
     paymentDueAt: string | null;
     daysRemaining: number | null;
     paymentOverdue: boolean;
+    pendingPlanName?: string | null;
   };
   aiBillingMode?: "OWN_API_KEY" | "PLATFORM_CREDITS";
   aiCredits?: {
@@ -301,7 +306,9 @@ export function BillingSettingsPanel() {
   }, [checkoutNotice, setupNotice, searchParams, setSearchParams]);
 
   const currentPlan = overview?.subscription?.plan;
+  const pendingPlan = overview?.subscription?.pendingPlan ?? null;
   const subscription = overview?.subscription;
+  const showRenewalDate = Boolean(subscription?.isPaid && subscription.currentPeriodEnd);
   const localeTag = locale === "en" ? "en-US" : "pt-BR";
   const mercadoPagoConfigured = Boolean(
     overview?.providers?.mercadopago?.connected && overview?.providers?.mercadopago?.enabled !== false,
@@ -361,10 +368,10 @@ export function BillingSettingsPanel() {
   }, [setupNotice, t]);
 
   const messagesRenewLabel = useMemo(() => {
-    const end = subscription?.currentPeriodEnd;
+    const end = showRenewalDate ? subscription?.currentPeriodEnd : null;
     if (!end) return null;
     return t("settings.billingUsageRenews").replace("{date}", formatDate(end, localeTag));
-  }, [subscription?.currentPeriodEnd, localeTag, t]);
+  }, [showRenewalDate, subscription?.currentPeriodEnd, localeTag, t]);
 
   const runAction = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -382,16 +389,31 @@ export function BillingSettingsPanel() {
   const canCompletePayment =
     Boolean(overview?.paymentGrace?.canCompletePayment) &&
     checkoutAvailable &&
-    Boolean(currentPlan && currentPlan.amountCents > 0);
+    Boolean(pendingPlan && pendingPlan.amountCents > 0);
+
+  const pendingPlanName =
+    overview?.paymentGrace?.pendingPlanName?.trim() || pendingPlan?.name?.trim() || "";
+
+  const formatPaymentPendingHint = () => {
+    if (!pendingPlanName) {
+      return t("settings.billingPaymentPendingHintGeneric");
+    }
+    if (overview?.paymentGrace?.paymentDueAt) {
+      return t("settings.billingPaymentPendingHint")
+        .replace("{planName}", pendingPlanName)
+        .replace("{days}", String(overview.paymentGrace.daysRemaining ?? 0));
+    }
+    return t("settings.billingCheckoutPaymentPendingHint").replace("{planName}", pendingPlanName);
+  };
 
   const planNeedsPayment = (plan: PlanRow) =>
-    plan.isCurrent && canCompletePayment && plan.amountCents > 0;
+    Boolean(plan.isPendingCheckout) && canCompletePayment && plan.amountCents > 0;
 
   const planShowsSubscribeAction = (plan: PlanRow) => !plan.isCurrent || planNeedsPayment(plan);
 
   const completeCurrentPlanPayment = () => {
-    if (!currentPlan) return;
-    const planRow = plans.find((p) => p.id === currentPlan.id);
+    if (!pendingPlan) return;
+    const planRow = plans.find((p) => p.id === pendingPlan.id);
     if (planRow) void subscribeToPlan(planRow);
   };
 
@@ -582,14 +604,7 @@ export function BillingSettingsPanel() {
               <p className="text-sm opacity-90">{t("settings.billingCheckoutCancel")}</p>
             ) : null}
             {overview?.paymentGrace?.paymentPending ? (
-              <p className="text-sm opacity-90">
-                {overview.paymentGrace.paymentOverdue
-                  ? t("settings.billingPaymentOverdue")
-                  : t("settings.billingPaymentPendingHint").replace(
-                      "{days}",
-                      String(overview.paymentGrace.daysRemaining ?? 0),
-                    )}
-              </p>
+              <p className="text-sm opacity-90">{formatPaymentPendingHint()}</p>
             ) : null}
             {canCompletePayment ? (
               <button
@@ -632,10 +647,7 @@ export function BillingSettingsPanel() {
             <p>
               {overview.paymentGrace.paymentOverdue
                 ? t("settings.billingPaymentOverdue")
-                : t("settings.billingPaymentPendingHint").replace(
-                    "{days}",
-                    String(overview.paymentGrace.daysRemaining ?? 0),
-                  )}
+                : formatPaymentPendingHint()}
             </p>
             {overview.paymentGrace.paymentDueAt ? (
               <p className="text-xs opacity-80">
@@ -896,13 +908,26 @@ export function BillingSettingsPanel() {
                   {t("settings.billingStatus")}:{" "}
                   <span className="font-medium">{t(statusLabelKey(subscription.status))}</span>
                 </p>
-                {subscription.currentPeriodEnd ? (
+                {showRenewalDate ? (
                   <p className="text-sm text-ink-600 dark:text-ink-300">
                     {subscription.cancelAtPeriodEnd
                       ? t("settings.billingActiveUntil")
                       : t("settings.billingNextCharge")}{" "}
                     {formatDate(subscription.currentPeriodEnd, localeTag)}
                   </p>
+                ) : null}
+                {pendingPlan ? (
+                  <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                    <p className="font-medium">{t("settings.billingPendingPlanTitle")}</p>
+                    <p className="mt-1">
+                      {pendingPlan.name} —{" "}
+                      {formatMoney(pendingPlan.amountCents, pendingPlan.currency, localeTag)} /{" "}
+                      {pendingPlan.interval === "month"
+                        ? t("settings.billingPerMonth")
+                        : pendingPlan.interval}
+                    </p>
+                    <p className="mt-1 text-xs opacity-90">{formatPaymentPendingHint()}</p>
+                  </div>
                 ) : null}
                 {subscription.status === "past_due" ? (
                   <p className="text-sm font-medium text-amber-700 dark:text-amber-300">

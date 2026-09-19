@@ -353,12 +353,14 @@ export function computePaymentGraceInfo(input: {
   paymentDueAt: Date | null;
   stripeSubscriptionId: string | null;
   planIsCustom: boolean;
+  pendingPlanName?: string | null;
 }): {
   paymentPending: boolean;
   canCompletePayment: boolean;
   paymentDueAt: string | null;
   daysRemaining: number | null;
   paymentOverdue: boolean;
+  pendingPlanName: string | null;
 } {
   const pending = isAwaitingStripePayment(input);
 
@@ -369,6 +371,7 @@ export function computePaymentGraceInfo(input: {
       paymentDueAt: null,
       daysRemaining: null,
       paymentOverdue: false,
+      pendingPlanName: null,
     };
   }
 
@@ -380,6 +383,7 @@ export function computePaymentGraceInfo(input: {
       paymentDueAt: null,
       daysRemaining: null,
       paymentOverdue: false,
+      pendingPlanName: input.pendingPlanName?.trim() || null,
     };
   }
 
@@ -391,5 +395,6 @@ export function computePaymentGraceInfo(input: {
     paymentDueAt: due.toISOString(),
     daysRemaining,
     paymentOverdue: msLeft <= 0,
+    pendingPlanName: input.pendingPlanName?.trim() || null,
   };
 }

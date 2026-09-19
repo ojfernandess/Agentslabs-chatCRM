@@ -8,6 +8,7 @@ import {
   parsePlanFeatures,
   parsePlanLimitEnabledFlags,
   parsePlanLimits,
+  subscriptionGrantsPaidPlanEntitlements,
   subscriptionHasStripeBilling,
 } from "./billingTypes.js";
 
@@ -62,6 +63,17 @@ describe("billingTypes", () => {
     assert.deepEqual(parsePlanExtras({ support: "24/7", empty: "  " }), {
       support: "24/7",
     });
+  });
+
+  it("subscriptionGrantsPaidPlanEntitlements blocks incomplete checkout", () => {
+    assert.equal(
+      subscriptionGrantsPaidPlanEntitlements({ status: "incomplete", paymentDueAt: null }),
+      false,
+    );
+    assert.equal(
+      subscriptionGrantsPaidPlanEntitlements({ status: "active", paymentDueAt: null }),
+      true,
+    );
   });
 
   it("parsePlanExtras formats structured implementation extras", () => {

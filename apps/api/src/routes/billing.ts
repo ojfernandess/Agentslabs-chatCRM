@@ -17,11 +17,14 @@ import {
   applyCatalogPlanToOrganization,
   listPlansForOrganization,
   computePaymentGraceInfo,
+  findActiveCatalogPlanForTier,
   getBillingProvider,
   getBillingProvidersClientConfig,
   resolveDefaultPaymentProvider,
   resolveOrganizationPaymentProvider,
   subscriptionIsProviderManaged,
+  subscriptionGrantsPaidPlanEntitlements,
+  subscriptionShowsRenewalDate,
   ensureMercadoPagoSubscriptionBillingPeriod,
   type PaymentProviderName,
 } from "../lib/billing/index.js";
@@ -243,12 +246,28 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     ]);
 
     const sub = org?.subscription;
-    const plan = sub?.plan;
+    const assignedPlan = sub?.plan;
+    const grantsPaidEntitlements = subscriptionGrantsPaidPlanEntitlements({
+      status: sub?.status ?? "inactive",
+      paymentDueAt: sub?.paymentDueAt ?? null,
+    });
+    const catalogPlans = await listPlansForOrganization(organizationId);
+    const tierPlan = findActiveCatalogPlanForTier(catalogPlans, org?.planTier ?? "free");
+    const entitledPlan =
+      grantsPaidEntitlements && assignedPlan ? assignedPlan : tierPlan ?? assignedPlan ?? null;
+    const pendingPlan =
+      !grantsPaidEntitlements && assignedPlan && assignedPlan.amountCents > 0 ? assignedPlan : null;
     const paymentGrace = computePaymentGraceInfo({
       status: sub?.status ?? "inactive",
       paymentDueAt: sub?.paymentDueAt ?? null,
       stripeSubscriptionId: sub?.stripeSubscriptionId ?? null,
-      planIsCustom: plan?.isCustom ?? false,
+      planIsCustom: assignedPlan?.isCustom ?? false,
+      pendingPlanName: pendingPlan?.name ?? null,
+    });
+    const showRenewalDate = subscriptionShowsRenewalDate({
+      status: sub?.status ?? "inactive",
+      grantsPaidEntitlements,
+      currentPeriodEnd: sub?.currentPeriodEnd ?? null,
     });
 
     return {
@@ -259,29 +278,34 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
       billingEmail: org?.billingEmail ?? null,
       legacyPlanTier: org?.planTier ?? "free",
       hasCustomPlanCatalog: Boolean(
-        plan?.isCustom ||
+        assignedPlan?.isCustom ||
           (await prisma.plan.count({ where: { organizationId, isCustom: true, isActive: true } })),
       ),
       paymentGrace,
       subscription: sub
         ? {
             status: sub.status,
+            isPaid: grantsPaidEntitlements,
             paymentProvider: sub.paymentProvider,
             stripeManaged: Boolean(sub.stripeSubscriptionId),
             providerManaged: subscriptionIsProviderManaged(sub),
-            currentPeriodStart: sub.currentPeriodStart?.toISOString() ?? null,
-            currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
-            cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+            currentPeriodStart: showRenewalDate ? sub.currentPeriodStart?.toISOString() ?? null : null,
+            currentPeriodEnd: showRenewalDate ? sub.currentPeriodEnd?.toISOString() ?? null : null,
+            cancelAtPeriodEnd: showRenewalDate ? sub.cancelAtPeriodEnd : false,
             canceledAt: sub.canceledAt?.toISOString() ?? null,
             trialEnd: sub.trialEnd?.toISOString() ?? null,
             paymentDueAt: sub.paymentDueAt?.toISOString() ?? null,
-            plan: plan ? { ...serializePlanForClient(plan), isCustom: plan.isCustom } : null,
+            plan: entitledPlan ? { ...serializePlanForClient(entitledPlan), isCustom: entitledPlan.isCustom } : null,
+            pendingPlan: pendingPlan
+              ? { ...serializePlanForClient(pendingPlan), isCustom: pendingPlan.isCustom }
+              : null,
           }
         : null,
       entitlements: entitlements
         ? {
             hasAccess: entitlements.hasAccess,
             inGracePeriod: entitlements.inGracePeriod,
+            grantsPaidEntitlements: entitlements.grantsPaidEntitlements,
             limits: entitlements.limits,
             features: entitlements.features,
           }
@@ -375,14 +399,30 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const [plans, sub, providers] = await Promise.all([
+    const [plans, sub, org, providers] = await Promise.all([
       listPlansForOrganization(organizationId),
       prisma.organizationSubscription.findUnique({
         where: { organizationId },
-        select: { planId: true },
+        select: {
+          planId: true,
+          status: true,
+          paymentDueAt: true,
+        },
+      }),
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { planTier: true },
       }),
       getBillingProvidersClientConfig(organizationId),
     ]);
+
+    const grantsPaidEntitlements = subscriptionGrantsPaidPlanEntitlements({
+      status: sub?.status ?? "inactive",
+      paymentDueAt: sub?.paymentDueAt ?? null,
+    });
+    const activePlanId = grantsPaidEntitlements
+      ? sub?.planId ?? null
+      : findActiveCatalogPlanForTier(plans, org?.planTier ?? "free")?.id ?? null;
 
     return {
       plans: plans.map((p) => {
@@ -396,7 +436,9 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         const mercadoPagoCheckoutReady = planProviders.mercadopago && p.amountCents > 0;
         return {
           ...serializePlanForClient(p),
-          isCurrent: sub?.planId === p.id,
+          isCurrent: activePlanId === p.id,
+          isPendingCheckout:
+            !grantsPaidEntitlements && sub?.planId === p.id && p.amountCents > 0,
           isCustom: p.isCustom,
           paymentProviders: planProviders,
           requiresCheckout:

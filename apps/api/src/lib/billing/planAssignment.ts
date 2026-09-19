@@ -14,6 +14,20 @@ function syncOrgFromPlan(
   return orgUpdate;
 }
 
+export function findActiveCatalogPlanForTier<
+  T extends { id: string; slug: string; legacyPlanTier: string | null; amountCents: number },
+>(plans: readonly T[], planTier: string): T | null {
+  const normalized = planTier.trim().toLowerCase();
+  const byLegacy = plans.find((plan) => plan.legacyPlanTier?.trim().toLowerCase() === normalized);
+  if (byLegacy) return byLegacy;
+  const bySlug = plans.find((plan) => plan.slug.trim().toLowerCase() === normalized);
+  if (bySlug) return bySlug;
+  if (normalized === "free") {
+    return plans.find((plan) => plan.amountCents <= 0) ?? null;
+  }
+  return null;
+}
+
 export async function applyCatalogPlanToOrganization(
   organizationId: string,
   planId: string,

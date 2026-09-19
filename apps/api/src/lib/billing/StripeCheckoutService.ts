@@ -2,6 +2,7 @@ import { prisma } from "../../db.js";
 import { config } from "../../config.js";
 import { recordBillingAudit } from "./billingAudit.js";
 import { assertCheckoutAllowed } from "./checkoutGuards.js";
+import { CHECKOUT_PENDING_BILLING_RESET } from "./billingTypes.js";
 import { BillingError, ensureStripeCustomer } from "./StripeCustomerService.js";
 import { getStripeClient } from "./stripeClient.js";
 import { isStaleStripeBindingError } from "./stripeErrors.js";
@@ -104,6 +105,7 @@ export async function createCheckoutSession(
       externalPriceId: plan.stripePriceId,
       status: "incomplete",
       checkoutSessionId: session.id,
+      ...CHECKOUT_PENDING_BILLING_RESET,
     },
   });
 
