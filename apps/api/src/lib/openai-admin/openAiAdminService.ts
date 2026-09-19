@@ -336,10 +336,9 @@ export async function getOpenAiAdminDashboard(query: OpenAiDashboardQuery = {}) 
   const totalOfficialCostsUsd = dailyCosts.reduce((s, d) => s + d.amountUsd, 0);
   const totalRechargesUsd = recharges.reduce((s, r) => s + Number(r.amountUsd), 0);
   const initialBalanceUsd = adminSettings?.initialBalanceUsd ?? null;
-  const estimatedBalanceUsd =
-    initialBalanceUsd != null || totalRechargesUsd > 0
-      ? (initialBalanceUsd ?? 0) + totalRechargesUsd - totalOfficialCostsUsd
-      : null;
+  const totalDepositedUsd = (initialBalanceUsd ?? 0) + totalRechargesUsd;
+  const trackingEnabled = initialBalanceUsd != null || totalRechargesUsd > 0;
+  const estimatedRemainingUsd = trackingEnabled ? totalDepositedUsd - totalOfficialCostsUsd : null;
 
   const usageRows = (latest?.payload.normalized.usageDays ?? []).slice(0, 200);
 
@@ -360,8 +359,17 @@ export async function getOpenAiAdminDashboard(query: OpenAiDashboardQuery = {}) 
       monthUsd: costMonthUsd,
       last30DaysUsd: costLast30Usd,
     },
-    estimatedBalanceUsd,
+    estimatedBalanceUsd: estimatedRemainingUsd,
     hasOfficialBalanceApi: false,
+    apiCreditBalance: {
+      hasOfficialSource: false,
+      trackingEnabled,
+      totalDepositedUsd,
+      totalConsumedUsd: totalOfficialCostsUsd,
+      estimatedRemainingUsd,
+      initialBalanceUsd,
+      totalRechargesUsd,
+    },
     chart: {
       range: chartRange,
       from: chartFrom.toISOString(),

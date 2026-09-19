@@ -43,6 +43,16 @@ type OpenAiDashboardResponse = {
     syncError: string | null;
     costs: { todayUsd: number; monthUsd: number; last30DaysUsd: number };
     estimatedBalanceUsd: number | null;
+    hasOfficialBalanceApi: boolean;
+    apiCreditBalance: {
+      hasOfficialSource: boolean;
+      trackingEnabled: boolean;
+      totalDepositedUsd: number;
+      totalConsumedUsd: number;
+      estimatedRemainingUsd: number | null;
+      initialBalanceUsd: number | null;
+      totalRechargesUsd: number;
+    };
     chart: { range: ChartRange; from: string; to: string; daily: { date: string; amountUsd: number }[] };
     detail: { date: string; category: string; projectId: string | null; amountUsd: number }[];
     projects: { id: string; amountUsd: number }[];
@@ -137,6 +147,123 @@ function MetricCard({
       <p className="mt-2 break-words text-2xl font-bold tabular-nums text-slate-900">{value}</p>
       <p className="mt-2 text-xs text-slate-500">{footer}</p>
     </div>
+  );
+}
+
+function ApiCreditBalancePanel({
+  balance,
+  syncedAt,
+  locale,
+  t,
+  onConfigure,
+}: {
+  balance: OpenAiDashboardResponse["dashboard"]["apiCreditBalance"];
+  syncedAt: string | null;
+  locale: string;
+  t: (key: string) => string;
+  onConfigure: () => void;
+}) {
+  if (!balance.trackingEnabled) {
+    return (
+      <SuperAdminPanel className="overflow-hidden border-amber-200 bg-amber-50/40 p-0">
+        <SectionHeader
+          icon={Wallet}
+          title={t("superAdmin.openAiApiCreditBalanceTitle")}
+          subtitle={t("superAdmin.openAiApiCreditBalanceNoTracking")}
+          action={
+            <button type="button" className="btn-secondary text-xs" onClick={onConfigure}>
+              {t("superAdmin.openAiApiCreditBalanceConfigure")}
+            </button>
+          }
+        />
+        <div className="px-5 pb-5">
+          <p className="text-sm leading-relaxed text-amber-950/80">{t("superAdmin.openAiApiCreditBalanceNoTrackingHint")}</p>
+        </div>
+      </SuperAdminPanel>
+    );
+  }
+
+  const remaining = balance.estimatedRemainingUsd ?? 0;
+  const isLow = remaining < 10;
+
+  return (
+    <SuperAdminPanel className="overflow-hidden p-0">
+      <SectionHeader
+        icon={Wallet}
+        title={t("superAdmin.openAiApiCreditBalanceTitle")}
+        subtitle={t("superAdmin.openAiApiCreditBalanceSubtitle")}
+      />
+      <div className="space-y-4 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {t("superAdmin.openAiApiCreditBalanceRemaining")}
+            </p>
+            <p
+              className={clsx(
+                "mt-1 text-3xl font-bold tabular-nums",
+                isLow ? "text-amber-700" : "text-slate-900",
+              )}
+            >
+              ≈ {formatUsdAmount(remaining, locale)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500" title={t("superAdmin.openAiEstimatedBalanceTooltip")}>
+              {t("superAdmin.openAiApiCreditBalanceEstimatedTag")}
+            </p>
+          </div>
+          <p className="text-xs text-slate-500">
+            {t("superAdmin.openAiApiCreditBalanceUpdated")}: {formatDateTime(syncedAt, locale)}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              {t("superAdmin.openAiApiCreditBalanceDeposited")}
+            </p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+              {formatUsdAmount(balance.totalDepositedUsd, locale)}
+            </p>
+            {balance.initialBalanceUsd != null || balance.totalRechargesUsd > 0 ? (
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                {balance.initialBalanceUsd != null
+                  ? t("superAdmin.openAiApiCreditBalanceInitial").replace(
+                      "{amount}",
+                      formatUsdAmount(balance.initialBalanceUsd, locale),
+                    )
+                  : ""}
+                {balance.initialBalanceUsd != null && balance.totalRechargesUsd > 0 ? " · " : ""}
+                {balance.totalRechargesUsd > 0
+                  ? t("superAdmin.openAiApiCreditBalanceRecharges").replace(
+                      "{amount}",
+                      formatUsdAmount(balance.totalRechargesUsd, locale),
+                    )
+                  : ""}
+              </p>
+            ) : null}
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              {t("superAdmin.openAiApiCreditBalanceConsumed")}
+            </p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+              {formatUsdAmount(balance.totalConsumedUsd, locale)}
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500">{t("superAdmin.openAiDataSourceOpenAi")}</p>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+              {t("superAdmin.openAiApiCreditBalanceFormula")}
+            </p>
+            <p className="mt-1 text-sm font-medium text-emerald-900">{t("superAdmin.openAiApiCreditBalanceFormulaText")}</p>
+          </div>
+        </div>
+
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-relaxed text-slate-600">
+          {t("superAdmin.openAiApiCreditBalanceDisclaimer")}
+        </p>
+      </div>
+    </SuperAdminPanel>
   );
 }
 
@@ -455,7 +582,15 @@ export function SuperAdminOpenAiPanel() {
             </div>
           ) : data ? (
             <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <ApiCreditBalancePanel
+                balance={data.dashboard.apiCreditBalance}
+                syncedAt={data.dashboard.syncedAt}
+                locale={localeTag}
+                t={t}
+                onConfigure={() => setPanelTab("settings")}
+              />
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <MetricCard
                   label={t("superAdmin.openAiCostToday")}
                   value={formatUsdAmount(data.dashboard.costs.todayUsd, localeTag)}
@@ -471,14 +606,6 @@ export function SuperAdminOpenAiPanel() {
                   value={formatUsdAmount(data.dashboard.costs.last30DaysUsd, localeTag)}
                   footer={t("superAdmin.openAiDataSourceOpenAi")}
                 />
-                {data.dashboard.estimatedBalanceUsd != null ? (
-                  <MetricCard
-                    label={t("superAdmin.openAiEstimatedBalance")}
-                    value={`≈ ${formatUsdAmount(data.dashboard.estimatedBalanceUsd, localeTag)}`}
-                    footer={t("superAdmin.openAiEstimatedBalanceHint")}
-                    accent="amber"
-                  />
-                ) : null}
               </div>
 
               <SuperAdminPanel className="overflow-hidden p-0">
