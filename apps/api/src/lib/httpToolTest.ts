@@ -95,3 +95,48 @@ export function buildToolExecutionResponseSummary(responseText: string, max = 16
     bytes: responseText.length,
   };
 }
+
+export function summarizeHttpToolAuth(cfg: Record<string, unknown>): {
+  type: string;
+  applied: boolean;
+  headerName?: string;
+  reason?: string;
+} {
+  const authType = String(cfg.authType ?? "none");
+  if (authType === "none") {
+    return { type: authType, applied: false, reason: "auth_disabled" };
+  }
+  if (authType === "bearer" || authType === "bearer_token") {
+    const tok = String(cfg.bearerToken ?? "").trim();
+    return tok
+      ? { type: authType, applied: true, headerName: "Authorization" }
+      : { type: authType, applied: false, headerName: "Authorization", reason: "missing_bearer_token" };
+  }
+  if (authType === "api_key") {
+    const headerName = String(cfg.apiKeyHeader ?? "X-Api-Key").trim() || "X-Api-Key";
+    const token = String(cfg.apiKeyValue ?? "").trim();
+    return token
+      ? { type: authType, applied: true, headerName }
+      : { type: authType, applied: false, headerName, reason: "missing_api_key_value" };
+  }
+  if (authType === "basic") {
+    const user = String(cfg.basicUser ?? "").trim();
+    const password = String(cfg.basicPassword ?? "").trim();
+    return user || password
+      ? { type: authType, applied: true, headerName: "Authorization" }
+      : { type: authType, applied: false, headerName: "Authorization", reason: "missing_basic_credentials" };
+  }
+  if (authType === "custom_header") {
+    const headerName = String(cfg.customAuthHeader ?? "").trim();
+    const value = String(cfg.customAuthValue ?? "").trim();
+    return headerName && value
+      ? { type: authType, applied: true, headerName }
+      : {
+          type: authType,
+          applied: false,
+          headerName: headerName || undefined,
+          reason: "missing_custom_header_credentials",
+        };
+  }
+  return { type: authType, applied: false, reason: "unsupported_auth_type" };
+}

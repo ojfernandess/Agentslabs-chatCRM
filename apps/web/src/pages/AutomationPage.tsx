@@ -5126,6 +5126,9 @@ function HttpLikeToolEditor({
             API key
             <input type="password" autoComplete="off" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={fieldCls} />
           </label>
+          {c.apiKeyValue === "***" && !apiKeyValue.trim() ? (
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolHttpAuthSavedHint")}</p>
+          ) : null}
         </>
       )}
       {authType === "basic" && (

@@ -434,6 +434,9 @@ export function HttpApiCustomToolBuilder({
                 API Key
                 <input type="password" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} placeholder="••••••••" className={fieldCls()} />
               </label>
+              {cfg0.apiKeyValue === "***" && !apiKeyValue.trim() ? (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolHttpAuthSavedHint")}</p>
+              ) : null}
             </>
           ) : null}
           {authType === "basic" ? (

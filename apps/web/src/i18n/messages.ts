@@ -1805,6 +1805,10 @@ export const messages = {
       toolsTestPayload: "Payload do teste (JSON)",
       toolsTestContext: "Contexto de exemplo (JSON)",
       toolsRunTest: "Executar pedido",
+      toolsTestAuthMissingWarning:
+        "Autenticação configurada, mas a credencial ainda não foi guardada. Clique em «Guardar credenciais» no editor da ferramenta antes de testar.",
+      toolsTestAuthSavedHint: "Credencial guardada. O teste usa o valor salvo no servidor (não o campo vazio do formulário).",
+      toolHttpAuthSavedHint: "Credencial já guardada. Digite uma nova para substituir.",
       toolsTestUnsupported: "Teste integrado só para ferramentas HTTP API e Webhook.",
       toolsExportLogs: "Exportar JSON",
       toolsLogsEmpty: "Sem execuções registadas ainda.",
@@ -8796,6 +8800,10 @@ export const messages = {
       toolsTestPayload: "Test payload (JSON)",
       toolsTestContext: "Sample context (JSON)",
       toolsRunTest: "Run request",
+      toolsTestAuthMissingWarning:
+        "Authentication is enabled but credentials were not saved yet. Click «Save credentials» in the tool editor before testing.",
+      toolsTestAuthSavedHint: "Credentials are saved. The test uses the server-stored value (not the empty form field).",
+      toolHttpAuthSavedHint: "Credentials already saved. Enter a new value to replace them.",
       toolsTestUnsupported: "Integrated tests support HTTP API and Webhook tools only.",
       toolsExportLogs: "Export JSON",
       toolsLogsEmpty: "No recorded executions yet.",

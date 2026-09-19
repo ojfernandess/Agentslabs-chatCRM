@@ -216,8 +216,10 @@ export async function fetchHttpApiCustomJson(tool: {
   const authType = String(cfg.authType ?? "none");
   if (authType === "bearer" && cfg.bearerToken) {
     headers.set("Authorization", `Bearer ${String(cfg.bearerToken)}`);
-  } else if (authType === "api_key" && cfg.apiKeyHeader && cfg.apiKeyValue) {
-    headers.set(String(cfg.apiKeyHeader), String(cfg.apiKeyValue));
+  } else if (authType === "api_key") {
+    const hName = String(cfg.apiKeyHeader ?? "X-Api-Key");
+    const hVal = String(cfg.apiKeyValue ?? "");
+    if (hVal) headers.set(hName, hVal);
   } else if (authType === "basic" && cfg.basicUser) {
     const token = Buffer.from(`${cfg.basicUser}:${cfg.basicPassword ?? ""}`).toString("base64");
     headers.set("Authorization", `Basic ${token}`);

@@ -32,6 +32,16 @@ import {
 
 const FAV_KEY = "oc_automation_tool_favorites_v1";
 
+function httpToolAuthStored(cfg: Record<string, unknown>): boolean {
+  const authType = String(cfg.authType ?? "none");
+  if (authType === "none") return true;
+  if (authType === "bearer" || authType === "bearer_token") return cfg.bearerToken === "***";
+  if (authType === "api_key") return cfg.apiKeyValue === "***";
+  if (authType === "basic") return cfg.basicPassword === "***";
+  if (authType === "custom_header") return cfg.customAuthValue === "***";
+  return false;
+}
+
 type HubTab = "marketplace" | "mine" | "create";
 
 type CredentialEditorProps = {
@@ -1073,6 +1083,23 @@ export function AutomationToolsHub({
                         ? t("automationPage.toolsTestCalComHelp")
                         : t("automationPage.toolsTestHelp")}
                     </p>
+                    {(() => {
+                      const cfg = (drawerTool.config ?? {}) as Record<string, unknown>;
+                      const authType = String(cfg.authType ?? "none");
+                      if (authType === "none") return null;
+                      if (!httpToolAuthStored(cfg)) {
+                        return (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                            {t("automationPage.toolsTestAuthMissingWarning")}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
+                          {t("automationPage.toolsTestAuthSavedHint")}
+                        </div>
+                      );
+                    })()}
                     <label className="block text-xs font-medium">
                       {t("automationPage.toolsTestPayload")}
                       <textarea

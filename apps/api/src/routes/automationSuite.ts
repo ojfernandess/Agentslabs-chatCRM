@@ -8,7 +8,7 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { recordAuditLog, clientIp } from "../lib/audit.js";
 import { AUTOMATION_TOOL_PRESETS, getPresetByKey } from "../lib/automationToolPresets.js";
-import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecutionResponseSummary, truncateBody } from "../lib/httpToolTest.js";
+import { assertHttpUrlAllowed, buildToolExecutionRequestSummary, buildToolExecutionResponseSummary, summarizeHttpToolAuth, truncateBody } from "../lib/httpToolTest.js";
 import { secureHttpFetch } from "../lib/secureHttpFetch.js";
 import {
   buildHttpToolFlatContext,
@@ -436,6 +436,7 @@ const TOOL_CONFIG_SECRET_KEYS = new Set([
   "botToken",
   "secretKey",
   "bearerToken",
+  "apiKeyValue",
   "basicPassword",
   "customAuthValue",
   "signingSecret",
@@ -2101,6 +2102,12 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
         durationMs,
         error: errMsg,
         responsePreview: responseText.slice(0, 12_000),
+        auth: summarizeHttpToolAuth(cfg),
+        requestSummary: {
+          method: reqSummary.method,
+          url: reqSummary.url,
+          headerKeys: reqSummary.headerKeys,
+        },
       };
     },
   );
