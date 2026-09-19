@@ -50,6 +50,11 @@
     @apply dark:text-soft-text;
   }
 
+  /** /docs — tema isolado aplica .dark no wrapper, não em html */
+  body.docs-theme-dark {
+    @apply bg-ink-950 text-ink-100;
+  }
+
   .dark body {
     background-color: var(--soft-base);
     background-image:

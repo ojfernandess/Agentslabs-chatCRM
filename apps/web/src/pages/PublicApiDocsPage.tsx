@@ -392,7 +392,7 @@ function DocsEndpointGroupSection({ g }: { g: PublicDocsPayload["groups"][number
       id={`group-${g.id}`}
       className="scroll-mt-24 overflow-hidden rounded-lg border border-ink-200/90 bg-white shadow-md dark:border-ink-700/90 dark:bg-ink-900/80 dark:shadow-none"
     >
-      <div className="border-b border-ink-200 bg-gradient-to-r from-ink-50 to-white px-5 py-4 dark:border-ink-700 dark:from-ink-900 dark:to-ink-900/50">
+      <div className="border-b border-ink-200 bg-gradient-to-r from-ink-50 to-white px-5 py-4 dark:border-ink-700 dark:bg-ink-900 dark:from-ink-900 dark:to-ink-900">
         <h2 className="text-base font-bold tracking-tight text-ink-900 dark:text-white">{g.titlePt}</h2>
         <p className="mt-0.5 text-xs font-medium text-ink-500">
           {g.endpoints.length} {g.endpoints.length === 1 ? "rota" : "rotas"}
@@ -478,8 +478,10 @@ export function PublicApiDocsPage() {
   return (
     <div
       className={clsx(
-        "min-h-screen bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900 dark:from-ink-950 dark:via-ink-950 dark:to-[#0d1218] dark:text-ink-100 print:bg-white",
-        isDark && "dark",
+        "min-h-screen print:bg-white",
+        isDark
+          ? "dark bg-gradient-to-b from-ink-950 via-ink-950 to-[#0d1218] text-ink-100"
+          : "bg-gradient-to-b from-ink-100/90 via-ink-50 to-ink-50 text-ink-900",
       )}
     >
       <header className="sticky top-0 z-10 border-b border-ink-200/80 bg-white/80 shadow-sm backdrop-blur-md dark:border-ink-800/80 dark:bg-ink-900/75 print:static">
@@ -540,7 +542,7 @@ export function PublicApiDocsPage() {
           </div>
         ) : data ? (
           <div className="animate-fade-in">
-            <p className="rounded-lg border border-ink-200/80 bg-white/60 px-4 py-3 text-sm leading-relaxed text-ink-700 shadow-sm dark:border-ink-700/80 dark:bg-ink-900/40 dark:text-ink-300">
+            <p className="rounded-lg border border-ink-200/80 bg-white/60 px-4 py-3 text-sm leading-relaxed text-ink-700 shadow-sm dark:border-ink-700/80 dark:bg-ink-900/85 dark:text-ink-300">
               {data.noticePt}
             </p>
 
@@ -673,7 +675,7 @@ export function PublicApiDocsPage() {
                 {sections.auth && data.conventions ? (
                 <section
                   id="autenticacao"
-                  className="scroll-mt-24 rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/90 to-white px-4 py-4 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60"
+                  className="scroll-mt-24 rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/90 to-white px-4 py-4 shadow-sm dark:border-brand-900/40 dark:bg-ink-950 dark:from-brand-950/40 dark:to-ink-900"
                 >
                   <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.authLegendTitle")}</h2>
                   <p className="mt-2 text-sm leading-relaxed text-ink-700 dark:text-ink-300">{tDoc("publicDocs.authLegendBody")}</p>
@@ -752,7 +754,7 @@ export function PublicApiDocsPage() {
                 ) : null}
 
                 {sections.quickGuide ? (
-                <section id="guia-rapido" className="scroll-mt-24 rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/80 to-white p-5 shadow-sm dark:border-brand-900/40 dark:from-brand-950/30 dark:to-ink-900/60 print:break-inside-avoid">
+                <section id="guia-rapido" className="scroll-mt-24 rounded-lg border border-brand-200/70 bg-gradient-to-br from-brand-50/80 to-white p-5 shadow-sm dark:border-brand-900/40 dark:bg-ink-950 dark:from-brand-950/40 dark:to-ink-900 print:break-inside-avoid">
                   <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.automationGuideTitle")}</h2>
                   <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">{tDoc("publicDocs.automationGuideIntro")}</p>
                   <p className="mt-3 text-xs text-ink-500">
@@ -769,7 +771,7 @@ export function PublicApiDocsPage() {
                 ) : null}
 
                 {sections.emailGuide ? (
-                <section id="guia-email" className="scroll-mt-24 rounded-lg border border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 to-white p-5 shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/25 dark:to-ink-900/60 print:break-inside-avoid">
+                <section id="guia-email" className="scroll-mt-24 rounded-lg border border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 to-white p-5 shadow-sm dark:border-emerald-900/40 dark:bg-ink-950 dark:from-emerald-950/35 dark:to-ink-900 print:break-inside-avoid">
                   <h2 className="text-lg font-bold text-ink-900 dark:text-ink-100">{tDoc("publicDocs.emailGuideTitle")}</h2>
                   <p className="mt-1 text-sm text-ink-700 dark:text-ink-300">{tDoc("publicDocs.emailGuideIntro")}</p>
                   <p className="mt-3 text-xs text-ink-500">

@@ -17,8 +17,10 @@ export function useDocsThemeIsolation() {
 
   useEffect(() => {
     const stripGlobalDarkFromHtml = () => {
+      const theme = getDocsTheme();
       document.documentElement.classList.remove("dark");
-      document.documentElement.style.colorScheme = getDocsTheme();
+      document.documentElement.style.colorScheme = theme;
+      document.body.classList.toggle("docs-theme-dark", theme === "dark");
     };
 
     stripGlobalDarkFromHtml();
@@ -44,6 +46,7 @@ export function useDocsThemeIsolation() {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("openconduit:docs-theme-changed", onDocsThemeChange);
       media.removeEventListener("change", stripGlobalDarkFromHtml);
+      document.body.classList.remove("docs-theme-dark");
       setThemePreference(getThemePreference());
     };
   }, []);

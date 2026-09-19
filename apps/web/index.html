@@ -19,6 +19,7 @@
             var docsPref = localStorage.getItem("openconduit_docs_theme");
             var docsDark = docsPref === "dark";
             document.documentElement.style.colorScheme = docsDark ? "dark" : "light";
+            if (docsDark) document.body.classList.add("docs-theme-dark");
             return;
           }
           var pref = localStorage.getItem("openconduit_theme");
