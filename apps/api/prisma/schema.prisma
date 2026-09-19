@@ -1910,6 +1910,36 @@ model AiCreditPurchase {
   @@map("ai_credit_purchases")
 }
 
+/// Recarga manual registrada pelo Super Admin para estimativa de saldo OpenAI.
+model OpenAiAdminRecharge {
+  id                   String    @id @default(uuid()) @db.Uuid
+  amountUsd            Decimal   @map("amount_usd") @db.Decimal(18, 6)
+  rechargedAt          DateTime  @map("recharged_at")
+  note                 String?   @db.Text
+  status               String    @default("active") @db.VarChar(16)
+  adjustedByRechargeId String?   @map("adjusted_by_recharge_id") @db.Uuid
+  createdByUserId      String?   @map("created_by_user_id") @db.Uuid
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@index([rechargedAt])
+  @@map("openai_admin_recharges")
+}
+
+/// Cache de sincronização com a OpenAI Admin API (Costs).
+model OpenAiAdminSyncSnapshot {
+  id           String   @id @default(uuid()) @db.Uuid
+  syncedAt     DateTime @default(now()) @map("synced_at")
+  periodStart  DateTime @map("period_start")
+  periodEnd    DateTime @map("period_end")
+  payload      Json
+  summaryUsd   Decimal  @map("summary_usd") @db.Decimal(18, 6)
+  errorMessage String?  @map("error_message") @db.Text
+
+  @@index([syncedAt])
+  @@map("openai_admin_sync_snapshots")
+}
+
 /// Catálogo comercial configurável pelo Super Admin (integração Stripe via Product/Price IDs).
 model Plan {
   id              String   @id @default(uuid()) @db.Uuid

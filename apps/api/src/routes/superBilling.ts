@@ -64,6 +64,19 @@ import { getOrganizationAiCreditsBalance, getOrganizationAiCreditsFinancialSumma
 import { listAllAiCreditPurchases } from "../lib/ai-billing/AiCreditPurchaseService.js";
 import { money, moneyToApiString } from "../lib/ai-billing/money.js";
 import { ensureMercadoPagoSubscriptionBillingPeriod } from "../lib/billing/subscriptionSync.js";
+import {
+  cancelOpenAiAdminRecharge,
+  getOpenAiAdminDashboard,
+  registerOpenAiAdminRecharge,
+  syncOpenAiAdminData,
+  testOpenAiAdminConnectionSafe,
+} from "../lib/openai-admin/openAiAdminService.js";
+import {
+  getOpenAiAdminSettingsPublic,
+  MASKED_OPENAI_ADMIN_KEY,
+  upsertOpenAiAdminSettings,
+} from "../lib/openai-admin/openAiAdminSettings.js";
+import { getOpenAiPlatformProfitability } from "../lib/openai-admin/openAiFinancialService.js";
 
 const jsonLimitsSchema = z.record(z.unknown()).optional();
 
@@ -1321,4 +1334,162 @@ export async function superBillingRoutes(app: FastifyInstance): Promise<void> {
       }),
     };
   });
+
+  const openAiSettingsPatchSchema = z.object({
+    adminApiKey: z.string().max(512).optional(),
+    initialBalanceUsd: z.union([z.number().min(0), z.null()]).optional(),
+  });
+
+  const openAiRechargeSchema = z.object({
+    amountUsd: z.number().positive(),
+    rechargedAt: z.string().datetime(),
+    note: z.string().max(2000).nullable().optional(),
+  });
+
+  app.get("/ai-credits/openai/settings", async () => getOpenAiAdminSettingsPublic());
+
+  app.put("/ai-credits/openai/settings", async (request, reply) => {
+    const parsed = openAiSettingsPatchSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    try {
+      const settings = await upsertOpenAiAdminSettings(parsed.data);
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        action: "OPENAI_ADMIN_KEY_UPDATED",
+        resourceType: "platform_settings",
+        resourceId: "openai_admin",
+        metadata: { configured: settings.configured },
+        ip: clientIp(request),
+      });
+      return settings;
+    } catch (err) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: err instanceof Error ? err.message : "Invalid settings",
+        statusCode: 400,
+      });
+    }
+  });
+
+  app.post("/ai-credits/openai/test-connection", async (request) => {
+    const result = await testOpenAiAdminConnectionSafe();
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "OPENAI_CONNECTION_TESTED",
+      resourceType: "platform_settings",
+      resourceId: "openai_admin",
+      metadata: { ok: result.ok },
+      ip: clientIp(request),
+    });
+    return result;
+  });
+
+  app.post("/ai-credits/openai/sync", async (request, reply) => {
+    try {
+      const result = await syncOpenAiAdminData();
+      await recordAuditLog({
+        actorUserId: request.user!.id,
+        action: "OPENAI_COSTS_SYNCED",
+        resourceType: "openai_admin_sync",
+        metadata: { summaryUsd: result.summaryUsd },
+        ip: clientIp(request),
+      });
+      return result;
+    } catch (err) {
+      return reply.status(502).send({
+        error: "Bad Gateway",
+        message: err instanceof Error ? err.message : "Sync failed",
+        statusCode: 502,
+      });
+    }
+  });
+
+  app.get("/ai-credits/openai/dashboard", async (request) => {
+    const q = request.query as {
+      chartRange?: string;
+      chartFrom?: string;
+      chartTo?: string;
+      projectId?: string;
+    };
+    const chartRange =
+      q.chartRange === "7d" || q.chartRange === "30d" || q.chartRange === "month" || q.chartRange === "custom"
+        ? q.chartRange
+        : "30d";
+    const dashboard = await getOpenAiAdminDashboard({
+      chartRange,
+      chartFrom: q.chartFrom,
+      chartTo: q.chartTo,
+      projectId: q.projectId?.trim() || null,
+    });
+    const profitability = await getOpenAiPlatformProfitability({
+      openAiCostUsd: dashboard.costs.monthUsd,
+    });
+    return { dashboard, profitability, maskedAdminKey: MASKED_OPENAI_ADMIN_KEY };
+  });
+
+  app.get("/ai-credits/openai/recharges", async () => {
+    const rows = await prisma.openAiAdminRecharge.findMany({ orderBy: { rechargedAt: "desc" } });
+    return {
+      recharges: rows.map((r) => ({
+        id: r.id,
+        amountUsd: moneyToApiString(money(r.amountUsd)),
+        rechargedAt: r.rechargedAt.toISOString(),
+        note: r.note,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
+  });
+
+  app.post("/ai-credits/openai/recharges", async (request, reply) => {
+    const parsed = openAiRechargeSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const row = await registerOpenAiAdminRecharge({
+      amountUsd: parsed.data.amountUsd,
+      rechargedAt: new Date(parsed.data.rechargedAt),
+      note: parsed.data.note,
+      createdByUserId: request.user!.id,
+    });
+    await recordAuditLog({
+      actorUserId: request.user!.id,
+      action: "OPENAI_RECHARGE_REGISTERED",
+      resourceType: "openai_admin_recharge",
+      resourceId: row.id,
+      metadata: { amountUsd: moneyToApiString(money(row.amountUsd)) },
+      ip: clientIp(request),
+    });
+    return {
+      recharge: {
+        id: row.id,
+        amountUsd: moneyToApiString(money(row.amountUsd)),
+        rechargedAt: row.rechargedAt.toISOString(),
+        note: row.note,
+        status: row.status,
+      },
+    };
+  });
+
+  app.post<{ Params: { rechargeId: string } }>(
+    "/ai-credits/openai/recharges/:rechargeId/cancel",
+    async (request, reply) => {
+      try {
+        const row = await cancelOpenAiAdminRecharge(request.params.rechargeId);
+        await recordAuditLog({
+          actorUserId: request.user!.id,
+          action: "OPENAI_RECHARGE_ADJUSTED",
+          resourceType: "openai_admin_recharge",
+          resourceId: row.id,
+          metadata: { status: row.status },
+          ip: clientIp(request),
+        });
+        return { ok: true };
+      } catch {
+        return reply.status(404).send({ error: "Not Found", message: "Recharge not found", statusCode: 404 });
+      }
+    },
+  );
 }

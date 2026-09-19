@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatAiCreditsAdminUnits } from "@/lib/aiCreditsDisplay";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
+import { SuperAdminOpenAiPanel } from "@/components/super-admin/SuperAdminOpenAiPanel";
 import { MoneyCentsInput } from "@/components/billing/MoneyCentsInput";
 
 type AiCreditPackageRow = {
@@ -36,7 +37,7 @@ type AiCreditPurchaseRow = {
   createdAt: string;
 };
 
-type AiCreditsTab = "packages" | "packages_inactive" | "purchases" | "clients";
+type AiCreditsTab = "packages" | "packages_inactive" | "purchases" | "clients" | "openai";
 
 type OrgOption = { id: string; name: string; slug: string };
 
@@ -339,7 +340,7 @@ export function SuperAdminAiCreditsPanel() {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {(["packages", "packages_inactive", "purchases", "clients"] as const).map((id) => (
+        {(["packages", "packages_inactive", "purchases", "clients", "openai"] as const).map((id) => (
           <button
             key={id}
             type="button"
@@ -553,6 +554,8 @@ export function SuperAdminAiCreditsPanel() {
           </div>
         </SuperAdminPanel>
       ) : null}
+
+      {tab === "openai" ? <SuperAdminOpenAiPanel /> : null}
 
       {packageModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
