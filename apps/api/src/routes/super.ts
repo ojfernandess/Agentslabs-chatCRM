@@ -8,6 +8,12 @@ import { requireSuperAdmin } from "../middleware/auth.js";
 import type { JwtPayload } from "../middleware/auth.js";
 import { config } from "../config.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
+import {
+  buildOrganizationExportBuffer,
+  buildExportFilename,
+  resolveOrganizationContactEmail,
+  sendOrganizationExportByEmail,
+} from "../lib/organizationDataExport.js";
 import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
 import { applyCatalogPlanToOrganization } from "../lib/billing/planAssignment.js";
 import { BillingError, updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
@@ -782,6 +788,127 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ip: clientIp(request),
     });
     return org;
+  });
+
+  const exportFormatSchema = z.enum(["json", "csv", "html"]);
+
+  app.get<{ Params: { id: string }; Querystring: { format?: string } }>(
+    "/organizations/:id/export",
+    async (request, reply) => {
+      const formatParsed = exportFormatSchema.safeParse(request.query.format ?? "json");
+      if (!formatParsed.success) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Formato inválido. Use json, csv ou html.",
+          statusCode: 400,
+        });
+      }
+
+      const org = await prisma.organization.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, name: true, slug: true },
+      });
+      if (!org) {
+        return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+      }
+
+      const built = await buildOrganizationExportBuffer(org.id, formatParsed.data);
+      if (!built) {
+        return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+      }
+
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        organizationId: org.id,
+        action: "super.organization.export.download",
+        resourceType: "organization",
+        resourceId: org.id,
+        metadata: { format: formatParsed.data },
+        ip: clientIp(request),
+      });
+
+      const filename = buildExportFilename(org.slug, formatParsed.data);
+      return reply
+        .header("Content-Type", built.contentType)
+        .header("Content-Disposition", `attachment; filename="${filename}"`)
+        .send(built.buffer);
+    },
+  );
+
+  app.post<{ Params: { id: string } }>("/organizations/:id/export/email", async (request, reply) => {
+    const bodySchema = z.object({
+      format: exportFormatSchema,
+      email: z.union([z.string().email(), z.literal("")]).optional(),
+    });
+    const parsed = bodySchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: request.params.id },
+      select: { id: true, name: true },
+    });
+    if (!org) {
+      return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+    }
+
+    const emailOverride = parsed.data.email === "" ? null : parsed.data.email;
+    const result = await sendOrganizationExportByEmail({
+      organizationId: org.id,
+      format: parsed.data.format,
+      email: emailOverride,
+    });
+
+    if (!result.ok) {
+      if (result.error === "contact_email_missing") {
+        return reply.status(400).send({
+          error: "contact_email_missing",
+          message: "Email de contacto da organização não configurado.",
+          statusCode: 400,
+        });
+      }
+      if (result.error === "resend_not_configured") {
+        return reply.status(503).send({
+          error: "resend_not_configured",
+          message: "Envio de email não configurado (Resend).",
+          statusCode: 503,
+        });
+      }
+      return reply.status(502).send({
+        error: result.error,
+        message: "Não foi possível enviar o email de exportação.",
+        statusCode: 502,
+      });
+    }
+
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      organizationId: org.id,
+      action: "super.organization.export.email",
+      resourceType: "organization",
+      resourceId: org.id,
+      metadata: { format: parsed.data.format, sentTo: result.sentTo },
+      ip: clientIp(request),
+    });
+
+    return { ok: true, sentTo: result.sentTo };
+  });
+
+  app.get<{ Params: { id: string } }>("/organizations/:id/export/contact-email", async (request, reply) => {
+    const org = await prisma.organization.findUnique({
+      where: { id: request.params.id },
+      select: { id: true, contactEmail: true, billingEmail: true },
+    });
+    if (!org) {
+      return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+    }
+    const resolved = await resolveOrganizationContactEmail(org.id);
+    return {
+      contactEmail: org.contactEmail,
+      billingEmail: org.billingEmail,
+      resolvedEmail: resolved,
+    };
   });
 
   app.delete<{ Params: { id: string } }>("/organizations/:id", async (request, reply) => {

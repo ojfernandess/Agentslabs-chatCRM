@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
   Building2,
+  Download,
   Copy,
   Check,
   Users,
@@ -25,6 +26,7 @@ import {
   SuperAdminPanel,
   type SuperSection,
 } from "@/components/super-admin/SuperAdminShell";
+import { SuperAdminOrgExportModal } from "@/components/super-admin/SuperAdminOrgExportModal";
 import { SuperAdminPublicDocsPanel } from "@/components/super-admin/SuperAdminPublicDocsPanel";
 import { SuperAdminApiRateLimitPanel } from "@/components/super-admin/SuperAdminApiRateLimitPanel";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
@@ -425,6 +427,7 @@ export function SuperAdminPage() {
   const [editOrgCnpj, setEditOrgCnpj] = useState("");
   const [editOrgSaving, setEditOrgSaving] = useState(false);
   const [deleteOrgConfirm, setDeleteOrgConfirm] = useState<OrgRow | null>(null);
+  const [exportOrg, setExportOrg] = useState<OrgRow | null>(null);
   const [deleteOrgBusy, setDeleteOrgBusy] = useState(false);
   const [usersOrg, setUsersOrg] = useState<OrgRow | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUserRow[]>([]);
@@ -3242,6 +3245,14 @@ export function SuperAdminPage() {
                                 </button>
                                 <button
                                   type="button"
+                                  onClick={() => setExportOrg(o)}
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                  {t("superAdmin.orgExportAction")}
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => openBillingModal(o)}
                                   className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
                                 >
@@ -3275,6 +3286,8 @@ export function SuperAdminPage() {
             </div>
           )}
       </SuperAdminShell>
+
+        {exportOrg ? <SuperAdminOrgExportModal org={exportOrg} onClose={() => setExportOrg(null)} /> : null}
 
         {billingOrg ? (
           <div
