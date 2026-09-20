@@ -10,6 +10,9 @@ import { PRESENCE_HEARTBEAT_INTERVAL_MS } from "@/lib/presenceConfig";
 import {
   getOrCreatePresenceSessionKey,
   sendPresenceSessionEndKeepalive,
+  PRESENCE_SHUTDOWN_EVENT,
+  isPresenceClientShutdown,
+  resetPresenceClientShutdown,
 } from "@/lib/presenceSession";
 import {
   publishUserAvailabilityChanged,
@@ -59,6 +62,8 @@ export function WorkspaceRealtime() {
     if (!user) return;
     if (isSuperAdminRole(user.role) && !user.actingOrganizationId) return;
 
+    resetPresenceClientShutdown();
+
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
 
@@ -66,6 +71,7 @@ export function WorkspaceRealtime() {
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
     const sendHeartbeat = () => {
+      if (isPresenceClientShutdown()) return;
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
         try {
@@ -264,7 +270,7 @@ export function WorkspaceRealtime() {
     };
 
     const connect = () => {
-      if (cancelled) return;
+      if (cancelled || isPresenceClientShutdown()) return;
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
@@ -292,6 +298,31 @@ export function WorkspaceRealtime() {
       };
     };
 
+    const stopPresenceTransport = (tokenForSessionEnd?: string) => {
+      cancelled = true;
+      if (heartbeatTimer != null) clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+      if (reconnectTimer != null) clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      if (tokenForSessionEnd) sendPresenceSessionEndKeepalive(tokenForSessionEnd);
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (!ws) return;
+      ws.onclose = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.addEventListener("open", () => ws.close(1000, "presence shutdown"), { once: true });
+      } else if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, "presence shutdown");
+      }
+    };
+
+    const onShutdown = (e: Event) => {
+      const shutdownToken = (e as CustomEvent<{ token?: string | null }>).detail?.token;
+      stopPresenceTransport(typeof shutdownToken === "string" ? shutdownToken : token);
+    };
+
     connect();
 
     heartbeatTimer = setInterval(sendHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
@@ -301,23 +332,13 @@ export function WorkspaceRealtime() {
       sendPresenceSessionEndKeepalive(token);
     };
     window.addEventListener("pagehide", onPageHide);
+    window.addEventListener(PRESENCE_SHUTDOWN_EVENT, onShutdown);
 
     return () => {
-      cancelled = true;
+      window.removeEventListener(PRESENCE_SHUTDOWN_EVENT, onShutdown);
       window.removeEventListener("pagehide", onPageHide);
-      if (heartbeatTimer != null) clearInterval(heartbeatTimer);
-      sendPresenceSessionEndKeepalive(token);
-      if (reconnectTimer != null) clearTimeout(reconnectTimer);
-      const ws = wsRef.current;
-      wsRef.current = null;
-      if (!ws) return;
-      ws.onclose = null;
-      ws.onmessage = null;
-      ws.onerror = null;
-      if (ws.readyState === WebSocket.CONNECTING) {
-        ws.addEventListener("open", () => ws.close(1000, "client disconnect"), { once: true });
-      } else if (ws.readyState === WebSocket.OPEN) {
-        ws.close(1000, "client disconnect");
+      if (!isPresenceClientShutdown()) {
+        stopPresenceTransport(token);
       }
     };
   }, [user, pushToast]);

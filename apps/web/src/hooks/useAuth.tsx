@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, ApiError } from "@/lib/api";
-import { notifyAuthLogoutBeforeClearToken } from "@/lib/presenceSession";
+import { notifyAuthLogoutBeforeClearToken, resetPresenceClientShutdown } from "@/lib/presenceSession";
 import type { LoginResponse } from "@openconduit/shared";
 
 export interface AuthUser {
@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applySessionToken = useCallback(async (token: string): Promise<AuthUser> => {
+    resetPresenceClientShutdown();
     localStorage.setItem(TOKEN_KEY, token);
     api.setToken(token);
     const me = await api.get<AuthUser>("/auth/me");

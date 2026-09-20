@@ -14,18 +14,38 @@ import type { JwtPayload } from "../middleware/auth.js";
 
 type WsQuery = { token?: string; sessionKey?: string };
 
+async function handlePresenceConnect(
+  userId: string,
+  organizationId: string,
+  sessionKey: string,
+): Promise<void> {
+  const wasPresent = await hasActivePresence(userId, organizationId);
+  const touched = await touchPresenceSession({
+    userId,
+    organizationId,
+    sessionKey,
+    source: "websocket",
+    allowReconnect: true,
+  });
+  if (touched && !wasPresent) {
+    await notifyPresenceRestoredIfNeeded(userId, organizationId);
+  }
+}
+
 async function handlePresenceHeartbeat(
   userId: string,
   organizationId: string,
   sessionKey: string,
 ): Promise<void> {
   const wasPresent = await hasActivePresence(userId, organizationId);
-  await touchPresenceSession({
+  const touched = await touchPresenceSession({
     userId,
     organizationId,
     sessionKey,
     source: "websocket",
+    allowReconnect: false,
   });
+  if (!touched) return;
   if (!wasPresent) {
     await notifyPresenceRestoredIfNeeded(userId, organizationId);
   }
@@ -55,7 +75,7 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
       }
       const userId = payload.id;
       registerWorkspaceSocket(organizationId, socket);
-      void handlePresenceHeartbeat(userId, organizationId, sessionKey);
+      void handlePresenceConnect(userId, organizationId, sessionKey);
       socket.send(JSON.stringify({ type: "workspace.connected", organizationId }));
 
       socket.on("message", (raw) => {

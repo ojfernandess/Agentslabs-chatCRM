@@ -1,4 +1,15 @@
 const KEY = "openconduit_presence_session_key";
+export const PRESENCE_SHUTDOWN_EVENT = "openconduit:presence-shutdown";
+
+let clientPresenceShutdown = false;
+
+export function isPresenceClientShutdown(): boolean {
+  return clientPresenceShutdown;
+}
+
+export function resetPresenceClientShutdown(): void {
+  clientPresenceShutdown = false;
+}
 
 export function getOrCreatePresenceSessionKey(): string {
   let key = sessionStorage.getItem(KEY);
@@ -11,6 +22,15 @@ export function getOrCreatePresenceSessionKey(): string {
 
 export function getPresenceSessionKeyOrNull(): string | null {
   return sessionStorage.getItem(KEY);
+}
+
+/** Para heartbeats/reconnects antes de encerrar sessão no servidor (logout). */
+export function shutdownPresenceClient(token?: string): void {
+  if (clientPresenceShutdown) return;
+  clientPresenceShutdown = true;
+  window.dispatchEvent(
+    new CustomEvent(PRESENCE_SHUTDOWN_EVENT, { detail: { token: token ?? null } }),
+  );
 }
 
 /** Otimização ao fechar aba — não substitui expiração por heartbeat. */
@@ -32,6 +52,9 @@ export function sendPresenceSessionEndKeepalive(token: string): void {
 
 /** Encerra sessão de presença no servidor antes de limpar o token local. */
 export async function notifyAuthLogoutBeforeClearToken(token: string): Promise<void> {
+  shutdownPresenceClient(token);
+  sendPresenceSessionEndKeepalive(token);
+
   const sessionKey = getPresenceSessionKeyOrNull();
   try {
     await fetch("/api/v1/auth/logout", {

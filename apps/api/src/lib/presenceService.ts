@@ -23,9 +23,19 @@ export async function touchPresenceSession(params: {
   organizationId: string;
   sessionKey: string;
   source: PresenceSource;
-}): Promise<void> {
+  /** Só na conexão inicial (login / WS open) — heartbeats não reactivam sessão encerrada. */
+  allowReconnect?: boolean;
+}): Promise<boolean> {
   const sessionKey = params.sessionKey.trim();
-  if (!isValidPresenceSessionKey(sessionKey)) return;
+  if (!isValidPresenceSessionKey(sessionKey)) return false;
+
+  const existing = await prisma.userPresenceSession.findUnique({
+    where: { userId_sessionKey: { userId: params.userId, sessionKey } },
+    select: { disconnectedAt: true },
+  });
+  if (existing?.disconnectedAt && !params.allowReconnect) {
+    return false;
+  }
 
   const now = new Date();
   await prisma.userPresenceSession.upsert({
@@ -49,6 +59,7 @@ export async function touchPresenceSession(params: {
       source: params.source,
     },
   });
+  return true;
 }
 
 /** Encerra uma sessão de presença. Retorna true se o agente deixou de ter presença activa. */

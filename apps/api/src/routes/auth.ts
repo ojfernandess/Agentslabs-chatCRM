@@ -566,13 +566,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/logout", { preHandler: [authenticate] }, async (request) => {
     const parsed = logoutSchema.safeParse(request.body ?? {});
-    if (parsed.success && parsed.data.sessionKey && isValidPresenceSessionKey(parsed.data.sessionKey)) {
-      const orgId = request.user.actingOrganizationId ?? request.user.organizationId ?? null;
-      if (orgId) {
-        const { becameOffline } = await endPresenceSession(request.user.id, parsed.data.sessionKey);
-        if (becameOffline) {
-          await notifyPresenceChangedIfNeeded(request.user.id, orgId, true);
-        }
+    const orgId = await resolveUserOrganizationId(request.user);
+    if (
+      orgId &&
+      parsed.success &&
+      parsed.data.sessionKey &&
+      isValidPresenceSessionKey(parsed.data.sessionKey)
+    ) {
+      const { becameOffline } = await endPresenceSession(request.user.id, parsed.data.sessionKey);
+      if (becameOffline) {
+        await notifyPresenceChangedIfNeeded(request.user.id, orgId, true);
       }
     }
     return { message: "Logged out" };
@@ -876,7 +879,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
-    const orgId = request.user.actingOrganizationId ?? request.user.organizationId ?? null;
+    const orgId = await resolveUserOrganizationId(request.user);
     if (!orgId) {
       return reply.status(400).send({
         error: "Bad Request",
@@ -886,12 +889,27 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const wasPresent = await hasActivePresence(request.user.id, orgId);
-    await touchPresenceSession({
+    const touched = await touchPresenceSession({
       userId: request.user.id,
       organizationId: orgId,
       sessionKey: parsed.data.sessionKey,
       source: "http",
+      allowReconnect: false,
     });
+    if (!touched) {
+      const user = await prisma.user.findUnique({
+        where: { id: request.user.id },
+        select: { availabilityStatus: true },
+      });
+      const effectiveAvailabilityStatus = user
+        ? computeEffectiveAvailability(user.availabilityStatus, false)
+        : ("offline" as AvailabilityClient);
+      return {
+        ok: true,
+        presenceConnected: false,
+        effectiveAvailabilityStatus,
+      };
+    }
     if (!wasPresent) {
       await notifyPresenceRestoredIfNeeded(request.user.id, orgId);
     }
