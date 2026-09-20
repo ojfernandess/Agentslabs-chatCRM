@@ -2686,7 +2686,7 @@ export function ConversationDetailPage() {
             </button>
           </div>
           <p className="mt-0.5 text-[10px] text-ink-400">{t("conversationDetail.contactNotesAddHint")}</p>
-          <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-ink-100 bg-ink-50/70 px-2.5 py-2 dark:border-soft-border/70 dark:bg-white/5">
+          <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-ink-200/80 bg-ink-50/70 px-2.5 py-2 dark:border-soft-border-muted dark:bg-white/[0.04] dark:shadow-soft-inset">
             {parsedContactNotes.length > 0 ? (
               <ul className="space-y-2">
                 {parsedContactNotes.map((note, index) => {
@@ -2695,7 +2695,7 @@ export function ConversationDetailPage() {
                   return (
                     <li
                       key={`${note.headerLine}-${index}`}
-                      className="rounded-lg bg-ink-100/80 px-2.5 py-2 dark:bg-ink-950/50"
+                      className="rounded-lg border border-ink-200/60 bg-white/80 px-2.5 py-2 dark:border-soft-border-muted dark:bg-soft-surface-2/50 dark:shadow-soft-inset"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1" />
