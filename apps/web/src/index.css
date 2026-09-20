@@ -16,12 +16,24 @@
     --soft-surface-1: #151826;
     --soft-surface-2: #1b2230;
     --soft-surface-3: #202736;
-    --soft-border: #2a3342;
     --soft-text: #e6e8ef;
     --soft-text-secondary: #9aa4b2;
     --soft-text-tertiary: #6b7280;
+    --soft-border: color-mix(in srgb, var(--soft-text) 8%, transparent);
+    --soft-border-muted: color-mix(in srgb, var(--soft-text) 5%, transparent);
     --soft-primary: #7c5cff;
     --soft-primary-rgb: 124 92 255;
+    --soft-shadow-raised:
+      6px 6px 18px rgba(0, 0, 0, 0.24),
+      -3px -3px 10px rgba(255, 255, 255, 0.025),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --soft-shadow-inset:
+      inset 4px 4px 10px rgba(0, 0, 0, 0.32),
+      inset -2px -2px 8px rgba(255, 255, 255, 0.025);
+    --soft-shadow-card:
+      0 8px 24px rgba(0, 0, 0, 0.2),
+      0 1px 0 rgba(255, 255, 255, 0.04) inset,
+      0 0 0 1px rgba(255, 255, 255, 0.05);
   }
 
   * {
@@ -220,7 +232,8 @@
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded border border-ink-200 bg-white px-4 py-2 text-sm font-semibold text-ink-700 shadow-sm transition-colors;
     @apply hover:border-ink-300 hover:bg-ink-50 active:bg-ink-100;
-    @apply dark:border-soft-border dark:bg-soft-surface-2 dark:text-soft-text dark:hover:border-soft-border dark:hover:bg-soft-surface-3 dark:active:bg-soft-surface-2;
+    @apply dark:border-soft-border-muted dark:bg-soft-surface-2 dark:text-soft-text dark:shadow-soft-raised;
+    @apply dark:hover:border-soft-border dark:hover:bg-soft-surface-3 dark:active:shadow-soft-inset;
     @apply disabled:pointer-events-none disabled:opacity-50;
     @apply focus-visible:ds-focus;
   }
@@ -239,14 +252,14 @@
     @apply hover:border-ink-300;
     @apply focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25;
     @apply disabled:cursor-not-allowed disabled:bg-ink-50 disabled:text-ink-400;
-    @apply dark:border-soft-border dark:bg-soft-surface-1 dark:text-soft-text dark:placeholder:text-soft-text-tertiary;
-    @apply dark:hover:border-soft-border dark:focus:ring-soft-primary/25;
+    @apply dark:border-soft-border-muted dark:bg-soft-surface-1 dark:text-soft-text dark:placeholder:text-soft-text-tertiary;
+    @apply dark:shadow-soft-inset dark:hover:border-soft-border dark:focus:border-soft-primary/40 dark:focus:ring-soft-primary/20;
     @apply dark:disabled:bg-soft-surface-1/60 dark:disabled:text-soft-text-tertiary;
   }
 
   .card-surface {
     @apply rounded border border-ink-200 bg-white shadow-sm;
-    @apply dark:border-soft-border dark:bg-soft-surface-3/90;
+    @apply dark:border-soft-border-muted dark:bg-soft-surface-3/90 dark:shadow-soft-card;
   }
 
   /* Conversas — painel Dados do cliente + composer (visual mockup) */
@@ -255,11 +268,32 @@
   }
 
   .inbox-hairline {
-    @apply border-ink-200/80 dark:border-soft-border;
+    @apply border-ink-200/80 dark:border-soft-border-muted;
   }
 
   .inbox-hairline-soft {
-    @apply border-ink-100 dark:border-soft-border/70;
+    @apply border-ink-100 dark:border-soft-border-muted;
+  }
+
+  .soft-divider {
+    @apply border-ink-200/70 dark:border-soft-border-muted;
+  }
+
+  .soft-divider-y {
+    @apply divide-ink-100 dark:divide-white/[0.06];
+  }
+
+  .glass-panel {
+    @apply rounded-2xl border border-ink-200/80 bg-white/70 shadow-sm backdrop-blur-md;
+    @apply dark:border-soft-border-muted dark:bg-soft-surface-2/60 dark:shadow-soft-card;
+  }
+
+  .soft-surface-raised {
+    @apply dark:shadow-soft-raised;
+  }
+
+  .soft-surface-inset {
+    @apply dark:shadow-soft-inset;
   }
 
   .badge-tag {
@@ -268,7 +302,7 @@
 
   .crm-card {
     @apply rounded-xl border border-ink-200/80 bg-white p-4 shadow-sm;
-    @apply dark:border-soft-border dark:bg-soft-surface-3 dark:shadow-none;
+    @apply dark:border-soft-border-muted dark:bg-soft-surface-3 dark:shadow-soft-card;
   }
 
   .crm-card-title {
@@ -300,12 +334,12 @@
 
   .crm-panel-section {
     @apply mt-3 rounded-xl border border-ink-200/80 bg-white p-4 shadow-sm;
-    @apply dark:border-soft-border dark:bg-soft-surface-3 dark:shadow-none;
+    @apply dark:border-soft-border-muted dark:bg-soft-surface-3 dark:shadow-soft-card;
   }
 
   .composer-shell {
-    @apply w-full min-w-0 overflow-hidden rounded-xl border border-ink-200/90 bg-white;
-    @apply dark:border-soft-border dark:bg-soft-surface-3;
+    @apply w-full min-w-0 overflow-hidden rounded-xl border border-ink-200/90 bg-white shadow-sm;
+    @apply dark:border-soft-border-muted dark:bg-soft-surface-3 dark:shadow-soft-raised;
   }
 
   .composer-tab {
@@ -322,13 +356,13 @@
   }
 
   .composer-toolbar {
-    @apply flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-transparent px-2.5 py-2 dark:border-soft-border;
+    @apply flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-ink-100 bg-transparent px-2.5 py-2 dark:border-soft-border-muted;
   }
 
   .composer-tool-btn {
     @apply flex h-9 w-9 items-center justify-center rounded-lg text-ink-500 transition-colors;
     @apply hover:bg-ink-100 hover:text-ink-800 disabled:opacity-40;
-    @apply dark:text-soft-text-secondary dark:hover:bg-soft-surface-2 dark:hover:text-soft-text;
+    @apply dark:text-soft-text-secondary dark:hover:bg-soft-surface-2 dark:hover:text-soft-text dark:hover:shadow-soft-inset;
   }
 
   .nav-link-active {
@@ -629,6 +663,26 @@
   .contacts-table-scroll {
     @apply w-full max-w-full overflow-x-auto overscroll-x-contain;
     scrollbar-gutter: stable;
+  }
+
+  /**
+   * Modo escuro — suaviza divisores legados (dark:border-ink-*) sem alterar layout.
+   * Mantém hierarquia visual com hairlines discretas + sombra interna leve.
+   */
+  html.dark [class*="dark:border-ink-6"],
+  html.dark [class*="dark:border-ink-7"],
+  html.dark [class*="dark:border-ink-8"] {
+    border-color: var(--soft-border-muted) !important;
+  }
+
+  html.dark [class*="dark:divide-ink-6"] > :not([hidden]) ~ :not([hidden]),
+  html.dark [class*="dark:divide-ink-7"] > :not([hidden]) ~ :not([hidden]),
+  html.dark [class*="dark:divide-ink-8"] > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--soft-border-muted) !important;
+  }
+
+  html.dark [class*="dark:border-white/"] {
+    border-color: var(--soft-border-muted) !important;
   }
 }
 

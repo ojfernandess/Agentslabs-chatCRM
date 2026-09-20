@@ -512,7 +512,7 @@ export function AutomationToolsHub({
     }
   };
 
-  const glass = "backdrop-blur-md bg-white/70 dark:bg-ink-950/55 border border-white/20 dark:border-ink-700/60 shadow-[0_0_0_1px_rgba(255,255,255,0.06)]";
+  const glass = "glass-panel";
 
   return (
     <div className="space-y-8">

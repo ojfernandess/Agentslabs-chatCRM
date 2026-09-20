@@ -66,7 +66,8 @@ export default {
             2: "#1B2230",
             3: "#202736",
           },
-          border: "#2A3342",
+          border: "var(--soft-border)",
+          "border-muted": "var(--soft-border-muted)",
           text: {
             DEFAULT: "#E6E8EF",
             secondary: "#9AA4B2",
@@ -74,6 +75,15 @@ export default {
           },
           primary: "#7C5CFF",
         },
+      },
+      boxShadow: {
+        "soft-raised":
+          "var(--soft-shadow-raised, 6px 6px 18px rgba(0, 0, 0, 0.24), -3px -3px 10px rgba(255, 255, 255, 0.025), inset 0 1px 0 rgba(255, 255, 255, 0.05))",
+        "soft-inset":
+          "var(--soft-shadow-inset, inset 4px 4px 10px rgba(0, 0, 0, 0.32), inset -2px -2px 8px rgba(255, 255, 255, 0.025))",
+        "soft-card":
+          "var(--soft-shadow-card, 0 8px 24px rgba(0, 0, 0, 0.2), 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 0 0 1px rgba(255, 255, 255, 0.05))",
+        "soft-glow": "0 0 0 1px rgba(255, 255, 255, 0.05)",
       },
       keyframes: {
         "fade-in": {

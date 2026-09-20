@@ -123,7 +123,7 @@ function CollapsedLocalePicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-100 bg-ink-50 text-ink-500 hover:bg-ink-100 dark:border-soft-border dark:bg-white/5 dark:text-ink-300 dark:hover:bg-ink-800"
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-100 bg-ink-50 text-ink-500 hover:bg-ink-100 dark:border-soft-border-muted dark:bg-soft-surface-2/60 dark:text-ink-300 dark:shadow-soft-inset dark:hover:bg-soft-surface-3 dark:hover:shadow-soft-raised"
         aria-label={t("common.language")}
         title={t("common.language")}
         aria-expanded={open}
@@ -133,7 +133,7 @@ function CollapsedLocalePicker({
       </button>
       {open ? (
         <div
-          className="absolute bottom-0 left-full z-[120] ml-2 min-w-[10.5rem] overflow-hidden rounded-lg border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800"
+          className="absolute bottom-0 left-full z-[120] ml-2 min-w-[10.5rem] overflow-hidden rounded-lg border border-ink-200 bg-white py-1 shadow-lg dark:border-soft-border-muted dark:bg-soft-surface-2 dark:shadow-soft-card"
           role="menu"
         >
           {options.map((opt) => (
@@ -493,7 +493,7 @@ export function Layout() {
     <>
       <div
         className={clsx(
-          "shrink-0 border-b border-ink-100 dark:border-soft-border/70",
+          "shrink-0 border-b border-ink-100 dark:border-soft-border-muted",
           collapsed ? "flex flex-col items-center gap-2 px-2 py-4" : "px-3 py-4",
         )}
       >
@@ -504,7 +504,7 @@ export function Layout() {
             className={clsx(
               "flex min-w-0 items-center transition-colors",
               collapsed
-                ? "justify-center rounded-xl bg-gradient-to-b from-brand-50/90 to-white p-2.5 shadow-sm ring-1 ring-brand-200/50 dark:from-brand-950/50 dark:to-ink-950 dark:ring-brand-500/25"
+                ? "justify-center rounded-xl bg-gradient-to-b from-brand-50/90 to-white p-2.5 shadow-sm ring-1 ring-brand-200/50 dark:from-brand-950/50 dark:to-soft-surface-2 dark:shadow-soft-raised dark:ring-brand-500/20"
                 : "min-w-0 flex-1 gap-3",
             )}
           >
@@ -760,7 +760,7 @@ export function Layout() {
 
       <div
         className={clsx(
-          "shrink-0 border-t border-ink-200 dark:border-soft-border",
+          "shrink-0 border-t border-ink-200 dark:border-soft-border-muted",
           collapsed ? "flex flex-col items-center gap-2 p-2" : "space-y-2 p-3",
         )}
       >
@@ -804,7 +804,7 @@ export function Layout() {
         {collapsed ? (
           <CollapsedLocalePicker locale={locale} setLocale={setLocale} t={t} />
         ) : (
-          <div className="flex w-full items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-soft-border dark:bg-white/5">
+          <div className="flex w-full items-center gap-2 rounded-lg border border-ink-100 bg-ink-50 px-2 py-1.5 dark:border-soft-border-muted dark:bg-soft-surface-2/50 dark:shadow-soft-inset">
             <Languages className="h-4 w-4 shrink-0 text-ink-500 dark:text-ink-300" />
             <label htmlFor="locale" className="sr-only">
               {t("common.language")}
@@ -831,7 +831,7 @@ export function Layout() {
     <div className="flex h-full min-h-0 w-full min-w-0 max-w-full overflow-x-clip">
       <aside
         className={clsx(
-          "hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-in-out dark:border-soft-border dark:bg-ink-950 lg:flex",
+          "hidden shrink-0 flex-col border-r border-ink-200 bg-white transition-[width] duration-200 ease-in-out dark:border-soft-border-muted dark:bg-ink-950 dark:shadow-soft-inset lg:flex",
           sidebarCollapsed ? "w-[4.25rem]" : "w-52 xl:w-56 2xl:w-64",
         )}
       >
@@ -846,7 +846,7 @@ export function Layout() {
             onClick={() => setMobileNavOpen(false)}
             aria-label={t("common.close")}
           />
-          <aside className="relative flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-ink-200 bg-white shadow-xl dark:border-soft-border dark:bg-ink-950">
+          <aside className="relative flex h-full w-80 max-w-[85vw] shrink-0 flex-col border-r border-ink-200 bg-white shadow-xl dark:border-soft-border-muted dark:bg-ink-950 dark:shadow-soft-card">
             <div className="absolute right-2 top-2">
               <button
                 type="button"
@@ -863,7 +863,7 @@ export function Layout() {
       ) : null}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
-        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-soft-border dark:bg-ink-950 lg:hidden">
+        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-soft-border-muted dark:bg-ink-950 dark:shadow-soft-inset lg:hidden">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
