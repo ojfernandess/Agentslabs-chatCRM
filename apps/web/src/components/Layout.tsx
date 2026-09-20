@@ -485,8 +485,8 @@ export function Layout() {
     );
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 

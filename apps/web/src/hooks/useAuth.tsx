@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, ApiError } from "@/lib/api";
-import { getPresenceSessionKeyOrNull } from "@/lib/presenceSession";
+import { notifyAuthLogoutBeforeClearToken } from "@/lib/presenceSession";
 import type { LoginResponse } from "@openconduit/shared";
 
 export interface AuthUser {
@@ -49,7 +49,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string, turnstileToken?: string) => Promise<AuthUser>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   applySessionToken: (token: string) => Promise<AuthUser>;
   enterOrganization: (organizationId: string) => Promise<AuthUser>;
@@ -71,12 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const logout = useCallback(() => {
-    const sessionKey = getPresenceSessionKeyOrNull();
-    if (sessionKey) {
-      void api.post("/auth/logout", { sessionKey }).catch(() => {
-        /* ignore — token será removido localmente */
-      });
+  const logout = useCallback(async () => {
+    const token = localStorage.getItem(TOKEN_KEY) ?? api.getToken();
+    if (token) {
+      await notifyAuthLogoutBeforeClearToken(token);
     }
     localStorage.removeItem(TOKEN_KEY);
     api.setToken(null);

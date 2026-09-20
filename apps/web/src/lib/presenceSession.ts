@@ -29,3 +29,20 @@ export function sendPresenceSessionEndKeepalive(token: string): void {
     /* ignore */
   });
 }
+
+/** Encerra sessão de presença no servidor antes de limpar o token local. */
+export async function notifyAuthLogoutBeforeClearToken(token: string): Promise<void> {
+  const sessionKey = getPresenceSessionKeyOrNull();
+  try {
+    await fetch("/api/v1/auth/logout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(sessionKey ? { sessionKey } : {}),
+    });
+  } catch {
+    /* ignore — estado local será limpo na mesma */
+  }
+}

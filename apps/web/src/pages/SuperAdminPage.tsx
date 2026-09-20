@@ -1002,8 +1002,8 @@ export function SuperAdminPage() {
       .finally(() => setUsersLoading(false));
   }, [usersOrg]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 

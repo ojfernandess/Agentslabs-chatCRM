@@ -75,5 +75,5 @@ function resolvePresenceAwareEffective(
   intent: UserAvailability,
 ): UserAvailability {
   if (intent !== "online") return intent;
-  return row.presenceConnected ? "online" : "offline";
+  return row.presenceConnected === true ? "online" : "offline";
 }

@@ -110,10 +110,13 @@ export type AssigneePresenceFields = {
 
 /** Estado visual — preferir effectiveAvailabilityStatus vindo do backend. */
 export function displayAvailabilityStatus(row: AssigneePresenceFields): UserAvailability {
-  if (row.effectiveAvailabilityStatus) {
+  if (row.effectiveAvailabilityStatus != null) {
     return normalizeAvailabilityStatus(row.effectiveAvailabilityStatus);
   }
-  return normalizeAvailabilityStatus(row.availabilityStatus);
+  return resolveEffectiveDisplayStatus(
+    normalizeAvailabilityStatus(row.availabilityStatus),
+    row.presenceConnected,
+  );
 }
 
 export function resolveEffectiveDisplayStatus(
