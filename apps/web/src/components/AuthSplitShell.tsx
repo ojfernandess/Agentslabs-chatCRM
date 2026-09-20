@@ -23,8 +23,13 @@ export function AuthSplitShell({ children }: { children: ReactNode }) {
             backgroundRepeat: "no-repeat",
           }}
         >
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#071428]/90 via-[#071428]/40 to-transparent px-10 pb-12 pt-24">
-            <p className="max-w-md text-lg font-medium leading-snug text-white/95">{t("loginFooter.heroTagline")}</p>
+          {/* Escurece a imagem para o texto destacar */}
+          <div className="absolute inset-0 bg-gradient-to-br from-[#071428]/55 via-[#071428]/25 to-[#071428]/45" />
+
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#071428] via-[#071428]/85 to-transparent px-10 pb-12 pt-32">
+            <div className="auth-hero-tagline-panel max-w-lg animate-fade-in">
+              <p className="auth-hero-tagline-text">{t("loginFooter.heroTagline")}</p>
+            </div>
           </div>
         </aside>
 

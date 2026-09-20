@@ -896,4 +896,44 @@
       opacity: 1;
     }
   }
+
+  /* Login hero — tagline sobre imagem de fundo */
+  .auth-hero-tagline-panel {
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: linear-gradient(
+      135deg,
+      rgba(7, 20, 40, 0.82) 0%,
+      rgba(7, 20, 40, 0.68) 100%
+    );
+    padding: 1.25rem 1.5rem;
+    box-shadow:
+      0 24px 48px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .auth-hero-tagline-text {
+    font-family: "Cormorant Garamond", Georgia, Cambria, serif;
+    font-size: clamp(1.375rem, 2.2vw, 1.75rem);
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: 0.015em;
+    color: #ffffff;
+    text-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.55),
+      0 8px 28px rgba(0, 0, 0, 0.35);
+  }
+
+  .auth-hero-tagline-text::after {
+    content: "";
+    display: block;
+    width: 3rem;
+    height: 2px;
+    margin-top: 1rem;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, rgba(103, 52, 255, 0.95), rgba(255, 255, 255, 0.35));
+    opacity: 0.9;
+  }
 }
