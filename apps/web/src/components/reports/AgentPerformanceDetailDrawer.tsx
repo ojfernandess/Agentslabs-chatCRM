@@ -72,8 +72,8 @@ export type AgentPerformanceDetailPayload = {
   productivity: {
     messagesSent: number;
     uniqueClients: number;
-    onlineTimeSec: null;
-    handleTimeSec: null;
+    onlineTimeSec: number | null;
+    handleTimeSec: number | null;
   };
   byChannel: Array<{
     channelType: string;
@@ -465,11 +465,21 @@ export function AgentPerformanceDetailDrawer({
                       />
                       <MetricCard
                         label={t("reportsPage.agentDetailOnlineTime")}
-                        value={t("reportsPage.agentDetailPresenceUnavailable")}
+                        value={
+                          data.meta.presenceDataAvailable && data.productivity.onlineTimeSec != null
+                            ? formatDurationSec(data.productivity.onlineTimeSec, na)
+                            : t("reportsPage.agentDetailPresenceUnavailable")
+                        }
+                        tip={t("reportsPage.agentDetailTipOnlineTime")}
                       />
                       <MetricCard
                         label={t("reportsPage.agentDetailHandleTime")}
-                        value={t("reportsPage.agentDetailPresenceUnavailable")}
+                        value={
+                          data.productivity.handleTimeSec != null
+                            ? formatDurationSec(data.productivity.handleTimeSec, na)
+                            : na
+                        }
+                        tip={t("reportsPage.agentDetailTipHandleTime")}
                       />
                     </div>
                   </Section>

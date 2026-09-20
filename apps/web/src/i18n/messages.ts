@@ -4608,6 +4608,10 @@ export const messages = {
       agentDetailTipAvgResponse: "Tempo médio entre uma mensagem do cliente e a resposta humana subsequente do agente.",
       agentDetailTipReopenRate: "Percentual de atendimentos resolvidos que posteriormente foram reabertos.",
       agentDetailTipTransferRate: "Percentual de atendimentos recebidos que o agente transferiu para outro destino.",
+      agentDetailTipOnlineTime:
+        "Requer histórico de sessão/presença. O sistema regista apenas o status atual (online/ausente/offline), sem duração acumulada.",
+      agentDetailTipHandleTime:
+        "Soma do tempo entre a primeira resposta humana do agente e o encerramento de cada atendimento concluído no período.",
       emptyTeams: "Sem conversas atribuídas a equipes neste intervalo.",
       emptyLeadTypes: "Sem tipos de lead em conversas finalizadas no período.",
       leadTypesFootnote: "Baseado no valor registrado no fecho da conversa (closureValue). Comportamento original preservado.",
@@ -11670,6 +11674,10 @@ export const messages = {
       agentDetailTipAvgResponse: "Average time from a customer message to the agent's next human reply.",
       agentDetailTipReopenRate: "Share of resolved conversations that were later reopened.",
       agentDetailTipTransferRate: "Share of received conversations the agent transferred to another destination.",
+      agentDetailTipOnlineTime:
+        "Requires session/presence history. The system only stores the current status (online/away/offline), not accumulated duration.",
+      agentDetailTipHandleTime:
+        "Sum of time from the agent's first human reply to closure for each completed conversation in the period.",
       emptyTeams: "No team-assigned conversations started in this range.",
       emptyLeadTypes: "No resolved conversations with lead types in this range.",
       leadTypesFootnote: "Based on closure value recorded when resolving conversations. Original behavior preserved.",

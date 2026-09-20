@@ -35,6 +35,12 @@
  *
  * Transferências:
  *   timeline_events conversation.handoff com actor_user_id = agente no período
+ *
+ * Tempo em atendimento (total no período):
+ *   SUM(resolved_at − primeira mensagem humana do agente) nos encerramentos do agente
+ *
+ * Tempo online:
+ *   Indisponível — o sistema só guarda snapshot de availability_status, sem histórico de sessão/presença.
  */
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
@@ -125,8 +131,8 @@ export type AgentPerformanceDetailPayload = {
   productivity: {
     messagesSent: number;
     uniqueClients: number;
-    onlineTimeSec: null;
-    handleTimeSec: null;
+    onlineTimeSec: number | null;
+    handleTimeSec: number | null;
   };
   byChannel: AgentPerformanceChannelRow[];
   timeSeries: AgentPerformanceTimeSeriesRow[];
@@ -342,9 +348,10 @@ export async function buildAgentPerformanceDetail(
         AND m_in.sent_at <= ${to}
         AND (prev.direction IS NULL OR prev.direction <> 'INBOUND')
     `,
-    prisma.$queryRaw<Array<{ avg_sec: number | null; sample_n: number }>>`
+    prisma.$queryRaw<Array<{ avg_sec: number | null; total_sec: number | null; sample_n: number }>>`
       SELECT
         AVG(EXTRACT(EPOCH FROM (cr.resolved_at - fam.first_agent_msg)))::float AS avg_sec,
+        SUM(EXTRACT(EPOCH FROM (cr.resolved_at - fam.first_agent_msg)))::float AS total_sec,
         COUNT(*)::int AS sample_n
       FROM conversation_closure_records cr
       INNER JOIN (
@@ -359,6 +366,7 @@ export async function buildAgentPerformanceDetail(
         AND cr.resolved_by_id = ${agentId}::uuid
         AND cr.resolved_at >= ${from}
         AND cr.resolved_at <= ${to}
+        AND cr.resolved_at > fam.first_agent_msg
     `,
     prisma.$queryRaw<Array<{ avg_sec: number | null; sample_n: number }>>`
       SELECT
@@ -713,7 +721,10 @@ export async function buildAgentPerformanceDetail(
       messagesSent: messagesRow[0]?.n ?? 0,
       uniqueClients: clientsRow[0]?.n ?? 0,
       onlineTimeSec: null,
-      handleTimeSec: null,
+      handleTimeSec:
+        (timesHandleRow[0]?.sample_n ?? 0) > 0 && timesHandleRow[0]?.total_sec != null
+          ? Math.max(0, Math.round(timesHandleRow[0].total_sec))
+          : null,
     },
     byChannel: channelRows.map((r) => ({
       channelType: r.channel_type,
