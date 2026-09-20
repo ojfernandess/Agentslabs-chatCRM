@@ -72,6 +72,10 @@ import {
   settingsTableRow,
   settingsTableWrap,
   settingsTitle,
+  settingsDivider,
+  settingsListWrap,
+  settingsToggleOff,
+  settingsToggleThumb,
 } from "@/components/settings/settingsUi";
 import { MASKED_WHATSAPP_SECRET, whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 import clsx from "clsx";
@@ -2388,7 +2392,7 @@ export function SettingsPage() {
                   </h2>
                   <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.workflowIntro")}</p>
 
-                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div>
                       <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAttendanceTab")}</p>
                       <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAttendanceTabHint")}</p>
@@ -2400,12 +2404,12 @@ export function SettingsPage() {
                       onClick={() => setWfAttendanceTabEnabled((v) => !v)}
                       className={clsx(
                         "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                        wfAttendanceTabEnabled ? "bg-brand-500" : "bg-gray-200",
+                        wfAttendanceTabEnabled ? "bg-brand-500" : settingsToggleOff,
                       )}
                     >
                       <span
                         className={clsx(
-                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          settingsToggleThumb,
                           wfAttendanceTabEnabled ? "translate-x-5" : "translate-x-0",
                         )}
                       />
@@ -2413,7 +2417,7 @@ export function SettingsPage() {
                   </div>
 
                   {wfAttendanceTabEnabled && (
-                    <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 pl-4 sm:flex-row sm:items-center sm:justify-between sm:pl-6">
+                    <div className={clsx("mb-6 flex flex-col gap-2 pl-4 sm:flex-row sm:items-center sm:justify-between sm:pl-6", settingsDivider)}>
                       <div>
                         <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAttendanceTabAutoOpen")}</p>
                         <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAttendanceTabAutoOpenHint")}</p>
@@ -2425,12 +2429,12 @@ export function SettingsPage() {
                         onClick={() => setWfAttendanceTabAutoOpen((v) => !v)}
                         className={clsx(
                           "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                          wfAttendanceTabAutoOpen ? "bg-brand-500" : "bg-gray-200",
+                          wfAttendanceTabAutoOpen ? "bg-brand-500" : settingsToggleOff,
                         )}
                       >
                         <span
                           className={clsx(
-                            "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                            settingsToggleThumb,
                             wfAttendanceTabAutoOpen ? "translate-x-5" : "translate-x-0",
                           )}
                         />
@@ -2438,7 +2442,7 @@ export function SettingsPage() {
                     </div>
                   )}
 
-                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div>
                       <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAllScopeHumanOnly")}</p>
                       <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAllScopeHumanOnlyHint")}</p>
@@ -2450,19 +2454,19 @@ export function SettingsPage() {
                       onClick={() => setWfAllScopeHumanOnly((v) => !v)}
                       className={clsx(
                         "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                        wfAllScopeHumanOnly ? "bg-brand-500" : "bg-gray-200",
+                        wfAllScopeHumanOnly ? "bg-brand-500" : settingsToggleOff,
                       )}
                     >
                       <span
                         className={clsx(
-                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          settingsToggleThumb,
                           wfAllScopeHumanOnly ? "translate-x-5" : "translate-x-0",
                         )}
                       />
                     </button>
                   </div>
 
-                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div>
                       <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAgentsInboxesVisible")}</p>
                       <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowAgentsInboxesVisibleHint")}</p>
@@ -2474,19 +2478,19 @@ export function SettingsPage() {
                       onClick={() => setWfAgentsInboxesVisible((v) => !v)}
                       className={clsx(
                         "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                        wfAgentsInboxesVisible ? "bg-brand-500" : "bg-gray-200",
+                        wfAgentsInboxesVisible ? "bg-brand-500" : settingsToggleOff,
                       )}
                     >
                       <span
                         className={clsx(
-                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          settingsToggleThumb,
                           wfAgentsInboxesVisible ? "translate-x-5" : "translate-x-0",
                         )}
                       />
                     </button>
                   </div>
 
-                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div>
                       <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowListShowTags")}</p>
                       <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowListShowTagsHint")}</p>
@@ -2498,19 +2502,19 @@ export function SettingsPage() {
                       onClick={() => setWfListShowContactTags((v) => !v)}
                       className={clsx(
                         "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                        wfListShowContactTags ? "bg-brand-500" : "bg-gray-200",
+                        wfListShowContactTags ? "bg-brand-500" : settingsToggleOff,
                       )}
                     >
                       <span
                         className={clsx(
-                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          settingsToggleThumb,
                           wfListShowContactTags ? "translate-x-5" : "translate-x-0",
                         )}
                       />
                     </button>
                   </div>
 
-                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div>
                       <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowListShowWhatsappIcon")}</p>
                       <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowListShowWhatsappIconHint")}</p>
@@ -2522,19 +2526,19 @@ export function SettingsPage() {
                       onClick={() => setWfListShowWhatsappIcon((v) => !v)}
                       className={clsx(
                         "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                        wfListShowWhatsappIcon ? "bg-brand-500" : "bg-gray-200",
+                        wfListShowWhatsappIcon ? "bg-brand-500" : settingsToggleOff,
                       )}
                     >
                       <span
                         className={clsx(
-                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          settingsToggleThumb,
                           wfListShowWhatsappIcon ? "translate-x-5" : "translate-x-0",
                         )}
                       />
                     </button>
                   </div>
 
-                  <div className="mb-6 flex flex-col gap-2 border-b border-gray-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div>
                       <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowQuickContactAdd")}</p>
                       <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowQuickContactAddHint")}</p>
@@ -2546,19 +2550,19 @@ export function SettingsPage() {
                       onClick={() => setWfQuickContactAddEnabled((v) => !v)}
                       className={clsx(
                         "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                        wfQuickContactAddEnabled ? "bg-brand-500" : "bg-gray-200",
+                        wfQuickContactAddEnabled ? "bg-brand-500" : settingsToggleOff,
                       )}
                     >
                       <span
                         className={clsx(
-                          "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                          settingsToggleThumb,
                           wfQuickContactAddEnabled ? "translate-x-5" : "translate-x-0",
                         )}
                       />
                     </button>
                   </div>
 
-                  <div className="mb-6 border-b border-gray-100 pb-6">
+                  <div className={clsx("mb-6", settingsDivider)}>
                     <p className="text-sm font-medium text-ink-900 dark:text-ink-50">
                       {t("settings.workflowSplitViewSize")}
                     </p>
@@ -2595,7 +2599,7 @@ export function SettingsPage() {
                               "rounded-xl border px-3 py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
                               selected
                                 ? "border-brand-500 bg-brand-50/80 dark:border-brand-400 dark:bg-brand-950/40"
-                                : "border-ink-200 bg-white hover:border-ink-300 dark:border-ink-700 dark:bg-ink-900 dark:hover:border-ink-600",
+                                : "border-ink-200/80 bg-white hover:border-ink-300 dark:border-soft-border-muted dark:bg-soft-surface-2/60 dark:hover:border-soft-border dark:hover:bg-soft-surface-3",
                             )}
                           >
                             <span className="block text-sm font-semibold text-ink-900 dark:text-ink-50">
@@ -2610,7 +2614,7 @@ export function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-4 border-b border-gray-100 pb-6">
+                  <div className={clsx("flex flex-col gap-4", settingsDivider)}>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowAutoResolve")}</p>
@@ -2623,12 +2627,12 @@ export function SettingsPage() {
                         onClick={() => setWfAutoEnabled((v) => !v)}
                         className={clsx(
                           "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                          wfAutoEnabled ? "bg-brand-500" : "bg-gray-200",
+                          wfAutoEnabled ? "bg-brand-500" : settingsToggleOff,
                         )}
                       >
                         <span
                           className={clsx(
-                            "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                            settingsToggleThumb,
                             wfAutoEnabled ? "translate-x-5" : "translate-x-0",
                           )}
                         />
@@ -2694,12 +2698,12 @@ export function SettingsPage() {
                           onClick={() => setWfSkipWhenAssigned((v) => !v)}
                           className={clsx(
                             "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-                            wfSkipWhenAssigned ? "bg-brand-500" : "bg-gray-200",
+                            wfSkipWhenAssigned ? "bg-brand-500" : settingsToggleOff,
                           )}
                         >
                           <span
                             className={clsx(
-                              "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition",
+                              settingsToggleThumb,
                               wfSkipWhenAssigned ? "translate-x-5" : "translate-x-0",
                             )}
                           />
@@ -2745,7 +2749,7 @@ export function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 space-y-4 border-b border-gray-100 pb-6">
+                  <div className={clsx("mt-6 space-y-4", settingsDivider)}>
                     <h3 className="text-sm font-semibold text-ink-900 dark:text-ink-50">{t("settings.workflowManualTitle")}</h3>
                     <p className="text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowManualIntro")}</p>
                     <div className="flex items-center gap-3">
@@ -2996,7 +3000,7 @@ export function SettingsPage() {
                     </div>
                   ) : null}
                   {leadTypes.length > 0 && (
-                    <ul className="mb-4 divide-y divide-ink-100 dark:divide-white/10 rounded-lg border border-ink-200/80 dark:border-soft-border">
+                    <ul className={clsx("mb-4", settingsListWrap)}>
                       {leadTypes.map((lt) => (
                         <li key={lt.id} className="px-3 py-3 text-sm">
                           {editingLtId === lt.id ? (
@@ -3023,7 +3027,7 @@ export function SettingsPage() {
                                     type="color"
                                     value={editLtColor}
                                     onChange={(e) => setEditLtColor(e.target.value)}
-                                    className="mt-1 h-9 w-14 cursor-pointer rounded border border-gray-200"
+                                    className="mt-1 h-9 w-14 cursor-pointer rounded border border-ink-200/80 dark:border-soft-border-muted"
                                   />
                                 </div>
                               </div>
@@ -3134,7 +3138,7 @@ export function SettingsPage() {
                                 <button
                                   type="button"
                                   onClick={cancelEditLeadType}
-                                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                  className="btn-secondary px-3 py-1.5 text-xs"
                                 >
                                   {t("settings.leadTypeCancelEdit")}
                                 </button>
@@ -3163,7 +3167,7 @@ export function SettingsPage() {
                                 <button
                                   type="button"
                                   onClick={() => startEditLeadType(lt)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                  className="btn-secondary inline-flex items-center gap-1 px-2 py-1 text-xs"
                                 >
                                   <Pencil className="h-3 w-3" />
                                   {t("settings.leadTypeEdit")}
@@ -3204,7 +3208,7 @@ export function SettingsPage() {
                         type="color"
                         value={newLtColor}
                         onChange={(e) => setNewLtColor(e.target.value)}
-                        className="mt-1 h-9 w-14 cursor-pointer rounded border border-gray-200"
+                        className="mt-1 h-9 w-14 cursor-pointer rounded border border-ink-200/80 dark:border-soft-border-muted"
                       />
                     </div>
                     <div className="min-w-[200px] flex-1">

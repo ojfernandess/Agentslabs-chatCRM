@@ -11,6 +11,11 @@ export const settingsTableRow = "bg-white dark:bg-transparent";
 export const settingsTableWrap = "overflow-x-auto rounded-lg border border-ink-200/80 dark:border-soft-border-muted dark:shadow-soft-inset";
 export const settingsListWrap =
   "divide-y divide-ink-100 rounded-lg border border-ink-200/80 dark:divide-white/[0.06] dark:border-soft-border-muted dark:shadow-soft-inset";
+export const settingsDivider =
+  "border-b border-ink-200/80 pb-6 dark:border-soft-border-muted";
+export const settingsToggleOff = "bg-gray-200 dark:bg-soft-surface-2 dark:shadow-soft-inset";
+export const settingsToggleThumb =
+  "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition dark:shadow-soft-raised";
 export const settingsNavActive =
   "bg-white text-brand-800 shadow-sm ring-1 ring-ink-200/80 dark:bg-soft-surface-3/80 dark:text-brand-300 dark:shadow-soft-raised dark:ring-soft-border-muted";
 export const settingsNavIdle =
