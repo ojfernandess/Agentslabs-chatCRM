@@ -62,8 +62,7 @@ type Props = {
   onAttendanceSubView: (sub: "queue" | "mine") => void;
 };
 
-const splitSelectClass =
-  "h-7 w-full min-w-0 appearance-none rounded-md border border-ink-200/90 bg-white py-0 pl-7 pr-6 text-[11px] font-medium text-ink-800 shadow-sm dark:border-ink-700/80 dark:bg-ink-950/40 dark:text-ink-100";
+const splitSelectClass = "conversations-filter-select conversations-filter-select--compact";
 
 function SplitScopeCount({ count, active }: { count: number; active: boolean }) {
   return (
@@ -194,7 +193,7 @@ export function ConversationsSplitToolbar(props: Props) {
   };
 
   return (
-    <div className="shrink-0 space-y-1 border-b border-ink-200/70 bg-white/95 px-2 py-1.5 backdrop-blur-md dark:border-ink-800/80 dark:bg-ink-950/50">
+    <div className="conversations-toolbar-shell">
       {/* Pesquisa + nova conversa */}
       <div className="flex flex-nowrap items-center gap-1.5">
         <div className="relative min-w-0 flex-1">
@@ -207,7 +206,7 @@ export function ConversationsSplitToolbar(props: Props) {
             value={listSearch}
             onChange={(e) => onListSearchChange(e.target.value)}
             placeholder={t("conversations.searchListPlaceholder")}
-            className="h-8 w-full rounded-lg border border-ink-200/90 bg-white pl-8 pr-2 text-xs text-ink-900 shadow-sm placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-ink-700/80 dark:bg-ink-950/40 dark:text-ink-50 dark:placeholder:text-ink-500"
+            className="conversations-search-input"
             aria-label={t("conversations.searchListPlaceholder")}
           />
         </div>

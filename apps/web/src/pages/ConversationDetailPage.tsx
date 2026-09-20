@@ -4052,7 +4052,7 @@ export function ConversationDetailPage() {
 
         <motion.div
           className={clsx(
-            "w-full min-w-0 shrink-0 border-t border-ink-200/80 dark:border-soft-border",
+            "w-full min-w-0 shrink-0 border-t border-ink-200/80 dark:border-soft-border-muted",
             emailWorkspaceMode
               ? "bg-[#f8fafc] px-4 py-3 dark:bg-[#1B2230]"
               : "bg-ink-50/80 px-3 py-2.5 dark:bg-[#151826]/80 max-lg:px-2 max-lg:py-2 sm:px-4",
@@ -4096,7 +4096,7 @@ export function ConversationDetailPage() {
                 emailWorkspaceMode && "dark:border-soft-border",
               )}
             >
-              <div className="flex min-w-0 items-center justify-between gap-3 border-b border-ink-100 px-3 dark:border-soft-border/70">
+              <div className="composer-header">
                 <div className="flex min-w-0 flex-1 items-center gap-0">
                   <button
                     type="button"

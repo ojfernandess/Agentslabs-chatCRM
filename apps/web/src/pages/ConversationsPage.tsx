@@ -677,8 +677,8 @@ export function ConversationsPage({
     ? "rounded-full px-2 py-1 text-[11px] font-semibold transition-colors"
     : "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors";
   const listFilterSelectClass = splitView
-    ? "h-8 min-w-0 flex-1 rounded-lg border border-ink-200 bg-white px-2 text-[11px] font-medium text-ink-800 dark:border-ink-700 dark:bg-ink-950/20 dark:text-ink-100"
-    : "h-11 min-w-0 flex-1 rounded-xl border border-ink-200 bg-white px-2.5 text-xs font-medium text-ink-800 sm:max-w-[11rem] sm:flex-none dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-100";
+    ? "conversations-filter-select conversations-filter-select--split"
+    : "conversations-filter-select conversations-filter-select--default";
 
   return (
     <PageTransition>
