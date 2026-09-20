@@ -77,6 +77,7 @@ import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
 import { useAuth } from "@/hooks/useAuth";
 import {
   isOnlineForTransfer,
+  displayAvailabilityStatus,
   normalizeAvailabilityStatus,
   type UserAvailability,
 } from "@/lib/userAvailability";
@@ -926,6 +927,8 @@ export function ConversationDetailPage() {
       name: string;
       avatarUrl?: string | null;
       availabilityStatus?: UserAvailability;
+      effectiveAvailabilityStatus?: UserAvailability;
+      presenceConnected?: boolean;
       openConversationCount?: number;
       availabilityUpdatedAt?: string | null;
     }): AssigneePickerRow => ({
@@ -933,6 +936,10 @@ export function ConversationDetailPage() {
       name: u.name,
       avatarUrl: u.avatarUrl ?? null,
       availabilityStatus: normalizeAvailabilityStatus(u.availabilityStatus),
+      effectiveAvailabilityStatus: u.effectiveAvailabilityStatus
+        ? normalizeAvailabilityStatus(u.effectiveAvailabilityStatus)
+        : undefined,
+      presenceConnected: u.presenceConnected,
       openConversationCount: u.openConversationCount ?? 0,
       availabilityUpdatedAt: u.availabilityUpdatedAt ?? null,
     }),
@@ -1149,7 +1156,7 @@ export function ConversationDetailPage() {
   useEffect(() => {
     if (!transferAssigneeId || transferMembers.length === 0) return;
     const selected = transferMembers.find((m) => m.id === transferAssigneeId);
-    if (!selected || !isOnlineForTransfer(selected.availabilityStatus)) {
+    if (!selected || !isOnlineForTransfer(displayAvailabilityStatus(selected))) {
       setTransferAssigneeId("");
     }
   }, [transferMembers, transferAssigneeId]);
@@ -2209,7 +2216,9 @@ export function ConversationDetailPage() {
     ? transferMembers.find((m) => m.id === transferAssigneeId)
     : null;
   const selectedTransferAssigneeOnline = transferAssigneeId
-    ? isOnlineForTransfer(selectedTransferAssignee?.availabilityStatus)
+    ? isOnlineForTransfer(
+        selectedTransferAssignee ? displayAvailabilityStatus(selectedTransferAssignee) : undefined,
+      )
     : true;
   const transferBlockedByAvailability = Boolean(transferAssigneeId && !selectedTransferAssigneeOnline);
 

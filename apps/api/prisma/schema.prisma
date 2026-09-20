@@ -268,6 +268,7 @@ model Organization {
   messageBillingLedgers          MessageBillingLedgerEntry[]
   whatsappPricingRules           WhatsappPricingRule[]
   whatsappPricingVolumeTiers     WhatsappPricingVolumeTier[]
+  presenceSessions               UserPresenceSession[]
 
   @@map("organizations")
 }
@@ -604,9 +605,30 @@ model User {
   mcpAccessTokens              McpAccessToken[]
   mcpAuditLogs                 McpAuditLog[]
   intelligentTagSuggestionsReviewed IntelligentTagSuggestion[] @relation("IntelligentTagSuggestionReviewer")
+  presenceSessions             UserPresenceSession[]
 
   @@index([organizationId])
   @@map("users")
+}
+
+/// Sessão efémera de presença (aba/dispositivo) — heartbeat + last_seen_at.
+model UserPresenceSession {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessionKey     String       @map("session_key") @db.VarChar(64)
+  lastSeenAt     DateTime     @map("last_seen_at")
+  disconnectedAt DateTime?    @map("disconnected_at")
+  source         String       @default("http") @db.VarChar(16)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@unique([userId, sessionKey])
+  @@index([organizationId, userId, disconnectedAt, lastSeenAt])
+  @@index([disconnectedAt, lastSeenAt])
+  @@map("user_presence_sessions")
 }
 
 /// Credenciais SIP por utilizador (softphone JsSIP embutido no CRM — Nvoip).

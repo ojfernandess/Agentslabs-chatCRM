@@ -4609,7 +4609,7 @@ export const messages = {
       agentDetailTipReopenRate: "Percentual de atendimentos resolvidos que posteriormente foram reabertos.",
       agentDetailTipTransferRate: "Percentual de atendimentos recebidos que o agente transferiu para outro destino.",
       agentDetailTipOnlineTime:
-        "Requer histórico de sessão/presença. O sistema regista apenas o status atual (online/ausente/offline), sem duração acumulada.",
+        "Soma do tempo em que o agente manteve sessão de presença activa (heartbeat) no período, incluindo várias abas ou dispositivos. Só disponível após o registo de sessões de presença.",
       agentDetailTipHandleTime:
         "Soma do tempo entre a primeira resposta humana do agente e o encerramento de cada atendimento concluído no período.",
       emptyTeams: "Sem conversas atribuídas a equipes neste intervalo.",
@@ -11675,7 +11675,7 @@ export const messages = {
       agentDetailTipReopenRate: "Share of resolved conversations that were later reopened.",
       agentDetailTipTransferRate: "Share of received conversations the agent transferred to another destination.",
       agentDetailTipOnlineTime:
-        "Requires session/presence history. The system only stores the current status (online/away/offline), not accumulated duration.",
+        "Total time the agent had an active presence session (heartbeat) in the period, merged across tabs and devices. Available only after presence sessions are recorded.",
       agentDetailTipHandleTime:
         "Sum of time from the agent's first human reply to closure for each completed conversation in the period.",
       emptyTeams: "No team-assigned conversations started in this range.",

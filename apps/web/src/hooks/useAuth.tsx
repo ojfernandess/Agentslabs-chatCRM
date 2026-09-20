@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, ApiError } from "@/lib/api";
+import { getPresenceSessionKeyOrNull } from "@/lib/presenceSession";
 import type { LoginResponse } from "@openconduit/shared";
 
 export interface AuthUser {
@@ -38,6 +39,10 @@ export interface AuthUser {
   apiAccessTokenLastUsedAt?: string | null;
   apiAccessTokenPrefix?: string | null;
   availabilityStatus?: "online" | "away" | "offline";
+  /** Heartbeat activo neste tenant. */
+  presenceConnected?: boolean;
+  /** Estado visual efectivo (intent + presença). */
+  effectiveAvailabilityStatus?: "online" | "away" | "offline";
 }
 
 interface AuthContextValue {
@@ -67,6 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
+    const sessionKey = getPresenceSessionKeyOrNull();
+    if (sessionKey) {
+      void api.post("/auth/logout", { sessionKey }).catch(() => {
+        /* ignore — token será removido localmente */
+      });
+    }
     localStorage.removeItem(TOKEN_KEY);
     api.setToken(null);
     setUser(null);

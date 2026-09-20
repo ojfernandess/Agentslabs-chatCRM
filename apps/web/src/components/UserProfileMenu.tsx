@@ -29,6 +29,8 @@ import {
   USER_AVAILABILITY_CHANGED_EVENT,
   normalizeAvailabilityStatus,
   availabilityDotClass,
+  resolveEffectiveDisplayStatus,
+  USER_PRESENCE_CHANGED_EVENT,
   type UserAvailability,
 } from "@/lib/userAvailability";
 import { ApiError } from "@/lib/api";
@@ -87,6 +89,9 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [availability, setAvailability] = useState<Availability>(readLocalAvailability);
+  const [presenceConnected, setPresenceConnected] = useState<boolean>(
+    () => user.presenceConnected ?? false,
+  );
   const [autoOffline, setAutoOffline] = useState(readAutoOffline);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [theme, setTheme] = useState<ThemePref>(getThemePreference);
@@ -100,6 +105,22 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
   const canSwitchOrganization =
     !superAdmin && !user.superAdminActorId && membershipOrgs.length > 1;
   const activeOrganizationId = user.organizationId ?? user.organization?.id ?? null;
+
+  useEffect(() => {
+    setPresenceConnected(user.presenceConnected ?? false);
+  }, [user.id, user.presenceConnected]);
+
+  useEffect(() => {
+    const onPresence = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{ userId?: string; presenceConnected?: boolean }>
+      ).detail;
+      if (detail?.userId !== user.id || detail.presenceConnected === undefined) return;
+      setPresenceConnected(detail.presenceConnected);
+    };
+    window.addEventListener(USER_PRESENCE_CHANGED_EVENT, onPresence);
+    return () => window.removeEventListener(USER_PRESENCE_CHANGED_EVENT, onPresence);
+  }, [user.id]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -247,7 +268,9 @@ export function UserProfileMenu({ user, className, onLogout, compact = false }: 
     localStorage.setItem(AUTO_OFFLINE_STORAGE, on ? "1" : "0");
   }, []);
 
-  const availDot = availabilityDotClass(availability);
+  const availDot = availabilityDotClass(
+    resolveEffectiveDisplayStatus(availability, presenceConnected),
+  );
 
   const avatarSrc = resolveUserAvatarUrl(user.avatarUrl);
 

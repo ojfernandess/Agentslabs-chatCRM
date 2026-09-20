@@ -12,7 +12,8 @@ import {
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { userBelongsToOrganization } from "../lib/organizationMemberships.js";
 import { broadcastConversationReadState, broadcastToOrganization } from "../lib/workspaceHub.js";
-import { isOnlineForTransfer, promoteUserToOnlineIfInactive } from "../lib/userAvailability.js";
+import { promoteUserToOnlineIfInactive } from "../lib/userAvailability.js";
+import { isAgentEligibleForTransfer } from "../lib/presenceService.js";
 import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
@@ -1887,7 +1888,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           where: { id: assigneeId },
           select: { availabilityStatus: true },
         });
-        if (!assignee || !isOnlineForTransfer(assignee.availabilityStatus)) {
+        if (
+          !assignee ||
+          !(await isAgentEligibleForTransfer(assigneeId, organizationId, assignee.availabilityStatus))
+        ) {
           return reply.status(400).send({
             error: "Bad Request",
             message: "Assignee must be online to receive a transfer",

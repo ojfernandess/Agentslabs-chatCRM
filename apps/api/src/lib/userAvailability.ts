@@ -32,6 +32,16 @@ export function isOnlineForTransfer(status: UserAvailabilityStatus): boolean {
   return status === "ONLINE";
 }
 
+/** Estado visual efectivo: intent (availability) + presença activa (heartbeat). */
+export function resolveEffectiveAvailability(
+  status: UserAvailabilityStatus,
+  presenceConnected: boolean,
+): AvailabilityClient {
+  if (status === "AWAY") return "away";
+  if (status === "OFFLINE") return "offline";
+  return presenceConnected ? "online" : "offline";
+}
+
 /** Ao assumir conversa ou enviar mensagem ao cliente, passa ausente/offline → online. */
 export async function promoteUserToOnlineIfInactive(
   userId: string,

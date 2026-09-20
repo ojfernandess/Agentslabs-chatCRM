@@ -104,3 +104,18 @@ export function broadcastUserAvailabilityChanged(
     status,
   });
 }
+
+/** Presença efectiva mudou (heartbeat timeout ou reconexão) — não altera intent no banco. */
+export function broadcastUserPresenceChanged(
+  organizationId: string,
+  userId: string,
+  presenceConnected: boolean,
+  effectiveAvailabilityStatus: "online" | "away" | "offline",
+): void {
+  broadcastToOrganization(organizationId, {
+    type: "user.presence_changed",
+    userId,
+    presenceConnected,
+    effectiveAvailabilityStatus,
+  });
+}

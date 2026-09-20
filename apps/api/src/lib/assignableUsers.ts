@@ -1,13 +1,19 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { availabilityToClient } from "./userAvailability.js";
+import { availabilityToClient, resolveEffectiveAvailability } from "./userAvailability.js";
+import { getActivePresenceUserIds } from "./presenceService.js";
 import { listMemberUserIds, organizationMembersWhere } from "./organizationMemberships.js";
 
 export type AssignableUserRow = {
   id: string;
   name: string;
   avatarUrl: string | null;
+  /** Intent escolhido pelo atendente (persistido). */
   availabilityStatus: "online" | "away" | "offline";
+  /** Presença activa com heartbeat recente. */
+  presenceConnected: boolean;
+  /** Estado visual / elegibilidade para transferência. */
+  effectiveAvailabilityStatus: "online" | "away" | "offline";
   availabilityUpdatedAt: string | null;
   openConversationCount: number;
 };
@@ -32,15 +38,29 @@ export async function listAssignableUsers(organizationId: string): Promise<Assig
   });
 
   const countMap = await openConversationCountByUserId(organizationId, users.map((u) => u.id));
+  const presentIds = await getActivePresenceUserIds(
+    organizationId,
+    users.map((u) => u.id),
+  );
 
-  return users.map((row) => ({
-    id: row.id,
-    name: row.name,
-    avatarUrl: row.avatarUrl,
-    availabilityStatus: availabilityToClient(row.availabilityStatus),
-    availabilityUpdatedAt: row.availabilityUpdatedAt?.toISOString() ?? null,
-    openConversationCount: countMap.get(row.id) ?? 0,
-  }));
+  return users.map((row) => {
+    const intent = availabilityToClient(row.availabilityStatus);
+    const presenceConnected = presentIds.has(row.id);
+    const effectiveAvailabilityStatus = resolveEffectiveAvailability(
+      row.availabilityStatus,
+      presenceConnected,
+    );
+    return {
+      id: row.id,
+      name: row.name,
+      avatarUrl: row.avatarUrl,
+      availabilityStatus: intent,
+      presenceConnected,
+      effectiveAvailabilityStatus,
+      availabilityUpdatedAt: row.availabilityUpdatedAt?.toISOString() ?? null,
+      openConversationCount: countMap.get(row.id) ?? 0,
+    };
+  });
 }
 
 /** Conversas abertas atribuídas ao atendente **neste tenant** (não global / outras orgs). */

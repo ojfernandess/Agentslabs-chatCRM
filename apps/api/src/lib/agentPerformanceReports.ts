@@ -40,10 +40,12 @@
  *   SUM(resolved_at − primeira mensagem humana do agente) nos encerramentos do agente
  *
  * Tempo online:
- *   Indisponível — o sistema só guarda snapshot de availability_status, sem histórico de sessão/presença.
+ *   Soma dos intervalos de presença (user_presence_sessions) no período, fundindo sessões
+ *   sobrepostas (multi-abas). Fim de sessão = disconnected_at ou last_seen_at + timeout de presença.
  */
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { PRESENCE_TIMEOUT_MS } from "./presenceConfig.js";
 import { availabilityToClient } from "./userAvailability.js";
 
 export type AgentPerformanceGranularity = "day" | "week" | "month";
@@ -157,6 +159,87 @@ function bucketKey(d: Date): string {
   return d.toISOString();
 }
 
+type TimeInterval = { start: Date; end: Date };
+
+function sessionEffectiveEnd(
+  session: { lastSeenAt: Date; disconnectedAt: Date | null },
+  now: Date,
+): Date {
+  if (session.disconnectedAt) return session.disconnectedAt;
+  const timeoutEnd = new Date(session.lastSeenAt.getTime() + PRESENCE_TIMEOUT_MS);
+  return timeoutEnd <= now ? timeoutEnd : now;
+}
+
+function clipInterval(start: Date, end: Date, from: Date, to: Date): TimeInterval | null {
+  const clippedStart = start < from ? from : start;
+  const clippedEnd = end > to ? to : end;
+  if (clippedEnd <= clippedStart) return null;
+  return { start: clippedStart, end: clippedEnd };
+}
+
+export function mergePresenceIntervals(intervals: TimeInterval[]): TimeInterval[] {
+  if (intervals.length === 0) return [];
+  const sorted = [...intervals].sort((a, b) => a.start.getTime() - b.start.getTime());
+  const merged: TimeInterval[] = [{ ...sorted[0]! }];
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i]!;
+    const last = merged[merged.length - 1]!;
+    if (cur.start <= last.end) {
+      if (cur.end > last.end) last.end = cur.end;
+    } else {
+      merged.push({ ...cur });
+    }
+  }
+  return merged;
+}
+
+function sumIntervalSeconds(intervals: TimeInterval[]): number {
+  return intervals.reduce((acc, iv) => acc + (iv.end.getTime() - iv.start.getTime()) / 1000, 0);
+}
+
+/** Tempo online real a partir de sessões de presença (heartbeat) no tenant. */
+export async function computeAgentOnlineTimeSec(params: {
+  userId: string;
+  organizationId: string;
+  from: Date;
+  to: Date;
+  now?: Date;
+}): Promise<{ onlineTimeSec: number | null; presenceDataAvailable: boolean }> {
+  const now = params.now ?? new Date();
+  const reportTo = params.to > now ? now : params.to;
+
+  const sessions = await prisma.userPresenceSession.findMany({
+    where: {
+      userId: params.userId,
+      organizationId: params.organizationId,
+      createdAt: { lte: params.to },
+      OR: [{ disconnectedAt: null }, { disconnectedAt: { gte: params.from } }],
+    },
+    select: {
+      createdAt: true,
+      lastSeenAt: true,
+      disconnectedAt: true,
+    },
+  });
+
+  const intervals: TimeInterval[] = [];
+  for (const session of sessions) {
+    const end = sessionEffectiveEnd(session, now);
+    const clipped = clipInterval(session.createdAt, end, params.from, reportTo);
+    if (clipped) intervals.push(clipped);
+  }
+
+  if (intervals.length === 0) {
+    return { onlineTimeSec: null, presenceDataAvailable: false };
+  }
+
+  const merged = mergePresenceIntervals(intervals);
+  return {
+    onlineTimeSec: Math.max(0, Math.round(sumIntervalSeconds(merged))),
+    presenceDataAvailable: true,
+  };
+}
+
 export async function buildAgentPerformanceDetail(
   filter: AgentPerformanceDetailFilter,
 ): Promise<AgentPerformanceDetailPayload | null> {
@@ -209,6 +292,7 @@ export async function buildAgentPerformanceDetail(
     handoffSeriesRows,
     completedSeriesRows,
     statusRows,
+    onlineTimeResult,
   ] = await Promise.all([
     prisma.$queryRaw<
       Array<{ received: number; completed: number }>
@@ -641,6 +725,12 @@ export async function buildAgentPerformanceDetail(
         AND te.occurred_at >= ${from}
         AND te.occurred_at <= ${to}
     `,
+    computeAgentOnlineTimeSec({
+      userId: agentId,
+      organizationId: org,
+      from,
+      to,
+    }),
   ]);
 
   const received = overviewRow[0]?.received ?? 0;
@@ -674,7 +764,7 @@ export async function buildAgentPerformanceDetail(
       granularity,
       csatEnabled,
       slaConfigured,
-      presenceDataAvailable: false,
+      presenceDataAvailable: onlineTimeResult.presenceDataAvailable,
     },
     agent: {
       userId: user.id,
@@ -720,7 +810,7 @@ export async function buildAgentPerformanceDetail(
     productivity: {
       messagesSent: messagesRow[0]?.n ?? 0,
       uniqueClients: clientsRow[0]?.n ?? 0,
-      onlineTimeSec: null,
+      onlineTimeSec: onlineTimeResult.onlineTimeSec,
       handleTimeSec:
         (timesHandleRow[0]?.sample_n ?? 0) > 0 && timesHandleRow[0]?.total_sec != null
           ? Math.max(0, Math.round(timesHandleRow[0].total_sec))

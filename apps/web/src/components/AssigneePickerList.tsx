@@ -7,6 +7,7 @@ import { resolveUserAvatarUrl } from "@/lib/userAvatar";
 import {
   availabilityDotClass,
   availabilityLabelKey,
+  displayAvailabilityStatus,
   isOnlineForTransfer,
   type UserAvailability,
 } from "@/lib/userAvailability";
@@ -16,6 +17,8 @@ export type AssigneePickerRow = {
   name: string;
   avatarUrl?: string | null;
   availabilityStatus: UserAvailability;
+  effectiveAvailabilityStatus?: UserAvailability;
+  presenceConnected?: boolean;
   openConversationCount?: number;
   availabilityUpdatedAt?: string | null;
 };
@@ -68,7 +71,8 @@ export function AssigneePickerList({
   }, [query, rows]);
 
   const subtitleFor = (row: AssigneePickerRow): string | null => {
-    if (row.availabilityStatus === "online") {
+    const display = displayAvailabilityStatus(row);
+    if (display === "online") {
       const count = row.openConversationCount ?? 0;
       const key =
         count === 1
@@ -133,7 +137,8 @@ export function AssigneePickerList({
           </p>
         ) : (
           filtered.map((row) => {
-            const online = isOnlineForTransfer(row.availabilityStatus);
+            const displayStatus = displayAvailabilityStatus(row);
+            const online = isOnlineForTransfer(displayStatus);
             const disabled = onlineOnly && !online;
             const selected = selectedId === row.id;
             const avatarSrc = resolveUserAvatarUrl(row.avatarUrl);
@@ -168,7 +173,7 @@ export function AssigneePickerList({
                   <span
                     className={clsx(
                       "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-white dark:ring-ink-900",
-                      availabilityDotClass(row.availabilityStatus),
+                      availabilityDotClass(displayStatus),
                     )}
                     aria-hidden
                   />
@@ -182,10 +187,10 @@ export function AssigneePickerList({
                     <span
                       className={clsx(
                         "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset",
-                        availabilityPillClass(row.availabilityStatus),
+                        availabilityPillClass(displayStatus),
                       )}
                     >
-                      {t(availabilityLabelKey(row.availabilityStatus))}
+                      {t(availabilityLabelKey(displayStatus))}
                     </span>
                     {subtitle ? (
                       <>

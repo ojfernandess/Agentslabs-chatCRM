@@ -6,8 +6,18 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { translate } from "@/i18n/messages";
 import { playIncomingCallRing } from "@/lib/audioAlerts";
 import { invalidateCachedConversation } from "@/lib/conversationDetailCache";
-import { publishUserAvailabilityChanged, type UserAvailability } from "@/lib/userAvailability";
+import { PRESENCE_HEARTBEAT_INTERVAL_MS } from "@/lib/presenceConfig";
+import {
+  getOrCreatePresenceSessionKey,
+  sendPresenceSessionEndKeepalive,
+} from "@/lib/presenceSession";
+import {
+  publishUserAvailabilityChanged,
+  publishUserPresenceChanged,
+  type UserAvailability,
+} from "@/lib/userAvailability";
 import { publishConversationAgentTyping } from "@/lib/conversationAgentTyping";
+import { api } from "@/lib/api";
 
 const TOKEN_KEY = "openconduit_token";
 
@@ -52,12 +62,32 @@ export function WorkspaceRealtime() {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
 
+    const sessionKey = getOrCreatePresenceSessionKey();
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const sendHeartbeat = () => {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: "presence.heartbeat", sessionKey }));
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      void api
+        .post<{ ok: boolean }>("/auth/me/presence/heartbeat", { sessionKey })
+        .catch(() => {
+          /* ignore transient errors */
+        });
+    };
+
     let cancelled = false;
     let retryAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const url = `${proto}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}`;
+    const url = `${proto}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(sessionKey)}`;
 
     const handlePayload = (data: {
       type?: string;
@@ -77,7 +107,17 @@ export function WorkspaceRealtime() {
       linkedPhone?: string | null;
       targetUserIds?: string[] | null;
       userId?: string;
+      presenceConnected?: boolean;
+      effectiveAvailabilityStatus?: string;
     }) => {
+      if (data.type === "user.presence_changed" && data.userId && data.effectiveAvailabilityStatus) {
+        publishUserPresenceChanged(
+          data.userId,
+          Boolean(data.presenceConnected),
+          data.effectiveAvailabilityStatus as UserAvailability,
+        );
+        return;
+      }
       if (data.type === "user.availability_changed" && data.userId && data.status) {
         publishUserAvailabilityChanged(
           data.userId,
@@ -230,6 +270,7 @@ export function WorkspaceRealtime() {
 
       ws.onopen = () => {
         retryAttempt = 0;
+        sendHeartbeat();
       };
 
       ws.onmessage = (ev) => {
@@ -253,8 +294,19 @@ export function WorkspaceRealtime() {
 
     connect();
 
+    heartbeatTimer = setInterval(sendHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
+    sendHeartbeat();
+
+    const onPageHide = () => {
+      sendPresenceSessionEndKeepalive(token);
+    };
+    window.addEventListener("pagehide", onPageHide);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("pagehide", onPageHide);
+      if (heartbeatTimer != null) clearInterval(heartbeatTimer);
+      sendPresenceSessionEndKeepalive(token);
       if (reconnectTimer != null) clearTimeout(reconnectTimer);
       const ws = wsRef.current;
       wsRef.current = null;

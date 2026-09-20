@@ -24,6 +24,16 @@ import {
   type AvailabilityClient,
 } from "../lib/userAvailability.js";
 import { broadcastUserAvailabilityChanged } from "../lib/workspaceHub.js";
+import {
+  computeEffectiveAvailability,
+  endPresenceSession,
+  hasActivePresence,
+  isValidPresenceSessionKey,
+  notifyPresenceChangedIfNeeded,
+  notifyPresenceRestoredIfNeeded,
+  resolveEffectiveAvailabilityForUser,
+  touchPresenceSession,
+} from "../lib/presenceService.js";
 import { assertCanAddTeamMembers, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import {
   activateOrganizationForUser,
@@ -61,6 +71,14 @@ const changePasswordSchema = z.object({
 
 const patchAvailabilitySchema = z.object({
   status: z.enum(["online", "away", "offline"]),
+});
+
+const presenceSessionSchema = z.object({
+  sessionKey: z.string().min(8).max(64),
+});
+
+const logoutSchema = z.object({
+  sessionKey: z.string().min(8).max(64).optional(),
 });
 
 const forgotPasswordSchema = z.object({
@@ -546,7 +564,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   },
   );
 
-  app.post("/logout", { preHandler: [authenticate] }, async () => {
+  app.post("/logout", { preHandler: [authenticate] }, async (request) => {
+    const parsed = logoutSchema.safeParse(request.body ?? {});
+    if (parsed.success && parsed.data.sessionKey && isValidPresenceSessionKey(parsed.data.sessionKey)) {
+      const orgId = request.user.actingOrganizationId ?? request.user.organizationId ?? null;
+      if (orgId) {
+        const { becameOffline } = await endPresenceSession(request.user.id, parsed.data.sessionKey);
+        if (becameOffline) {
+          await notifyPresenceChangedIfNeeded(request.user.id, orgId, true);
+        }
+      }
+    }
     return { message: "Logged out" };
   });
 
@@ -634,9 +662,24 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       fallbackRole: user.role,
     });
 
+    const orgIdForPresence = actingId ?? user.organizationId ?? null;
+    let presenceConnected = false;
+    let effectiveAvailabilityStatus: AvailabilityClient = availabilityToClient(user.availabilityStatus);
+    if (orgIdForPresence) {
+      const presence = await resolveEffectiveAvailabilityForUser(
+        user.id,
+        orgIdForPresence,
+        user.availabilityStatus,
+      );
+      presenceConnected = presence.presenceConnected;
+      effectiveAvailabilityStatus = presence.effectiveAvailabilityStatus;
+    }
+
     return {
       ...user,
       availabilityStatus: availabilityToClient(user.availabilityStatus),
+      presenceConnected,
+      effectiveAvailabilityStatus,
       role: effectiveRole as string,
       actingOrganizationId: actingId,
       actingOrganization,
@@ -826,6 +869,63 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       broadcastUserAvailabilityChanged(orgId, request.user.id, clientStatus);
     }
     return { availabilityStatus: clientStatus as AvailabilityClient };
+  });
+
+  app.post("/me/presence/heartbeat", { preHandler: [authenticate] }, async (request, reply) => {
+    const parsed = presenceSessionSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const orgId = request.user.actingOrganizationId ?? request.user.organizationId ?? null;
+    if (!orgId) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "No organization context",
+        statusCode: 400,
+      });
+    }
+
+    const wasPresent = await hasActivePresence(request.user.id, orgId);
+    await touchPresenceSession({
+      userId: request.user.id,
+      organizationId: orgId,
+      sessionKey: parsed.data.sessionKey,
+      source: "http",
+    });
+    if (!wasPresent) {
+      await notifyPresenceRestoredIfNeeded(request.user.id, orgId);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.id },
+      select: { availabilityStatus: true },
+    });
+    const effectiveAvailabilityStatus = user
+      ? computeEffectiveAvailability(user.availabilityStatus, true)
+      : ("offline" as AvailabilityClient);
+
+    return {
+      ok: true,
+      presenceConnected: true,
+      effectiveAvailabilityStatus,
+    };
+  });
+
+  app.post("/me/presence/session-end", { preHandler: [authenticate] }, async (request, reply) => {
+    const parsed = presenceSessionSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+
+    const { becameOffline, organizationId } = await endPresenceSession(
+      request.user.id,
+      parsed.data.sessionKey,
+    );
+    if (organizationId && becameOffline) {
+      await notifyPresenceChangedIfNeeded(request.user.id, organizationId, true);
+    }
+
+    return { ok: true, becameOffline };
   });
 
   app.patch("/me", { preHandler: [authenticate] }, async (request, reply) => {

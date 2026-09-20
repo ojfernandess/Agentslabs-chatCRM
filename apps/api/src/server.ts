@@ -87,6 +87,7 @@ import { runCrmFlowNoReplyScannerTick } from "./lib/crmFlowNoReplyScanner.js";
 import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
 import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
 import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
+import { sweepStalePresenceSessions } from "./lib/presenceService.js";
 import { runCrmFlowSchedulerTick } from "./lib/crmFlowScheduler.js";
 import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
 import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
@@ -321,6 +322,15 @@ try {
     void runConversationMediaRetentionTick({ log: app.log });
   }, mediaRetentionMs);
   void runConversationMediaRetentionTick({ log: app.log });
+  const presenceSweepMs = 30_000;
+  setInterval(() => {
+    void sweepStalePresenceSessions().catch((err) => {
+      app.log.error({ err }, "presence sweep failed");
+    });
+  }, presenceSweepMs);
+  void sweepStalePresenceSessions().catch((err) => {
+    app.log.error({ err }, "presence sweep failed");
+  });
   const wavoipStatusSyncMs = 5 * 60 * 1000;
   setInterval(() => {
     void runWavoipStatusSyncTick(app.log);

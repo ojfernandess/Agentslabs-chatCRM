@@ -28,9 +28,12 @@ import { resolveUserAvatarUrl } from "@/lib/userAvatar";
 import {
   availabilityDotClass,
   availabilityLabelKey,
+  displayAvailabilityStatus,
   isOnlineForTransfer,
   normalizeAvailabilityStatus,
+  patchAssigneePresence,
   USER_AVAILABILITY_CHANGED_EVENT,
+  USER_PRESENCE_CHANGED_EVENT,
   type UserAvailability,
 } from "@/lib/userAvailability";
 import type { AssigneePickerRow } from "@/components/AssigneePickerList";
@@ -91,6 +94,8 @@ function mapAssignableAgent(row: {
   name: string;
   avatarUrl?: string | null;
   availabilityStatus?: UserAvailability;
+  effectiveAvailabilityStatus?: UserAvailability;
+  presenceConnected?: boolean;
   openConversationCount?: number;
   availabilityUpdatedAt?: string | null;
 }): AssigneePickerRow {
@@ -99,6 +104,10 @@ function mapAssignableAgent(row: {
     name: row.name,
     avatarUrl: row.avatarUrl ?? null,
     availabilityStatus: normalizeAvailabilityStatus(row.availabilityStatus),
+    effectiveAvailabilityStatus: row.effectiveAvailabilityStatus
+      ? normalizeAvailabilityStatus(row.effectiveAvailabilityStatus)
+      : undefined,
+    presenceConnected: row.presenceConnected,
     openConversationCount: row.openConversationCount ?? 0,
     availabilityUpdatedAt: row.availabilityUpdatedAt ?? null,
   };
@@ -160,7 +169,27 @@ export function ConversationContextMenu({
       });
     };
     window.addEventListener(USER_AVAILABILITY_CHANGED_EVENT, onAvailability);
-    return () => window.removeEventListener(USER_AVAILABILITY_CHANGED_EVENT, onAvailability);
+
+    const onPresence = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{
+          userId?: string;
+          presenceConnected?: boolean;
+          effectiveAvailabilityStatus?: UserAvailability;
+        }>
+      ).detail;
+      if (!detail?.userId || detail.presenceConnected === undefined) return;
+      const effective = normalizeAvailabilityStatus(detail.effectiveAvailabilityStatus);
+      setAgents((rows) =>
+        patchAssigneePresence(rows, detail.userId!, detail.presenceConnected!, effective),
+      );
+    };
+    window.addEventListener(USER_PRESENCE_CHANGED_EVENT, onPresence);
+
+    return () => {
+      window.removeEventListener(USER_AVAILABILITY_CHANGED_EVENT, onAvailability);
+      window.removeEventListener(USER_PRESENCE_CHANGED_EVENT, onPresence);
+    };
   }, [target, position]);
 
   const loadSubmenuData = useCallback(
@@ -558,7 +587,8 @@ export function ConversationContextMenu({
             <p className="px-3 py-2 text-xs text-ink-500">{t("conversations.contextMenu.loading")}</p>
           ) : (
             agents.map((agent) => {
-              const online = isOnlineForTransfer(agent.availabilityStatus);
+              const displayStatus = displayAvailabilityStatus(agent);
+              const online = isOnlineForTransfer(displayStatus);
               const avatarSrc = resolveUserAvatarUrl(agent.avatarUrl);
               return (
                 <button
@@ -580,7 +610,7 @@ export function ConversationContextMenu({
                     <span
                       className={clsx(
                         "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-950",
-                        availabilityDotClass(agent.availabilityStatus),
+                        availabilityDotClass(displayStatus),
                       )}
                       aria-hidden
                     />
@@ -588,7 +618,7 @@ export function ConversationContextMenu({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{agent.name}</span>
                     <span className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-ink-500 dark:text-ink-400">
-                      <span>{t(availabilityLabelKey(agent.availabilityStatus))}</span>
+                      <span>{t(availabilityLabelKey(displayStatus))}</span>
                       {online && (agent.openConversationCount ?? 0) > 0 ? (
                         <>
                           <span aria-hidden>·</span>

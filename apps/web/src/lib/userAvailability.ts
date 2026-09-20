@@ -6,6 +6,8 @@ export const AVAIL_STORAGE = "openconduit_availability";
 
 export const USER_AVAILABILITY_CHANGED_EVENT = "openconduit:user-availability-changed";
 
+export const USER_PRESENCE_CHANGED_EVENT = "openconduit:user-presence-changed";
+
 export function readLocalAvailability(): UserAvailability {
   const v = localStorage.getItem(AVAIL_STORAGE);
   if (v === "away" || v === "offline" || v === "online") return v;
@@ -27,6 +29,20 @@ export function publishUserAvailabilityChanged(userId: string, status: UserAvail
   window.dispatchEvent(
     new CustomEvent(USER_AVAILABILITY_CHANGED_EVENT, {
       detail: { userId, status: normalized },
+    }),
+  );
+}
+
+/** Presença efectiva mudou (heartbeat / timeout) — backend é fonte de verdade. */
+export function publishUserPresenceChanged(
+  userId: string,
+  presenceConnected: boolean,
+  effectiveAvailabilityStatus: UserAvailability,
+): void {
+  const effective = normalizeAvailabilityStatus(effectiveAvailabilityStatus);
+  window.dispatchEvent(
+    new CustomEvent(USER_PRESENCE_CHANGED_EVENT, {
+      detail: { userId, presenceConnected, effectiveAvailabilityStatus: effective },
     }),
   );
 }
@@ -82,6 +98,57 @@ export function patchAssigneeAvailability<T extends { id: string; availabilitySt
     if (row.availabilityStatus === normalized) return row;
     changed = true;
     return { ...row, availabilityStatus: normalized };
+  });
+  return changed ? next : rows;
+}
+
+export type AssigneePresenceFields = {
+  availabilityStatus: UserAvailability;
+  effectiveAvailabilityStatus?: UserAvailability;
+  presenceConnected?: boolean;
+};
+
+/** Estado visual — preferir effectiveAvailabilityStatus vindo do backend. */
+export function displayAvailabilityStatus(row: AssigneePresenceFields): UserAvailability {
+  if (row.effectiveAvailabilityStatus) {
+    return normalizeAvailabilityStatus(row.effectiveAvailabilityStatus);
+  }
+  return normalizeAvailabilityStatus(row.availabilityStatus);
+}
+
+export function resolveEffectiveDisplayStatus(
+  availabilityStatus: UserAvailability,
+  presenceConnected?: boolean,
+): UserAvailability {
+  if (availabilityStatus === "away") return "away";
+  if (availabilityStatus === "offline") return "offline";
+  return presenceConnected ? "online" : "offline";
+}
+
+export function patchAssigneePresence<
+  T extends { id: string; availabilityStatus: UserAvailability } & AssigneePresenceFields,
+>(
+  rows: T[],
+  userId: string,
+  presenceConnected: boolean,
+  effectiveAvailabilityStatus: UserAvailability,
+): T[] {
+  const effective = normalizeAvailabilityStatus(effectiveAvailabilityStatus);
+  let changed = false;
+  const next = rows.map((row) => {
+    if (row.id !== userId) return row;
+    if (
+      row.presenceConnected === presenceConnected &&
+      row.effectiveAvailabilityStatus === effective
+    ) {
+      return row;
+    }
+    changed = true;
+    return {
+      ...row,
+      presenceConnected,
+      effectiveAvailabilityStatus: effective,
+    };
   });
   return changed ? next : rows;
 }
