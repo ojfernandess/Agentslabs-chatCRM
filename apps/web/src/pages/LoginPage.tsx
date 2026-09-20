@@ -117,9 +117,9 @@ export function LoginPage() {
   };
 
   return (
-    <AuthSplitShell>
+    <AuthSplitShell variant="premium">
         <motion.div
-          className="w-full max-w-md rounded-2xl border border-ink-100 bg-white p-8 shadow-xl dark:border-ink-700 dark:bg-ink-900 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none dark:md:bg-transparent"
+          className="auth-login-card"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
@@ -134,7 +134,7 @@ export function LoginPage() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.35, delay: 0.05 }}
             />
-            <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50">
+            <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-white">
               {mode === "login" ? t("login.title") : t("login.forgotTitle")}
             </h1>
             <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
@@ -169,7 +169,7 @@ export function LoginPage() {
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="input-field mt-1.5 rounded-lg border-ink-200 dark:border-ink-600"
+                  className="auth-login-input mt-1.5"
                   placeholder={t("login.emailPlaceholder")}
                 />
               </div>
@@ -186,14 +186,14 @@ export function LoginPage() {
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="input-field w-full rounded-lg border-ink-200 pr-11 dark:border-ink-600"
+                    className="auth-login-input pr-11"
                     placeholder={t("login.passwordPlaceholder")}
                   />
                   <button
                     type="button"
                     tabIndex={-1}
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-800"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-700 dark:text-ink-400 dark:hover:bg-white/[0.06] dark:hover:text-ink-200"
                     aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -207,7 +207,7 @@ export function LoginPage() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-ink-300 text-indigo-600 focus:ring-indigo-500 dark:border-ink-600"
+                    className="auth-login-checkbox"
                   />
                   {t("login.rememberMe")}
                 </label>
@@ -218,7 +218,7 @@ export function LoginPage() {
                     setError("");
                     setForgotSent(false);
                   }}
-                  className="font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  className="auth-login-link text-sm"
                 >
                   {t("login.forgotPassword")}
                 </button>
@@ -229,7 +229,7 @@ export function LoginPage() {
               <motion.button
                 type="submit"
                 disabled={loading || turnstileBlocksSubmit(turnstileToken)}
-                className="btn-primary w-full rounded-lg bg-indigo-600 py-2.5 text-white hover:bg-indigo-700 focus-visible:ring-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                className="auth-login-submit"
                 whileTap={{ scale: 0.99 }}
               >
                 {loading ? t("common.loading") : t("login.submit")}
@@ -237,7 +237,7 @@ export function LoginPage() {
 
               <p className="pt-2 text-center text-sm text-ink-600 dark:text-ink-400">
                 {t("login.noAccountPrefix")}{" "}
-                <span className="font-medium text-indigo-600 dark:text-indigo-400">{t("login.contactAdmin")}</span>
+                <span className="auth-login-link">{t("login.contactAdmin")}</span>
               </p>
             </form>
           ) : (
@@ -270,7 +270,7 @@ export function LoginPage() {
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="input-field mt-1.5 rounded-lg border-ink-200 dark:border-ink-600"
+                  className="auth-login-input mt-1.5"
                   placeholder={t("login.emailPlaceholder")}
                 />
               </div>
@@ -278,7 +278,7 @@ export function LoginPage() {
               <motion.button
                 type="submit"
                 disabled={loading || turnstileBlocksSubmit(turnstileToken)}
-                className="btn-primary w-full rounded-lg bg-indigo-600 py-2.5 text-white hover:bg-indigo-700 dark:bg-indigo-500"
+                className="auth-login-submit"
                 whileTap={{ scale: 0.99 }}
               >
                 {loading ? t("common.loading") : t("login.forgotSubmit")}
@@ -290,7 +290,7 @@ export function LoginPage() {
                   setError("");
                   setForgotSent(false);
                 }}
-                className="w-full text-center text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                className="auth-login-link w-full text-center text-sm"
               >
                 {t("login.forgotBack")}
               </button>

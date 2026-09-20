@@ -29,7 +29,6 @@ export default {
           "system-ui",
           "sans-serif",
         ],
-        display: ['"Cormorant Garamond"', "Georgia", "Cambria", "serif"],
       },
       colors: {
         brand: {
