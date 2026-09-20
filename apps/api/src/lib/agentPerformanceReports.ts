@@ -46,6 +46,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { PRESENCE_TIMEOUT_MS } from "./presenceConfig.js";
+import { resolveEffectiveAvailabilityForUser } from "./presenceService.js";
 import { availabilityToClient } from "./userAvailability.js";
 
 export type AgentPerformanceGranularity = "day" | "week" | "month";
@@ -94,7 +95,11 @@ export type AgentPerformanceDetailPayload = {
     name: string;
     avatarUrl: string | null;
     teamNames: string[];
+    /** Intent escolhido pelo atendente (persistido). */
     availabilityStatus: "online" | "away" | "offline" | null;
+    presenceConnected: boolean;
+    /** Estado visual actual (intent + presença heartbeat). */
+    effectiveAvailabilityStatus: "online" | "away" | "offline" | null;
   };
   overview: {
     received: number;
@@ -757,6 +762,12 @@ export async function buildAgentPerformanceDetail(
   }
   const timeSeries = Array.from(tsMerge.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
 
+  const presence = await resolveEffectiveAvailabilityForUser(
+    user.id,
+    org,
+    user.availabilityStatus,
+  );
+
   return {
     meta: {
       from: from.toISOString(),
@@ -772,6 +783,8 @@ export async function buildAgentPerformanceDetail(
       avatarUrl: user.avatarUrl,
       teamNames: user.teamMemberships.map((m) => m.team.name),
       availabilityStatus: availabilityToClient(user.availabilityStatus),
+      presenceConnected: presence.presenceConnected,
+      effectiveAvailabilityStatus: presence.effectiveAvailabilityStatus,
     },
     overview: {
       received,

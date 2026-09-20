@@ -16,6 +16,7 @@ import { MeasuredResponsiveContainer } from "@/components/charts/MeasuredRespons
 import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
 import { resolveUserAvatarUrl } from "@/lib/userAvatar";
+import { resolveEffectiveDisplayStatus, type UserAvailability } from "@/lib/userAvailability";
 
 type Granularity = "day" | "week" | "month";
 
@@ -34,6 +35,8 @@ export type AgentPerformanceDetailPayload = {
     avatarUrl: string | null;
     teamNames: string[];
     availabilityStatus: "online" | "away" | "offline" | null;
+    presenceConnected?: boolean;
+    effectiveAvailabilityStatus?: "online" | "away" | "offline" | null;
   };
   overview: {
     received: number;
@@ -245,12 +248,20 @@ export function AgentPerformanceDetailDrawer({
     return map[status] ?? status;
   };
 
-  const availabilityLabel = (status: AgentPerformanceDetailPayload["agent"]["availabilityStatus"]) => {
+  const availabilityLabel = (status: UserAvailability | null | undefined) => {
     if (status === "online") return t("reportsPage.agentDetailAvailabilityOnline");
     if (status === "away") return t("reportsPage.agentDetailAvailabilityAway");
     if (status === "offline") return t("reportsPage.agentDetailAvailabilityOffline");
     return null;
   };
+
+  const agentDisplayAvailability = data?.agent
+    ? data.agent.effectiveAvailabilityStatus ??
+      resolveEffectiveDisplayStatus(
+        data.agent.availabilityStatus ?? "offline",
+        data.agent.presenceConnected,
+      )
+    : null;
 
   const displayName = data?.agent.name ?? agentName;
   const avatarSrc = resolveUserAvatarUrl(data?.agent.avatarUrl);
@@ -288,19 +299,19 @@ export function AgentPerformanceDetailDrawer({
                 {data?.agent.teamNames.length ? (
                   <p className="truncate text-sm text-ink-500 dark:text-ink-400">{data.agent.teamNames.join(" · ")}</p>
                 ) : null}
-                {data?.agent.availabilityStatus ? (
+                {agentDisplayAvailability ? (
                   <p className="mt-1 text-sm text-ink-600 dark:text-ink-300">
                     <span
                       className={clsx(
                         "mr-1.5 inline-block h-2 w-2 rounded-full",
-                        data.agent.availabilityStatus === "online"
+                        agentDisplayAvailability === "online"
                           ? "bg-emerald-500"
-                          : data.agent.availabilityStatus === "away"
+                          : agentDisplayAvailability === "away"
                             ? "bg-amber-500"
                             : "bg-ink-400",
                       )}
                     />
-                    {availabilityLabel(data.agent.availabilityStatus)}
+                    {availabilityLabel(agentDisplayAvailability)}
                   </p>
                 ) : null}
                 <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">
