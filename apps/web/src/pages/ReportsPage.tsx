@@ -33,6 +33,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
 import { formatCurrencyFromCents, formatCurrencyUnits } from "@/lib/currency";
 import { Briefcase } from "lucide-react";
+import { AgentPerformanceDetailDrawer } from "@/components/reports/AgentPerformanceDetailDrawer";
 
 type Granularity = "day" | "week" | "month";
 
@@ -209,6 +210,8 @@ export function ReportsPage() {
   const [data, setData] = useState<ReportsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedAgentName, setSelectedAgentName] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -767,6 +770,7 @@ export function ReportsPage() {
                     <UsersRound className="h-5 w-5 text-brand-500" />
                     {t("reportsPage.agentsTitle")}
                   </h2>
+                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.agentDetailOpenHint")}</p>
                 </div>
                 <div className="overflow-x-auto">
                   {data.agents.every((a) => a.outboundMessages === 0) ? (
@@ -786,7 +790,18 @@ export function ReportsPage() {
                             key={a.userId}
                             className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
                           >
-                            <td className="px-6 py-3 font-medium text-ink-900 dark:text-ink-100">{a.name}</td>
+                            <td className="px-6 py-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedAgentId(a.userId);
+                                  setSelectedAgentName(a.name);
+                                }}
+                                className="group inline-flex items-center gap-1.5 font-medium text-ink-900 hover:text-brand-600 dark:text-ink-100 dark:hover:text-brand-400"
+                              >
+                                <span className="border-b border-transparent group-hover:border-brand-400">{a.name}</span>
+                              </button>
+                            </td>
                             <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.conversationsTouched}</td>
                             <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.outboundMessages}</td>
                           </tr>
@@ -1169,6 +1184,15 @@ export function ReportsPage() {
           </>
         ) : null}
       </div>
+      <AgentPerformanceDetailDrawer
+        open={selectedAgentId != null}
+        userId={selectedAgentId}
+        agentName={selectedAgentName}
+        fromStr={fromStr}
+        toStr={toStr}
+        granularity={granularity}
+        onClose={() => setSelectedAgentId(null)}
+      />
     </PageTransition>
   );
 }
