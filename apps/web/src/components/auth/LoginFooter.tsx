@@ -11,8 +11,7 @@ const INSTAGRAM_URL = "https://www.instagram.com/agentslab.co";
 const CONTACT_EMAIL = "mailto:contato@agentslabs.cloud";
 
 type LoginFooterProps = {
-  variant?: "brand" | "themed" | "adaptive";
-  compact?: boolean;
+  variant?: "brand" | "themed";
 };
 
 function FooterLink({
@@ -39,45 +38,35 @@ function FooterLink({
   );
 }
 
-export function LoginFooter({ variant = "brand", compact = false }: LoginFooterProps) {
+export function LoginFooter({ variant = "brand" }: LoginFooterProps) {
   const { t } = useI18n();
   const year = new Date().getFullYear();
-  const themed = variant === "themed" || variant === "adaptive";
-  const adaptive = variant === "adaptive";
+  const themed = variant === "themed";
 
   return (
     <footer
       className={clsx(
         "mt-auto w-full border-t",
-        adaptive
-          ? "border-ink-200/80 bg-[#f6f4fb] text-ink-600 dark:border-white/[0.06] dark:bg-[#0F1420] dark:text-ink-300"
-          : themed
-            ? "border-ink-200 bg-white text-ink-600 dark:border-ink-800 dark:bg-ink-950 dark:text-ink-300"
-            : "border-transparent bg-[#071428] text-slate-300",
+        themed
+          ? "border-ink-200 bg-white text-ink-600 dark:border-ink-800 dark:bg-ink-950 dark:text-ink-300"
+          : "border-transparent bg-[#071428] text-slate-300",
       )}
     >
-      <div className={clsx("mx-auto max-w-7xl px-6 lg:px-12", compact ? "py-6 sm:py-7" : "py-10")}>
-        <div
-          className={clsx(
-            "grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))]",
-            compact ? "lg:gap-8" : "lg:gap-10",
-          )}
-        >
-          <div className="space-y-3 sm:col-span-2 lg:col-span-1">
+      <div className="mx-auto max-w-7xl px-6 py-10 lg:px-12">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))] lg:gap-10">
+          <div className="space-y-4 sm:col-span-2 lg:col-span-1">
             <img
               src={brandAssetUrl("/logo.svg")}
               alt="OpenNexo CRM"
               className={clsx(
-                compact ? "h-8" : "h-10",
-                "w-auto",
+                "h-10 w-auto",
                 themed ? systemLogoDarkModeClass : systemLogoOnDarkBgClass,
               )}
               decoding="async"
             />
             <p
               className={clsx(
-                "max-w-xs leading-relaxed",
-                compact ? "text-xs" : "text-sm",
+                "max-w-xs text-sm leading-relaxed",
                 themed ? "text-ink-500 dark:text-ink-400" : "text-slate-400",
               )}
             >
@@ -88,14 +77,13 @@ export function LoginFooter({ variant = "brand", compact = false }: LoginFooterP
           <div>
             <h3
               className={clsx(
-                "mb-2.5 font-semibold",
-                compact ? "text-xs" : "text-sm",
+                "mb-3 text-sm font-semibold",
                 themed ? "text-ink-900 dark:text-ink-50" : "text-white",
               )}
             >
               {t("loginFooter.product")}
             </h3>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               <li>
                 <FooterLink to="/legal/about" themed={themed}>
                   {t("loginFooter.about")}
@@ -117,14 +105,13 @@ export function LoginFooter({ variant = "brand", compact = false }: LoginFooterP
           <div>
             <h3
               className={clsx(
-                "mb-2.5 font-semibold",
-                compact ? "text-xs" : "text-sm",
+                "mb-3 text-sm font-semibold",
                 themed ? "text-ink-900 dark:text-ink-50" : "text-white",
               )}
             >
               {t("loginFooter.legal")}
             </h3>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               <li>
                 <FooterLink to="/legal/terms" themed={themed}>
                   {t("loginFooter.terms")}
@@ -146,16 +133,15 @@ export function LoginFooter({ variant = "brand", compact = false }: LoginFooterP
           <div>
             <h3
               className={clsx(
-                "mb-2.5 font-semibold",
-                compact ? "text-xs" : "text-sm",
+                "mb-3 text-sm font-semibold",
                 themed ? "text-ink-900 dark:text-ink-50" : "text-white",
               )}
             >
               {t("loginFooter.help")}
             </h3>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               <li>
-                <span className={clsx(compact ? "text-xs" : "text-sm", themed ? "text-ink-500 dark:text-ink-400" : "text-slate-400")}>
+                <span className={clsx("text-sm", themed ? "text-ink-500 dark:text-ink-400" : "text-slate-400")}>
                   {t("loginFooter.contactAdmin")}
                 </span>
               </li>
@@ -170,14 +156,13 @@ export function LoginFooter({ variant = "brand", compact = false }: LoginFooterP
           <div>
             <h3
               className={clsx(
-                "mb-2.5 font-semibold",
-                compact ? "text-xs" : "text-sm",
+                "mb-3 text-sm font-semibold",
                 themed ? "text-ink-900 dark:text-ink-50" : "text-white",
               )}
             >
               {t("loginFooter.followUs")}
             </h3>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <a
                 href={INSTAGRAM_URL}
                 target="_blank"
@@ -185,7 +170,7 @@ export function LoginFooter({ variant = "brand", compact = false }: LoginFooterP
                 className={clsx(
                   "rounded p-1.5 transition",
                   themed
-                    ? "text-ink-500 hover:bg-ink-100 hover:text-brand-600 dark:text-ink-400 dark:hover:bg-white/[0.06] dark:hover:text-brand-300"
+                    ? "text-ink-500 hover:bg-ink-100 hover:text-brand-600 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-brand-300"
                     : "text-slate-300 hover:bg-white/10 hover:text-white",
                 )}
                 aria-label="Instagram"
@@ -197,7 +182,7 @@ export function LoginFooter({ variant = "brand", compact = false }: LoginFooterP
                 className={clsx(
                   "rounded p-1.5 transition",
                   themed
-                    ? "text-ink-500 hover:bg-ink-100 hover:text-brand-600 dark:text-ink-400 dark:hover:bg-white/[0.06] dark:hover:text-brand-300"
+                    ? "text-ink-500 hover:bg-ink-100 hover:text-brand-600 dark:text-ink-400 dark:hover:bg-ink-900 dark:hover:text-brand-300"
                     : "text-slate-300 hover:bg-white/10 hover:text-white",
                 )}
                 aria-label={t("loginFooter.email")}
@@ -208,21 +193,10 @@ export function LoginFooter({ variant = "brand", compact = false }: LoginFooterP
           </div>
         </div>
 
-        <div
-          className={clsx(
-            "border-t pt-5",
-            compact ? "mt-6" : "mt-10",
-            adaptive
-              ? "border-ink-200/80 dark:border-white/[0.06]"
-              : themed
-                ? "border-ink-200 dark:border-ink-800"
-                : "border-white/10",
-          )}
-        >
+        <div className={clsx("mt-10 border-t pt-6", themed ? "border-ink-200 dark:border-ink-800" : "border-white/10")}>
           <div
             className={clsx(
-              "flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between",
-              compact ? "text-[11px]" : "text-xs",
+              "flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:justify-between",
               themed ? "text-ink-500 dark:text-ink-400" : "text-slate-500",
             )}
           >

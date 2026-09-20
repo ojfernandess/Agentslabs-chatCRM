@@ -4425,7 +4425,7 @@ export const messages = {
     },
     loginFooter: {
       tagline: "Conectando pessoas, processos e resultados para um atendimento mais inteligente.",
-      heroTagline: "Conectando pessoas, processos e resultados para um atendimento mais inteligente.",
+      heroTagline: "Conectando pessoas, processos\ne resultados para um\natendimento mais inteligente.",
       product: "Produto",
       about: "Sobre o OpenNexo",
       features: "Funcionalidades",
@@ -11491,7 +11491,7 @@ export const messages = {
     },
     loginFooter: {
       tagline: "Connecting people, processes, and outcomes for smarter customer service.",
-      heroTagline: "Connecting people, processes, and outcomes for smarter customer service.",
+      heroTagline: "Connecting people, processes\nand outcomes for smarter\ncustomer service.",
       product: "Product",
       about: "About OpenNexo",
       features: "Features",
