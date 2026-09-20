@@ -8,7 +8,7 @@ import {
   buildWebchatContinuityBody,
   generateWebchatLinkForConversation,
   getActiveWebchatSessionForConversation,
-  revokeWebchatSessionForConversation,
+  endWebchatSessionForConversation,
   webchatPublicUrl,
 } from "../lib/webchatSession.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
@@ -182,7 +182,12 @@ export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
     if (!conv) {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }
-    const revoked = await revokeWebchatSessionForConversation(organizationId, conv.id);
+    const revoked = await endWebchatSessionForConversation({
+      organizationId,
+      conversationId: conv.id,
+      reason: "manual",
+      actorUserId: request.user.id,
+    });
     return { ok: true, revoked };
   });
 }

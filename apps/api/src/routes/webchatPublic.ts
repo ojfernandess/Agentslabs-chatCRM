@@ -5,6 +5,8 @@ import { prisma } from "../db.js";
 import {
   isWebchatHistoryUnlocked,
   resolveWebchatSessionByToken,
+  type ResolveWebchatSessionFailureCode,
+  type ResolveWebchatSessionResult,
   type WebchatClientBindingMode,
 } from "../lib/webchatSession.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
@@ -72,11 +74,19 @@ const listQuerySchema = z.object({
 
 function sessionError(
   reply: FastifyReply,
-  code: "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED" | "SESSION_CLAIMED" | "CLIENT_SESSION_REQUIRED",
+  failure: Extract<ResolveWebchatSessionResult, { ok: false }> | { code: ResolveWebchatSessionFailureCode },
 ) {
+  const code = failure.code;
   const status =
     code === "NOT_FOUND" ? 404 : code === "SESSION_CLAIMED" || code === "CLIENT_SESSION_REQUIRED" ? 403 : 410;
-  return reply.status(status).send({ error: code, statusCode: status });
+  const body: Record<string, unknown> = { error: code, statusCode: status };
+  if (code === "SESSION_REVOKED" && "endReason" in failure) {
+    body.endReason = failure.endReason ?? null;
+    body.agentName = failure.agentName ?? null;
+    body.organizationName = failure.organizationName ?? null;
+    body.organizationLogoUrl = failure.organizationLogoUrl ?? null;
+  }
+  return reply.status(status).send(body);
 }
 
 function readClientSessionSecret(request: FastifyRequest): string | null {
@@ -203,7 +213,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
     const resolved = await resolvePublicWebchatSession(request, request.params.token, "read");
-    if (!resolved.ok) return sessionError(reply, resolved.code);
+    if (!resolved.ok) return sessionError(reply, resolved);
 
     const messagesUnlocked = isWebchatHistoryUnlocked(resolved.session);
     const presence = messagesUnlocked
@@ -231,7 +241,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
       }
       const resolved = await resolvePublicWebchatSession(request, request.params.token, "read");
-      if (!resolved.ok) return sessionError(reply, resolved.code);
+      if (!resolved.ok) return sessionError(reply, resolved);
 
       const messagesUnlocked = isWebchatHistoryUnlocked(resolved.session);
       if (!messagesUnlocked) {
@@ -305,7 +315,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
     const resolved = await resolvePublicWebchatSession(request, request.params.token, "write");
-    if (!resolved.ok) return sessionError(reply, resolved.code);
+    if (!resolved.ok) return sessionError(reply, resolved);
 
     const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
     if (!file) {
@@ -330,7 +340,7 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(429).send({ error: "Too Many Requests", statusCode: 429 });
     }
     const resolved = await resolvePublicWebchatSession(request, request.params.token, "write");
-    if (!resolved.ok) return sessionError(reply, resolved.code);
+    if (!resolved.ok) return sessionError(reply, resolved);
 
     const file = await request.file({ limits: { fileSize: 16 * 1024 * 1024 } });
     if (!file) {
@@ -363,18 +373,18 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const resolved = await resolvePublicWebchatSession(request, request.params.token, "write");
-    if (!resolved.ok) return sessionError(reply, resolved.code);
+    if (!resolved.ok) return sessionError(reply, resolved);
 
     const { organizationId } = resolved.conversation;
     const conversation = await prisma.conversation.findFirst({
       where: { id: resolved.conversation.id, organizationId },
     });
-    if (!conversation) return sessionError(reply, "NOT_FOUND");
+    if (!conversation) return sessionError(reply, { code: "NOT_FOUND" });
 
     const contact = await prisma.contact.findFirst({
       where: { id: resolved.conversation.contactId, organizationId },
     });
-    if (!contact) return sessionError(reply, "NOT_FOUND");
+    if (!contact) return sessionError(reply, { code: "NOT_FOUND" });
     if (contact.isBlocked) {
       return reply.status(403).send({ error: "Forbidden", statusCode: 403 });
     }

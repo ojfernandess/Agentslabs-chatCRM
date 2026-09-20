@@ -358,6 +358,17 @@ export const messages = {
       expiredTitle: "Sessão expirada",
       expiredBody: "Este link de atendimento expirou. Solicite um novo link pelo canal em que você estava conversando.",
       revokedTitle: "Sessão encerrada",
+      revokedBody:
+        "Este link de atendimento não é mais válido. Se precisar de ajuda novamente, entre em contato pelo WhatsApp.",
+      resolvedTitle: "Atendimento humano finalizado",
+      resolvedBody:
+        "Seu atendimento com nossa equipe foi encerrado e este link não é mais válido. Para um novo atendimento, envie uma mensagem pelo WhatsApp.",
+      botTransferTitle: "Transferido para o assistente virtual",
+      botTransferBody:
+        "Transferimos sua conversa para {agentName}. Este link do Web Chat foi encerrado. Se precisar de mais alguma coisa, {agentName} ficará feliz em ajudá-lo pelo WhatsApp.",
+      botTransferBodyNoName:
+        "Transferimos sua conversa para nosso assistente virtual. Este link do Web Chat foi encerrado. Se precisar de mais alguma coisa, ele ficará feliz em ajudá-lo pelo WhatsApp.",
+      whatsappHint: "Você também pode continuar pelo WhatsApp a qualquer momento.",
       claimedTitle: "Link já em uso",
       claimedBody:
         "Este link de atendimento já foi aberto noutro dispositivo ou navegador. Solicite um novo link pelo canal em que estava conversando.",
@@ -7365,6 +7376,17 @@ export const messages = {
       expiredTitle: "Session expired",
       expiredBody: "This chat link has expired. Please request a new link through the channel you were talking on.",
       revokedTitle: "Session closed",
+      revokedBody:
+        "This chat link is no longer valid. If you need help again, please reach out on WhatsApp.",
+      resolvedTitle: "Human support ended",
+      resolvedBody:
+        "Your conversation with our team has been closed and this link is no longer valid. For new support, please send us a message on WhatsApp.",
+      botTransferTitle: "Transferred to virtual assistant",
+      botTransferBody:
+        "We have transferred your conversation to {agentName}. This Web Chat link has been closed. If you need anything else, {agentName} will be happy to help you on WhatsApp.",
+      botTransferBodyNoName:
+        "We have transferred your conversation to our virtual assistant. This Web Chat link has been closed. If you need anything else, they will be happy to help you on WhatsApp.",
+      whatsappHint: "You can also continue on WhatsApp at any time.",
       claimedTitle: "Link already in use",
       claimedBody:
         "This chat link was already opened on another device or browser. Please request a new link through the channel you were talking on.",

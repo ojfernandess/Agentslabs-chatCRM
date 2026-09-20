@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { getWebAppPublicOrigin } from "../config.js";
 import { appendTimelineEvent } from "./timeline.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
+import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 
 /**
  * Web Chat externo — continuidade da MESMA conversa (nunca cria uma segunda Conversation).
@@ -209,6 +210,62 @@ export async function isWebchatOutboundActive(
 
 export type WebchatSessionEndReason = "resolved" | "bot_queue" | "manual";
 
+export type WebchatSessionEndMeta = {
+  reason: WebchatSessionEndReason;
+  agentName: string | null;
+};
+
+/** Lê o motivo mais recente de encerramento da sessão Web Chat (timeline interna). */
+export async function loadWebchatSessionEndMeta(
+  organizationId: string,
+  conversationId: string,
+): Promise<WebchatSessionEndMeta | null> {
+  const rows = await prisma.timelineEvent.findMany({
+    where: { organizationId, eventType: "webchat.session_ended" },
+    orderBy: { createdAt: "desc" },
+    take: 24,
+    select: { payload: true },
+  });
+  for (const row of rows) {
+    const payload = row.payload as {
+      conversationId?: string;
+      reason?: WebchatSessionEndReason;
+      agentName?: string | null;
+    } | null;
+    if (payload?.conversationId !== conversationId || !payload.reason) continue;
+    return {
+      reason: payload.reason,
+      agentName: payload.agentName ?? null,
+    };
+  }
+  return null;
+}
+
+async function loadRevokedWebchatSessionPresentation(session: WebchatSession): Promise<{
+  endReason: WebchatSessionEndReason | null;
+  agentName: string | null;
+  organizationName: string;
+  organizationLogoUrl: string | null;
+}> {
+  const [endMeta, organization, settings] = await Promise.all([
+    loadWebchatSessionEndMeta(session.organizationId, session.conversationId),
+    prisma.organization.findFirst({
+      where: { id: session.organizationId },
+      select: { name: true },
+    }),
+    prisma.settings.findUnique({
+      where: { organizationId: session.organizationId },
+      select: { organizationLogoUrl: true, agentBot: { select: { name: true } } },
+    }),
+  ]);
+  return {
+    endReason: endMeta?.reason ?? null,
+    agentName: endMeta?.agentName ?? settings?.agentBot?.name ?? null,
+    organizationName: organization?.name ?? "",
+    organizationLogoUrl: settings?.organizationLogoUrl ?? null,
+  };
+}
+
 /** Revoga sessões ativas e regista fim da continuidade Web Chat (volta ao WhatsApp). */
 export async function endWebchatSessionForConversation(params: {
   organizationId: string;
@@ -216,27 +273,34 @@ export async function endWebchatSessionForConversation(params: {
   reason: WebchatSessionEndReason;
   actorUserId?: string | null;
 }): Promise<number> {
+  const conv = await prisma.conversation.findFirst({
+    where: { id: params.conversationId, organizationId: params.organizationId },
+    select: { contactId: true, inboxId: true },
+  });
+  if (!conv) return 0;
+
+  let agentName: string | null = null;
+  if (params.reason === "bot_queue") {
+    const agentCtx = await getAgentBotDispatchContextForInbox(params.organizationId, conv.inboxId);
+    agentName = agentCtx?.agentBot?.name?.trim() || null;
+  }
+
   const count = await revokeWebchatSessionForConversation(params.organizationId, params.conversationId);
   if (count <= 0) return 0;
 
-  const conv = await prisma.conversation.findFirst({
-    where: { id: params.conversationId, organizationId: params.organizationId },
-    select: { contactId: true },
-  });
-  if (conv) {
-    await appendTimelineEvent({
-      organizationId: params.organizationId,
-      subjectType: "CONTACT",
-      subjectId: conv.contactId,
-      eventType: "webchat.session_ended",
-      channel: "webchat",
-      payload: {
-        conversationId: params.conversationId,
-        reason: params.reason,
-      } as Prisma.InputJsonValue,
-      actorUserId: params.actorUserId ?? undefined,
-    }).catch(() => {});
-  }
+  await appendTimelineEvent({
+    organizationId: params.organizationId,
+    subjectType: "CONTACT",
+    subjectId: conv.contactId,
+    eventType: "webchat.session_ended",
+    channel: "webchat",
+    payload: {
+      conversationId: params.conversationId,
+      reason: params.reason,
+      agentName,
+    } as Prisma.InputJsonValue,
+    actorUserId: params.actorUserId ?? undefined,
+  }).catch(() => {});
   return count;
 }
 
@@ -302,8 +366,22 @@ async function verifyWebchatClientSessionBinding(
   return { ok: true };
 }
 
+export type ResolveWebchatSessionFailureCode =
+  | "NOT_FOUND"
+  | "SESSION_EXPIRED"
+  | "SESSION_REVOKED"
+  | "SESSION_CLAIMED"
+  | "CLIENT_SESSION_REQUIRED";
+
 export type ResolveWebchatSessionResult =
-  | { ok: false; code: "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED" | "SESSION_CLAIMED" | "CLIENT_SESSION_REQUIRED" }
+  | {
+      ok: false;
+      code: ResolveWebchatSessionFailureCode;
+      endReason?: WebchatSessionEndReason | null;
+      agentName?: string | null;
+      organizationName?: string;
+      organizationLogoUrl?: string | null;
+    }
   | {
       ok: true;
       session: WebchatSession;
@@ -328,7 +406,17 @@ export async function resolveWebchatSessionByToken(
 
   const session = await prisma.webchatSession.findUnique({ where: { token: trimmed } });
   if (!session) return { ok: false, code: "NOT_FOUND" };
-  if (session.status === "REVOKED") return { ok: false, code: "SESSION_REVOKED" };
+  if (session.status === "REVOKED") {
+    const presentation = await loadRevokedWebchatSessionPresentation(session);
+    return {
+      ok: false,
+      code: "SESSION_REVOKED",
+      endReason: presentation.endReason,
+      agentName: presentation.agentName,
+      organizationName: presentation.organizationName,
+      organizationLogoUrl: presentation.organizationLogoUrl,
+    };
+  }
   if (session.status === "EXPIRED" || isWebchatSessionExpired(session)) {
     if (session.status !== "EXPIRED") {
       await prisma.webchatSession

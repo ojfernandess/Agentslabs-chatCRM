@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useParams } from "react-router-dom";
 import clsx from "clsx";
 import {
+  Bot,
+  CheckCircle2,
   CheckCheck,
   Download,
   FileText,
@@ -47,6 +49,22 @@ type SessionInfo = {
 
 type ConnectionState = "CONNECTING" | "CONNECTED" | "RECONNECTING" | "OFFLINE";
 type SessionErrorCode = "NOT_FOUND" | "SESSION_EXPIRED" | "SESSION_REVOKED" | "SESSION_CLAIMED";
+type SessionEndReason = "resolved" | "bot_queue" | "manual";
+
+type SessionEndInfo = {
+  endReason: SessionEndReason | null;
+  agentName: string | null;
+  organizationName: string;
+  organizationLogoUrl: string | null;
+};
+
+type SessionFailurePayload = {
+  error?: string;
+  endReason?: SessionEndReason | null;
+  agentName?: string | null;
+  organizationName?: string | null;
+  organizationLogoUrl?: string | null;
+};
 
 const POLL_INTERVAL_MS = 3500;
 const WEBCHAT_CLIENT_SESSION_PREFIX = "webchat_client_session:";
@@ -87,7 +105,7 @@ function getOrCreateWebchatClientSession(token: string): string {
   }
 }
 
-function parseSessionErrorCode(status: number, data: { error?: string } | null): SessionErrorCode | null {
+function parseSessionErrorCode(status: number, data: SessionFailurePayload | null): SessionErrorCode | null {
   if (status === 404) return "NOT_FOUND";
   if (status === 403) {
     if (data?.error === "SESSION_CLAIMED") return "SESSION_CLAIMED";
@@ -97,6 +115,28 @@ function parseSessionErrorCode(status: number, data: { error?: string } | null):
     return data?.error === "SESSION_REVOKED" ? "SESSION_REVOKED" : "SESSION_EXPIRED";
   }
   return null;
+}
+
+function parseSessionEndInfo(data: SessionFailurePayload | null): SessionEndInfo | null {
+  if (!data || data.error !== "SESSION_REVOKED") return null;
+  return {
+    endReason: data.endReason ?? null,
+    agentName: data.agentName ?? null,
+    organizationName: data.organizationName?.trim() || "",
+    organizationLogoUrl: data.organizationLogoUrl ?? null,
+  };
+}
+
+function applySessionFailure(
+  status: number,
+  data: SessionFailurePayload | null,
+  setSessionError: (code: SessionErrorCode) => void,
+  setSessionEndInfo: (info: SessionEndInfo | null) => void,
+) {
+  const code = parseSessionErrorCode(status, data);
+  if (!code) return;
+  setSessionError(code);
+  setSessionEndInfo(code === "SESSION_REVOKED" ? parseSessionEndInfo(data) : null);
 }
 
 function dayLabel(iso: string, todayLabel: string, locale: string): string {
@@ -338,12 +378,114 @@ function MessageBubble({
   );
 }
 
+function WebchatSessionClosedScreen({
+  endInfo,
+  fallbackOrgName,
+  fallbackOrgLogoUrl,
+  t,
+}: {
+  endInfo: SessionEndInfo | null;
+  fallbackOrgName: string;
+  fallbackOrgLogoUrl: string | null;
+  t: (path: string) => string;
+}) {
+  const orgName = endInfo?.organizationName?.trim() || fallbackOrgName;
+  const orgLogoUrl = endInfo?.organizationLogoUrl ?? fallbackOrgLogoUrl;
+  const agentName = endInfo?.agentName?.trim() || null;
+  const isBotTransfer = endInfo?.endReason === "bot_queue";
+  const isResolved = endInfo?.endReason === "resolved";
+
+  const title = isBotTransfer
+    ? t("webchat.botTransferTitle")
+    : isResolved
+      ? t("webchat.resolvedTitle")
+      : t("webchat.revokedTitle");
+
+  const body = isBotTransfer
+    ? agentName
+      ? t("webchat.botTransferBody").replaceAll("{agentName}", agentName)
+      : t("webchat.botTransferBodyNoName")
+    : isResolved
+      ? t("webchat.resolvedBody")
+      : t("webchat.revokedBody");
+
+  return (
+    <div
+      className="fixed inset-x-0 top-0 mx-auto flex w-full max-w-lg items-center justify-center bg-[#eceff1] p-6"
+      style={{
+        height: "var(--webchat-vh, 100dvh)",
+        transform: "translateY(var(--webchat-vt, 0px))",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
+      <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
+        <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} className="mx-auto !h-14 !w-14" />
+        <div className="mt-5 flex justify-center">
+          {isBotTransfer ? (
+            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 ring-4 ring-brand-100">
+              <span className="absolute inset-0 animate-ping rounded-full bg-brand-200/40" aria-hidden />
+              <Bot className="relative h-8 w-8 animate-bounce text-brand-600" aria-hidden />
+            </span>
+          ) : (
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 ring-4 ring-emerald-100">
+              <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
+            </span>
+          )}
+        </div>
+        <h1 className="mt-5 text-lg font-bold text-gray-900">{title}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-gray-600">{body}</p>
+        {isResolved && (
+          <p className="mt-3 text-xs leading-relaxed text-gray-500">{t("webchat.whatsappHint")}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WebchatGenericErrorScreen({
+  sessionError,
+  t,
+}: {
+  sessionError: SessionErrorCode;
+  t: (path: string) => string;
+}) {
+  return (
+    <div
+      className="fixed inset-x-0 top-0 mx-auto flex w-full max-w-lg items-center justify-center bg-[#eceff1] p-6"
+      style={{
+        height: "var(--webchat-vh, 100dvh)",
+        transform: "translateY(var(--webchat-vt, 0px))",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
+      <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
+        <WebchatOrgAvatar logoUrl={null} label="OpenNexo" className="mx-auto" />
+        <h1 className="mt-4 text-lg font-bold text-gray-900">
+          {sessionError === "SESSION_EXPIRED"
+            ? t("webchat.expiredTitle")
+            : sessionError === "SESSION_CLAIMED"
+              ? t("webchat.claimedTitle")
+              : t("webchat.notFoundTitle")}
+        </h1>
+        <p className="mt-2 text-sm text-gray-500">
+          {sessionError === "SESSION_EXPIRED"
+            ? t("webchat.expiredBody")
+            : sessionError === "SESSION_CLAIMED"
+              ? t("webchat.claimedBody")
+              : t("webchat.notFoundBody")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function WebChatPage() {
   const { token = "" } = useParams<{ token: string }>();
   const { t, locale } = useI18n();
   const localeTag = locale === "pt-BR" ? "pt-BR" : "en";
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [sessionError, setSessionError] = useState<SessionErrorCode | null>(null);
+  const [sessionEndInfo, setSessionEndInfo] = useState<SessionEndInfo | null>(null);
   const [messages, setMessages] = useState<PublicMessage[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("CONNECTING");
   const [draft, setDraft] = useState("");
@@ -386,6 +528,7 @@ export default function WebChatPage() {
     clientSessionRef.current = null;
     messagesUnlockedRef.current = false;
     setMessagesUnlocked(false);
+    setSessionEndInfo(null);
   }, [token]);
 
   useWebchatMobileShell(!sessionError);
@@ -492,9 +635,8 @@ export default function WebChatPage() {
         body: JSON.stringify(payload),
       });
       if (res.status === 410 || res.status === 403) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        const code = parseSessionErrorCode(res.status, data);
-        if (code) setSessionError(code);
+        const data = (await res.json().catch(() => null)) as SessionFailurePayload | null;
+        applySessionFailure(res.status, data, setSessionError, setSessionEndInfo);
         return null;
       }
       if (!res.ok) {
@@ -525,10 +667,9 @@ export default function WebChatPage() {
         body: form,
       });
       if (res.status === 403 || res.status === 410) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        const code = parseSessionErrorCode(res.status, data);
-        if (code) setSessionError(code);
-        throw new Error(code ?? "session error");
+        const data = (await res.json().catch(() => null)) as SessionFailurePayload | null;
+        applySessionFailure(res.status, data, setSessionError, setSessionEndInfo);
+        throw new Error(data?.error ?? "session error");
       }
       if (!res.ok) throw new Error("upload failed");
       return (await res.json()) as { mediaUrl: string; mimeType: string };
@@ -543,9 +684,8 @@ export default function WebChatPage() {
       try {
         const sres = await fetch(`${base}/session`, { headers: webchatAuthHeaders() });
         if (!sres.ok) {
-          const data = (await sres.json().catch(() => null)) as { error?: string } | null;
-          const code = parseSessionErrorCode(sres.status, data);
-          if (!cancelled && code) setSessionError(code);
+          const data = (await sres.json().catch(() => null)) as SessionFailurePayload | null;
+          if (!cancelled) applySessionFailure(sres.status, data, setSessionError, setSessionEndInfo);
           return;
         }
         const sdata = (await sres.json()) as SessionInfo & {
@@ -555,9 +695,8 @@ export default function WebChatPage() {
         };
         const mres = await fetch(`${base}/messages`, { headers: webchatAuthHeaders() });
         if (mres.status === 403 || mres.status === 410) {
-          const data = (await mres.json().catch(() => null)) as { error?: string } | null;
-          const code = parseSessionErrorCode(mres.status, data);
-          if (!cancelled && code) setSessionError(code);
+          const data = (await mres.json().catch(() => null)) as SessionFailurePayload | null;
+          if (!cancelled) applySessionFailure(mres.status, data, setSessionError, setSessionEndInfo);
           return;
         }
         const mdata = mres.ok
@@ -601,9 +740,8 @@ export default function WebChatPage() {
           );
           if (!res.ok) {
             if (res.status === 410 || res.status === 403) {
-              const data = (await res.json().catch(() => null)) as { error?: string } | null;
-              const code = parseSessionErrorCode(res.status, data);
-              if (code) setSessionError(code);
+              const data = (await res.json().catch(() => null)) as SessionFailurePayload | null;
+              applySessionFailure(res.status, data, setSessionError, setSessionEndInfo);
               return;
             }
             setConnection("RECONNECTING");
@@ -787,33 +925,19 @@ export default function WebChatPage() {
     return t("webchat.onlineTitle");
   }, [connection, assigneeName, humanActive, t]);
 
-  if (sessionError) {
+  if (sessionError === "SESSION_REVOKED") {
     return (
-      <div
-        className="fixed inset-x-0 top-0 mx-auto flex w-full max-w-lg items-center justify-center bg-[#eceff1] p-6"
-        style={shellStyle}
-      >
-        <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
-          <WebchatOrgAvatar logoUrl={null} label="OpenNexo" className="mx-auto" />
-          <h1 className="mt-4 text-lg font-bold text-gray-900">
-            {sessionError === "SESSION_EXPIRED"
-              ? t("webchat.expiredTitle")
-              : sessionError === "SESSION_REVOKED"
-                ? t("webchat.revokedTitle")
-                : sessionError === "SESSION_CLAIMED"
-                  ? t("webchat.claimedTitle")
-                  : t("webchat.notFoundTitle")}
-          </h1>
-          <p className="mt-2 text-sm text-gray-500">
-            {sessionError === "SESSION_EXPIRED"
-              ? t("webchat.expiredBody")
-              : sessionError === "SESSION_CLAIMED"
-                ? t("webchat.claimedBody")
-                : t("webchat.notFoundBody")}
-          </p>
-        </div>
-      </div>
+      <WebchatSessionClosedScreen
+        endInfo={sessionEndInfo}
+        fallbackOrgName={orgName}
+        fallbackOrgLogoUrl={orgLogoUrl}
+        t={t}
+      />
     );
+  }
+
+  if (sessionError) {
+    return <WebchatGenericErrorScreen sessionError={sessionError} t={t} />;
   }
 
   return (
