@@ -302,6 +302,7 @@ export function Layout() {
       ? new URLSearchParams(location.search).get("inboxId")
       : null;
   const conversationThreadActive = /^\/conversations\/[^/]+/.test(location.pathname);
+  const helpRouteActive = location.pathname.startsWith("/help");
 
   const fetchSidebarTeams = useCallback(() => {
     if (!user) {
@@ -915,7 +916,8 @@ export function Layout() {
         ) : null}
         <main
           className={clsx(
-            "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-ink-50 dark:bg-transparent",
+            "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-ink-50",
+            helpRouteActive ? "dark:bg-soft-base" : "dark:bg-transparent",
             conversationThreadActive ? "max-lg:overflow-hidden" : "overflow-y-auto",
           )}
         >

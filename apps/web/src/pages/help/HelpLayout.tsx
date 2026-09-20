@@ -55,8 +55,8 @@ export function HelpLayout() {
   const isHome = location.pathname === "/help" || location.pathname === "/help/";
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-ink-50/80 to-white dark:from-ink-950 dark:to-ink-900">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-full shrink-0 bg-ink-50 dark:bg-soft-base">
+      <div className="mx-auto max-w-7xl px-4 py-6 pb-12 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <button
             type="button"
