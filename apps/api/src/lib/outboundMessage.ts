@@ -13,6 +13,7 @@ import {
   reopenResolvedConversationData,
 } from "./conversationRouting.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
+import { isWebchatOutboundActive } from "./webchatSession.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { promoteUserToOnlineIfInactive } from "./userAvailability.js";
@@ -139,6 +140,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
    * grava a mensagem com `channel = "WEBCHAT"` e o cliente recebe via sessão pública do Web Chat.
    */
   deliveryChannelOverride?: "WEBCHAT";
+  /** Ignora roteamento automático para Web Chat (ex.: envio do link de continuidade). */
+  forceWhatsAppDelivery?: boolean;
   /** Componentes Meta Cloud API completos (header/body/buttons) — integrações externas. */
   templateMetaComponents?: Array<Record<string, unknown>>;
   /** Regista mensagem OUTBOUND sem chamar o provider WhatsApp (template já enviado externamente). */
@@ -154,9 +157,12 @@ export async function deliverOutboundWhatsAppMessage(options: {
     postSendConversationPolicy = "default",
     skipCrmFlowTrigger = false,
     deliveryChannelOverride,
+    forceWhatsAppDelivery = false,
     templateMetaComponents,
     skipWhatsappProviderDelivery = false,
   } = options;
+
+  let resolvedDeliveryChannel = deliveryChannelOverride;
 
   const {
     contactId,
@@ -308,6 +314,17 @@ export async function deliverOutboundWhatsAppMessage(options: {
       (await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId)) ?? providerKind;
   }
 
+  if (
+    !resolvedDeliveryChannel &&
+    !forceWhatsAppDelivery &&
+    !isPrivate &&
+    type !== "TEMPLATE"
+  ) {
+    if (await isWebchatOutboundActive(organizationId, conversation.id)) {
+      resolvedDeliveryChannel = "WEBCHAT";
+    }
+  }
+
   const isMetaCloudWhatsapp =
     inboxChannelType === "WHATSAPP" && isMetaCloudWhatsappProvider(providerKind);
   const isMetaProvider = isMetaCloudWhatsapp;
@@ -325,7 +342,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       providerKind === "twilio" ||
       providerKind == null);
 
-  if (!isPrivate && type !== "TEMPLATE" && enforceWhatsapp24hSession && !deliveryChannelOverride) {
+  if (!isPrivate && type !== "TEMPLATE" && enforceWhatsapp24hSession && !resolvedDeliveryChannel) {
     const sessionOpen = await isWhatsappSessionOpen(conversation.id);
     if (!sessionOpen) {
       /** Message Policy Engine: registar decisão bloqueada no ledger (observabilidade; nunca quebra o fluxo). */
@@ -419,7 +436,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
   let providerMsgId: string | undefined;
   /** Assunto resolvido no canal EMAIL — persistido no body para listagens/títulos. */
   let resolvedEmailSubject: string | null = null;
-  if (!isPrivate && !deliveryChannelOverride && !skipWhatsappProviderDelivery && inboxChannelType === "WHATSAPP") {
+  if (!isPrivate && !resolvedDeliveryChannel && !skipWhatsappProviderDelivery && inboxChannelType === "WHATSAPP") {
     try {
       const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
       if (provider) {
@@ -468,7 +485,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       log.error(err, "Failed to send message via WhatsApp provider");
       throw err instanceof Error ? err : new Error(String(err));
     }
-  } else if (!isPrivate && !deliveryChannelOverride && inboxChannelType === "TELEGRAM") {
+  } else if (!isPrivate && !resolvedDeliveryChannel && inboxChannelType === "TELEGRAM") {
     const cfg = inboxChannelConfig as ChannelNativeConfig | null;
     const token = cfg?.telegramBotToken?.trim();
     const chatId = telegramChatIdFromContactPhone(contact.phone, "TELEGRAM");
@@ -510,7 +527,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     }
   } else if (
     !isPrivate &&
-    !deliveryChannelOverride &&
+    !resolvedDeliveryChannel &&
     inboxChannelType === "EMAIL" &&
     (type === "TEXT" || type === "IMAGE" || type === "DOCUMENT")
   ) {
@@ -580,7 +597,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
 
   const outboundStatus = skipWhatsappProviderDelivery && !isPrivate && inboxChannelType === "WHATSAPP"
     ? "SENT"
-    : deliveryChannelOverride
+    : resolvedDeliveryChannel
     ? "SENT"
     : isPrivate
     ? "SENT"
@@ -620,7 +637,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       mediaType: mediaType ?? (type === "AUDIO" ? "audio/*" : undefined),
       isPrivate: Boolean(isPrivate),
       providerMsgId,
-      channel: deliveryChannelOverride ?? null,
+      channel: resolvedDeliveryChannel ?? null,
       status: outboundStatus,
       actorUserId: actor.kind === "user" ? actor.userId : null,
     },
@@ -635,7 +652,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
           isTemplate: type === "TEMPLATE",
           templateMetaCategory: templateRow?.metaCategory ?? null,
           windowEnforced: enforceWhatsapp24hSession,
-          webchatDelivery: Boolean(deliveryChannelOverride),
+          webchatDelivery: Boolean(resolvedDeliveryChannel),
         });
         await recordMessageLedgerEntry({
           organizationId,
@@ -644,19 +661,19 @@ export async function deliverOutboundWhatsAppMessage(options: {
           inboxId: conversation.inboxId,
           messageId: message.id,
           providerMessageId: providerMsgId ?? null,
-          channel: deliveryChannelOverride ?? inboxChannelType,
-          provider: deliveryChannelOverride
+          channel: resolvedDeliveryChannel ?? inboxChannelType,
+          provider: resolvedDeliveryChannel
             ? "opennexo_webchat"
             : inboxChannelType === "WHATSAPP"
               ? isMetaCloudWhatsapp
                 ? "meta_cloud_api"
                 : (providerKind ?? null)
               : inboxChannelType.toLowerCase(),
-          category: deliveryChannelOverride ? "SERVICE" : policy.category,
+          category: resolvedDeliveryChannel ? "SERVICE" : policy.category,
           templateId: type === "TEMPLATE" ? (templateRow?.id ?? null) : null,
           isTemplate: type === "TEMPLATE",
           serviceWindowOpenAtSend:
-            deliveryChannelOverride || policy.windowStatus === "NOT_APPLICABLE"
+            resolvedDeliveryChannel || policy.windowStatus === "NOT_APPLICABLE"
               ? null
               : policy.windowStatus === "OPEN",
           billingStatus: outboundStatus === "FAILED" ? "FAILED" : "SENT",

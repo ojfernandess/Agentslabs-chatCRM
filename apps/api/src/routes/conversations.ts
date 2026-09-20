@@ -16,6 +16,7 @@ import { isOnlineForTransfer, promoteUserToOnlineIfInactive } from "../lib/userA
 import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
+import { endWebchatSessionForConversation } from "../lib/webchatSession.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { clearAutomationConversationContext } from "../lib/automationConversationContextLib.js";
@@ -2327,6 +2328,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (
         nextStatus === "RESOLVED" &&
         existing.status !== "RESOLVED" &&
+        (existing.status === "OPEN" || existing.status === "PENDING")
+      ) {
+        await endWebchatSessionForConversation({
+          organizationId,
+          conversationId: conversation.id,
+          reason: "resolved",
+          actorUserId: request.user.id,
+        }).catch((err) => {
+          app.log.warn({ err, conversationId: conversation.id }, "end webchat session on resolve failed");
+        });
+      }
+
+      if (
+        nextStatus === "RESOLVED" &&
+        existing.status !== "RESOLVED" &&
         (existing.status === "OPEN" || existing.status === "PENDING") &&
         tenantSettings?.csatEnabled &&
         conversation.csatSurveyToken
@@ -2353,6 +2369,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       const wasBotQueue = existing.status === "PENDING" && existing.assignedToId == null;
       const nowBotQueue = conversation.status === "PENDING" && conversation.assignedToId == null;
+      if (nowBotQueue && !wasBotQueue) {
+        await endWebchatSessionForConversation({
+          organizationId,
+          conversationId: conversation.id,
+          reason: "bot_queue",
+          actorUserId: request.user.id,
+        }).catch((err) => {
+          app.log.warn({ err, conversationId: conversation.id }, "end webchat session on bot transfer failed");
+        });
+      }
       /** HUMAN → AI explícito: reinicia o Interaction Budget (novo ciclo de respostas automáticas). */
       if (nowBotQueue && !wasBotQueue) {
         await resetInteractionBudgetForConversation(organizationId, conversation.id);

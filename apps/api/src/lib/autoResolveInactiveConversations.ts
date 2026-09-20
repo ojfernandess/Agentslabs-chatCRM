@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+import { endWebchatSessionForConversation } from "./webchatSession.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "./csatSurvey.js";
 import { ensurePipelineStageForLeadType } from "./pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "./dealStageSync.js";
@@ -174,6 +175,15 @@ async function processOneConversation(
     } catch (err) {
       log.warn({ err, conversationId }, "auto-resolve: clear automation context failed");
     }
+
+    await endWebchatSessionForConversation({
+      organizationId,
+      conversationId,
+      reason: "resolved",
+      actorUserId,
+    }).catch((err) => {
+      log.warn({ err, conversationId }, "auto-resolve: end webchat session failed");
+    });
 
     if (wf.csatEnabled && conversation.csatSurveyToken) {
       const intro = wf.csatSurveyMessage?.trim() ?? "";

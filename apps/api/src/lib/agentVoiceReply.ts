@@ -2,6 +2,7 @@ import type { Contact, Conversation, Message } from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+import { isWebchatOutboundActive } from "./webchatSession.js";
 import { parseElevenLabsToolConfig, synthesizeElevenLabsSpeech } from "./elevenLabsTts.js";
 import { synthesizeOpenAiSpeech } from "./openAiTts.js";
 import { parseAgentVoiceSettings, shouldSendVoiceReply } from "./agentVoiceSettings.js";
@@ -25,8 +26,10 @@ export async function deliverAgentReplyMessage(options: {
   behaviorConfig: unknown;
   log: FastifyBaseLogger;
 }): Promise<AgentReplyDeliveryResult> {
-  /** Cliente escreveu pelo Web Chat → resposta entregue pelo Web Chat (sem provider WhatsApp). */
-  const webchatDelivery = options.inboundMessage.channel === "WEBCHAT";
+  /** Cliente no Web Chat (inbound WEBCHAT ou sessão reclamada) → resposta só pelo Web Chat. */
+  const webchatDelivery =
+    options.inboundMessage.channel === "WEBCHAT" ||
+    (await isWebchatOutboundActive(options.organizationId, options.conversation.id));
   const settings = parseAgentVoiceSettings(options.behaviorConfig);
   const useVoice = !webchatDelivery && shouldSendVoiceReply(settings, options.inboundMessage);
 
@@ -44,6 +47,7 @@ export async function deliverAgentReplyMessage(options: {
       actor: { kind: "agent_bot", botId: options.botId },
       log: options.log,
       newConversation: { status: "PENDING", assignedToId: null },
+      ...(webchatDelivery ? { deliveryChannelOverride: "WEBCHAT" as const } : {}),
     });
     return { kind: "audio", message: sent.message };
   }

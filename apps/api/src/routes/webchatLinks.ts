@@ -141,6 +141,7 @@ export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
         actor: { kind: "user", userId: request.user.id },
         log: request.log,
         newConversation: { status: "OPEN", assignedToId: request.user.id },
+        forceWhatsAppDelivery: true,
       });
 
       /** Evento interno discreto para o Inbox (sem token completo em logs). */

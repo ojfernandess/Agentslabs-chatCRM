@@ -198,6 +198,48 @@ export async function revokeWebchatSessionForConversation(
   return r.count;
 }
 
+/** Cliente já interagiu pelo Web Chat — respostas outbound devem ir só pelo Web Chat. */
+export async function isWebchatOutboundActive(
+  organizationId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const session = await getActiveWebchatSessionForConversation(organizationId, conversationId);
+  return Boolean(session && isWebchatHistoryUnlocked(session));
+}
+
+export type WebchatSessionEndReason = "resolved" | "bot_queue" | "manual";
+
+/** Revoga sessões ativas e regista fim da continuidade Web Chat (volta ao WhatsApp). */
+export async function endWebchatSessionForConversation(params: {
+  organizationId: string;
+  conversationId: string;
+  reason: WebchatSessionEndReason;
+  actorUserId?: string | null;
+}): Promise<number> {
+  const count = await revokeWebchatSessionForConversation(params.organizationId, params.conversationId);
+  if (count <= 0) return 0;
+
+  const conv = await prisma.conversation.findFirst({
+    where: { id: params.conversationId, organizationId: params.organizationId },
+    select: { contactId: true },
+  });
+  if (conv) {
+    await appendTimelineEvent({
+      organizationId: params.organizationId,
+      subjectType: "CONTACT",
+      subjectId: conv.contactId,
+      eventType: "webchat.session_ended",
+      channel: "webchat",
+      payload: {
+        conversationId: params.conversationId,
+        reason: params.reason,
+      } as Prisma.InputJsonValue,
+      actorUserId: params.actorUserId ?? undefined,
+    }).catch(() => {});
+  }
+  return count;
+}
+
 export function hashWebchatClientSession(secret: string): string {
   return createHash("sha256").update(secret.trim()).digest("hex");
 }
@@ -400,6 +442,7 @@ export async function sendWebchatContinuityLinkToContact(params: {
     actor: { kind: "agent_bot", botId: params.botId },
     log: params.log,
     newConversation: { status: "PENDING", assignedToId: null },
+    forceWhatsAppDelivery: true,
   });
 
   await appendTimelineEvent({
