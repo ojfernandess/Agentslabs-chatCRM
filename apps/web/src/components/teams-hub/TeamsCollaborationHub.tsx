@@ -108,7 +108,6 @@ export function TeamsCollaborationHub() {
   const [channelModalBusy, setChannelModalBusy] = useState(false);
   const [channelDeletingId, setChannelDeletingId] = useState<string | null>(null);
 
-  const selected = teams.find((x) => x.id === selectedId) ?? teams[0] ?? null;
   const isOperationalTeam = (team: TeamRow) =>
     !team.isOrgCollaborationSpace && (team.purpose === "OPERATIONAL" || team.purpose == null);
   const isCommunicationTeam = (team: TeamRow) =>
@@ -116,12 +115,33 @@ export function TeamsCollaborationHub() {
   const isManageableAdminTeam = (team: TeamRow) => !team.isOrgCollaborationSpace;
   const operationalTeams = useMemo(() => teams.filter(isOperationalTeam), [teams]);
   const manageableAdminTeams = useMemo(() => teams.filter(isManageableAdminTeam), [teams]);
+  const showAdminTab = isAdmin && manageableAdminTeams.length > 0;
+
+  const visibleTeams = useMemo(
+    () =>
+      teams.filter((team) => {
+        if (team.isOrgCollaborationSpace && (!hubOn || !workspaceOn)) return false;
+        if (team.purpose === "COMMUNICATION" && !channelsOn) return false;
+        return true;
+      }),
+    [teams, hubOn, workspaceOn, channelsOn],
+  );
+
+  const selected = visibleTeams.find((x) => x.id === selectedId) ?? visibleTeams[0] ?? null;
   const selectedIsOperational = selected != null && isOperationalTeam(selected);
   const adminTeam =
     selected && isManageableAdminTeam(selected)
       ? selected
       : operationalTeams[0] ?? manageableAdminTeams[0] ?? null;
-  const showAdminTab = isAdmin && manageableAdminTeams.length > 0;
+
+  const visibleTabs = useMemo(() => {
+    const tabs: HubTab[] = [];
+    if (hubOn) tabs.push("overview");
+    if (channelsOn) tabs.push("channels");
+    if (workspaceOn) tabs.push("workspace");
+    if (showAdminTab) tabs.push("admin");
+    return tabs;
+  }, [hubOn, channelsOn, workspaceOn, showAdminTab]);
 
   const teamDisplayName = useCallback(
     (team: TeamRow) => (team.isOrgCollaborationSpace ? t("teamsHub.orgWorkspaceName") : team.name),
@@ -187,11 +207,23 @@ export function TeamsCollaborationHub() {
   }, [loadTeams]);
 
   useEffect(() => {
+    if (visibleTeams.length === 0) return;
+    if (!selectedId || !visibleTeams.some((team) => team.id === selectedId)) {
+      setSelectedId(visibleTeams[0]?.id ?? null);
+    }
+  }, [visibleTeams, selectedId]);
+
+  useEffect(() => {
     const next = searchParams.get("tab");
     if (next === "overview" || next === "channels" || next === "workspace" || next === "admin") {
-      setTab(next);
+      if (visibleTabs.includes(next)) setTab(next);
     }
-  }, [searchParams]);
+  }, [searchParams, visibleTabs]);
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.includes(tab)) setTab(visibleTabs[0]!);
+  }, [tab, visibleTabs]);
 
   useEffect(() => {
     if (!selected?.id) return;
@@ -265,9 +297,10 @@ export function TeamsCollaborationHub() {
   };
 
   const paletteActions = useMemo((): CommandAction[] => {
-    const list: CommandAction[] = [
-      { id: "tab-overview", label: t("teamsHub.tabOverview"), onRun: () => setTab("overview") },
-    ];
+    const list: CommandAction[] = [];
+    if (hubOn) {
+      list.push({ id: "tab-overview", label: t("teamsHub.tabOverview"), onRun: () => setTab("overview") });
+    }
     if (channelsOn) {
       list.push({ id: "tab-channels", label: t("teamsHub.tabChannels"), onRun: () => setTab("channels") });
     }
@@ -277,7 +310,7 @@ export function TeamsCollaborationHub() {
     if (showAdminTab) {
       list.push({ id: "tab-admin", label: t("teamsHub.tabAdmin"), onRun: () => setTab("admin") });
     }
-    for (const team of teams) {
+    for (const team of visibleTeams) {
       list.push({
         id: `team-${team.id}`,
         label: teamDisplayName(team),
@@ -286,11 +319,7 @@ export function TeamsCollaborationHub() {
       });
     }
     return list;
-  }, [channelsOn, workspaceOn, showAdminTab, teams, t, teamDisplayName]);
-
-  useEffect(() => {
-    if (tab === "admin" && !showAdminTab) setTab("overview");
-  }, [tab, showAdminTab]);
+  }, [hubOn, channelsOn, workspaceOn, showAdminTab, visibleTeams, t, teamDisplayName]);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) ?? null;
 
@@ -348,7 +377,7 @@ export function TeamsCollaborationHub() {
               <p className="text-xs text-ink-500 dark:text-ink-400">{t("teamsHub.subtitle")}</p>
             </div>
           </div>
-          {teams.length > 0 ? (
+          {visibleTeams.length > 0 ? (
             <label className="flex w-full min-w-0 flex-col gap-1 md:hidden">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">{t("teamsHub.mobileTeamSelect")}</span>
               <select
@@ -356,7 +385,7 @@ export function TeamsCollaborationHub() {
                 value={selectedId ?? ""}
                 onChange={(e) => setSelectedId(e.target.value || null)}
               >
-                {teams.map((team) => (
+                {visibleTeams.map((team) => (
                   <option key={team.id} value={team.id}>
                     {teamDisplayName(team)}
                   </option>
@@ -464,7 +493,7 @@ export function TeamsCollaborationHub() {
               </div>
             ) : null}
             <ul className="min-h-0 flex-1 overflow-y-auto p-2">
-              {teams.map((team) => (
+              {visibleTeams.map((team) => (
                 <li key={team.id}>
                   <button
                     type="button"
@@ -481,7 +510,7 @@ export function TeamsCollaborationHub() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{teamDisplayName(team)}</span>
-                      {team.isOrgCollaborationSpace ? (
+                      {team.isOrgCollaborationSpace && workspaceOn ? (
                         <span className="block truncate text-[10px] font-medium text-brand-700 dark:text-brand-200">
                           {t("teamsHub.orgWorkspaceBadge")}
                         </span>
@@ -505,17 +534,24 @@ export function TeamsCollaborationHub() {
           <main className="flex min-w-0 flex-1 flex-col">
             {selected ? (
               <>
-                <nav className="flex shrink-0 flex-wrap gap-1 border-b border-ink-100 bg-white/50 px-4 py-2 dark:border-ink-800 dark:bg-ink-950/30">
-                  {(
-                    [
-                      { id: "overview" as const, label: t("teamsHub.tabOverview"), icon: LayoutDashboard },
-                      { id: "channels" as const, label: t("teamsHub.tabChannels"), icon: Hash },
-                      { id: "workspace" as const, label: t("teamsHub.tabWorkspace"), icon: BookOpen },
-                      isAdmin && showAdminTab
-                        ? { id: "admin" as const, label: t("teamsHub.tabAdmin"), icon: UsersRound }
-                        : null,
-                    ].filter(Boolean) as { id: HubTab; label: string; icon: typeof LayoutDashboard }[]
-                  ).map((item) => (
+                {visibleTabs.length > 0 ? (
+                  <nav className="flex shrink-0 flex-wrap gap-1 border-b border-ink-100 bg-white/50 px-4 py-2 dark:border-ink-800 dark:bg-ink-950/30">
+                    {(
+                      [
+                        hubOn
+                          ? { id: "overview" as const, label: t("teamsHub.tabOverview"), icon: LayoutDashboard }
+                          : null,
+                        channelsOn
+                          ? { id: "channels" as const, label: t("teamsHub.tabChannels"), icon: Hash }
+                          : null,
+                        workspaceOn
+                          ? { id: "workspace" as const, label: t("teamsHub.tabWorkspace"), icon: BookOpen }
+                          : null,
+                        showAdminTab
+                          ? { id: "admin" as const, label: t("teamsHub.tabAdmin"), icon: UsersRound }
+                          : null,
+                      ].filter(Boolean) as { id: HubTab; label: string; icon: typeof LayoutDashboard }[]
+                    ).map((item) => (
                     <button
                       key={item.id}
                       type="button"
@@ -532,21 +568,9 @@ export function TeamsCollaborationHub() {
                     </button>
                   ))}
                 </nav>
+                ) : null}
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4 lg:p-6">
-                  {tab === "overview" && !hubOn ? (
-                    <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 p-6 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
-                      <p className="font-semibold">{t("teamsHub.hubDisabledTitle")}</p>
-                      <p className="mt-2 text-amber-800/90 dark:text-amber-200/90">{t("teamsHub.hubDisabledHint")}</p>
-                      {selected?._count ? (
-                        <p className="mt-4 text-xs">
-                          {t("teams.memberCount")}: {selected._count.members} · {t("teams.conversations")}:{" "}
-                          {selected._count.conversations}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-
                   {tab === "overview" && hubOn && overview ? (
                     <div className="space-y-6">
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -562,16 +586,24 @@ export function TeamsCollaborationHub() {
                               },
                             ]
                           : [
-                              {
-                                key: "channels",
-                                label: t("teamsHub.tabChannels"),
-                                val: overview.stats.channelCount,
-                              },
-                              {
-                                key: "workspace",
-                                label: t("teamsHub.tabWorkspace"),
-                                val: overview.stats.workspaceCount,
-                              },
+                              ...(channelsOn
+                                ? [
+                                    {
+                                      key: "channels",
+                                      label: t("teamsHub.tabChannels"),
+                                      val: overview.stats.channelCount,
+                                    },
+                                  ]
+                                : []),
+                              ...(workspaceOn
+                                ? [
+                                    {
+                                      key: "workspace",
+                                      label: t("teamsHub.tabWorkspace"),
+                                      val: overview.stats.workspaceCount,
+                                    },
+                                  ]
+                                : []),
                               {
                                 key: "members",
                                 label: t("teams.memberCount"),
@@ -619,17 +651,18 @@ export function TeamsCollaborationHub() {
                         ) : (
                           <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-ink-800 dark:bg-ink-950/60">
                             <h2 className="mb-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
-                              {selected?.isOrgCollaborationSpace
+                              {selected?.isOrgCollaborationSpace && workspaceOn
                                 ? t("teamsHub.orgWorkspaceOverviewTitle")
                                 : t("teamsHub.communicationOverviewTitle")}
                             </h2>
                             <p className="text-sm text-ink-600 dark:text-ink-300">
-                              {selected?.isOrgCollaborationSpace
+                              {selected?.isOrgCollaborationSpace && workspaceOn
                                 ? t("teamsHub.orgWorkspaceOverviewHint")
                                 : t("teamsHub.communicationOverviewHint")}
                             </p>
                           </div>
                         )}
+                        {channelsOn ? (
                         <div className="rounded-2xl border border-ink-200/80 bg-white/90 p-4 dark:border-ink-800 dark:bg-ink-950/60">
                           <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-900 dark:text-ink-50">
                             <Activity className="h-4 w-4 text-violet-500" />
@@ -650,14 +683,9 @@ export function TeamsCollaborationHub() {
                             )}
                           </ul>
                         </div>
+                        ) : null}
                       </section>
                     </div>
-                  ) : null}
-
-                  {tab === "channels" && !channelsOn ? (
-                    <p className="rounded-2xl border border-ink-200/80 bg-white/90 p-6 text-sm text-ink-600 dark:border-ink-800 dark:bg-ink-950/60 dark:text-ink-300">
-                      {t("teamsHub.featureDisabledChannels")}
-                    </p>
                   ) : null}
 
                   {tab === "channels" && channelsOn && selected ? (
@@ -736,12 +764,6 @@ export function TeamsCollaborationHub() {
                     </div>
                   ) : null}
 
-                  {tab === "workspace" && !workspaceOn ? (
-                    <p className="rounded-2xl border border-ink-200/80 bg-white/90 p-6 text-sm text-ink-600 dark:border-ink-800 dark:bg-ink-950/60 dark:text-ink-300">
-                      {t("teamsHub.featureDisabledWorkspace")}
-                    </p>
-                  ) : null}
-
                   {tab === "workspace" && workspaceOn && selected ? (
                     <TeamWorkspacePanel teamId={selected.id} onMutated={refreshTeamContext} />
                   ) : null}
@@ -760,7 +782,7 @@ export function TeamsCollaborationHub() {
                         embedded
                         teamId={adminTeam.id}
                         onTeamMutated={refreshTeamContext}
-                        onTeamDeleted={() => setTab("overview")}
+                        onTeamDeleted={() => setTab(visibleTabs[0] ?? "admin")}
                       />
                     </>
                   ) : null}

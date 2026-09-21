@@ -145,15 +145,20 @@ function isAnchorVisible(anchor: HTMLElement): boolean {
 function computeOrgMenuPosition(
   anchor: HTMLElement,
   panel: HTMLDivElement | null,
-): { top: number; left: number } {
+): { top: number; left: number; maxHeight: number } {
   const rect = anchor.getBoundingClientRect();
   const gap = 4;
   const viewportPad = 8;
   const panelWidth = panel?.offsetWidth ?? 224;
-  const top = rect.bottom + gap;
+  const panelHeight = panel?.offsetHeight ?? 320;
+  const spaceBelow = window.innerHeight - rect.bottom - viewportPad;
+  const spaceAbove = rect.top - viewportPad;
+  const openUp = spaceBelow < Math.min(panelHeight, 320) && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(160, Math.min(320, openUp ? spaceAbove - gap : spaceBelow - gap));
+  const top = openUp ? Math.max(viewportPad, rect.top - maxHeight - gap) : rect.bottom + gap;
   let left = rect.right - panelWidth;
   left = Math.max(viewportPad, Math.min(left, window.innerWidth - panelWidth - viewportPad));
-  return { top, left };
+  return { top, left, maxHeight };
 }
 
 function OrgActionsMenu({
@@ -184,7 +189,7 @@ function OrgActionsMenu({
   const { t } = useI18n();
   const toggleRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   const updateMenuPosition = useCallback(() => {
     const anchor = toggleRef.current;
@@ -256,8 +261,8 @@ function OrgActionsMenu({
           <div
             ref={menuRef}
             role="menu"
-            className="fixed z-[120] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
-            style={{ top: menuPos.top, left: menuPos.left }}
+            className="fixed z-[120] w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
+            style={{ top: menuPos.top, left: menuPos.left, maxHeight: menuPos.maxHeight }}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <button type="button" role="menuitem" className={itemClass} onClick={runMenuAction(() => onEditOrg(org))}>

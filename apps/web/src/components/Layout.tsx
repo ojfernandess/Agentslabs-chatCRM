@@ -285,13 +285,15 @@ export function Layout() {
     [sidebarTeams],
   );
 
-  /** Agentes membros de equipa precisam aceder ao centro de colaboração (não só admins). */
-  const collaborationNavOn = Boolean(
+  /** Hub de colaboração (menu aninhado em Conversas). */
+  const showCollaborationNav = Boolean(user?.organizationFeatures?.teams_collaboration_hub);
+  /** Página /teams: equipas operacionais ou qualquer funcionalidade de Times activa. */
+  const collaborationFeaturesOn = Boolean(
     user?.organizationFeatures?.teams_collaboration_hub ||
       user?.organizationFeatures?.teams_channels ||
       user?.organizationFeatures?.teams_workspace,
   );
-  const showTeamsNav = tenantAdmin || sidebarTeams.length > 0 || collaborationNavOn;
+  const showTeamsNav = tenantAdmin || sidebarTeams.length > 0 || collaborationFeaturesOn;
 
   const conversationTeamId =
     location.pathname.startsWith("/conversations")
@@ -605,7 +607,7 @@ export function Layout() {
                         })}
                       </>
                     ) : null}
-                    {showTeamsNav ? (
+                    {showCollaborationNav ? (
                       <Link
                         to="/teams"
                         className={teamNavItemClass(location.pathname === "/teams", collapsed)}
