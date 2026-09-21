@@ -30,7 +30,9 @@ import {
 import clsx from "clsx";
 import { PageTransition } from "@/components/Motion";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
+import { isTenantAdmin, isTenantAgent } from "@/lib/authRole";
 import { formatCurrencyFromCents, formatCurrencyUnits } from "@/lib/currency";
 import { Briefcase } from "lucide-react";
 import { AgentPerformanceDetailDrawer } from "@/components/reports/AgentPerformanceDetailDrawer";
@@ -201,6 +203,9 @@ function downloadCsv(filename: string, rows: string[][]) {
 
 export function ReportsPage() {
   const { t, dateLocale, locale } = useI18n();
+  const { user } = useAuth();
+  const tenantAdmin = isTenantAdmin(user?.role, user?.actingOrganizationId);
+  const tenantAgent = isTenantAgent(user?.role);
   const pt = locale === "pt-BR";
   const [tab, setTab] = useState<TabId>("overview");
   const [fromStr, setFromStr] = useState(() => toInputDate(startOfDay(subDays(new Date(), 29))));
@@ -248,6 +253,18 @@ export function ReportsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const visibleAgents = useMemo(() => {
+    if (!data?.agents) return [];
+    if (tenantAdmin || !tenantAgent || !user?.id) return data.agents;
+    return data.agents.filter((agent) => agent.userId === user.id);
+  }, [data?.agents, tenantAdmin, tenantAgent, user?.id]);
+
+  const visibleTelephonyAgents = useMemo(() => {
+    if (!data?.telephony?.agents) return [];
+    if (tenantAdmin || !tenantAgent || !user?.id) return data.telephony.agents;
+    return data.telephony.agents.filter((agent) => agent.userId === user.id);
+  }, [data?.telephony?.agents, tenantAdmin, tenantAgent, user?.id]);
 
   const chartDataCsat = useMemo(
     () =>
@@ -327,7 +344,7 @@ export function ReportsPage() {
       ],
       [],
       ["agent", "conversations", "outbound_messages"],
-      ...data.agents.map((a) => [a.name, String(a.conversationsTouched), String(a.outboundMessages)]),
+      ...visibleAgents.map((a) => [a.name, String(a.conversationsTouched), String(a.outboundMessages)]),
     ];
     if (data.telephony?.enabled) {
       const tel = data.telephony;
@@ -365,7 +382,7 @@ export function ReportsPage() {
         ]),
         [],
         ["agent", "calls", "answered", "missed", "talk_time_sec"],
-        ...tel.agents.map((a) => [
+        ...visibleTelephonyAgents.map((a) => [
           a.name,
           String(a.totalCalls),
           String(a.answeredCalls),
@@ -773,7 +790,7 @@ export function ReportsPage() {
                   <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.agentDetailOpenHint")}</p>
                 </div>
                 <div className="overflow-x-auto">
-                  {data.agents.every((a) => a.outboundMessages === 0) ? (
+                  {visibleAgents.every((a) => a.outboundMessages === 0) ? (
                     <p className="px-6 py-8 text-sm text-ink-500">{t("reportsPage.emptyAgents")}</p>
                   ) : (
                     <table className="min-w-full text-sm">
@@ -785,7 +802,7 @@ export function ReportsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.agents.map((a) => (
+                        {visibleAgents.map((a) => (
                           <tr
                             key={a.userId}
                             className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
@@ -987,7 +1004,7 @@ export function ReportsPage() {
                       </h2>
                     </div>
                     <div className="overflow-x-auto">
-                      {data.telephony.agents.length === 0 ? (
+                      {visibleTelephonyAgents.length === 0 ? (
                         <p className="px-6 py-8 text-sm text-ink-500">{t("reportsPage.emptyTelephonyAgents")}</p>
                       ) : (
                         <table className="min-w-full text-sm">
@@ -1003,7 +1020,7 @@ export function ReportsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {data.telephony.agents.map((a) => (
+                            {visibleTelephonyAgents.map((a) => (
                               <tr
                                 key={a.userId}
                                 className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"

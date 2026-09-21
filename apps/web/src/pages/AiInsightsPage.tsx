@@ -45,30 +45,52 @@ export function AiInsightsPage() {
   const [analyzedCount, setAnalyzedCount] = useState(0);
   const [generatedReply, setGeneratedReply] = useState<string | null>(null);
 
-  const [assistantAiEnabled, setAssistantAiEnabled] = useState(true);
-  const [aiPilotAccessEnabled, setAiPilotAccessEnabled] = useState(false);
+  type PilotFlags = { assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean };
+  const [pilotFlags, setPilotFlags] = useState<PilotFlags | null>(null);
+  const [pilotFlagsLoading, setPilotFlagsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    if (!user) return;
+    if (!user) {
+      setPilotFlags(null);
+      setPilotFlagsLoading(false);
+      return;
+    }
+    setPilotFlagsLoading(true);
     void api
-      .get<{ assistantAiEnabled: boolean; aiPilotAccessEnabled: boolean }>("/settings/pilot")
+      .get<PilotFlags>("/settings/pilot")
       .then((res) => {
         if (!cancelled) {
-          setAssistantAiEnabled(res.assistantAiEnabled);
-          setAiPilotAccessEnabled(res.aiPilotAccessEnabled);
+          setPilotFlags({
+            assistantAiEnabled: res.assistantAiEnabled,
+            aiPilotAccessEnabled: res.aiPilotAccessEnabled,
+          });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setAssistantAiEnabled(true);
-          setAiPilotAccessEnabled(false);
+          setPilotFlags({ assistantAiEnabled: true, aiPilotAccessEnabled: false });
         }
+      })
+      .finally(() => {
+        if (!cancelled) setPilotFlagsLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [user]);
+
+  useEffect(() => {
+    const onUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<PilotFlags>).detail;
+      if (detail) setPilotFlags(detail);
+    };
+    window.addEventListener("openconduit:pilot-flags-updated", onUpdated);
+    return () => window.removeEventListener("openconduit:pilot-flags-updated", onUpdated);
+  }, []);
+
+  const assistantAiEnabled = pilotFlags?.assistantAiEnabled ?? true;
+  const aiPilotAccessEnabled = pilotFlags?.aiPilotAccessEnabled ?? false;
 
   useEffect(() => {
     let cancelled = false;
@@ -205,14 +227,15 @@ export function AiInsightsPage() {
   };
 
   const toggleAi = useCallback(async () => {
-    if (!tenantAdmin) return;
+    if (!tenantAdmin || !pilotFlags) return;
     const next = !assistantAiEnabled;
     try {
       await api.put("/settings", { assistantAiEnabled: next });
-      setAssistantAiEnabled(next);
+      const updated = { assistantAiEnabled: next, aiPilotAccessEnabled };
+      setPilotFlags(updated);
       window.dispatchEvent(
         new CustomEvent("openconduit:pilot-flags-updated", {
-          detail: { assistantAiEnabled: next, aiPilotAccessEnabled },
+          detail: updated,
         }),
       );
       setError("");
@@ -220,24 +243,25 @@ export function AiInsightsPage() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
     }
-  }, [assistantAiEnabled, tenantAdmin, t, aiPilotAccessEnabled]);
+  }, [assistantAiEnabled, tenantAdmin, t, aiPilotAccessEnabled, pilotFlags]);
 
   const togglePilot = useCallback(async () => {
-    if (!tenantAdmin) return;
+    if (!tenantAdmin || !pilotFlags) return;
     const next = !aiPilotAccessEnabled;
     try {
       await api.put("/settings", { aiPilotAccessEnabled: next });
-      setAiPilotAccessEnabled(next);
+      const updated = { assistantAiEnabled, aiPilotAccessEnabled: next };
+      setPilotFlags(updated);
       window.dispatchEvent(
         new CustomEvent("openconduit:pilot-flags-updated", {
-          detail: { assistantAiEnabled, aiPilotAccessEnabled: next },
+          detail: updated,
         }),
       );
       setError("");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
     }
-  }, [aiPilotAccessEnabled, tenantAdmin, t, assistantAiEnabled]);
+  }, [aiPilotAccessEnabled, tenantAdmin, t, assistantAiEnabled, pilotFlags]);
 
   const runAnalyze = useCallback(async () => {
     if (!selectedId.trim() || !assistantAiEnabled) return;
@@ -254,7 +278,9 @@ export function AiInsightsPage() {
       setSuccess(t("aiInsightsPage.analysisDone"));
     } catch (e) {
       if (e instanceof ApiError && (e as unknown as { code?: string }).code === "ai_disabled") {
-        setAssistantAiEnabled(false);
+        setPilotFlags((prev) =>
+          prev ? { ...prev, assistantAiEnabled: false } : { assistantAiEnabled: false, aiPilotAccessEnabled: false },
+        );
         setError(t("aiInsightsPage.aiDisabled"));
       } else {
         setError(e instanceof ApiError ? e.message : t("aiInsightsPage.analyzeError"));
@@ -327,7 +353,7 @@ export function AiInsightsPage() {
               <p className="text-sm leading-relaxed text-ink-600 dark:text-ink-400">{t("aiInsightsPage.subtitlePremium")}</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              {tenantAdmin ? (
+              {tenantAdmin && !pilotFlagsLoading && pilotFlags ? (
                 <>
                   <label className="inline-flex items-center gap-2 rounded-xl border border-ink-200 bg-ink-50/80 px-3 py-2 text-xs font-medium dark:border-ink-700 dark:bg-ink-800/40">
                     <span>{t("aiInsightsPage.autopilot")}</span>
@@ -355,15 +381,17 @@ export function AiInsightsPage() {
                   </button>
                 </>
               ) : null}
-              <Link to="/settings" className="btn-secondary inline-flex items-center gap-2 text-xs">
-                <Settings className="h-4 w-4" />
-                {t("aiInsightsPage.aiSettings")}
-              </Link>
+              {tenantAdmin ? (
+                <Link to="/settings" className="btn-secondary inline-flex items-center gap-2 text-xs">
+                  <Settings className="h-4 w-4" />
+                  {t("aiInsightsPage.aiSettings")}
+                </Link>
+              ) : null}
             </div>
           </div>
         </header>
 
-        {!assistantAiEnabled ? (
+        {pilotFlags && !assistantAiEnabled ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
             {t("aiInsightsPage.aiDisabled")}
           </div>
@@ -401,7 +429,7 @@ export function AiInsightsPage() {
               onSelect={onSelectConversation}
               onAnalyze={() => void runAnalyze()}
               analyzing={analyzing}
-              analyzeDisabled={!assistantAiEnabled}
+              analyzeDisabled={pilotFlagsLoading || !assistantAiEnabled}
             />
           </div>
 
@@ -422,7 +450,7 @@ export function AiInsightsPage() {
                   onApplyTag={applyContactTag}
                   onGenerateReply={() => void runGenerateReply()}
                   generating={generating}
-                  disabled={!assistantAiEnabled}
+                  disabled={pilotFlagsLoading || !assistantAiEnabled}
                 />
               </div>
               {selectedId ? (

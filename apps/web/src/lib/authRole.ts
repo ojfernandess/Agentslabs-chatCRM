@@ -15,3 +15,8 @@ export function isTenantAdmin(role: unknown, actingOrganizationId?: string | nul
   if (r === "SUPER_ADMIN" && actingOrganizationId) return true;
   return false;
 }
+
+/** Agente do tenant (role AGENT / «usuário» na UI). */
+export function isTenantAgent(role: unknown): boolean {
+  return normalizeRole(role) === "AGENT";
+}

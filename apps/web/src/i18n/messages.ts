@@ -4468,7 +4468,7 @@ export const messages = {
     reportsPage: {
       title: "Relatórios",
       subtitle:
-        "Volume de atendimento, SLA operacional, desempenho por agente e equipe — alinhado a boas práticas de analytics de suporte (estilo HubSpot Service Hub).",
+        "Volume de atendimento, SLA operacional, desempenho por agente e equipe — alinhado a boas práticas de analytics de suporte.",
       tabOverview: "Visão geral",
       tabConversations: "Conversas e mensagens",
       tabAgents: "Agentes",
@@ -11602,7 +11602,7 @@ export const messages = {
     reportsPage: {
       title: "Reports",
       subtitle:
-        "Conversation volume, response and resolution metrics, agent and team performance — aligned with common service operations reporting (e.g. HubSpot-style analytics).",
+        "Conversation volume, response and resolution metrics, agent and team performance — aligned with common service operations reporting.",
       tabOverview: "Overview",
       tabConversations: "Conversations & messages",
       tabAgents: "Agents",
