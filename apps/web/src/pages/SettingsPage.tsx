@@ -140,6 +140,7 @@ interface AppSettings {
   resolveRequireClosureReason?: boolean;
   resolveRequireLeadType?: boolean;
   resolveOfferReminder?: boolean;
+  crmKanbanShowEmailContacts?: boolean;
   conversationsAttendanceTabEnabled?: boolean;
   conversationsAttendanceTabAutoOpen?: boolean;
   conversationsAllScopeHumanOnly?: boolean;
@@ -243,6 +244,7 @@ export function SettingsPage() {
       Boolean(user?.organizationFeatures?.nvoip_otp) ||
       Boolean(user?.organizationFeatures?.nvoip_whatsapp)) &&
     isAdmin;
+  const funnelEnabled = user?.organizationFeatures?.crm_kanban ?? true;
   const initialSection = searchParams.get("section");
   const [section, setSection] = useState<SettingsSection>(() => {
     if (initialSection === "leadFinder" && showLeadFinder) return "leadFinder";
@@ -312,6 +314,9 @@ export function SettingsPage() {
   const [editLtSubmitting, setEditLtSubmitting] = useState(false);
   const [pipelineOrphans, setPipelineOrphans] = useState<CrmPipelineStageRow[]>([]);
   const [orphanBusyId, setOrphanBusyId] = useState<string | null>(null);
+  const [crmKanbanShowEmailContacts, setCrmKanbanShowEmailContacts] = useState(true);
+  const [crmKanbanSettingsSaving, setCrmKanbanSettingsSaving] = useState(false);
+  const [crmKanbanSettingsError, setCrmKanbanSettingsError] = useState("");
 
   const [agentBotOptions, setAgentBotOptions] = useState<AgentBotOption[]>([]);
   const [agentBotId, setAgentBotId] = useState("");
@@ -489,6 +494,7 @@ export function SettingsPage() {
         setWfRequireClosure(data.resolveRequireClosureReason ?? true);
         setWfRequireLeadType(data.resolveRequireLeadType ?? true);
         setWfOfferReminder(data.resolveOfferReminder ?? true);
+        setCrmKanbanShowEmailContacts(data.crmKanbanShowEmailContacts ?? true);
         setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
         setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
         setWfAllScopeHumanOnly(data.conversationsAllScopeHumanOnly ?? false);
@@ -735,6 +741,23 @@ export function SettingsPage() {
       setLtError(err instanceof Error ? err.message : "Failed");
     } finally {
       setEditLtSubmitting(false);
+    }
+  };
+
+  const handleToggleCrmKanbanShowEmailContacts = async () => {
+    const next = !crmKanbanShowEmailContacts;
+    setCrmKanbanShowEmailContacts(next);
+    setCrmKanbanSettingsError("");
+    setCrmKanbanSettingsSaving(true);
+    try {
+      const data = await api.put<AppSettings>("/settings", { crmKanbanShowEmailContacts: next });
+      setSettings(data);
+      setCrmKanbanShowEmailContacts(data.crmKanbanShowEmailContacts ?? true);
+    } catch (err) {
+      setCrmKanbanShowEmailContacts(!next);
+      setCrmKanbanSettingsError(err instanceof Error ? err.message : t("settings.crmKanbanSaveError"));
+    } finally {
+      setCrmKanbanSettingsSaving(false);
     }
   };
 
@@ -2951,6 +2974,44 @@ export function SettingsPage() {
                     ) : null}
                   </div>
                 </motion.form>
+              ) : null}
+
+              {section === "crm" && funnelEnabled ? (
+                <motion.div className="card-surface mb-6 rounded-xl p-6" variants={staggerItem}>
+                  <h2 className="mb-2 font-semibold text-ink-900 dark:text-ink-50">{t("settings.crmKanbanTitle")}</h2>
+                  <p className="mb-4 text-sm text-ink-500 dark:text-ink-400">{t("settings.crmKanbanHint")}</p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-ink-900 dark:text-ink-50">
+                        {t("settings.crmKanbanShowEmailContactsTitle")}
+                      </p>
+                      <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+                        {t("settings.crmKanbanShowEmailContactsHint")}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={crmKanbanShowEmailContacts}
+                      disabled={crmKanbanSettingsSaving}
+                      onClick={() => void handleToggleCrmKanbanShowEmailContacts()}
+                      className={clsx(
+                        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                        crmKanbanShowEmailContacts ? "bg-brand-500" : settingsToggleOff,
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          settingsToggleThumb,
+                          crmKanbanShowEmailContacts ? "translate-x-5" : "translate-x-0",
+                        )}
+                      />
+                    </button>
+                  </div>
+                  {crmKanbanSettingsError ? (
+                    <p className="mt-3 text-sm text-red-600 dark:text-red-400">{crmKanbanSettingsError}</p>
+                  ) : null}
+                </motion.div>
               ) : null}
 
               {section === "crm" && (

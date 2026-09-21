@@ -1,4 +1,5 @@
 import { FastifyInstance, FastifyReply } from "fastify";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import {
   authenticateSessionOrUserApiTokenForApplicationApis,
@@ -8,6 +9,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { enrichWebsiteContacts } from "../lib/websiteVisitorContacts.js";
+import { contactHasEmailFilter } from "../lib/conversationUserEmailState.js";
 
 const BOARD_CONTACT_LIMIT = 500;
 
@@ -33,7 +35,16 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
     if (!(await requireCrmKanban(organizationId, reply))) return;
 
-    const where: Record<string, unknown> = { organizationId };
+    const orgSettings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { crmKanbanShowEmailContacts: true },
+    });
+    const showEmailContacts = orgSettings?.crmKanbanShowEmailContacts ?? true;
+
+    const where: Prisma.ContactWhereInput = { organizationId };
+    if (!showEmailContacts) {
+      where.NOT = contactHasEmailFilter();
+    }
 
     const leadTypes = await prisma.leadType.findMany({
       where: { organizationId },

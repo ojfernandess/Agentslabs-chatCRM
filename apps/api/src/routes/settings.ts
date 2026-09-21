@@ -145,6 +145,7 @@ const settingsSchema = z.object({
   resolveRequireClosureReason: z.boolean().optional(),
   resolveRequireLeadType: z.boolean().optional(),
   resolveOfferReminder: z.boolean().optional(),
+  crmKanbanShowEmailContacts: z.boolean().optional(),
   audioTranscriptionEnabled: z.boolean().optional(),
   imageTranscriptionEnabled: z.boolean().optional(),
   silentTransferToAgentBot: z.boolean().optional(),

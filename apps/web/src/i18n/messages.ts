@@ -5417,6 +5417,12 @@ export const messages = {
       leadTypesTitle: "Tipos de lead",
       leadTypesHint:
         "Definem as colunas do funil CRM (Kanban) e são obrigatórios ao finalizar uma conversa. Ex.: MQL, SQL, oportunidade.",
+      crmKanbanTitle: "Funil CRM (Kanban)",
+      crmKanbanHint: "Opções de exibição das colunas do funil CRM.",
+      crmKanbanShowEmailContactsTitle: "Mostrar contactos de e-mail no Kanban",
+      crmKanbanShowEmailContactsHint:
+        "Quando desativado, contactos criados por caixas de e-mail deixam de aparecer no funil CRM.",
+      crmKanbanSaveError: "Não foi possível guardar esta opção.",
       pipelineOrphanTitle: "Etapas do funil sem tipo de lead",
       pipelineOrphanHint:
         "Aparecem em «Novo negócio» mas não na lista acima — por exemplo, se um tipo de lead foi apagado e a etapa do pipeline ficou órfã. Crie um tipo com o mesmo nome para voltar a associar.",
@@ -12553,6 +12559,12 @@ export const messages = {
       leadTypesTitle: "Lead types",
       leadTypesHint:
         "These are your CRM Kanban columns and are required when resolving a conversation. E.g. MQL, SQL, opportunity.",
+      crmKanbanTitle: "CRM funnel (Kanban)",
+      crmKanbanHint: "Display options for CRM Kanban columns.",
+      crmKanbanShowEmailContactsTitle: "Show email contacts on Kanban",
+      crmKanbanShowEmailContactsHint:
+        "When disabled, contacts created from email inboxes are hidden from the CRM Kanban board.",
+      crmKanbanSaveError: "Could not save this setting.",
       pipelineOrphanTitle: "Pipeline stages without a lead type",
       pipelineOrphanHint:
         "They show in «New deal» but not in the list above — e.g. after a lead type was deleted and the stage became unlinked. Create a type with the same name to re-link.",

@@ -4515,14 +4515,16 @@ export function ConversationDetailPage() {
                 <Sparkles className="h-5 w-5" />
               </button>
             ) : null}
-            <Link
-              to="/crm"
-              title={t("conversationDetail.openKanban")}
-              aria-label={t("conversationDetail.openKanban")}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5"
-            >
-              <Kanban className="h-5 w-5" />
-            </Link>
+            {funnelEnabled ? (
+              <Link
+                to="/crm"
+                title={t("conversationDetail.openKanban")}
+                aria-label={t("conversationDetail.openKanban")}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5"
+              >
+                <Kanban className="h-5 w-5" />
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>
