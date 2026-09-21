@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import { useLocation, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone, Tag } from "lucide-react";
@@ -94,6 +94,35 @@ function applySyncedContactAvatars(rows: Conversation[], syncedIds: string[]): C
   );
 }
 
+function buildConversationListQuery(input: {
+  organizationId?: string | null;
+  botAttendanceActive: boolean;
+  attendanceScopeActive: boolean;
+  mineActive: boolean;
+  statusFilter: string;
+  teamFilter: string;
+  inboxFilter: string;
+  leadTypeFilter: string;
+}): { fetchKey: string; params: URLSearchParams } {
+  const params = new URLSearchParams({ pageSize: "50" });
+  if (input.botAttendanceActive) {
+    params.set("botAttendance", "1");
+  } else if (input.attendanceScopeActive && input.mineActive) {
+    if (input.statusFilter) params.set("status", input.statusFilter);
+    params.set("mine", "1");
+  } else if (input.attendanceScopeActive) {
+    params.set("waitingAttendance", "1");
+  } else {
+    if (input.statusFilter) params.set("status", input.statusFilter);
+    if (input.mineActive) params.set("mine", "1");
+  }
+  if (input.teamFilter) params.set("teamId", input.teamFilter);
+  if (input.inboxFilter) params.set("inboxId", input.inboxFilter);
+  if (input.leadTypeFilter) params.set("leadTypeId", input.leadTypeFilter);
+  const fetchKey = `${input.organizationId ?? ""}|${params.toString()}`;
+  return { fetchKey, params };
+}
+
 export function ConversationsPage({
   splitView = false,
   onRegisterRefresh,
@@ -131,6 +160,9 @@ export function ConversationsPage({
     position: { x: number; y: number };
   } | null>(null);
   const hasAnimated = useRef(false);
+  const listFetchGenRef = useRef(0);
+  const listScopeCacheRef = useRef(new Map<string, Conversation[]>());
+  const listFetchKeyRef = useRef("");
   const initialAttendanceScopeApplied = useRef(false);
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
@@ -437,34 +469,90 @@ export function ConversationsPage({
     setScopeParam,
   ]);
 
+  const buildListFetchKey = useCallback(() => {
+    return buildConversationListQuery({
+      organizationId: user?.organizationId,
+      botAttendanceActive,
+      attendanceScopeActive,
+      mineActive,
+      statusFilter,
+      teamFilter,
+      inboxFilter,
+      leadTypeFilter,
+    }).fetchKey;
+  }, [
+    statusFilter,
+    teamFilter,
+    inboxFilter,
+    leadTypeFilter,
+    mineActive,
+    botAttendanceActive,
+    attendanceScopeActive,
+    user?.organizationId,
+  ]);
+
+  const buildListQuery = useCallback(() => {
+    return buildConversationListQuery({
+      organizationId: user?.organizationId,
+      botAttendanceActive,
+      attendanceScopeActive,
+      mineActive,
+      statusFilter,
+      teamFilter,
+      inboxFilter,
+      leadTypeFilter,
+    });
+  }, [
+    statusFilter,
+    teamFilter,
+    inboxFilter,
+    leadTypeFilter,
+    mineActive,
+    botAttendanceActive,
+    attendanceScopeActive,
+    user?.organizationId,
+  ]);
+
+  const activeListFetchKey = useMemo(() => buildListFetchKey(), [buildListFetchKey]);
+
+  useLayoutEffect(() => {
+    listFetchKeyRef.current = activeListFetchKey;
+    listFetchGenRef.current += 1;
+    const cached = listScopeCacheRef.current.get(activeListFetchKey);
+    if (cached) {
+      setConversations(cached);
+      setLoading(false);
+    } else {
+      setConversations([]);
+      setLoading(true);
+    }
+  }, [activeListFetchKey]);
+
   const loadConversations = useCallback(async () => {
-    if (!hasAnimated.current) setLoading(true);
+    const { fetchKey, params } = buildListQuery();
+    listFetchKeyRef.current = fetchKey;
+    const gen = ++listFetchGenRef.current;
+    const cached = listScopeCacheRef.current.get(fetchKey);
+
     try {
-      const params = new URLSearchParams({ pageSize: "50" });
-      if (botAttendanceActive) {
-        params.set("botAttendance", "1");
-      } else if (attendanceScopeActive && mineActive) {
-        if (statusFilter) params.set("status", statusFilter);
-        params.set("mine", "1");
-      } else if (attendanceScopeActive) {
-        params.set("waitingAttendance", "1");
-      } else {
-        if (statusFilter) params.set("status", statusFilter);
-        if (mineActive) params.set("mine", "1");
-      }
-      if (teamFilter) params.set("teamId", teamFilter);
-      if (inboxFilter) params.set("inboxId", inboxFilter);
-      if (leadTypeFilter) params.set("leadTypeId", leadTypeFilter);
       const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
+      if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
+
+      listScopeCacheRef.current.set(fetchKey, res.data);
       setConversations(res.data);
+
       const contactIds = res.data.map((c) => c.contact.id).slice(0, 40);
       if (contactIds.length > 0) {
         void api
           .post<{ synced: string[]; failed: string[] }>("/contacts/sync-avatars", { contactIds })
           .then((syncRes) => {
-            if (syncRes.synced?.length) {
-              setConversations((prev) => applySyncedContactAvatars(prev, syncRes.synced));
-            }
+            if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
+            if (!syncRes.synced?.length) return;
+            setConversations((prev) => {
+              const next = applySyncedContactAvatars(prev, syncRes.synced);
+              listScopeCacheRef.current.set(fetchKey, next);
+              return next;
+            });
           })
           .catch(() => {});
       }
@@ -476,12 +564,20 @@ export function ConversationsPage({
       } catch {
       }
     } catch {
-      /* failed */
+      if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
+      if (!cached) setConversations([]);
     } finally {
-      hasAnimated.current = true;
-      setLoading(false);
+      if (gen === listFetchGenRef.current && listFetchKeyRef.current === fetchKey) {
+        hasAnimated.current = true;
+        setLoading(false);
+      }
     }
-  }, [statusFilter, teamFilter, inboxFilter, leadTypeFilter, mineActive, botAttendanceActive, attendanceScopeActive]);
+  }, [buildListQuery]);
+
+  useEffect(() => {
+    listScopeCacheRef.current.clear();
+    listFetchGenRef.current += 1;
+  }, [user?.organizationId]);
 
   const loadScopeCounts = useCallback(async () => {
     if (!channelSettingsLoaded) return;
@@ -1113,7 +1209,11 @@ export function ConversationsPage({
           void loadConversations();
         }}
         onDeleted={(conversationId) => {
-          setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+          setConversations((prev) => {
+            const next = prev.filter((c) => c.id !== conversationId);
+            listScopeCacheRef.current.set(listFetchKeyRef.current, next);
+            return next;
+          });
           setContextMenu(null);
           if (splitView && activeThreadId === conversationId) {
             navigate(`/conversations${conversationLinkSuffix}`, { replace: true });
