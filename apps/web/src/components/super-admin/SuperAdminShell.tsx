@@ -135,17 +135,22 @@ export function SuperAdminPageHeader({
   title,
   subtitle,
   actions,
+  icon,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  icon?: ReactNode;
 }) {
   return (
     <div className="mb-8 flex flex-col gap-4 border-b border-slate-200/80 pb-6 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Control plane</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
-        {subtitle ? <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">{subtitle}</p> : null}
+      <div className="flex min-w-0 items-start gap-3">
+        {icon ? <div className="shrink-0">{icon}</div> : null}
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Control plane</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+          {subtitle ? <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">{subtitle}</p> : null}
+        </div>
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
@@ -337,7 +342,7 @@ export function SuperAdminShell({
             className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-500/[0.04] via-transparent to-violet-500/[0.05]"
             aria-hidden
           />
-          <div className="relative mx-auto max-w-7xl px-6 py-8 lg:px-10 lg:py-10">
+          <div className="relative mx-auto max-w-[1440px] px-6 py-8 lg:px-10 lg:py-10">
             {error ? (
               <div
                 className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"

@@ -4,13 +4,8 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
-  Building2,
-  Download,
   Copy,
   Check,
-  Users,
-  MessagesSquare,
-  UserCircle,
   Search,
   Crown,
   Pencil,
@@ -27,6 +22,7 @@ import {
   type SuperSection,
 } from "@/components/super-admin/SuperAdminShell";
 import { SuperAdminOrgExportModal } from "@/components/super-admin/SuperAdminOrgExportModal";
+import { SuperAdminOrganizationsSection } from "@/components/super-admin/SuperAdminOrganizationsSection";
 import { SuperAdminPublicDocsPanel } from "@/components/super-admin/SuperAdminPublicDocsPanel";
 import { SuperAdminApiRateLimitPanel } from "@/components/super-admin/SuperAdminApiRateLimitPanel";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
@@ -1030,9 +1026,9 @@ export function SuperAdminPage() {
     }
   };
 
-  const handleCreate = async (e: FormEvent) => {
+  const handleCreate = async (e: FormEvent): Promise<boolean> => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) return false;
     setSubmitting(true);
     setError("");
     try {
@@ -1043,8 +1039,10 @@ export function SuperAdminPage() {
       setName("");
       setSlug("");
       await load();
+      return true;
     } catch {
       setError("Não foi possível criar a organização (slug duplicado?).");
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -3086,230 +3084,33 @@ export function SuperAdminPage() {
           )}
 
           {section === "organizations" && (
-            <div className="space-y-6">
-              <SuperAdminPageHeader
-                title={t("superAdmin.organizations")}
-                subtitle={t("superAdmin.organizationsSubtitle")}
-              />
-              {stats && !loading ? (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <SuperAdminMetricCard
-                    label={t("superAdmin.organizationsStatTotal")}
-                    value={stats.organizationTotal}
-                    accent="violet"
-                  />
-                  <SuperAdminMetricCard
-                    label={t("superAdmin.organizationsStatActive")}
-                    value={stats.organizationActive}
-                    accent="emerald"
-                  />
-                  <SuperAdminMetricCard
-                    label={t("superAdmin.organizationsStatSuspended")}
-                    value={stats.organizationSuspended}
-                    accent="amber"
-                  />
-                </div>
-              ) : null}
-
-              <SuperAdminPanel className="p-6">
-                <h2 className="mb-4 flex items-center gap-2 font-semibold text-slate-900">
-                  <Building2 className="h-5 w-5" />
-                  Nova organização
-                </h2>
-                <p className="mb-4 text-sm text-gray-500">
-                  Cria um tenant isolado com pipeline, tipos de lead e etiquetas padrão. O webhook WhatsApp será{" "}
-                  <code className="rounded bg-gray-100 px-1">…/webhooks/whatsapp/&lt;id&gt;</code>.
-                </p>
-                <form onSubmit={(e) => void handleCreate(e)} className="flex flex-wrap items-end gap-3">
-                  <div className="min-w-[200px] flex-1">
-                    <label className="block text-xs font-medium text-gray-600">Nome</label>
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      placeholder="Ex.: Clínica Norte"
-                      required
-                    />
-                  </div>
-                  <div className="w-44">
-                    <label className="block text-xs font-medium text-gray-600">Slug (opcional)</label>
-                    <input
-                      value={slug}
-                      onChange={(e) => setSlug(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      placeholder="auto"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
-                  >
-                    {submitting ? "A criar…" : "Criar"}
-                  </button>
-                </form>
-              </SuperAdminPanel>
-
-              <SuperAdminPanel className="p-6">
-                <h2 className="mb-4 font-semibold text-slate-900">Lista de organizações</h2>
-                {loading ? (
-                  <p className="text-sm text-gray-500">{t("common.loading")}</p>
-                ) : orgs.length === 0 ? (
-                  <p className="text-sm text-gray-500">Nenhuma organização.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100 text-xs font-medium uppercase tracking-wide text-gray-500">
-                          <th className="pb-2 pr-4">Nome</th>
-                          <th className="pb-2 pr-4">Slug</th>
-                          <th className="pb-2 pr-3">{t("superAdmin.planColumn")}</th>
-                          <th className="pb-2 pr-3 text-right">
-                            <span className="inline-flex items-center gap-1">
-                              <Users className="h-3.5 w-3.5" />
-                              Users
-                            </span>
-                          </th>
-                          <th className="pb-2 pr-3 text-right">Contactos</th>
-                          <th className="pb-2 pr-3 text-right">
-                            <span className="inline-flex items-center gap-1">
-                              <MessagesSquare className="h-3.5 w-3.5" />
-                              Conversas
-                            </span>
-                          </th>
-                          <th className="pb-2 pr-4">Estado</th>
-                          <th className="pb-2 pr-2">Webhook</th>
-                          <th className="pb-2 text-right">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {orgs.map((o) => (
-                          <tr key={o.id}>
-                            <td className="py-3 pr-4 font-medium text-gray-900">{o.name}</td>
-                            <td className="py-3 pr-4 text-ink-600">{o.slug}</td>
-                            <td className="py-3 pr-3 text-ink-700">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="font-medium">{o.subscription?.plan?.name ?? o.planTier ?? "free"}</span>
-                                {orgHasCustomPlan(o) ? (
-                                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800">
-                                    {t("superAdmin.planCustomBadge")}
-                                  </span>
-                                ) : null}
-                              </div>
-                              {o.subscription?.status ? (
-                                <div className="text-xs text-slate-500">{o.subscription.status}</div>
-                              ) : null}
-                            </td>
-                            <td className="py-3 pr-3 text-right tabular-nums text-gray-600">
-                              {o._count.users}
-                            </td>
-                            <td className="py-3 pr-3 text-right tabular-nums text-gray-600">
-                              {o._count.contacts}
-                            </td>
-                            <td className="py-3 pr-3 text-right tabular-nums text-gray-600">
-                              {o._count.conversations}
-                            </td>
-                            <td className="py-3 pr-4">
-                              <button
-                                type="button"
-                                onClick={() => void toggleActive(o.id, o.isActive)}
-                                className={
-                                  o.isActive
-                                    ? "text-sm font-medium text-green-700 hover:underline"
-                                    : "text-sm font-medium text-gray-500 hover:underline"
-                                }
-                              >
-                                {o.isActive ? "Ativa" : "Suspensa"}
-                              </button>
-                            </td>
-                            <td className="py-3 pr-2">
-                              <div className="flex items-center gap-1">
-                                <code className="max-w-[140px] truncate font-mono text-xs text-gray-500">
-                                  {webhookUrlFor(o.id)}
-                                </code>
-                                <button
-                                  type="button"
-                                  onClick={() => void copyWebhook(o.id)}
-                                  className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                                  title="Copiar webhook"
-                                >
-                                  {copiedId === o.id ? (
-                                    <Check className="h-4 w-4 text-green-600" />
-                                  ) : (
-                                    <Copy className="h-4 w-4" />
-                                  )}
-                                </button>
-                              </div>
-                            </td>
-                            <td className="py-3 text-right">
-                              <div className="flex flex-col items-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditOrg(o)}
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                  {t("superAdmin.orgEdit")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteOrgConfirm(o)}
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                  {t("superAdmin.orgDelete")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setFlagsOrgId(o.id);
-                                    setSection("featureFlags");
-                                  }}
-                                  className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-                                >
-                                  {t("superAdmin.orgOpenFeatures")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setExportOrg(o)}
-                                  className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-                                >
-                                  <Download className="h-3.5 w-3.5" />
-                                  {t("superAdmin.orgExportAction")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => openBillingModal(o)}
-                                  className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-                                >
-                                  {t("superAdmin.editBilling")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setUsersOrg(o)}
-                                  className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
-                                >
-                                  {t("superAdmin.teamUsers")}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!o.isActive || enteringId === o.id}
-                                  onClick={() => void onEnterOrg(o.id)}
-                                  className="mt-1 inline-flex items-center gap-1.5 rounded bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <UserCircle className="h-3.5 w-3.5" />
-                                  {enteringId === o.id ? "A entrar…" : "Entrar na organização"}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </SuperAdminPanel>
-            </div>
+            <SuperAdminOrganizationsSection
+              orgs={orgs}
+              stats={stats}
+              loading={loading}
+              name={name}
+              slug={slug}
+              submitting={submitting}
+              enteringId={enteringId}
+              copiedId={copiedId}
+              orgHasCustomPlan={orgHasCustomPlan}
+              onNameChange={setName}
+              onSlugChange={setSlug}
+              onCreate={handleCreate}
+              onToggleActive={toggleActive}
+              onCopyWebhook={copyWebhook}
+              webhookUrlFor={webhookUrlFor}
+              onEnterOrg={onEnterOrg}
+              onEditOrg={openEditOrg}
+              onDeleteOrg={setDeleteOrgConfirm}
+              onOpenFeatures={(orgId) => {
+                setFlagsOrgId(orgId);
+                setSection("featureFlags");
+              }}
+              onExportOrg={setExportOrg}
+              onOpenBilling={openBillingModal}
+              onOpenUsers={setUsersOrg}
+            />
           )}
       </SuperAdminShell>
 
