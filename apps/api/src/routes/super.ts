@@ -613,6 +613,19 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
             },
           },
         },
+        settings: {
+          select: { whatsappProvider: true },
+        },
+        inboxes: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            name: true,
+            channelType: true,
+            channelConfig: true,
+            ingestToken: true,
+          },
+        },
       },
     });
     const stats = await fetchPlatformStats();

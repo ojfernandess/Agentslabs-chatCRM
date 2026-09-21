@@ -22,7 +22,15 @@ import {
   X,
 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import { WhatsAppBrandIcon } from "@/components/WhatsAppBrandIcon";
+import { InboxChannelIcon } from "@/components/inboxes/InboxChannelIcon";
+import { isInboxChannelId } from "@/lib/inboxChannelUi";
+import {
+  buildOrgIntegrationEntries,
+  integrationFilterOptions,
+  orgHasIntegrationChannel,
+  type IntegrationFilterChannel,
+  type SuperAdminOrgInboxRow,
+} from "@/lib/superAdminOrgIntegrations";
 import {
   SuperAdminMetricCard,
   SuperAdminPageHeader,
@@ -55,6 +63,8 @@ export type SuperAdminOrgRow = {
     } | null;
   } | null;
   _count: { users: number; contacts: number; conversations: number };
+  settings?: { whatsappProvider?: string | null } | null;
+  inboxes?: SuperAdminOrgInboxRow[];
 };
 
 export type SuperAdminOrgStats = {
@@ -68,7 +78,7 @@ export type SuperAdminOrgStats = {
 
 type PlanFilter = "all" | string;
 type StatusFilter = "all" | "active" | "suspended";
-type IntegrationFilter = "all" | "whatsapp";
+type IntegrationFilter = IntegrationFilterChannel;
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 
@@ -120,14 +130,12 @@ export type SuperAdminOrganizationsSectionProps = {
   slug: string;
   submitting: boolean;
   enteringId: string | null;
-  copiedId: string | null;
   orgHasCustomPlan: (o: SuperAdminOrgRow) => boolean;
   onNameChange: (value: string) => void;
   onSlugChange: (value: string) => void;
   onCreate: (e: FormEvent) => boolean | Promise<boolean>;
   onToggleActive: (id: string, current: boolean) => void | Promise<void>;
   onCopyWebhook: (orgId: string) => void | Promise<void>;
-  webhookUrlFor: (orgId: string) => string;
   onEnterOrg: (id: string) => void | Promise<void>;
   onEditOrg: (o: SuperAdminOrgRow) => void;
   onDeleteOrg: (o: SuperAdminOrgRow) => void;
@@ -454,39 +462,82 @@ function OrgUsageCell({ org }: { org: SuperAdminOrgRow }) {
   );
 }
 
-function OrgIntegrationsCell({
-  org,
-  copiedId,
-  webhookUrlFor,
-  onCopyWebhook,
-}: {
-  org: SuperAdminOrgRow;
-  copiedId: string | null;
-  webhookUrlFor: (orgId: string) => string;
-  onCopyWebhook: (orgId: string) => void | Promise<void>;
-}) {
+function OrgIntegrationsCell({ org }: { org: SuperAdminOrgRow }) {
   const { t } = useI18n();
-  const url = webhookUrlFor(org.id);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const entries = useMemo(
+    () => buildOrgIntegrationEntries(org.id, org.inboxes, org.settings?.whatsappProvider),
+    [org.id, org.inboxes, org.settings?.whatsappProvider],
+  );
+
+  const channelLabel = useCallback(
+    (channelType: string) => {
+      const key = `inboxes.channelTypes.${channelType}` as "inboxes.channelTypes.WHATSAPP";
+      const translated = t(key);
+      return translated === key ? channelType : translated;
+    },
+    [t],
+  );
+
+  const copyUrl = async (key: string, url: string) => {
+    await navigator.clipboard.writeText(url);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  if (entries.length === 0) {
+    return <span className="text-xs text-slate-500">{t("superAdmin.orgNoInboxes")}</span>;
+  }
+
   return (
     <div className="space-y-2">
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200/80">
-        <WhatsAppBrandIcon className="h-3.5 w-3.5" />
-        WhatsApp
-      </div>
-      <div className="flex items-center gap-1">
-        <code className="max-w-[160px] truncate font-mono text-[11px] text-slate-500" title={url}>
-          {url}
-        </code>
-        <button
-          type="button"
-          onClick={() => void onCopyWebhook(org.id)}
-          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          title={t("superAdmin.orgCopyWebhook")}
-          aria-label={t("superAdmin.orgCopyWebhook")}
-        >
-          {copiedId === org.id ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-        </button>
-      </div>
+      {entries.map((entry) => {
+        const label = channelLabel(String(entry.channelType));
+        const detail = entry.connectionLabel ? `${label} · ${entry.connectionLabel}` : label;
+        return (
+          <div key={entry.key} className="space-y-1">
+            <p className="truncate text-[11px] font-medium text-slate-700" title={entry.inboxName}>
+              {entry.inboxName}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className={clsx(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset",
+                  entry.badgeClass,
+                )}
+              >
+                {isInboxChannelId(String(entry.channelType)) ? (
+                  <InboxChannelIcon channelType={entry.channelType} size="sm" className="h-3 w-3" />
+                ) : null}
+                {detail}
+              </span>
+            </div>
+            {entry.webhookUrl ? (
+              <div className="flex items-center gap-1">
+                <code
+                  className="max-w-[160px] truncate font-mono text-[10px] text-slate-500"
+                  title={entry.webhookUrl}
+                >
+                  {entry.webhookUrl}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void copyUrl(entry.key, entry.webhookUrl!)}
+                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  title={t("superAdmin.orgCopyWebhook")}
+                  aria-label={t("superAdmin.orgCopyWebhook")}
+                >
+                  {copiedKey === entry.key ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -557,14 +608,12 @@ export function SuperAdminOrganizationsSection({
   slug,
   submitting,
   enteringId,
-  copiedId,
   orgHasCustomPlan,
   onNameChange,
   onSlugChange,
   onCreate,
   onToggleActive,
   onCopyWebhook,
-  webhookUrlFor,
   onEnterOrg,
   onEditOrg,
   onDeleteOrg,
@@ -594,13 +643,24 @@ export function SuperAdminOrganizationsSection({
     return Array.from(labels).sort((a, b) => a.localeCompare(b));
   }, [orgs]);
 
+  const integrationOptions = useMemo(() => integrationFilterOptions(orgs), [orgs]);
+
+  const integrationChannelLabel = useCallback(
+    (channelType: string) => {
+      const key = `inboxes.channelTypes.${channelType}` as "inboxes.channelTypes.WHATSAPP";
+      const translated = t(key);
+      return translated === key ? channelType : translated;
+    },
+    [t],
+  );
+
   const filteredOrgs = useMemo(() => {
     return orgs.filter((o) => {
       if (!matchesSearch(o, searchQuery)) return false;
       if (planFilter !== "all" && orgPlanLabel(o) !== planFilter) return false;
       if (statusFilter === "active" && !o.isActive) return false;
       if (statusFilter === "suspended" && o.isActive) return false;
-      if (integrationFilter === "whatsapp") return true;
+      if (!orgHasIntegrationChannel(o.inboxes, o.settings?.whatsappProvider, integrationFilter)) return false;
       return true;
     });
   }, [orgs, searchQuery, planFilter, statusFilter, integrationFilter]);
@@ -815,7 +875,13 @@ export function SuperAdminOrganizationsSection({
                 aria-label={t("superAdmin.orgFilterAllIntegrations")}
               >
                 <option value="all">{t("superAdmin.orgFilterAllIntegrations")}</option>
-                <option value="whatsapp">{t("superAdmin.orgFilterWhatsApp")}</option>
+                {integrationOptions
+                  .filter((channel) => channel !== "all")
+                  .map((channel) => (
+                    <option key={channel} value={channel}>
+                      {integrationChannelLabel(channel)}
+                    </option>
+                  ))}
               </select>
               <button
                 type="button"
@@ -859,12 +925,7 @@ export function SuperAdminOrganizationsSection({
                         </td>
                         <td className="px-4 py-4">{renderStatusCell(o)}</td>
                         <td className="hidden xl:table-cell px-4 py-4">
-                          <OrgIntegrationsCell
-                            org={o}
-                            copiedId={copiedId}
-                            webhookUrlFor={webhookUrlFor}
-                            onCopyWebhook={onCopyWebhook}
-                          />
+                          <OrgIntegrationsCell org={o} />
                         </td>
                         <td className="relative px-5 py-4">
                           <OrgRowActions
@@ -898,12 +959,7 @@ export function SuperAdminOrganizationsSection({
                     {renderPlanCell(o)}
                     <OrgUsageCell org={o} />
                     {renderStatusCell(o)}
-                    <OrgIntegrationsCell
-                      org={o}
-                      copiedId={copiedId}
-                      webhookUrlFor={webhookUrlFor}
-                      onCopyWebhook={onCopyWebhook}
-                    />
+                    <OrgIntegrationsCell org={o} />
                   </div>
                   <div className="mt-4 border-t border-slate-100 pt-4">
                     <OrgRowActions

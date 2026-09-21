@@ -65,6 +65,14 @@ interface OrgRow {
     } | null;
   } | null;
   _count: { users: number; contacts: number; conversations: number };
+  settings?: { whatsappProvider?: string | null } | null;
+  inboxes?: Array<{
+    id: string;
+    name: string;
+    channelType: string;
+    channelConfig?: unknown;
+    ingestToken?: string | null;
+  }>;
 }
 
 type CatalogPlanRow = {
@@ -373,8 +381,6 @@ export function SuperAdminPage() {
   const [slug, setSlug] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [enteringId, setEnteringId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
   const [monitoring, setMonitoring] = useState<MonitoringPayload | null>(null);
   const [monitoringLoading, setMonitoringLoading] = useState(false);
 
@@ -1054,8 +1060,6 @@ export function SuperAdminPage() {
 
   const copyWebhook = async (orgId: string) => {
     await navigator.clipboard.writeText(webhookUrlFor(orgId));
-    setCopiedId(orgId);
-    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const onEnterOrg = async (id: string) => {
@@ -3093,14 +3097,12 @@ export function SuperAdminPage() {
               slug={slug}
               submitting={submitting}
               enteringId={enteringId}
-              copiedId={copiedId}
               orgHasCustomPlan={orgHasCustomPlan}
               onNameChange={setName}
               onSlugChange={setSlug}
               onCreate={handleCreate}
               onToggleActive={toggleActive}
               onCopyWebhook={copyWebhook}
-              webhookUrlFor={webhookUrlFor}
               onEnterOrg={onEnterOrg}
               onEditOrg={openEditOrg}
               onDeleteOrg={setDeleteOrgConfirm}
