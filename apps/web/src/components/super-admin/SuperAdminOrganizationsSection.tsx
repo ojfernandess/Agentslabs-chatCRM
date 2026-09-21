@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import {
   ArrowRight,
@@ -136,6 +137,20 @@ export type SuperAdminOrganizationsSectionProps = {
   onOpenUsers: (o: SuperAdminOrgRow) => void;
 };
 
+function computeOrgMenuPosition(
+  anchor: HTMLElement,
+  panel: HTMLDivElement | null,
+): { top: number; left: number } {
+  const rect = anchor.getBoundingClientRect();
+  const gap = 4;
+  const viewportPad = 8;
+  const panelWidth = panel?.offsetWidth ?? 224;
+  const top = rect.bottom + gap;
+  let left = rect.right - panelWidth;
+  left = Math.max(viewportPad, Math.min(left, window.innerWidth - panelWidth - viewportPad));
+  return { top, left };
+}
+
 function OrgActionsMenu({
   org,
   open,
@@ -162,12 +177,42 @@ function OrgActionsMenu({
   onDeleteOrg: (o: SuperAdminOrgRow) => void;
 }) {
   const { t } = useI18n();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const anchor = toggleRef.current;
+    if (!anchor) return;
+    setMenuPos(computeOrgMenuPosition(anchor, menuRef.current));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    updateMenuPosition();
+  }, [open, updateMenuPosition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onReposition = () => updateMenuPosition();
+    window.addEventListener("scroll", onReposition, true);
+    window.addEventListener("resize", onReposition);
+    return () => {
+      window.removeEventListener("scroll", onReposition, true);
+      window.removeEventListener("resize", onReposition);
+    };
+  }, [open, updateMenuPosition]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) onClose();
+      const target = e.target as Node;
+      if (toggleRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -180,12 +225,80 @@ function OrgActionsMenu({
     };
   }, [open, onClose]);
 
+  useEffect(() => {
+    const panel = menuRef.current;
+    if (!open || !panel || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => updateMenuPosition());
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [open, updateMenuPosition]);
+
   const itemClass =
     "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800";
 
+  const menu =
+    open && menuPos
+      ? createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-[200] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
+            style={{ top: menuPos.top, left: menuPos.left }}
+          >
+            <button type="button" role="menuitem" className={itemClass} onClick={() => { onEditOrg(org); onClose(); }}>
+              <Pencil className="h-4 w-4 shrink-0 text-slate-400" />
+              {t("superAdmin.orgMenuEdit")}
+            </button>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenBilling(org); onClose(); }}>
+              <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
+              {t("superAdmin.orgMenuBilling")}
+            </button>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenUsers(org); onClose(); }}>
+              <Users className="h-4 w-4 shrink-0 text-slate-400" />
+              {t("superAdmin.orgMenuUsers")}
+            </button>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenFeatures(org.id); onClose(); }}>
+              <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
+              {t("superAdmin.orgOpenFeatures")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className={itemClass}
+              onClick={() => {
+                void onCopyWebhook(org.id);
+                onClose();
+              }}
+            >
+              <Copy className="h-4 w-4 shrink-0 text-slate-400" />
+              {t("superAdmin.orgMenuIntegrations")}
+            </button>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => { onExportOrg(org); onClose(); }}>
+              <Download className="h-4 w-4 shrink-0 text-slate-400" />
+              {t("superAdmin.orgExportAction")}
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              onClick={() => {
+                onDeleteOrg(org);
+                onClose();
+              }}
+            >
+              <Trash2 className="h-4 w-4 shrink-0" />
+              {t("superAdmin.orgMenuDelete")}
+            </button>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div ref={rootRef} className="relative">
+    <>
       <button
+        ref={toggleRef}
         type="button"
         onClick={onToggle}
         className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
@@ -195,59 +308,8 @@ function OrgActionsMenu({
       >
         <MoreVertical className="h-4 w-4" />
       </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
-        >
-          <button type="button" role="menuitem" className={itemClass} onClick={() => { onEditOrg(org); onClose(); }}>
-            <Pencil className="h-4 w-4 shrink-0 text-slate-400" />
-            {t("superAdmin.orgMenuEdit")}
-          </button>
-          <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenBilling(org); onClose(); }}>
-            <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
-            {t("superAdmin.orgMenuBilling")}
-          </button>
-          <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenUsers(org); onClose(); }}>
-            <Users className="h-4 w-4 shrink-0 text-slate-400" />
-            {t("superAdmin.orgMenuUsers")}
-          </button>
-          <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenFeatures(org.id); onClose(); }}>
-            <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
-            {t("superAdmin.orgOpenFeatures")}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={itemClass}
-            onClick={() => {
-              void onCopyWebhook(org.id);
-              onClose();
-            }}
-          >
-            <Copy className="h-4 w-4 shrink-0 text-slate-400" />
-            {t("superAdmin.orgMenuIntegrations")}
-          </button>
-          <button type="button" role="menuitem" className={itemClass} onClick={() => { onExportOrg(org); onClose(); }}>
-            <Download className="h-4 w-4 shrink-0 text-slate-400" />
-            {t("superAdmin.orgExportAction")}
-          </button>
-          <div className="my-1 border-t border-slate-100" />
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-            onClick={() => {
-              onDeleteOrg(org);
-              onClose();
-            }}
-          >
-            <Trash2 className="h-4 w-4 shrink-0" />
-            {t("superAdmin.orgMenuDelete")}
-          </button>
-        </div>
-      ) : null}
-    </div>
+      {menu}
+    </>
   );
 }
 
@@ -691,7 +753,7 @@ export function SuperAdminOrganizationsSection({
         </div>
       ) : null}
 
-      <SuperAdminPanel className="overflow-hidden">
+      <SuperAdminPanel>
         <div className="border-b border-slate-100 p-4 lg:p-5">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
             <div className="relative min-w-0 flex-1">
@@ -787,7 +849,7 @@ export function SuperAdminOrganizationsSection({
                             onCopyWebhook={onCopyWebhook}
                           />
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="relative px-5 py-4">
                           <OrgRowActions
                             org={o}
                             enteringId={enteringId}

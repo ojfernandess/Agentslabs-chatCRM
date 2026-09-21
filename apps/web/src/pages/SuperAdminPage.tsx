@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -3114,6 +3115,8 @@ export function SuperAdminPage() {
           )}
       </SuperAdminShell>
 
+      {createPortal(
+        <>
         {exportOrg ? <SuperAdminOrgExportModal org={exportOrg} onClose={() => setExportOrg(null)} /> : null}
 
         {billingOrg ? (
@@ -3715,6 +3718,9 @@ export function SuperAdminPage() {
             </div>
           </div>
         ) : null}
+        </>,
+        document.body,
+      )}
     </>
   );
 }
