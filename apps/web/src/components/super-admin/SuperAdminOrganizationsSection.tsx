@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import {
@@ -137,6 +137,11 @@ export type SuperAdminOrganizationsSectionProps = {
   onOpenUsers: (o: SuperAdminOrgRow) => void;
 };
 
+function isAnchorVisible(anchor: HTMLElement): boolean {
+  const rect = anchor.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
 function computeOrgMenuPosition(
   anchor: HTMLElement,
   panel: HTMLDivElement | null,
@@ -183,7 +188,10 @@ function OrgActionsMenu({
 
   const updateMenuPosition = useCallback(() => {
     const anchor = toggleRef.current;
-    if (!anchor) return;
+    if (!anchor || !isAnchorVisible(anchor)) {
+      setMenuPos(null);
+      return;
+    }
     setMenuPos(computeOrgMenuPosition(anchor, menuRef.current));
   }, []);
 
@@ -207,7 +215,7 @@ function OrgActionsMenu({
   }, [open, updateMenuPosition]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !menuPos) return;
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (toggleRef.current?.contains(target)) return;
@@ -223,7 +231,7 @@ function OrgActionsMenu({
       document.removeEventListener("click", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose]);
+  }, [open, menuPos, onClose]);
 
   useEffect(() => {
     const panel = menuRef.current;
@@ -236,7 +244,8 @@ function OrgActionsMenu({
   const itemClass =
     "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800";
 
-  const runMenuAction = (action: () => void) => {
+  const runMenuAction = (action: () => void) => (e: ReactMouseEvent) => {
+    e.stopPropagation();
     action();
     onClose();
   };
@@ -251,19 +260,19 @@ function OrgActionsMenu({
             style={{ top: menuPos.top, left: menuPos.left }}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onEditOrg(org))}>
+            <button type="button" role="menuitem" className={itemClass} onClick={runMenuAction(() => onEditOrg(org))}>
               <Pencil className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuEdit")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onOpenBilling(org))}>
+            <button type="button" role="menuitem" className={itemClass} onClick={runMenuAction(() => onOpenBilling(org))}>
               <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuBilling")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onOpenUsers(org))}>
+            <button type="button" role="menuitem" className={itemClass} onClick={runMenuAction(() => onOpenUsers(org))}>
               <Users className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuUsers")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onOpenFeatures(org.id))}>
+            <button type="button" role="menuitem" className={itemClass} onClick={runMenuAction(() => onOpenFeatures(org.id))}>
               <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgOpenFeatures")}
             </button>
@@ -271,12 +280,12 @@ function OrgActionsMenu({
               type="button"
               role="menuitem"
               className={itemClass}
-              onClick={() => runMenuAction(() => void onCopyWebhook(org.id))}
+              onClick={runMenuAction(() => void onCopyWebhook(org.id))}
             >
               <Copy className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuIntegrations")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onExportOrg(org))}>
+            <button type="button" role="menuitem" className={itemClass} onClick={runMenuAction(() => onExportOrg(org))}>
               <Download className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgExportAction")}
             </button>
@@ -285,7 +294,7 @@ function OrgActionsMenu({
               type="button"
               role="menuitem"
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-              onClick={() => runMenuAction(() => onDeleteOrg(org))}
+              onClick={runMenuAction(() => onDeleteOrg(org))}
             >
               <Trash2 className="h-4 w-4 shrink-0" />
               {t("superAdmin.orgMenuDelete")}

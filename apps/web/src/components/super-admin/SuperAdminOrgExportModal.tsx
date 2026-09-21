@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Download, Mail, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { bodyPortal } from "@/lib/bodyPortal";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export type OrgExportTarget = {
@@ -99,8 +100,8 @@ export function SuperAdminOrgExportModal({ org, onClose }: Props) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+  return bodyPortal(
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
       <div className="card-surface max-h-[90vh] w-full max-w-lg overflow-auto p-6 shadow-xl">
         <div className="flex items-start justify-between gap-3">
           <div>

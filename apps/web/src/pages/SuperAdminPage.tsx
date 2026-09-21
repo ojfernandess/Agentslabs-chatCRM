@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
+import { bodyPortal } from "@/lib/bodyPortal";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import {
@@ -3116,9 +3117,10 @@ export function SuperAdminPage() {
 
         {exportOrg ? <SuperAdminOrgExportModal org={exportOrg} onClose={() => setExportOrg(null)} /> : null}
 
-        {billingOrg ? (
+        {billingOrg
+          ? bodyPortal(
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/45 p-4"
             role="dialog"
             aria-modal="true"
           >
@@ -3217,11 +3219,13 @@ export function SuperAdminPage() {
                 </div>
               </form>
             </div>
-          </div>
-        ) : null}
+          </div>,
+            )
+          : null}
 
-        {editOrg ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+        {editOrg
+          ? bodyPortal(
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
             <div className="card-surface max-h-[90vh] w-full max-w-lg overflow-auto p-6 shadow-xl">
               <h3 className="text-lg font-semibold text-ink-900">{t("superAdmin.orgEditTitle")}</h3>
               <form onSubmit={(e) => void saveEditOrg(e)} className="mt-4 space-y-4">
@@ -3332,11 +3336,13 @@ export function SuperAdminPage() {
                 </div>
               </form>
             </div>
-          </div>
-        ) : null}
+          </div>,
+            )
+          : null}
 
-        {deleteOrgConfirm ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+        {deleteOrgConfirm
+          ? bodyPortal(
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
             <div className="card-surface w-full max-w-md p-6 shadow-xl">
               <h3 className="text-lg font-semibold text-red-800">{t("superAdmin.orgDeleteTitle")}</h3>
               <p className="mt-2 text-sm text-ink-600">
@@ -3354,8 +3360,9 @@ export function SuperAdminPage() {
                 </button>
               </div>
             </div>
-          </div>
-        ) : null}
+          </div>,
+            )
+          : null}
 
         {editPlatformUser ? (
           <div
@@ -3661,9 +3668,10 @@ export function SuperAdminPage() {
           </div>
         ) : null}
 
-                {usersOrg ? (
+                {usersOrg
+          ? bodyPortal(
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/45 p-4"
             role="dialog"
             aria-modal="true"
             onClick={(e) => e.target === e.currentTarget && setUsersOrg(null)}
@@ -3713,8 +3721,9 @@ export function SuperAdminPage() {
                 {t("common.close")}
               </button>
             </div>
-          </div>
-        ) : null}
+          </div>,
+            )
+          : null}
     </>
   );
 }
