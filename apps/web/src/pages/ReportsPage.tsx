@@ -254,17 +254,10 @@ export function ReportsPage() {
     void load();
   }, [load]);
 
-  const visibleAgents = useMemo(() => {
-    if (!data?.agents) return [];
-    if (tenantAdmin || !tenantAgent || !user?.id) return data.agents;
-    return data.agents.filter((agent) => agent.userId === user.id);
-  }, [data?.agents, tenantAdmin, tenantAgent, user?.id]);
-
-  const visibleTelephonyAgents = useMemo(() => {
-    if (!data?.telephony?.agents) return [];
-    if (tenantAdmin || !tenantAgent || !user?.id) return data.telephony.agents;
-    return data.telephony.agents.filter((agent) => agent.userId === user.id);
-  }, [data?.telephony?.agents, tenantAdmin, tenantAgent, user?.id]);
+  const canViewAgentMetrics = useCallback(
+    (userId: string) => tenantAdmin || !tenantAgent || userId === user?.id,
+    [tenantAdmin, tenantAgent, user?.id],
+  );
 
   const chartDataCsat = useMemo(
     () =>
@@ -344,7 +337,11 @@ export function ReportsPage() {
       ],
       [],
       ["agent", "conversations", "outbound_messages"],
-      ...visibleAgents.map((a) => [a.name, String(a.conversationsTouched), String(a.outboundMessages)]),
+      ...data.agents.map((a) => [
+        a.name,
+        canViewAgentMetrics(a.userId) ? String(a.conversationsTouched) : "",
+        canViewAgentMetrics(a.userId) ? String(a.outboundMessages) : "",
+      ]),
     ];
     if (data.telephony?.enabled) {
       const tel = data.telephony;
@@ -382,12 +379,12 @@ export function ReportsPage() {
         ]),
         [],
         ["agent", "calls", "answered", "missed", "talk_time_sec"],
-        ...visibleTelephonyAgents.map((a) => [
+        ...tel.agents.map((a) => [
           a.name,
-          String(a.totalCalls),
-          String(a.answeredCalls),
-          String(a.missedCalls),
-          String(a.totalTalkTimeSec),
+          canViewAgentMetrics(a.userId) ? String(a.totalCalls) : "",
+          canViewAgentMetrics(a.userId) ? String(a.answeredCalls) : "",
+          canViewAgentMetrics(a.userId) ? String(a.missedCalls) : "",
+          canViewAgentMetrics(a.userId) ? String(a.totalTalkTimeSec) : "",
         ]),
       );
     }
@@ -787,10 +784,12 @@ export function ReportsPage() {
                     <UsersRound className="h-5 w-5 text-brand-500" />
                     {t("reportsPage.agentsTitle")}
                   </h2>
-                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">{t("reportsPage.agentDetailOpenHint")}</p>
+                  <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                    {tenantAdmin ? t("reportsPage.agentDetailOpenHint") : t("reportsPage.agentDetailOpenHintAgent")}
+                  </p>
                 </div>
                 <div className="overflow-x-auto">
-                  {visibleAgents.every((a) => a.outboundMessages === 0) ? (
+                  {data.agents.length === 0 ? (
                     <p className="px-6 py-8 text-sm text-ink-500">{t("reportsPage.emptyAgents")}</p>
                   ) : (
                     <table className="min-w-full text-sm">
@@ -802,27 +801,38 @@ export function ReportsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {visibleAgents.map((a) => (
+                        {data.agents.map((a) => {
+                          const canView = canViewAgentMetrics(a.userId);
+                          return (
                           <tr
                             key={a.userId}
                             className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
                           >
                             <td className="px-6 py-3">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedAgentId(a.userId);
-                                  setSelectedAgentName(a.name);
-                                }}
-                                className="group inline-flex items-center gap-1.5 font-medium text-ink-900 hover:text-brand-600 dark:text-ink-100 dark:hover:text-brand-400"
-                              >
-                                <span className="border-b border-transparent group-hover:border-brand-400">{a.name}</span>
-                              </button>
+                              {canView ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedAgentId(a.userId);
+                                    setSelectedAgentName(a.name);
+                                  }}
+                                  className="group inline-flex items-center gap-1.5 font-medium text-ink-900 hover:text-brand-600 dark:text-ink-100 dark:hover:text-brand-400"
+                                >
+                                  <span className="border-b border-transparent group-hover:border-brand-400">{a.name}</span>
+                                </button>
+                              ) : (
+                                <span className="font-medium text-ink-900 dark:text-ink-100">{a.name}</span>
+                              )}
                             </td>
-                            <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.conversationsTouched}</td>
-                            <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.outboundMessages}</td>
+                            <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                              {canView ? a.conversationsTouched : t("reportsPage.na")}
+                            </td>
+                            <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                              {canView ? a.outboundMessages : t("reportsPage.na")}
+                            </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}
@@ -1004,7 +1014,7 @@ export function ReportsPage() {
                       </h2>
                     </div>
                     <div className="overflow-x-auto">
-                      {visibleTelephonyAgents.length === 0 ? (
+                      {data.telephony.agents.length === 0 ? (
                         <p className="px-6 py-8 text-sm text-ink-500">{t("reportsPage.emptyTelephonyAgents")}</p>
                       ) : (
                         <table className="min-w-full text-sm">
@@ -1020,22 +1030,37 @@ export function ReportsPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {visibleTelephonyAgents.map((a) => (
+                            {data.telephony.agents.map((a) => {
+                              const canView = canViewAgentMetrics(a.userId);
+                              return (
                               <tr
                                 key={a.userId}
                                 className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
                               >
                                 <td className="px-6 py-3 font-medium text-ink-900 dark:text-ink-100">{a.name}</td>
-                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.totalCalls}</td>
-                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.inboundCalls}</td>
-                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.outboundCalls}</td>
-                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.answeredCalls}</td>
-                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">{a.missedCalls}</td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                                  {canView ? a.totalCalls : t("reportsPage.na")}
+                                </td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                                  {canView ? a.inboundCalls : t("reportsPage.na")}
+                                </td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                                  {canView ? a.outboundCalls : t("reportsPage.na")}
+                                </td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                                  {canView ? a.answeredCalls : t("reportsPage.na")}
+                                </td>
+                                <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
+                                  {canView ? a.missedCalls : t("reportsPage.na")}
+                                </td>
                                 <td className="px-6 py-3 font-mono text-ink-700 dark:text-ink-300">
-                                  {fmtSec(a.avgTalkTimeSec)} ({formatTalkDuration(a.totalTalkTimeSec)})
+                                  {canView
+                                    ? `${fmtSec(a.avgTalkTimeSec)} (${formatTalkDuration(a.totalTalkTimeSec)})`
+                                    : t("reportsPage.na")}
                                 </td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       )}
@@ -1202,7 +1227,7 @@ export function ReportsPage() {
         ) : null}
       </div>
       <AgentPerformanceDetailDrawer
-        open={selectedAgentId != null}
+        open={selectedAgentId != null && canViewAgentMetrics(selectedAgentId)}
         userId={selectedAgentId}
         agentName={selectedAgentName}
         fromStr={fromStr}
