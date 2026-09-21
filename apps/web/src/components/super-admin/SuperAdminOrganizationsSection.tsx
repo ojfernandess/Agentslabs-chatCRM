@@ -217,10 +217,10 @@ function OrgActionsMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("click", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("click", onDoc);
       document.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
@@ -236,28 +236,34 @@ function OrgActionsMenu({
   const itemClass =
     "flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800";
 
+  const runMenuAction = (action: () => void) => {
+    action();
+    onClose();
+  };
+
   const menu =
     open && menuPos
       ? createPortal(
           <div
             ref={menuRef}
             role="menu"
-            className="fixed z-[200] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
+            className="fixed z-[120] w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
             style={{ top: menuPos.top, left: menuPos.left }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <button type="button" role="menuitem" className={itemClass} onClick={() => { onEditOrg(org); onClose(); }}>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onEditOrg(org))}>
               <Pencil className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuEdit")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenBilling(org); onClose(); }}>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onOpenBilling(org))}>
               <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuBilling")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenUsers(org); onClose(); }}>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onOpenUsers(org))}>
               <Users className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuUsers")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => { onOpenFeatures(org.id); onClose(); }}>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onOpenFeatures(org.id))}>
               <LayoutGrid className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgOpenFeatures")}
             </button>
@@ -265,15 +271,12 @@ function OrgActionsMenu({
               type="button"
               role="menuitem"
               className={itemClass}
-              onClick={() => {
-                void onCopyWebhook(org.id);
-                onClose();
-              }}
+              onClick={() => runMenuAction(() => void onCopyWebhook(org.id))}
             >
               <Copy className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgMenuIntegrations")}
             </button>
-            <button type="button" role="menuitem" className={itemClass} onClick={() => { onExportOrg(org); onClose(); }}>
+            <button type="button" role="menuitem" className={itemClass} onClick={() => runMenuAction(() => onExportOrg(org))}>
               <Download className="h-4 w-4 shrink-0 text-slate-400" />
               {t("superAdmin.orgExportAction")}
             </button>
@@ -282,10 +285,7 @@ function OrgActionsMenu({
               type="button"
               role="menuitem"
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-              onClick={() => {
-                onDeleteOrg(org);
-                onClose();
-              }}
+              onClick={() => runMenuAction(() => onDeleteOrg(org))}
             >
               <Trash2 className="h-4 w-4 shrink-0" />
               {t("superAdmin.orgMenuDelete")}
@@ -300,7 +300,10 @@ function OrgActionsMenu({
       <button
         ref={toggleRef}
         type="button"
-        onClick={onToggle}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
         className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
         aria-label={t("superAdmin.orgTableActions")}
         aria-expanded={open}
