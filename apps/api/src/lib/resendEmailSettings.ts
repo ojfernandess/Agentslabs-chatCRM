@@ -3,6 +3,8 @@ import {
   buildDefaultSystemLogoUrl,
   DEFAULT_BILLING_REMINDER_HTML,
   DEFAULT_BILLING_REMINDER_SUBJECT,
+  DEFAULT_ORGANIZATION_EXPORT_HTML,
+  DEFAULT_ORGANIZATION_EXPORT_SUBJECT,
   DEFAULT_PASSWORD_RESET_HTML,
   DEFAULT_PASSWORD_RESET_SUBJECT,
   DEFAULT_PAYMENT_CONFIRMATION_HTML,
@@ -30,6 +32,8 @@ export type ResendEmailConfig = {
   userInviteHtmlTemplate?: string | null;
   billingReminderSubject?: string | null;
   billingReminderHtmlTemplate?: string | null;
+  organizationExportSubject?: string | null;
+  organizationExportHtmlTemplate?: string | null;
   paymentConfirmationSubject?: string | null;
   paymentConfirmationHtmlTemplate?: string | null;
 };
@@ -37,6 +41,7 @@ export type ResendEmailConfig = {
 export { DEFAULT_PASSWORD_RESET_HTML, DEFAULT_PASSWORD_RESET_SUBJECT };
 export { DEFAULT_USER_INVITE_HTML, DEFAULT_USER_INVITE_SUBJECT };
 export { DEFAULT_BILLING_REMINDER_HTML, DEFAULT_BILLING_REMINDER_SUBJECT };
+export { DEFAULT_ORGANIZATION_EXPORT_HTML, DEFAULT_ORGANIZATION_EXPORT_SUBJECT };
 export { DEFAULT_PAYMENT_CONFIRMATION_HTML, DEFAULT_PAYMENT_CONFIRMATION_SUBJECT };
 
 export const DEFAULT_SYSTEM_LOGO_PATH = SYSTEM_LOGO_PATH;
@@ -91,6 +96,14 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
     typeof o.billingReminderHtmlTemplate === "string" && o.billingReminderHtmlTemplate.trim()
       ? o.billingReminderHtmlTemplate.trim().slice(0, 100_000)
       : null;
+  const organizationExportSubject =
+    typeof o.organizationExportSubject === "string" && o.organizationExportSubject.trim()
+      ? o.organizationExportSubject.trim().slice(0, 200)
+      : null;
+  const organizationExportHtmlTemplate =
+    typeof o.organizationExportHtmlTemplate === "string" && o.organizationExportHtmlTemplate.trim()
+      ? o.organizationExportHtmlTemplate.trim().slice(0, 100_000)
+      : null;
   const paymentConfirmationSubject =
     typeof o.paymentConfirmationSubject === "string" && o.paymentConfirmationSubject.trim()
       ? o.paymentConfirmationSubject.trim().slice(0, 200)
@@ -110,6 +123,8 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
     userInviteHtmlTemplate,
     billingReminderSubject,
     billingReminderHtmlTemplate,
+    organizationExportSubject,
+    organizationExportHtmlTemplate,
     paymentConfirmationSubject,
     paymentConfirmationHtmlTemplate,
   };
@@ -162,6 +177,13 @@ export function resolveBillingReminderTemplates(cfg: ResendEmailConfig): { subje
   };
 }
 
+export function resolveOrganizationExportTemplates(cfg: ResendEmailConfig): { subjectTpl: string; htmlTpl: string } {
+  return {
+    subjectTpl: cfg.organizationExportSubject?.trim() || DEFAULT_ORGANIZATION_EXPORT_SUBJECT,
+    htmlTpl: cfg.organizationExportHtmlTemplate?.trim() || DEFAULT_ORGANIZATION_EXPORT_HTML,
+  };
+}
+
 export function resolvePaymentConfirmationTemplates(cfg: ResendEmailConfig): {
   subjectTpl: string;
   htmlTpl: string;
@@ -183,6 +205,20 @@ export function getBillingReminderTemplatesForEditor(raw: unknown): { subject: s
       typeof o.billingReminderHtmlTemplate === "string" && o.billingReminderHtmlTemplate.trim()
         ? o.billingReminderHtmlTemplate.trim().slice(0, 100_000)
         : DEFAULT_BILLING_REMINDER_HTML,
+  };
+}
+
+export function getOrganizationExportTemplatesForEditor(raw: unknown): { subject: string; html: string } {
+  const o = raw && typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    subject:
+      typeof o.organizationExportSubject === "string" && o.organizationExportSubject.trim()
+        ? o.organizationExportSubject.trim().slice(0, 200)
+        : DEFAULT_ORGANIZATION_EXPORT_SUBJECT,
+    html:
+      typeof o.organizationExportHtmlTemplate === "string" && o.organizationExportHtmlTemplate.trim()
+        ? o.organizationExportHtmlTemplate.trim().slice(0, 100_000)
+        : DEFAULT_ORGANIZATION_EXPORT_HTML,
   };
 }
 

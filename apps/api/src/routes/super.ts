@@ -80,6 +80,7 @@ import {
 import {
   RESEND_EMAIL_PLATFORM_KEY,
   getBillingReminderTemplatesForEditor,
+  getOrganizationExportTemplatesForEditor,
   getPasswordResetTemplatesForEditor,
   getPaymentConfirmationTemplatesForEditor,
   getUserInviteTemplatesForEditor,
@@ -251,6 +252,8 @@ const resendEmailPutSchema = z.object({
   userInviteHtmlTemplate: z.string().max(100_000).optional(),
   billingReminderSubject: z.string().max(200).optional(),
   billingReminderHtmlTemplate: z.string().max(100_000).optional(),
+  organizationExportSubject: z.string().max(200).optional(),
+  organizationExportHtmlTemplate: z.string().max(100_000).optional(),
   paymentConfirmationSubject: z.string().max(200).optional(),
   paymentConfirmationHtmlTemplate: z.string().max(100_000).optional(),
 });
@@ -1685,6 +1688,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const tpl = getPasswordResetTemplatesForEditor(row?.value);
     const inviteTpl = getUserInviteTemplatesForEditor(row?.value);
     const billingReminderTpl = getBillingReminderTemplatesForEditor(row?.value);
+    const organizationExportTpl = getOrganizationExportTemplatesForEditor(row?.value);
     const paymentConfirmationTpl = getPaymentConfirmationTemplatesForEditor(row?.value);
     const rawVal =
       row?.value && typeof row.value === "object" && row.value !== null
@@ -1710,6 +1714,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         userInviteHtmlTemplate: inviteTpl.html,
         billingReminderSubject: billingReminderTpl.subject,
         billingReminderHtmlTemplate: billingReminderTpl.html,
+        organizationExportSubject: organizationExportTpl.subject,
+        organizationExportHtmlTemplate: organizationExportTpl.html,
         paymentConfirmationSubject: paymentConfirmationTpl.subject,
         paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
       };
@@ -1727,6 +1733,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       userInviteHtmlTemplate: inviteTpl.html,
       billingReminderSubject: billingReminderTpl.subject,
       billingReminderHtmlTemplate: billingReminderTpl.html,
+      organizationExportSubject: organizationExportTpl.subject,
+      organizationExportHtmlTemplate: organizationExportTpl.html,
       paymentConfirmationSubject: paymentConfirmationTpl.subject,
       paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
     };
@@ -1856,6 +1864,18 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         : (typeof existingVal.billingReminderHtmlTemplate === "string"
             ? existingVal.billingReminderHtmlTemplate
             : null) ?? null;
+    const organizationExportSubject =
+      parsed.data.organizationExportSubject !== undefined
+        ? parsed.data.organizationExportSubject.trim().slice(0, 200) || null
+        : (typeof existingVal.organizationExportSubject === "string"
+            ? existingVal.organizationExportSubject
+            : null) ?? null;
+    const organizationExportHtmlTemplate =
+      parsed.data.organizationExportHtmlTemplate !== undefined
+        ? parsed.data.organizationExportHtmlTemplate.trim().slice(0, 100_000) || null
+        : (typeof existingVal.organizationExportHtmlTemplate === "string"
+            ? existingVal.organizationExportHtmlTemplate
+            : null) ?? null;
     const paymentConfirmationSubject =
       parsed.data.paymentConfirmationSubject !== undefined
         ? parsed.data.paymentConfirmationSubject.trim().slice(0, 200) || null
@@ -1879,6 +1899,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       userInviteHtmlTemplate,
       billingReminderSubject,
       billingReminderHtmlTemplate,
+      organizationExportSubject,
+      organizationExportHtmlTemplate,
       paymentConfirmationSubject,
       paymentConfirmationHtmlTemplate,
     };
@@ -1898,6 +1920,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const tpl = getPasswordResetTemplatesForEditor(value);
     const inviteTpl = getUserInviteTemplatesForEditor(value);
     const billingReminderTpl = getBillingReminderTemplatesForEditor(value);
+    const organizationExportTpl = getOrganizationExportTemplatesForEditor(value);
     const paymentConfirmationTpl = getPaymentConfirmationTemplatesForEditor(value);
     return {
       configured: true,
@@ -1912,6 +1935,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       userInviteHtmlTemplate: inviteTpl.html,
       billingReminderSubject: billingReminderTpl.subject,
       billingReminderHtmlTemplate: billingReminderTpl.html,
+      organizationExportSubject: organizationExportTpl.subject,
+      organizationExportHtmlTemplate: organizationExportTpl.html,
       paymentConfirmationSubject: paymentConfirmationTpl.subject,
       paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
     };

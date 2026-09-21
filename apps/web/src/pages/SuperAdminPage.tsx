@@ -32,6 +32,7 @@ import { SuperAdminApiRateLimitPanel } from "@/components/super-admin/SuperAdmin
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 import { ResendBillingReminderTemplateEditor } from "@/components/ResendBillingReminderTemplateEditor";
+import { ResendOrganizationExportTemplateEditor } from "@/components/ResendOrganizationExportTemplateEditor";
 import { ResendPaymentConfirmationTemplateEditor } from "@/components/ResendPaymentConfirmationTemplateEditor";
 import { SuperAdminConversationMediaSection } from "@/components/super-admin/SuperAdminConversationMediaSection";
 import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSection";
@@ -335,6 +336,8 @@ interface SuperResendPayload {
   userInviteHtmlTemplate: string;
   billingReminderSubject: string;
   billingReminderHtmlTemplate: string;
+  organizationExportSubject: string;
+  organizationExportHtmlTemplate: string;
   paymentConfirmationSubject: string;
   paymentConfirmationHtmlTemplate: string;
 }
@@ -499,6 +502,8 @@ export function SuperAdminPage() {
     userInviteHtmlTemplate: "",
     billingReminderSubject: "",
     billingReminderHtmlTemplate: "",
+    organizationExportSubject: "",
+    organizationExportHtmlTemplate: "",
     paymentConfirmationSubject: "",
     paymentConfirmationHtmlTemplate: "",
   });
@@ -514,6 +519,8 @@ export function SuperAdminPage() {
   const [resendUserInviteHtml, setResendUserInviteHtml] = useState("");
   const [resendBillingReminderSubject, setResendBillingReminderSubject] = useState("");
   const [resendBillingReminderHtml, setResendBillingReminderHtml] = useState("");
+  const [resendOrganizationExportSubject, setResendOrganizationExportSubject] = useState("");
+  const [resendOrganizationExportHtml, setResendOrganizationExportHtml] = useState("");
   const [resendPaymentConfirmationSubject, setResendPaymentConfirmationSubject] = useState("");
   const [resendPaymentConfirmationHtml, setResendPaymentConfirmationHtml] = useState("");
 
@@ -807,6 +814,8 @@ export function SuperAdminPage() {
         setResendUserInviteHtml(d.userInviteHtmlTemplate);
         setResendBillingReminderSubject(d.billingReminderSubject);
         setResendBillingReminderHtml(d.billingReminderHtmlTemplate);
+        setResendOrganizationExportSubject(d.organizationExportSubject);
+        setResendOrganizationExportHtml(d.organizationExportHtmlTemplate);
         setResendPaymentConfirmationSubject(d.paymentConfirmationSubject);
         setResendPaymentConfirmationHtml(d.paymentConfirmationHtmlTemplate);
         setResendApiKey("");
@@ -825,6 +834,8 @@ export function SuperAdminPage() {
             userInviteHtmlTemplate: "",
             billingReminderSubject: "",
             billingReminderHtmlTemplate: "",
+            organizationExportSubject: "",
+            organizationExportHtmlTemplate: "",
             paymentConfirmationSubject: "",
             paymentConfirmationHtmlTemplate: "",
           });
@@ -1348,6 +1359,8 @@ export function SuperAdminPage() {
         userInviteHtmlTemplate: string;
         billingReminderSubject: string;
         billingReminderHtmlTemplate: string;
+        organizationExportSubject: string;
+        organizationExportHtmlTemplate: string;
         paymentConfirmationSubject: string;
         paymentConfirmationHtmlTemplate: string;
       } = {
@@ -1360,6 +1373,8 @@ export function SuperAdminPage() {
         userInviteHtmlTemplate: resendUserInviteHtml,
         billingReminderSubject: resendBillingReminderSubject.trim(),
         billingReminderHtmlTemplate: resendBillingReminderHtml,
+        organizationExportSubject: resendOrganizationExportSubject.trim(),
+        organizationExportHtmlTemplate: resendOrganizationExportHtml,
         paymentConfirmationSubject: resendPaymentConfirmationSubject.trim(),
         paymentConfirmationHtmlTemplate: resendPaymentConfirmationHtml,
       };
@@ -1374,6 +1389,8 @@ export function SuperAdminPage() {
       setResendUserInviteHtml(d.userInviteHtmlTemplate);
       setResendBillingReminderSubject(d.billingReminderSubject);
       setResendBillingReminderHtml(d.billingReminderHtmlTemplate);
+      setResendOrganizationExportSubject(d.organizationExportSubject);
+      setResendOrganizationExportHtml(d.organizationExportHtmlTemplate);
       setResendPaymentConfirmationSubject(d.paymentConfirmationSubject);
       setResendPaymentConfirmationHtml(d.paymentConfirmationHtmlTemplate);
       setResendApiKey("");
@@ -2332,6 +2349,15 @@ export function SuperAdminPage() {
                       html={resendBillingReminderHtml}
                       onSubjectChange={setResendBillingReminderSubject}
                       onHtmlChange={setResendBillingReminderHtml}
+                    />
+                    <ResendOrganizationExportTemplateEditor
+                      fromName={resendFromName}
+                      logoUrl={resendSystemLogoUrl}
+                      resolvedLogoUrl={resendResolvedSystemLogoUrl}
+                      subject={resendOrganizationExportSubject}
+                      html={resendOrganizationExportHtml}
+                      onSubjectChange={setResendOrganizationExportSubject}
+                      onHtmlChange={setResendOrganizationExportHtml}
                     />
                     <ResendPaymentConfirmationTemplateEditor
                       fromName={resendFromName}

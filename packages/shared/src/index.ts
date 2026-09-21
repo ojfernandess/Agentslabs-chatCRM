@@ -14,6 +14,7 @@ export * from "./contactChannelParticipant.js";
 export * from "./contactReachablePhone.js";
 export * from "./legalVersions.js";
 export * from "./billingReminderEmailTemplate.js";
+export * from "./organizationExportEmailTemplate.js";
 export * from "./paymentConfirmationEmailTemplate.js";
 export * from "./dealCategoryCatalog.js";
 export * from "./dealCategoryValidation.js";

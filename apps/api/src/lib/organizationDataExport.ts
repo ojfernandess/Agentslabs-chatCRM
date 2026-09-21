@@ -1,6 +1,12 @@
 import { prisma } from "../db.js";
+import { buildOrganizationExportEmailContent } from "@openconduit/shared";
 import type { ContactExportRow } from "./contactImportExport.js";
 import { buildOrganizationExportHtml } from "./organizationExportHtml.js";
+import {
+  getResendEmailConfigFromDb,
+  resolveOrganizationExportTemplates,
+  resolveSystemLogoUrl,
+} from "./resendEmailSettings.js";
 import { sendResendEmail } from "./sendResendEmail.js";
 
 export const MAX_EXPORT_CONVERSATIONS = 50_000;
@@ -362,19 +368,21 @@ export async function sendOrganizationExportByEmail(options: {
 
   const filename = buildExportFilename(data.organization.slug, options.format);
   const formatLabel = options.format.toUpperCase();
-  const subject = `Exportação de dados — ${data.organization.name} (${formatLabel})`;
-  const html = `
-    <div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#33475b">
-      <p>Olá,</p>
-      <p>Segue em anexo a exportação de contactos e conversas da organização <strong>${data.organization.name}</strong>.</p>
-      <ul>
-        <li><strong>Contactos:</strong> ${data.stats.contacts}</li>
-        <li><strong>Conversas:</strong> ${data.stats.conversations}</li>
-        <li><strong>Mensagens:</strong> ${data.stats.messages}</li>
-        <li><strong>Formato:</strong> ${formatLabel}</li>
-      </ul>
-      <p style="color:#667781;font-size:13px">Gerado pelo OpenNexo CRM em ${new Date(data.exportedAt).toLocaleString("pt-BR")}.</p>
-    </div>`;
+
+  const cfg = await getResendEmailConfigFromDb();
+  if (!cfg) return { ok: false, error: "resend_not_configured" };
+
+  const { subjectTpl, htmlTpl } = resolveOrganizationExportTemplates(cfg);
+  const { subject, html } = buildOrganizationExportEmailContent(subjectTpl, htmlTpl, {
+    appName: cfg.fromName,
+    logoUrl: resolveSystemLogoUrl(cfg),
+    organizationName: data.organization.name,
+    format: formatLabel,
+    contactsCount: String(data.stats.contacts),
+    conversationsCount: String(data.stats.conversations),
+    messagesCount: String(data.stats.messages),
+    exportedAt: new Date(data.exportedAt).toLocaleString("pt-BR"),
+  });
 
   const result = await sendResendEmail({
     toEmail,
