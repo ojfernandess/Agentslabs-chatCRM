@@ -114,3 +114,10 @@ export function contactHasEmailFilter(): Prisma.ContactWhereInput {
     ],
   };
 }
+
+/** Contactos criados pela caixa de e-mail (chave de canal oc|EMAIL|…). */
+export function contactFromEmailInboxFilter(): Prisma.ContactWhereInput {
+  return {
+    phone: { startsWith: EMAIL_PHONE_PREFIX },
+  };
+}

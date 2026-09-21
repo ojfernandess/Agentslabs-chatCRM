@@ -9,7 +9,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { enrichWebsiteContacts } from "../lib/websiteVisitorContacts.js";
-import { contactHasEmailFilter } from "../lib/conversationUserEmailState.js";
+import { contactFromEmailInboxFilter } from "../lib/conversationUserEmailState.js";
 
 const BOARD_CONTACT_LIMIT = 500;
 
@@ -43,7 +43,7 @@ export async function pipelineRoutes(app: FastifyInstance): Promise<void> {
 
     const where: Prisma.ContactWhereInput = { organizationId };
     if (!showEmailContacts) {
-      where.NOT = contactHasEmailFilter();
+      where.NOT = contactFromEmailInboxFilter();
     }
 
     const leadTypes = await prisma.leadType.findMany({
