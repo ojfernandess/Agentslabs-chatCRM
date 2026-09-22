@@ -378,7 +378,7 @@ export function WorkspaceRealtime() {
 
   return (
     <div
-      className="pointer-events-none fixed right-4 top-4 z-[100] flex w-[min(calc(100vw-32px),420px)] max-w-[440px] flex-col gap-3"
+      className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[min(calc(100vw-32px),420px)] max-w-[440px] flex-col gap-3"
       aria-live="polite"
     >
       <AnimatePresence>
@@ -387,7 +387,7 @@ export function WorkspaceRealtime() {
             <motion.div
               key={toast.id}
               layout
-              initial={{ opacity: 0, y: -6 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
@@ -402,7 +402,7 @@ export function WorkspaceRealtime() {
             <motion.div
               key={toast.id}
               layout
-              initial={{ opacity: 0, y: -6 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
