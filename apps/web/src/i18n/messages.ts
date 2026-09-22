@@ -58,8 +58,8 @@ export const messages = {
       transferToAgent: "{contact} foi transferido para {agent}.",
       transferToBot: "{contact} foi transferido para o bot.",
       transferToBotNamed: "{contact} foi transferido para o bot {bot}.",
-      transferToHumanEscalation: "{contact} foi escalado para atendimento humano.",
-      transferToHumanEscalationTeam: "{contact} foi escalado para atendimento humano na equipa {team}.",
+      transferToHumanEscalation: "{contact} foi transferido para atendimento humano.",
+      transferToHumanEscalationTeam: "{contact} foi transferido para atendimento humano no time {team}.",
       transferMetaNow: "Agora",
       transferMetaBy: "por {actor}",
       transferCloseLabel: "Fechar notificação",
@@ -884,9 +884,9 @@ export const messages = {
       agentEscalationTeamNone: "— sem equipa definida —",
       agentEscalationSuggestHelp:
         "Gera texto nas «Condições / notas» com base no modo, palavras-chave, mensagem e equipa de destino (útil para o bloco automático do prompt).",
-      agentEscalationRegisterInConversation: "Registar escalonamento na conversa",
+      agentEscalationRegisterInConversation: "Registrar escalonamento na conversa",
       agentEscalationRegisterInConversationHelp:
-        "Quando o agente usar call_human, mostra um evento na conversa e notifica a equipa (como numa transferência manual). Desativado por omissão — não altera o handoff interno.",
+        "Quando o agente usar call_human, exibe um evento na conversa e notifica o time (como em uma transferência manual). Desativado por padrão — não altera o handoff interno.",
       agentNativeTools: "Capacidades expostas ao modelo",
       agentNativeToolsHelp:
         "Ative as funções que o integrador expõe ao modelo: base de conhecimento, API agent-bot (equipas, funil, conversas), Google Calendar, Outlook, etc. Os schemas completos estão no separador Ferramentas.",
