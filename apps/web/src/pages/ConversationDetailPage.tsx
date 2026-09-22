@@ -167,6 +167,8 @@ import {
   timelineEventTitle,
   type TimelinePayload,
 } from "@/lib/contactTimeline";
+import { buildConversationChatFeed, shouldShowChatDaySeparator } from "@/lib/conversationChatFeed";
+import { ConversationTransferSystemEvent } from "@/components/conversation/ConversationTransferSystemEvent";
 
 interface Message {
   id: string;
@@ -2060,6 +2062,14 @@ export function ConversationDetailPage() {
     return merged.slice(-18);
   }, [conversation, t]);
 
+  const conversationChatFeed = useMemo(() => {
+    if (!conversation) return [];
+    return buildConversationChatFeed({
+      messages: conversation.messages ?? [],
+      timeline: conversation.contactTimeline,
+    });
+  }, [conversation]);
+
   const threadEmailSubject = useMemo(
     () =>
       emailConversationSubject(
@@ -3789,8 +3799,26 @@ export function ConversationDetailPage() {
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           )}
           <div className={clsx("relative flex w-full min-w-0 flex-col gap-3")}>
-            {(conversation.messages ?? []).map((msg, i) => {
+            {conversationChatFeed.map((feedItem, feedIndex) => {
+              if (feedItem.kind === "handoff") {
+                return (
+                  <ConversationTransferSystemEvent
+                    key={`handoff-${feedItem.eventId}`}
+                    occurredAt={new Date(feedItem.at).toISOString()}
+                    payload={feedItem.payload}
+                    contactName={conversation.contact.name}
+                    actorName={feedItem.actorName}
+                    showDateSeparator={shouldShowChatDaySeparator(conversationChatFeed, feedIndex, (at) =>
+                      format(new Date(at), "yyyy-MM-dd"),
+                    )}
+                  />
+                );
+              }
+
+              const i = feedItem.messageIndex;
               const list = conversation.messages ?? [];
+              const msg = list[i];
+              if (!msg) return null;
               const groupedPrev = messageGroupedWithPrevious(list, i);
               const isNew = !seenMessageIds.current.has(msg.id);
               if (isNew) seenMessageIds.current.add(msg.id);

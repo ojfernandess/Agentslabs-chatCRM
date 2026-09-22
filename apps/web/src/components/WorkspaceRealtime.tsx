@@ -21,8 +21,38 @@ import {
 } from "@/lib/userAvailability";
 import { publishConversationAgentTyping } from "@/lib/conversationAgentTyping";
 import { api } from "@/lib/api";
+import {
+  resolveTransferNotificationFromWs,
+  type ConversationTransferredPayload,
+} from "@/lib/transferNotification";
+import { TransferNotificationToast } from "@/components/workspace/TransferNotificationToast";
 
 const TOKEN_KEY = "openconduit_token";
+const TOAST_DISMISS_MS = 6000;
+
+type WorkspaceToast =
+  | {
+      id: string;
+      kind: "transfer";
+      createdAt: number;
+      payload: ConversationTransferredPayload;
+    }
+  | {
+      id: string;
+      kind: "call";
+      text: string;
+    };
+
+type NewWorkspaceToast =
+  | {
+      kind: "transfer";
+      createdAt: number;
+      payload: ConversationTransferredPayload;
+    }
+  | {
+      kind: "call";
+      text: string;
+    };
 
 function playTransferChime(): void {
   try {
@@ -44,19 +74,23 @@ function playTransferChime(): void {
 
 export function WorkspaceRealtime() {
   const { user } = useAuth();
-  const { t, locale } = useI18n();
-  const [toasts, setToasts] = useState<{ id: string; text: string }[]>([]);
+  const { locale } = useI18n();
+  const [toasts, setToasts] = useState<WorkspaceToast[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const localeRef = useRef(locale);
   localeRef.current = locale;
 
-  const pushToast = useCallback((text: string) => {
-    const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, text }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((x) => x.id !== id));
-    }, 6000);
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((x) => x.id !== id));
   }, []);
+
+  const pushToast = useCallback((toast: NewWorkspaceToast) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { ...toast, id }]);
+    window.setTimeout(() => {
+      dismissToast(id);
+    }, TOAST_DISMISS_MS);
+  }, [dismissToast]);
 
   useEffect(() => {
     if (!user) return;
@@ -95,7 +129,7 @@ export function WorkspaceRealtime() {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${proto}://${window.location.host}/api/v1/ws?token=${encodeURIComponent(token)}&sessionKey=${encodeURIComponent(sessionKey)}`;
 
-    const handlePayload = (data: {
+    const handlePayload = (data: ConversationTransferredPayload & {
       type?: string;
       contact?: { name?: string };
       teamId?: string | null;
@@ -132,12 +166,11 @@ export function WorkspaceRealtime() {
         return;
       }
       if (data.type === "conversation.transferred") {
-        const contact = data.contact?.name ?? "—";
-        const team = (data.teamName ?? "").trim() || translate(localeRef.current, "workspace.transferUnknownTeam");
-        const msg = translate(localeRef.current, "workspace.transferToast")
-          .replace("{contact}", contact)
-          .replace("{team}", team);
-        pushToast(msg);
+        pushToast({
+          kind: "transfer",
+          createdAt: Date.now(),
+          payload: data,
+        });
         playTransferChime();
         if (typeof data.conversationId === "string" && data.conversationId) {
           invalidateCachedConversation(data.conversationId);
@@ -219,7 +252,7 @@ export function WorkspaceRealtime() {
               ? "nvoip.voice.incomingToast"
               : "wavoip.voice.incomingToast",
         ).replace("{caller}", caller);
-        pushToast(msg);
+        pushToast({ kind: "call", text: msg });
         void playIncomingCallRing();
         const incomingEvent = isThreeCx
           ? "openconduit:threecx-call-incoming"
@@ -345,23 +378,40 @@ export function WorkspaceRealtime() {
 
   return (
     <div
-      className="pointer-events-none fixed bottom-4 right-4 z-[100] flex max-w-sm flex-col gap-2"
+      className="pointer-events-none fixed right-4 top-4 z-[100] flex w-[min(calc(100vw-32px),420px)] max-w-[440px] flex-col gap-3"
       aria-live="polite"
     >
       <AnimatePresence>
-        {toasts.map((x) => (
-          <motion.div
-            key={x.id}
-            layout
-            initial={{ opacity: 0, x: 40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 40 }}
-            className="pointer-events-auto rounded-lg border border-red-200 bg-white px-4 py-3 text-sm shadow-lg ring-2 ring-red-500/20 dark:border-red-900/40 dark:bg-ink-900"
-          >
-            <p className="font-medium text-red-800 dark:text-red-200">{t("workspace.transferTitle")}</p>
-            <p className="mt-1 text-ink-600">{x.text}</p>
-          </motion.div>
-        ))}
+        {toasts.map((toast) =>
+          toast.kind === "transfer" ? (
+            <motion.div
+              key={toast.id}
+              layout
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
+              <TransferNotificationToast
+                content={resolveTransferNotificationFromWs(toast.payload)}
+                createdAt={toast.createdAt}
+                onClose={() => dismissToast(toast.id)}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key={toast.id}
+              layout
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="pointer-events-auto rounded-[11px] border border-emerald-200/90 bg-white px-4 py-3 text-sm shadow-[0_8px_24px_rgba(15,23,42,0.10)] dark:border-emerald-900/40 dark:bg-soft-surface-2 dark:shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+            >
+              <p className="text-ink-700 dark:text-soft-text-secondary">{toast.text}</p>
+            </motion.div>
+          ),
+        )}
       </AnimatePresence>
     </div>
   );
