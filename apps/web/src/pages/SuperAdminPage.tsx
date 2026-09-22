@@ -237,6 +237,19 @@ interface UsageOrgRow {
   isActive: boolean;
   messagesLast7Days: number;
   messagesLast30Days: number;
+  subscription?: {
+    plan: {
+      id: string;
+      name: string;
+      slug: string;
+      legacyPlanTier: string | null;
+      isCustom: boolean;
+    } | null;
+  } | null;
+}
+
+function usageOrgPlanLabel(row: Pick<UsageOrgRow, "planTier" | "subscription">): string {
+  return row.subscription?.plan?.name ?? row.planTier ?? "free";
 }
 
 interface UsageMetricsPayload {
@@ -1760,7 +1773,7 @@ export function SuperAdminPage() {
                             {row.name}
                             <span className="block text-xs font-normal text-ink-500">{row.slug}</span>
                           </td>
-                          <td className="px-4 py-3">{row.planTier}</td>
+                          <td className="px-4 py-3">{usageOrgPlanLabel(row)}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{row.messagesLast7Days}</td>
                           <td className="px-4 py-3 text-right tabular-nums">{row.messagesLast30Days}</td>
                           <td className="px-4 py-3">{row.isActive ? "Ativa" : "Suspensa"}</td>

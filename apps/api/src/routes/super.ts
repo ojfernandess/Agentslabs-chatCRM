@@ -1002,7 +1002,20 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const map7 = new Map(rows7.map((r) => [r.organization_id, Number(r.cnt)]));
     const map30 = new Map(rows30.map((r) => [r.organization_id, Number(r.cnt)]));
     const orgList = await prisma.organization.findMany({
-      select: { id: true, name: true, slug: true, planTier: true, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        planTier: true,
+        isActive: true,
+        subscription: {
+          select: {
+            plan: {
+              select: { id: true, name: true, slug: true, legacyPlanTier: true, isCustom: true },
+            },
+          },
+        },
+      },
       orderBy: { name: "asc" },
     });
     return {
