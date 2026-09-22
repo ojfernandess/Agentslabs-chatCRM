@@ -112,19 +112,23 @@ export function parseStripeCatalog(cfg: unknown): StripeCatalogEntry[] {
   const raw = c.catalog;
   if (Array.isArray(raw)) {
     const entries = raw
-      .map((item) => {
+      .map((item): StripeCatalogEntry | null => {
         const o = asRecord(item);
         const priceId = str(o.priceId) || str(o.price_id);
         if (!priceId) return null;
-        return {
-          label: str(o.label) || str(o.name) || undefined,
-          productId: str(o.productId) || str(o.product_id) || undefined,
+        const entry: StripeCatalogEntry = {
           priceId,
-          currency: str(o.currency).toLowerCase() || undefined,
           isDefault: o.isDefault === true,
-        } satisfies StripeCatalogEntry;
+        };
+        const label = str(o.label) || str(o.name);
+        if (label) entry.label = label;
+        const productId = str(o.productId) || str(o.product_id);
+        if (productId) entry.productId = productId;
+        const currency = str(o.currency).toLowerCase();
+        if (currency) entry.currency = currency;
+        return entry;
       })
-      .filter((x): x is StripeCatalogEntry => x != null);
+      .filter((x): x is StripeCatalogEntry => x !== null);
     if (entries.length > 0) return entries;
   }
   const legacyPrice = str(c.defaultPriceId);

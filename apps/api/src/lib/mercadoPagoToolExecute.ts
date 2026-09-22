@@ -122,21 +122,25 @@ export function parseMercadoPagoCatalog(cfg: unknown): MercadoPagoCatalogEntry[]
   const raw = c.catalog;
   if (Array.isArray(raw)) {
     const entries = raw
-      .map((item) => {
+      .map((item): MercadoPagoCatalogEntry | null => {
         const o = asRecord(item);
         const planId = str(o.planId) || str(o.plan_id);
         const amountCents = optionalNumber(o.amountCents ?? o.amount_cents);
         if (!planId && amountCents == null) return null;
-        return {
-          label: str(o.label) || str(o.name) || undefined,
-          planId: planId || undefined,
-          amountCents: amountCents ?? undefined,
-          currency: str(o.currency).toUpperCase() || undefined,
-          defaultTitle: str(o.defaultTitle) || str(o.title) || undefined,
+        const entry: MercadoPagoCatalogEntry = {
           isDefault: o.isDefault === true,
-        } satisfies MercadoPagoCatalogEntry;
+        };
+        const label = str(o.label) || str(o.name);
+        if (label) entry.label = label;
+        if (planId) entry.planId = planId;
+        if (amountCents != null) entry.amountCents = amountCents;
+        const currency = str(o.currency).toUpperCase();
+        if (currency) entry.currency = currency;
+        const defaultTitle = str(o.defaultTitle) || str(o.title);
+        if (defaultTitle) entry.defaultTitle = defaultTitle;
+        return entry;
       })
-      .filter((x): x is MercadoPagoCatalogEntry => x != null);
+      .filter((x): x is MercadoPagoCatalogEntry => x !== null);
     if (entries.length > 0) return entries;
   }
   const legacyAmount = optionalNumber(c.defaultAmountCents ?? c.defaultAmount);
