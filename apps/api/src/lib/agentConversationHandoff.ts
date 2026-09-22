@@ -7,6 +7,7 @@ import {
 } from "./agentAssistLlm.js";
 import { buildNativeAgentTranscriptWhere } from "./agentConversationHistory.js";
 import { loadAutomationConversationContext } from "./automationConversationContextLib.js";
+import { appendTimelineEvent } from "./timeline.js";
 import { broadcastToOrganization } from "./workspaceHub.js";
 import {
   shouldRevertHandoffAfterValidation,
@@ -17,6 +18,94 @@ import type { TurnPolicy } from "./agent-engine/validators/turnPolicyParser.js";
 export { shouldRevertHandoffAfterValidation, type ToolOutcomeLike };
 
 export type NativeHandoffToolName = "transfer_to_team" | "assign_team_to_conversation" | "call_human";
+
+export function parseRegisterHandoffInConversationFromBehavior(behaviorConfig: unknown): boolean {
+  if (!behaviorConfig || typeof behaviorConfig !== "object") return false;
+  const esc = (behaviorConfig as Record<string, unknown>).escalationRules;
+  if (!esc || typeof esc !== "object") return false;
+  return (esc as Record<string, unknown>).registerHandoffInConversation === true;
+}
+
+export async function resolveCallHumanRegistrationOptions(
+  organizationId: string,
+  conversationId: string,
+  botId?: string | null,
+): Promise<{ registerInConversation: boolean; botName: string | null }> {
+  const resolvedBotId = typeof botId === "string" && botId.trim() ? botId.trim() : null;
+  if (!resolvedBotId) {
+    return { registerInConversation: false, botName: null };
+  }
+  const [bot, profile] = await Promise.all([
+    prisma.bot.findFirst({
+      where: { id: resolvedBotId, organizationId },
+      select: { name: true },
+    }),
+    prisma.automationAgentProfile.findUnique({
+      where: { botId: resolvedBotId },
+      select: { behaviorConfig: true },
+    }),
+  ]);
+  return {
+    registerInConversation: parseRegisterHandoffInConversationFromBehavior(profile?.behaviorConfig),
+    botName: bot?.name?.trim() || null,
+  };
+}
+
+/** Regista evento visível na conversa (timeline + toast) quando call_human do bot está configurado. */
+export async function registerBotCallHumanInConversation(input: {
+  organizationId: string;
+  conversationId: string;
+  contactId: string;
+  contactName: string | null;
+  botName?: string | null;
+  previousTeamId: string | null;
+  previousTeamName: string | null;
+  newTeamId: string | null;
+  newTeamName: string | null;
+  previousAssignedToId: string | null;
+  previousAssigneeName: string | null;
+}): Promise<void> {
+  await appendTimelineEvent({
+    organizationId: input.organizationId,
+    subjectType: "CONTACT",
+    subjectId: input.contactId,
+    eventType: "conversation.handoff",
+    channel: "conversation",
+    payload: {
+      conversationId: input.conversationId,
+      handoffSource: "call_human",
+      botName: input.botName ?? null,
+      previousTeamId: input.previousTeamId,
+      previousTeamName: input.previousTeamName,
+      newTeamId: input.newTeamId,
+      newTeamName: input.newTeamName,
+      previousAssigneeId: input.previousAssignedToId,
+      previousAssigneeName: input.previousAssigneeName,
+      newAssigneeId: null,
+      newAssigneeName: null,
+    },
+    actorUserId: null,
+    sourceId: input.conversationId,
+  });
+
+  broadcastToOrganization(input.organizationId, {
+    type: "conversation.transferred",
+    conversationId: input.conversationId,
+    teamId: input.newTeamId,
+    teamName: input.newTeamName,
+    previousTeamId: input.previousTeamId,
+    assignedToId: null,
+    previousAssignedToId: input.previousAssignedToId,
+    handoffSource: "call_human",
+    botName: input.botName ?? null,
+    contact: input.contactName ? { name: input.contactName } : undefined,
+  });
+  broadcastToOrganization(input.organizationId, {
+    type: "conversation.updated",
+    conversationId: input.conversationId,
+    awaitingHumanHandoff: true,
+  });
+}
 
 /**
  * Marca a conversa como «à espera de humano», grava nota interna (resumo inteligente + motivo) e notifica o workspace.

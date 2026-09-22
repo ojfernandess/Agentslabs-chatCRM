@@ -22,12 +22,18 @@ export function buildConversationChatFeed(input: {
 
   for (const event of input.timeline ?? []) {
     if (event.eventType !== "conversation.handoff") continue;
+    const payload = (event.payload ?? {}) as TimelinePayload;
+    const actorFromUser = event.actorUser?.name?.trim() || null;
+    const botActor =
+      payload.handoffSource === "call_human" && typeof payload.botName === "string"
+        ? payload.botName.trim() || null
+        : null;
     items.push({
       kind: "handoff",
       eventId: event.id,
       at: new Date(event.occurredAt).getTime(),
-      payload: (event.payload ?? {}) as TimelinePayload,
-      actorName: event.actorUser?.name?.trim() || null,
+      payload,
+      actorName: actorFromUser ?? botActor,
     });
   }
 

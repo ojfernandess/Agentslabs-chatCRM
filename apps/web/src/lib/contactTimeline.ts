@@ -12,6 +12,8 @@ export interface TimelinePayload {
   newTeamName?: unknown;
   previousAssigneeName?: unknown;
   newAssigneeName?: unknown;
+  handoffSource?: unknown;
+  botName?: unknown;
   [key: string]: unknown;
 }
 

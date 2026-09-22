@@ -3,7 +3,10 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { assignConversationTeamForOrg } from "./conversationTeamAssignment.js";
 import {
+  parseRegisterHandoffInConversationFromBehavior,
   recordNativeAgentTransferHandoff,
+  registerBotCallHumanInConversation,
+  resolveCallHumanRegistrationOptions,
   type NativeHandoffToolName,
 } from "./agentConversationHandoff.js";
 
@@ -90,6 +93,9 @@ export async function callHumanForConversationForOrg(
     teamId?: string | null;
     reason?: string | null;
     userMessageSnippet?: string;
+    botId?: string | null;
+    botName?: string | null;
+    registerInConversation?: boolean;
     log?: HandoffLog;
   },
 ): Promise<{
@@ -100,6 +106,18 @@ export async function callHumanForConversationForOrg(
     message: string;
   };
 }> {
+  const before = await prisma.conversation.findFirst({
+    where: { id: params.conversationId, organizationId: params.organizationId },
+    select: {
+      contactId: true,
+      teamId: true,
+      assignedToId: true,
+      team: { select: { name: true } },
+      assignedTo: { select: { name: true } },
+      contact: { select: { name: true } },
+    },
+  });
+
   let teamName: string | null = null;
   let teamId: string | null = null;
 
@@ -138,6 +156,56 @@ export async function callHumanForConversationForOrg(
     );
   }
 
+  let registerInConversation = params.registerInConversation ?? false;
+  let botName = params.botName ?? null;
+  if (params.registerInConversation == null && params.botId) {
+    const resolved = await resolveCallHumanRegistrationOptions(
+      params.organizationId,
+      params.conversationId,
+      params.botId,
+    );
+    registerInConversation = resolved.registerInConversation;
+    if (!botName) botName = resolved.botName;
+  } else if (registerInConversation && !botName && params.botId) {
+    const bot = await prisma.bot.findFirst({
+      where: { id: params.botId, organizationId: params.organizationId },
+      select: { name: true },
+    });
+    botName = bot?.name?.trim() || null;
+  }
+
+  if (registerInConversation && before) {
+    const after = await prisma.conversation.findFirst({
+      where: { id: params.conversationId, organizationId: params.organizationId },
+      select: {
+        teamId: true,
+        team: { select: { name: true } },
+      },
+    });
+    const newTeamId = teamId ?? after?.teamId ?? before.teamId;
+    const newTeamName = teamName ?? after?.team?.name ?? before.team?.name ?? null;
+    try {
+      await registerBotCallHumanInConversation({
+        organizationId: params.organizationId,
+        conversationId: params.conversationId,
+        contactId: before.contactId,
+        contactName: before.contact?.name?.trim() || null,
+        botName,
+        previousTeamId: before.teamId,
+        previousTeamName: before.team?.name ?? null,
+        newTeamId,
+        newTeamName,
+        previousAssignedToId: before.assignedToId,
+        previousAssigneeName: before.assignedTo?.name ?? null,
+      });
+    } catch (err) {
+      params.log?.warn(
+        { err, conversationId: params.conversationId },
+        "registerBotCallHumanInConversation failed after call_human",
+      );
+    }
+  }
+
   return {
     ok: true,
     payload: {
@@ -147,3 +215,5 @@ export async function callHumanForConversationForOrg(
     },
   };
 }
+
+export { parseRegisterHandoffInConversationFromBehavior };

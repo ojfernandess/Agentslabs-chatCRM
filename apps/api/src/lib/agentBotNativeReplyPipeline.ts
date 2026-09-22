@@ -138,6 +138,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
           conversationId: conversation.id,
           reason: `INTERACTION_LIMIT_REACHED — ${budgetState.count}/${budgetState.limit} interações (transferência automática)`,
           userMessageSnippet: userMessage,
+          botId: bot.id,
           log,
         });
         await markInteractionBudgetHumanActive(conversation.id);
@@ -218,6 +219,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
             conversationId: conversation.id,
             reason: `INTERACTION_LIMIT_REACHED — ${r.count}/${r.limit} interações (transferência automática)`,
             userMessageSnippet: userMessage,
+            botId: bot.id,
             log,
           });
           await markInteractionBudgetHumanActive(conversation.id);

@@ -177,6 +177,8 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
       teamId: parsed.data.teamId,
       reason: parsed.data.reason,
       userMessageSnippet: parsed.data.reason ?? "",
+      botId: bot.id,
+      botName: bot.name,
       log: request.log,
     });
     return { ok: true, ...result.payload };

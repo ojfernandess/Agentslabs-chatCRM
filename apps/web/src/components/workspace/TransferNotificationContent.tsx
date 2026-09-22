@@ -86,6 +86,27 @@ export function TransferNotificationDescription({
     }
   }
 
+  if (content.mode === "humanEscalation" && content.contactName) {
+    const template = content.teamName
+      ? t("workspace.transferToHumanEscalationTeam")
+      : t("workspace.transferToHumanEscalation");
+    const text = replaceTransferTokens(template, {
+      contact: content.contactName,
+      team: content.teamName ?? "",
+    });
+    if (content.teamName && text.includes(content.teamName)) {
+      const teamIdx = text.indexOf(content.teamName);
+      return (
+        <p className="text-sm leading-snug text-[#64748B] dark:text-soft-text-secondary">
+          {text.slice(0, teamIdx)}
+          <DestinationHighlight>{content.teamName}</DestinationHighlight>
+          {text.slice(teamIdx + content.teamName.length)}
+        </p>
+      );
+    }
+    return <p className="text-sm leading-snug text-[#64748B] dark:text-soft-text-secondary">{text}</p>;
+  }
+
   if (content.mode === "bot") {
     const template = content.botName ? t("workspace.transferToBotNamed") : t("workspace.transferToBot");
     const botLabel = content.botName ?? "";

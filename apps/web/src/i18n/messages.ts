@@ -58,6 +58,8 @@ export const messages = {
       transferToAgent: "{contact} foi transferido para {agent}.",
       transferToBot: "{contact} foi transferido para o bot.",
       transferToBotNamed: "{contact} foi transferido para o bot {bot}.",
+      transferToHumanEscalation: "{contact} foi escalado para atendimento humano.",
+      transferToHumanEscalationTeam: "{contact} foi escalado para atendimento humano na equipa {team}.",
       transferMetaNow: "Agora",
       transferMetaBy: "por {actor}",
       transferCloseLabel: "Fechar notificação",
@@ -882,6 +884,9 @@ export const messages = {
       agentEscalationTeamNone: "— sem equipa definida —",
       agentEscalationSuggestHelp:
         "Gera texto nas «Condições / notas» com base no modo, palavras-chave, mensagem e equipa de destino (útil para o bloco automático do prompt).",
+      agentEscalationRegisterInConversation: "Registar escalonamento na conversa",
+      agentEscalationRegisterInConversationHelp:
+        "Quando o agente usar call_human, mostra um evento na conversa e notifica a equipa (como numa transferência manual). Desativado por omissão — não altera o handoff interno.",
       agentNativeTools: "Capacidades expostas ao modelo",
       agentNativeToolsHelp:
         "Ative as funções que o integrador expõe ao modelo: base de conhecimento, API agent-bot (equipas, funil, conversas), Google Calendar, Outlook, etc. Os schemas completos estão no separador Ferramentas.",
@@ -7352,6 +7357,8 @@ export const messages = {
       transferToAgent: "{contact} was transferred to {agent}.",
       transferToBot: "{contact} was transferred to the bot.",
       transferToBotNamed: "{contact} was transferred to bot {bot}.",
+      transferToHumanEscalation: "{contact} was escalated to human support.",
+      transferToHumanEscalationTeam: "{contact} was escalated to human support on team {team}.",
       transferMetaNow: "Now",
       transferMetaBy: "by {actor}",
       transferCloseLabel: "Close notification",
@@ -8175,6 +8182,9 @@ export const messages = {
       agentEscalationTeamNone: "— no team selected —",
       agentEscalationSuggestHelp:
         "Fills «Conditions / notes» from mode, keywords, message, and destination team (helps the auto prompt block).",
+      agentEscalationRegisterInConversation: "Log escalation in conversation",
+      agentEscalationRegisterInConversationHelp:
+        "When the agent uses call_human, show an event in the conversation thread and notify the team (like a manual transfer). Off by default — does not change internal handoff behavior.",
       agentNativeTools: "Capabilities exposed to the model",
       agentNativeToolsHelp:
         "Toggle capabilities your integrator exposes to the model: knowledge base, agent-bot API (teams, pipeline, conversations), Google Calendar, Outlook, etc. Full schemas are under Tools.",

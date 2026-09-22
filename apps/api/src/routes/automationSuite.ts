@@ -155,6 +155,7 @@ const defaultBehaviorConfig = () => ({
     mode: "keyword" as string,
     keywords: "" as string,
     transferTeamId: null as string | null,
+    registerHandoffInConversation: false,
   },
   inactivity: {
     automationEnabled: false,

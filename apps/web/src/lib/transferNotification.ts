@@ -7,9 +7,11 @@ export type ConversationTransferredPayload = {
   previousTeamId?: string | null;
   assignedToId?: string | null;
   previousAssignedToId?: string | null;
+  handoffSource?: string | null;
+  botName?: string | null;
 };
 
-export type TransferNotificationMode = "team" | "agent" | "bot" | "fallback";
+export type TransferNotificationMode = "team" | "agent" | "bot" | "humanEscalation" | "fallback";
 
 export type TransferNotificationContent = {
   mode: TransferNotificationMode;
@@ -49,6 +51,19 @@ export function resolveTransferNotificationFromWs(
   const assigneeMoved = assigneeChanged(payload);
   const assignedToId = payload.assignedToId ?? null;
   const previousAssignedToId = payload.previousAssignedToId ?? null;
+  const botName = cleanName(payload.botName);
+
+  if (payload.handoffSource === "call_human") {
+    return {
+      mode: "humanEscalation",
+      contactName,
+      teamName: teamMoved ? teamName : null,
+      agentName: null,
+      botName,
+      previousTeamName: null,
+      actorName: botName,
+    };
+  }
 
   if (teamMoved && teamName) {
     return {
@@ -110,8 +125,21 @@ export function resolveTransferNotificationFromTimeline(
     typeof payload.newAssigneeId === "string" ? payload.newAssigneeId : null;
   const previousAssigneeId =
     typeof payload.previousAssigneeId === "string" ? payload.previousAssigneeId : null;
+  const botNameFromPayload = cleanName(payload.botName);
 
   const teamMoved = previousTeamName !== newTeamName && Boolean(previousTeamName || newTeamName);
+
+  if (payload.handoffSource === "call_human") {
+    return {
+      mode: "humanEscalation",
+      contactName,
+      teamName: newTeamName,
+      agentName: null,
+      botName: botNameFromPayload,
+      previousTeamName,
+      actorName: actorName ?? botNameFromPayload,
+    };
+  }
 
   if (newTeamName && teamMoved) {
     return {

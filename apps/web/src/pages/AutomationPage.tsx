@@ -394,6 +394,7 @@ const defaultBehavior = {
     mode: "keyword",
     keywords: "",
     transferTeamId: null as string | null,
+    registerHandoffInConversation: false,
   },
   inactivity: {
     automationEnabled: false,
@@ -497,6 +498,7 @@ type AgentFormFields = {
   escalationTransferMessage: string;
   escalationKeywords: string;
   escalationTeamId: string;
+  escalationRegisterInConversation: boolean;
   nativeTools: Record<NativeToolKey, boolean>;
   promptModuleIds: string[];
   connectedTools: AgentConnectedToolRow[];
@@ -576,6 +578,7 @@ function emptyAgentForm(): AgentFormFields {
     escalationTransferMessage: "",
     escalationKeywords: "",
     escalationTeamId: "",
+    escalationRegisterInConversation: false,
     nativeTools: defaultNativeTools(),
     promptModuleIds: [],
     connectedTools: defaultConnectedTools(),
@@ -969,6 +972,8 @@ function profileToForm(p: AgentProfileRow): AgentFormFields {
       const raw = (esc as Record<string, unknown>).transferTeamId;
       return typeof raw === "string" ? raw : "";
     })(),
+    escalationRegisterInConversation:
+      (esc as Record<string, unknown>).registerHandoffInConversation === true,
     nativeTools,
     promptModuleIds,
     connectedTools: connectedToolsNormalized,
@@ -1137,6 +1142,7 @@ function formToPayload(
       transferMessage: form.escalationTransferMessage,
       keywords: form.escalationKeywords,
       transferTeamId: escTeamId || null,
+      registerHandoffInConversation: form.escalationRegisterInConversation,
     },
     inactivity: {
       ...defaultBehavior.inactivity,
@@ -4335,6 +4341,25 @@ function AgentsTab({
                     placeholder={t("automationPage.agentEscalationTransferPh")}
                     className="mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950"
                   />
+                </label>
+                <label className="mt-2 flex items-start gap-2 text-sm text-ink-800 dark:text-ink-200">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={agentForm.escalationRegisterInConversation}
+                    onChange={(e) =>
+                      setAgentForm((f) => ({
+                        ...f,
+                        escalationRegisterInConversation: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>
+                    {t("automationPage.agentEscalationRegisterInConversation")}
+                    <span className="mt-0.5 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
+                      {t("automationPage.agentEscalationRegisterInConversationHelp")}
+                    </span>
+                  </span>
                 </label>
                 <div className="mt-2 flex flex-col gap-1.5">
                   <button

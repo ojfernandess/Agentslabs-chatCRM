@@ -1258,6 +1258,7 @@ async function executeNativeTool(input: {
         teamId,
         reason,
         userMessageSnippet: snippet,
+        botId,
         log,
       });
       return JSON.stringify({ ok: true, message: r.payload.message });
