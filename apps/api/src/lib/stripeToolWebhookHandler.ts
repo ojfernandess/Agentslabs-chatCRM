@@ -2,7 +2,7 @@ import Stripe from "stripe";
 import type { Prisma } from "@prisma/client";
 import { stripeToolWebhookUrlForOrganization } from "../config.js";
 import { prisma } from "../db.js";
-import { mergeFlowSlotsAutomationContext } from "./automationConversationContextLib.js";
+import { mergeFlowSlotsAutomationContext, resolveAutomationBotIdForConversation } from "./automationConversationContextLib.js";
 import {
   isOrganizationAgentStripeMetadata,
   isStripeAutomationTool,
@@ -144,16 +144,24 @@ async function applyPaidPaymentToConversation(input: {
 }): Promise<{ applied: boolean; reason?: string }> {
   const conversation = await prisma.conversation.findFirst({
     where: { id: input.conversationId, organizationId: input.organizationId },
-    select: { id: true, botId: true },
+    select: { id: true },
   });
-  if (!conversation?.botId) {
+  if (!conversation) {
+    return { applied: false, reason: "conversation_not_found" };
+  }
+
+  const botId = await resolveAutomationBotIdForConversation({
+    organizationId: input.organizationId,
+    conversationId: conversation.id,
+  });
+  if (!botId) {
     return { applied: false, reason: "conversation_not_found_or_no_bot" };
   }
 
   await mergeFlowSlotsAutomationContext({
     organizationId: input.organizationId,
     conversationId: conversation.id,
-    botId: conversation.botId,
+    botId,
     flowSlots: {
       paymentStatus: input.paymentStatus,
       stripeToolId: input.toolId,

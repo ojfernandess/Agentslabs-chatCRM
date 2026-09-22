@@ -139,7 +139,7 @@ async function handlePaymentWebhook(paymentId: string, action: string): Promise<
     }
   }
 
-  if (isOrganizationAgentMercadoPagoMetadata(payment.metadata as Record<string, unknown> | null | undefined)) {
+  if (isOrganizationAgentMercadoPagoMetadata((payment as MercadoPagoPaymentResource).metadata)) {
     return null;
   }
 

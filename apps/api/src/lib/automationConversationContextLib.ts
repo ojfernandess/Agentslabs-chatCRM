@@ -690,6 +690,36 @@ export async function mergeFlowSlotsAutomationContext(params: {
   return mergedSlots;
 }
 
+/** Resolve o bot de automação ligado a uma conversa (contexto persistido → budget → inbox → settings). */
+export async function resolveAutomationBotIdForConversation(input: {
+  organizationId: string;
+  conversationId: string;
+}): Promise<string | null> {
+  const ctx = await prisma.automationConversationContext.findFirst({
+    where: { conversationId: input.conversationId, organizationId: input.organizationId },
+    select: { botId: true },
+  });
+  if (ctx?.botId) return ctx.botId;
+
+  const budget = await prisma.conversationInteractionBudget.findFirst({
+    where: { conversationId: input.conversationId, organizationId: input.organizationId },
+    select: { agentBotId: true },
+  });
+  if (budget?.agentBotId) return budget.agentBotId;
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: input.conversationId, organizationId: input.organizationId },
+    select: { inbox: { select: { agentBotId: true } } },
+  });
+  if (conversation?.inbox?.agentBotId) return conversation.inbox.agentBotId;
+
+  const settings = await prisma.settings.findFirst({
+    where: { organizationId: input.organizationId },
+    select: { agentBotId: true },
+  });
+  return settings?.agentBotId ?? null;
+}
+
 /** Substitui flowSlots (não faz merge) e opcionalmente limpa a última ronda de tools. */
 export async function replaceFlowSlotsAutomationContext(params: {
   organizationId: string;
