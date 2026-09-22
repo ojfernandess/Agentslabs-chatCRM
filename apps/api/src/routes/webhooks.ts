@@ -44,6 +44,12 @@ import { handleNvoipDtmfWebhook } from "../lib/nvoipDtmfWebhook.js";
 import { handleNvoipCallWebhook } from "../lib/nvoipCallWebhook.js";
 import { verifyNvoipCallWebhookSecret } from "../lib/nvoipWebhookSecret.js";
 import {
+  constructOrganizationStripeWebhookEvent,
+  OrganizationStripeWebhookError,
+  processOrganizationStripeToolWebhook,
+  loadOrganizationStripeToolForWebhook,
+} from "../lib/stripeToolWebhookHandler.js";
+import {
   constructStripeWebhookEvent,
   processStripeWebhookEvent,
   StripeWebhookError,
@@ -1119,6 +1125,61 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       });
     }
   });
+
+  app.post<{ Params: { organizationId: string; toolId: string } }>(
+    "/stripe/org/:organizationId/:toolId",
+    webhookPostOpts,
+    async (request, reply) => {
+      const signatureRaw = request.headers["stripe-signature"];
+      const signature = Array.isArray(signatureRaw) ? signatureRaw[0] : signatureRaw;
+      const rawBody =
+        (request as WebhookRequest).rawBody ??
+        (typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? ""));
+
+      const tool = await loadOrganizationStripeToolForWebhook({
+        organizationId: request.params.organizationId,
+        toolId: request.params.toolId,
+      });
+      if (!tool) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message: "Stripe tool not found",
+          statusCode: 404,
+        });
+      }
+      if (!tool.isActive) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Stripe tool is inactive",
+          statusCode: 400,
+        });
+      }
+
+      try {
+        const event = constructOrganizationStripeWebhookEvent(rawBody, signature, tool.cfg.webhookSecret);
+        const processed = await processOrganizationStripeToolWebhook({
+          organizationId: request.params.organizationId,
+          toolId: request.params.toolId,
+          event,
+        });
+        return { received: true, duplicate: processed.duplicate, result: processed.result };
+      } catch (err) {
+        if (err instanceof OrganizationStripeWebhookError) {
+          return reply.status(err.statusCode).send({
+            error: "organization_stripe_webhook_error",
+            message: err.message,
+            statusCode: err.statusCode,
+          });
+        }
+        request.log.error({ err }, "Organization Stripe tool webhook processing failed");
+        return reply.status(500).send({
+          error: "internal_error",
+          message: "Organization Stripe tool webhook processing failed",
+          statusCode: 500,
+        });
+      }
+    },
+  );
 
   app.post("/mercadopago", webhookPostOpts, async (request: FastifyRequest, reply: FastifyReply) => {
     if (!isMercadoPagoWebhookConfigured()) {

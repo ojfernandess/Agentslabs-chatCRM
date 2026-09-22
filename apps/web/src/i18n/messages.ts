@@ -1745,6 +1745,66 @@ export const messages = {
       toolCalComLanguage: "Idioma do participante (ex. pt-BR)",
       toolCalComDocsHint:
         "Ligue a ferramenta no perfil do agente. O modelo usa action=get_slots e depois create_booking com o horário UTC escolhido.",
+      toolStripeHelp:
+        "Secret key Stripe da conta da organização (preferir restricted key com Products/Prices read e Payment Links/Checkout write). Usada só nesta ferramenta — não é a billing da plataforma OpenConduit.",
+      toolStripeSecretKey: "Secret key",
+      toolStripeKeySaved: "Chave já configurada. Digite uma nova para substituir.",
+      toolStripeDefaultPriceId: "Price ID predefinido (price_…, opcional)",
+      toolStripeCurrency: "Moeda predefinida para list_prices (ex. brl)",
+      toolStripeSuccessUrl: "URL de sucesso (Checkout)",
+      toolStripeCancelUrl: "URL de cancelamento (Checkout)",
+      toolStripeDocsHint:
+        "Ligue a ferramenta no perfil do agente. Fluxo: list_prices → create_payment_link ou create_checkout_session. Com webhook configurado, paymentStatus=paid é gravado na conversa após pagamento.",
+      toolStripeWebhookTitle: "Webhook Stripe (conta da organização)",
+      toolStripeWebhookHelp:
+        "No Stripe Dashboard → Developers → Webhooks, crie um endpoint com a URL abaixo (distinta de /webhooks/stripe do billing da plataforma). Cole o signing secret (whsec_…) e subscreva os eventos indicados.",
+      toolStripeWebhookUrl: "URL do endpoint",
+      toolStripeWebhookCopy: "Copiar",
+      toolStripeWebhookSecret: "Signing secret (whsec_…)",
+      toolStripeWebhookSecretSaved: "Signing secret já configurado. Digite um novo para substituir.",
+      toolStripeWebhookEvents: "Eventos recomendados",
+      toolStripeSetupHelpOpen: "Guia de configuração Stripe",
+      toolStripeSetupHelpClose: "Fechar guia",
+      toolStripeSetupHelpTitle: "Configurar Stripe Dashboard",
+      toolStripeSetupHelpIntro:
+        "Use a conta Stripe da sua organização (não a billing OpenConduit). Guarde aqui a secret key, o webhook e ligue a ferramenta no perfil do agente.",
+      toolStripeSetupHelpStepsTitle: "Webhook no Stripe Dashboard",
+      toolStripeSetupHelpStep1: "Abra a conta Stripe da organização (modo teste ou live).",
+      toolStripeSetupHelpStep2: "Guarde a Secret key (sk_… ou restricted rk_…) nesta ferramenta.",
+      toolStripeSetupHelpStep3: "Aceda a",
+      toolStripeSetupHelpStep4: "Clique em «Add endpoint» (ou «Adicionar destino»).",
+      toolStripeSetupHelpStep5: "Em Endpoint URL, cole a URL exclusiva desta ferramenta:",
+      toolStripeSetupHelpStep6: "Em «Select events», marque os eventos recomendados (secção abaixo).",
+      toolStripeSetupHelpStep7: "Crie o endpoint e copie o Signing secret (whsec_…) para este painel.",
+      toolStripeSetupHelpStep8: "Grave as credenciais e teste um pagamento — o webhook confirma paymentStatus=paid na conversa.",
+      toolStripeSetupHelpRecommendedTitle: "Eventos recomendados (obrigatórios)",
+      toolStripeSetupHelpRecommendedIntro:
+        "Mínimo para confirmar pagamentos ao agente. Sem estes eventos, paymentStatus não é actualizado via webhook.",
+      toolStripeSetupHelpAdditionalTitle: "Eventos adicionais (opcionais)",
+      toolStripeSetupHelpAdditionalIntro:
+        "Úteis para monitorizar falhas, expiração ou assinaturas recorrentes dos seus clientes. Podem ser subscritos no Stripe; o processamento automático pode variar.",
+      toolStripeSetupHelpPlatformNote:
+        "Nota: /webhooks/stripe (billing OpenConduit / planos SaaS) é outro endpoint — não use na conta da organização para cobranças do agente.",
+      toolStripeEventDesc_checkout_session_completed:
+        "Checkout concluído com pagamento aprovado — actualiza paymentStatus=paid na conversa.",
+      toolStripeEventDesc_checkout_session_async_payment_succeeded:
+        "Pagamento assíncrono confirmado (ex.: boleto, transferência) após Checkout.",
+      toolStripeEventDesc_payment_intent_succeeded:
+        "Pagamento capturado — reforço para Payment Links e métodos assíncronos.",
+      toolStripeEventDesc_checkout_session_expired:
+        "Sessão Checkout expirou sem pagamento — útil para follow-up ou limpeza.",
+      toolStripeEventDesc_payment_intent_payment_failed:
+        "Pagamento recusado ou falhou — monitorização de cobranças não concluídas.",
+      toolStripeEventDesc_invoice_paid:
+        "Fatura paga (assinaturas recorrentes dos seus clientes).",
+      toolStripeEventDesc_invoice_payment_failed:
+        "Falha no pagamento de fatura recorrente.",
+      toolStripeEventDesc_customer_subscription_updated:
+        "Alteração de plano ou estado de assinatura do cliente.",
+      toolStripeEventDesc_customer_subscription_deleted:
+        "Assinatura do cliente cancelada ou expirada.",
+      toolsTestStripeHelp:
+        'JSON de argumentos. Ex.: {"action":"list_prices"} ou {"action":"create_payment_link","priceId":"price_…"}.',
       toolsTestCalComHelp:
         "JSON de argumentos da ferramenta. Ex.: {\"action\":\"list_event_types\"} ou {\"action\":\"get_slots\",\"start\":\"2026-08-20\",\"end\":\"2026-08-27\"}.",
       toolGenericEditorHint: "Edite via API ou contacte o administrador para tipos HTTP personalizados.",
@@ -8895,6 +8955,66 @@ export const messages = {
       toolCalComLanguage: "Attendee language (e.g. pt-BR)",
       toolCalComDocsHint:
         "Connect this tool on the agent profile. The model should call get_slots, then create_booking with the chosen UTC start.",
+      toolStripeHelp:
+        "Stripe secret key for the organization account (prefer a restricted key with Products/Prices read and Payment Links/Checkout write). Used only by this tool — not OpenConduit platform billing.",
+      toolStripeSecretKey: "Secret key",
+      toolStripeKeySaved: "Key already stored. Type a new one to replace it.",
+      toolStripeDefaultPriceId: "Default price ID (price_…, optional)",
+      toolStripeCurrency: "Default currency for list_prices (e.g. brl)",
+      toolStripeSuccessUrl: "Success URL (Checkout)",
+      toolStripeCancelUrl: "Cancel URL (Checkout)",
+      toolStripeDocsHint:
+        "Connect the tool on the agent profile. Flow: list_prices → create_payment_link or create_checkout_session. With webhook configured, paymentStatus=paid is stored on the conversation after payment.",
+      toolStripeWebhookTitle: "Stripe webhook (organization account)",
+      toolStripeWebhookHelp:
+        "In Stripe Dashboard → Developers → Webhooks, create an endpoint with the URL below (distinct from platform billing at /webhooks/stripe). Paste the signing secret (whsec_…) and subscribe to the listed events.",
+      toolStripeWebhookUrl: "Endpoint URL",
+      toolStripeWebhookCopy: "Copy",
+      toolStripeWebhookSecret: "Signing secret (whsec_…)",
+      toolStripeWebhookSecretSaved: "Signing secret already stored. Type a new one to replace it.",
+      toolStripeWebhookEvents: "Recommended events",
+      toolStripeSetupHelpOpen: "Stripe setup guide",
+      toolStripeSetupHelpClose: "Close guide",
+      toolStripeSetupHelpTitle: "Configure Stripe Dashboard",
+      toolStripeSetupHelpIntro:
+        "Use your organization's Stripe account (not OpenConduit platform billing). Store the secret key and webhook here, then connect the tool on the agent profile.",
+      toolStripeSetupHelpStepsTitle: "Webhook in Stripe Dashboard",
+      toolStripeSetupHelpStep1: "Open the organization's Stripe account (test or live mode).",
+      toolStripeSetupHelpStep2: "Save the Secret key (sk_… or restricted rk_…) in this tool.",
+      toolStripeSetupHelpStep3: "Go to",
+      toolStripeSetupHelpStep4: "Click «Add endpoint».",
+      toolStripeSetupHelpStep5: "Under Endpoint URL, paste this tool's dedicated URL:",
+      toolStripeSetupHelpStep6: "Under «Select events», enable the recommended events (section below).",
+      toolStripeSetupHelpStep7: "Create the endpoint and copy the Signing secret (whsec_…) into this panel.",
+      toolStripeSetupHelpStep8: "Save credentials and run a test payment — the webhook sets paymentStatus=paid on the conversation.",
+      toolStripeSetupHelpRecommendedTitle: "Recommended events (required)",
+      toolStripeSetupHelpRecommendedIntro:
+        "Minimum set to confirm payments to the agent. Without these, paymentStatus is not updated via webhook.",
+      toolStripeSetupHelpAdditionalTitle: "Additional events (optional)",
+      toolStripeSetupHelpAdditionalIntro:
+        "Useful to monitor failures, expiration, or recurring subscriptions for your customers. You may subscribe in Stripe; automatic handling may vary.",
+      toolStripeSetupHelpPlatformNote:
+        "Note: /webhooks/stripe (OpenConduit SaaS billing) is a separate endpoint — do not use it on the org account for agent charges.",
+      toolStripeEventDesc_checkout_session_completed:
+        "Checkout completed with approved payment — sets paymentStatus=paid on the conversation.",
+      toolStripeEventDesc_checkout_session_async_payment_succeeded:
+        "Async payment confirmed (e.g. bank transfer) after Checkout.",
+      toolStripeEventDesc_payment_intent_succeeded:
+        "Payment captured — backup for Payment Links and async methods.",
+      toolStripeEventDesc_checkout_session_expired:
+        "Checkout session expired without payment — useful for follow-up.",
+      toolStripeEventDesc_payment_intent_payment_failed:
+        "Payment declined or failed — monitor unsuccessful charges.",
+      toolStripeEventDesc_invoice_paid:
+        "Invoice paid (recurring subscriptions for your customers).",
+      toolStripeEventDesc_invoice_payment_failed:
+        "Recurring invoice payment failed.",
+      toolStripeEventDesc_customer_subscription_updated:
+        "Customer subscription plan or status changed.",
+      toolStripeEventDesc_customer_subscription_deleted:
+        "Customer subscription canceled or expired.",
+      toolsTestStripeHelp:
+        'Argument JSON. E.g. {"action":"list_prices"} or {"action":"create_payment_link","priceId":"price_…"}.',
       toolsTestCalComHelp:
         "Tool arguments JSON. E.g. {\"action\":\"list_event_types\"} or {\"action\":\"get_slots\",\"start\":\"2026-08-20\",\"end\":\"2026-08-27\"}.",
       toolGenericEditorHint: "Use the API or contact an admin for custom HTTP tool types.",

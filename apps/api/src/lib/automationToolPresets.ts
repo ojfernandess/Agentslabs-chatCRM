@@ -7,6 +7,7 @@ export type AutomationPresetCategory =
   | "MCP_NATIVE"
   | "GOOGLE_CALENDAR"
   | "CAL_COM"
+  | "STRIPE"
   | "ELEVENLABS"
   | "EMAIL_API"
   | "HTTP_CUSTOM"
@@ -608,20 +609,44 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
   },
   {
     presetKey: "int_stripe",
-    category: "INTEGRATION_MARKETPLACE",
+    category: "STRIPE",
     name: "Stripe",
-    description: "Pagamentos e billing Stripe (secret key restrita; preferir restricted keys).",
-    toolType: "INTEGRATION",
-    parametersSchema: openAiObjectSchema({
-      action: { type: "string" },
-      params: { type: "object" },
-    }),
+    description:
+      "Stripe: consultar produtos/preços e gerar link de pagamento ou Checkout. Auth: secret key (preferir restricted key). Fluxo: list_prices → create_payment_link ou create_checkout_session com priceId.",
+    toolType: "STRIPE",
+    parametersSchema: openAiObjectSchema(
+      {
+        action: {
+          type: "string",
+          enum: ["list_products", "list_prices", "create_payment_link", "create_checkout_session"],
+          description:
+            "list_products = catálogo; list_prices = planos e valores (unitAmount em centavos); create_payment_link = link permanente; create_checkout_session = sessão Checkout (requer successUrl/cancelUrl se não estiverem no config)",
+        },
+        productId: { type: "string", description: "list_prices: filtrar por produto Stripe (opcional)" },
+        currency: { type: "string", description: "list_prices: filtrar moeda ISO (ex. brl, usd). Opcional." },
+        priceId: {
+          type: "string",
+          description: "ID price_… para cobrança. Omita se defaultPriceId estiver configurado na ferramenta.",
+        },
+        quantity: { type: "number", description: "Quantidade (predefinido 1)" },
+        successUrl: { type: "string", description: "create_checkout_session: URL após pagamento aprovado" },
+        cancelUrl: { type: "string", description: "create_checkout_session: URL se o cliente cancelar" },
+        customerEmail: { type: "string", description: "create_checkout_session: e-mail do cliente (opcional)" },
+        email: { type: "string", description: "Alias de customerEmail" },
+      },
+      ["action"],
+    ),
     defaultConfig: {
       presetKey: "int_stripe",
+      nativeToolKey: "payments_stripe",
       provider: "stripe",
       secretKey: "",
-      baseUrl: "https://api.stripe.com",
-      executor: "openconduit_webhook",
+      webhookSecret: "",
+      successUrl: "",
+      cancelUrl: "",
+      defaultPriceId: "",
+      currency: "",
+      executor: "stripe_api",
     },
     marketplace: { category: "PAYMENTS", icon: "CreditCard", popularity: 82, accent: "from-violet-500/30 to-purple-900/20" },
   },

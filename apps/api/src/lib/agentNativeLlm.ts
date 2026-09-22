@@ -203,8 +203,9 @@ import {
   runAutomationHttpLikeTool,
   type AutomationHttpToolRow,
 } from "./automationHttpToolExecute.js";
-import { isAgentExecutableAutomationToolType, runGoogleCalendarTool } from "./googleCalendarToolExecute.js";
+import { isAgentExecutableAutomationTool, runGoogleCalendarTool } from "./googleCalendarToolExecute.js";
 import { runCalComTool } from "./calComToolExecute.js";
+import { isStripeAutomationTool, runStripeTool } from "./stripeToolExecute.js";
 import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
 import { IMAGE_TRANSCRIPTION_PREFIX } from "./imageTranscription.js";
 import {
@@ -1348,7 +1349,7 @@ export async function invokeSingleNativeAgentTool(input: {
     });
     const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
     customHttpTools = rows
-      .filter((r) => isAgentExecutableAutomationToolType(r.toolType))
+      .filter((r) => isAgentExecutableAutomationTool(r))
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
 
@@ -1407,7 +1408,16 @@ export async function invokeSingleNativeAgentTool(input: {
               executionSource: "native_agent",
               runtimeSampleContext: httpToolRuntimeContext,
             })
-          : await runAutomationHttpLikeTool({
+          : isStripeAutomationTool(httpRow)
+            ? await runStripeTool({
+                tool: httpRow,
+                llmArgs: args,
+                organizationId,
+                botId: bot.id,
+                conversationId: conversation.id,
+                executionSource: "native_agent",
+              })
+            : await runAutomationHttpLikeTool({
             tool: httpRow,
             llmArgs: args,
             organizationId,
@@ -1928,7 +1938,7 @@ async function generateNativeAgentReplyCore(input: {
     });
     const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
     customHttpTools = rows
-      .filter((r) => isAgentExecutableAutomationToolType(r.toolType))
+      .filter((r) => isAgentExecutableAutomationTool(r))
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
@@ -3049,7 +3059,16 @@ async function generateNativeAgentReplyCore(input: {
                         executionSource: "native_agent",
                         runtimeSampleContext: httpToolRuntimeContext,
                       })
-                    : await runAutomationHttpLikeTool({
+                    : isStripeAutomationTool(row)
+                      ? await runStripeTool({
+                          tool: row,
+                          llmArgs: args,
+                          organizationId,
+                          botId: bot.id,
+                          conversationId: conversation.id,
+                          executionSource: "native_agent",
+                        })
+                      : await runAutomationHttpLikeTool({
                       tool: row,
                       llmArgs: args,
                       organizationId,

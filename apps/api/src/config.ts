@@ -68,6 +68,11 @@ export function webhookUrlForOrganization(organizationId: string): string {
   return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}`;
 }
 
+/** Webhook Stripe por ferramenta de automação (cobrança via agente — distinto do billing da plataforma). */
+export function stripeToolWebhookUrlForOrganization(organizationId: string, toolId: string): string {
+  return `${getPublicOrigin()}/webhooks/stripe/org/${encodeURIComponent(organizationId)}/${encodeURIComponent(toolId)}`;
+}
+
 /** Webhook dedicado por caixa WhatsApp (um provider por caixa). */
 export function webhookUrlForInbox(organizationId: string, inboxId: string): string {
   return `${getPublicOrigin()}/webhooks/whatsapp/${organizationId}/${inboxId}`;

@@ -6,6 +6,7 @@ import { recordBillingAudit } from "./billingAudit.js";
 import { getStripeClient } from "./stripeClient.js";
 import { syncSubscriptionFromStripe } from "./subscriptionSync.js";
 import { getEventOrganizationId, getInvoiceSubscriptionId } from "./stripeHelpers.js";
+import { isOrganizationAgentStripeMetadata } from "../stripeToolExecute.js";
 import {
   trySendStripeInvoicePaymentConfirmation,
   trySendStripeInvoicePaymentReminder,
@@ -61,6 +62,9 @@ async function markEventProcessed(event: Stripe.Event): Promise<boolean> {
 }
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  if (isOrganizationAgentStripeMetadata(session.metadata as Record<string, unknown> | null | undefined)) {
+    return;
+  }
   const { fulfillAiCreditPurchaseFromStripeSession } = await import(
     "../ai-billing/AiCreditPurchaseService.js"
   );
@@ -87,6 +91,9 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
 }
 
 async function handleSubscriptionEvent(subscription: Stripe.Subscription): Promise<void> {
+  if (isOrganizationAgentStripeMetadata(subscription.metadata as Record<string, unknown> | null | undefined)) {
+    return;
+  }
   const result = await syncSubscriptionFromStripe(subscription);
   if (!result) return;
 

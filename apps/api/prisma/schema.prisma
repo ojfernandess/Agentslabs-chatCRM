@@ -2047,6 +2047,22 @@ model StripeWebhookEvent {
   @@map("stripe_webhook_events")
 }
 
+/// Idempotência de webhooks Stripe por ferramenta de automação (cobrança via agente).
+model AutomationStripeWebhookEvent {
+  id              String   @id @db.VarChar(255)
+  organizationId  String   @map("organization_id") @db.Uuid
+  toolId          String   @map("tool_id") @db.Uuid
+  stripeEventId   String   @map("stripe_event_id") @db.VarChar(255)
+  type            String   @db.VarChar(120)
+  processedAt     DateTime @default(now()) @map("processed_at")
+  payload         Json?
+
+  @@unique([toolId, stripeEventId], map: "automation_stripe_webhook_events_tool_stripe_event_key")
+  @@index([organizationId])
+  @@index([toolId])
+  @@map("automation_stripe_webhook_events")
+}
+
 /// Idempotência genérica de webhooks de pagamento (multi-provider).
 model PaymentWebhookEvent {
   id              String          @id @default(uuid()) @db.Uuid

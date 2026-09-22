@@ -47,6 +47,7 @@ import {
 import { KnowledgeEngineAdvancedPanel } from "@/pages/automation/KnowledgeEngineAdvancedPanel";
 import { HttpApiCustomToolBuilder } from "@/pages/automation/HttpApiCustomToolBuilder";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
+import { StripeToolSetupHelp } from "@/pages/automation/StripeToolSetupHelp";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
 import {
   buildPromptAutoInstructionBlock,
@@ -5364,6 +5365,181 @@ function CalComToolEditor({
   );
 }
 
+function StripeToolEditor({
+  tool,
+  t,
+  onSave,
+}: {
+  tool: AutomationCustomToolRow;
+  t: Translate;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const c = (tool.config ?? {}) as Record<string, unknown>;
+  const [secretKey, setSecretKey] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [successUrl, setSuccessUrl] = useState(String(c.successUrl ?? ""));
+  const [cancelUrl, setCancelUrl] = useState(String(c.cancelUrl ?? ""));
+  const [defaultPriceId, setDefaultPriceId] = useState(String(c.defaultPriceId ?? ""));
+  const [currency, setCurrency] = useState(String(c.currency ?? ""));
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [recommendedEvents, setRecommendedEvents] = useState<string[]>([]);
+  const [additionalEvents, setAdditionalEvents] = useState<string[]>([]);
+  const [webhookSecretConfigured, setWebhookSecretConfigured] = useState(false);
+
+  useEffect(() => {
+    const cfg = (tool.config ?? {}) as Record<string, unknown>;
+    setSecretKey("");
+    setWebhookSecret("");
+    setSuccessUrl(String(cfg.successUrl ?? ""));
+    setCancelUrl(String(cfg.cancelUrl ?? ""));
+    setDefaultPriceId(String(cfg.defaultPriceId ?? ""));
+    setCurrency(String(cfg.currency ?? ""));
+  }, [tool.id, tool.config]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const info = await api.get<{
+          webhookUrl: string;
+          recommendedEvents: string[];
+          additionalEvents?: string[];
+          webhookSecretConfigured: boolean;
+        }>(`/automation/custom-tools/${tool.id}/stripe-webhook`);
+        if (cancelled) return;
+        setWebhookUrl(info.webhookUrl ?? "");
+        setRecommendedEvents(Array.isArray(info.recommendedEvents) ? info.recommendedEvents : []);
+        setAdditionalEvents(Array.isArray(info.additionalEvents) ? info.additionalEvents : []);
+        setWebhookSecretConfigured(Boolean(info.webhookSecretConfigured));
+      } catch {
+        if (!cancelled) {
+          setWebhookUrl("");
+          setRecommendedEvents([]);
+          setAdditionalEvents([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tool.id]);
+
+  const fieldCls =
+    "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+  const hasSavedKey = String(c.secretKey ?? "").trim().length > 0;
+  const hasSavedWebhookSecret = String(c.webhookSecret ?? "").trim().length > 0 || webhookSecretConfigured;
+
+  const copyWebhookUrl = () => {
+    if (!webhookUrl) return;
+    void navigator.clipboard.writeText(webhookUrl);
+  };
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs text-ink-500">{t("automationPage.toolStripeHelp")}</p>
+        <StripeToolSetupHelp
+          t={t}
+          webhookUrl={webhookUrl}
+          recommendedEvents={recommendedEvents}
+          additionalEvents={additionalEvents}
+        />
+      </div>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolStripeSecretKey")}
+        <input
+          type="password"
+          autoComplete="off"
+          value={secretKey}
+          placeholder={hasSavedKey ? t("automationPage.toolGoogleCalendarSecretPlaceholder") : "sk_live_… / rk_live_…"}
+          onChange={(e) => setSecretKey(e.target.value)}
+          className={fieldCls}
+        />
+      </label>
+      {hasSavedKey ? (
+        <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolStripeKeySaved")}</p>
+      ) : null}
+      <div className="rounded-lg border border-ink-200 p-2 dark:border-ink-700">
+        <p className="text-xs font-medium text-ink-700 dark:text-ink-200">{t("automationPage.toolStripeWebhookTitle")}</p>
+        <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.toolStripeWebhookHelp")}</p>
+        <label className="mt-2 block text-xs font-medium">
+          {t("automationPage.toolStripeWebhookUrl")}
+          <div className="mt-1 flex gap-2">
+            <input readOnly value={webhookUrl} className={clsx(fieldCls, "mt-0 font-mono text-[11px]")} />
+            <button
+              type="button"
+              disabled={!webhookUrl}
+              onClick={copyWebhookUrl}
+              className="shrink-0 rounded-lg border border-ink-200 px-2 py-1 text-[11px] font-semibold dark:border-ink-600"
+            >
+              {t("automationPage.toolStripeWebhookCopy")}
+            </button>
+          </div>
+        </label>
+        <label className="mt-2 block text-xs font-medium">
+          {t("automationPage.toolStripeWebhookSecret")}
+          <input
+            type="password"
+            autoComplete="off"
+            value={webhookSecret}
+            placeholder={hasSavedWebhookSecret ? t("automationPage.toolGoogleCalendarSecretPlaceholder") : "whsec_…"}
+            onChange={(e) => setWebhookSecret(e.target.value)}
+            className={fieldCls}
+          />
+        </label>
+        {hasSavedWebhookSecret ? (
+          <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolStripeWebhookSecretSaved")}</p>
+        ) : null}
+        {recommendedEvents.length > 0 ? (
+          <p className="mt-2 text-[11px] text-ink-500">
+            {t("automationPage.toolStripeWebhookEvents")}:{" "}
+            <span className="font-mono">{recommendedEvents.join(", ")}</span>
+          </p>
+        ) : null}
+      </div>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolStripeDefaultPriceId")}
+        <input value={defaultPriceId} onChange={(e) => setDefaultPriceId(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolStripeCurrency")}
+        <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="brl" className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolStripeSuccessUrl")}
+        <input value={successUrl} onChange={(e) => setSuccessUrl(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolStripeCancelUrl")}
+        <input value={cancelUrl} onChange={(e) => setCancelUrl(e.target.value)} className={fieldCls} />
+      </label>
+      <p className="text-[11px] text-ink-500">{t("automationPage.toolStripeDocsHint")}</p>
+      <button
+        type="button"
+        onClick={() => {
+          const patch: Record<string, unknown> = {
+            provider: "stripe",
+            presetKey: typeof c.presetKey === "string" ? c.presetKey : "int_stripe",
+            executor: typeof c.executor === "string" && c.executor ? c.executor : "stripe_api",
+            successUrl: successUrl.trim(),
+            cancelUrl: cancelUrl.trim(),
+            defaultPriceId: defaultPriceId.trim(),
+            currency: currency.trim().toLowerCase(),
+          };
+          const keyTrimmed = secretKey.trim();
+          if (keyTrimmed && keyTrimmed !== "***") patch.secretKey = keyTrimmed;
+          const webhookTrimmed = webhookSecret.trim();
+          if (webhookTrimmed && webhookTrimmed !== "***") patch.webhookSecret = webhookTrimmed;
+          onSave(patch);
+        }}
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+      >
+        {t("automationPage.toolSaveCredentials")}
+      </button>
+    </div>
+  );
+}
+
 function parseGoogleCalAvailability(cfg: Record<string, unknown>): { days: number[]; start: string; end: string } {
   const av = (cfg.availability && typeof cfg.availability === "object" ? cfg.availability : {}) as Record<string, unknown>;
   const daysRaw = Array.isArray(av.days) ? (av.days as unknown[]) : [1, 2, 3, 4, 5];
@@ -5978,6 +6154,10 @@ function ToolCredentialEditor({
 
   if (tool.toolType === "CAL_COM") {
     return <CalComToolEditor tool={tool} t={t} onSave={onSave} />;
+  }
+
+  if (tool.toolType === "STRIPE" || (tool.toolType === "INTEGRATION" && provider === "stripe")) {
+    return <StripeToolEditor tool={tool} t={t} onSave={onSave} />;
   }
 
   if (tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK") {

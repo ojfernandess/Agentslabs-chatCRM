@@ -13,6 +13,7 @@ const TOOL_SECRET_KEYS = [
   "authToken",
   "botToken",
   "secretKey",
+  "webhookSecret",
   "bearerToken",
   "apiKeyValue",
   "basicPassword",

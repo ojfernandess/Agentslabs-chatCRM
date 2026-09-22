@@ -140,9 +140,17 @@ function effectiveMarketCategory(p: ToolPresetMeta): string | null {
   if (p.marketplace?.category) return p.marketplace.category;
   if (p.category === "EMAIL_API") return "EMAIL";
   if (p.category === "GOOGLE_CALENDAR" || p.category === "CAL_COM") return "PRODUCTIVITY";
+  if (p.category === "STRIPE") return "PAYMENTS";
   if (p.category === "ELEVENLABS" || p.category === "MCP_NATIVE" || p.category === "HTTP_CUSTOM") return "AUTOMATION";
   if (p.category === "INTEGRATION_MARKETPLACE") return "AUTOMATION";
   return null;
+}
+
+function isStripeAutomationTool(tool: { toolType: string; config?: unknown }): boolean {
+  if (tool.toolType === "STRIPE") return true;
+  if (tool.toolType !== "INTEGRATION") return false;
+  const c = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
+  return String(c.provider ?? "").toLowerCase() === "stripe";
 }
 
 function executionSummaryLine(ex: ToolExecutionRow): string {
@@ -752,7 +760,11 @@ export function AutomationToolsHub({
                 const last = tool.lastExecutedAt ? new Date(tool.lastExecutedAt).toLocaleString() : "—";
                 const calls = tool.executionCount ?? 0;
                 const avg = tool.avgDurationMs != null ? `${Math.round(tool.avgDurationMs)} ms` : "—";
-                const canTest = tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK" || tool.toolType === "CAL_COM";
+                const canTest =
+                  tool.toolType === "HTTP_API" ||
+                  tool.toolType === "WEBHOOK" ||
+                  tool.toolType === "CAL_COM" ||
+                  isStripeAutomationTool(tool);
                 const isHttpCustom = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM";
                 return (
                   <div
@@ -846,6 +858,13 @@ export function AutomationToolsHub({
                             setDrawerTool(tool);
                             setDrawerTab("test");
                             setTestResult(null);
+                            if (isStripeAutomationTool(tool)) {
+                              setTestBodyJson(JSON.stringify({ action: "list_prices" }, null, 2));
+                            } else if (tool.toolType === "CAL_COM") {
+                              setTestBodyJson(JSON.stringify({ action: "list_event_types" }, null, 2));
+                            } else {
+                              setTestBodyJson("{}");
+                            }
                           }}
                           className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
                         >
@@ -1076,11 +1095,16 @@ export function AutomationToolsHub({
             </div>
             <div className="flex-1 overflow-y-auto p-4 text-sm">
               {drawerTab === "test" ? (
-                drawerTool.toolType === "HTTP_API" || drawerTool.toolType === "WEBHOOK" || drawerTool.toolType === "CAL_COM" ? (
+                drawerTool.toolType === "HTTP_API" ||
+                drawerTool.toolType === "WEBHOOK" ||
+                drawerTool.toolType === "CAL_COM" ||
+                isStripeAutomationTool(drawerTool) ? (
                   <div className="space-y-3">
                     <p className="text-xs text-ink-500">
                       {drawerTool.toolType === "CAL_COM"
                         ? t("automationPage.toolsTestCalComHelp")
+                        : isStripeAutomationTool(drawerTool)
+                          ? t("automationPage.toolsTestStripeHelp")
                         : t("automationPage.toolsTestHelp")}
                     </p>
                     {(() => {
