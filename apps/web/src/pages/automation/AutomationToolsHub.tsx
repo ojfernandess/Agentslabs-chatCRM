@@ -1,28 +1,24 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import clsx from "clsx";
-import * as LucideIcons from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   BookOpen,
-  ChevronRight,
   Download,
   Heart,
   LayoutGrid,
   Loader2,
   Pencil,
   Play,
-  Plus,
   Search,
-  Sparkles,
   Star,
   Terminal,
   Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { fetchHelpConfig } from "@/lib/help/useHelpConfig";
 import type { AutomationCustomToolRow, AutomationToolsTranslate, ToolPresetMeta } from "./automationToolTypes";
-import { paymentToolLogoUrl } from "./paymentToolBranding";
-import { PaymentProviderLogo } from "./PaymentProviderLogo";
+import { resolveIntegrationVisual, resolveInstalledToolVisual } from "./integrationVisualRegistry";
+import { IntegrationBrandLogo } from "./IntegrationBrandLogo";
 import { LucideIconPickerField, UiAccentColorPickerField } from "./ToolUiAppearanceFields";
 import { ToolExecutionDetailPanel, type ToolExecutionRow } from "./ToolExecutionDetailPanel";
 import {
@@ -31,6 +27,10 @@ import {
   parseToolEilJson,
   toolHasEilConfig,
 } from "./ToolEilConfigSection";
+import { ToolsHubHero, ToolsHubHelpFooter } from "./toolsHub/ToolsHubHero";
+import { ToolsHubMarketplaceCard, ToolsHubSuggestCard } from "./toolsHub/ToolsHubMarketplaceCard";
+import { ToolsHubPresetDetailModal } from "./toolsHub/ToolsHubPresetDetailModal";
+import { ToolsHubCardSkeleton, ToolsHubStatsBar } from "./toolsHub/ToolsHubStatsBar";
 
 const FAV_KEY = "oc_automation_tool_favorites_v1";
 
@@ -52,21 +52,8 @@ type CredentialEditorProps = {
   onSave: (patch: Record<string, unknown>) => void | Promise<void>;
 };
 
-function MarketplaceIcon({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
-  if (logoUrl) {
-    const isStripeWordmark = logoUrl.includes("Stripe");
-    return (
-      <img
-        src={logoUrl}
-        alt=""
-        className={isStripeWordmark ? "h-7 w-auto max-w-[5.5rem] object-contain" : "h-7 w-7 object-contain"}
-        draggable={false}
-      />
-    );
-  }
-  const Cmp =
-    (LucideIcons as unknown as Record<string, LucideIcon>)[name] ?? LucideIcons.Box;
-  return <Cmp className="h-6 w-6" strokeWidth={1.5} />;
+function findToolByPresetKey(tools: AutomationCustomToolRow[], presetKey: string): AutomationCustomToolRow | undefined {
+  return tools.find((t) => (t.config as Record<string, unknown> | undefined)?.presetKey === presetKey);
 }
 
 const VARIABLE_SNIPPETS = [
@@ -235,7 +222,10 @@ export function AutomationToolsHub({
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<(typeof MARKETPLACE_FILTER_KEYS)[number]>("ALL");
   const [marketFilter, setMarketFilter] = useState<"all" | "favorites" | "installed" | "popular">("all");
+  const [sortOrder, setSortOrder] = useState<"popular" | "name">("popular");
   const [favorites, setFavorites] = useState<Set<string>>(() => loadFavorites());
+  const [detailPreset, setDetailPreset] = useState<ToolPresetMeta | null>(null);
+  const [supportUrl, setSupportUrl] = useState<string | null>(null);
 
   const [drawerTool, setDrawerTool] = useState<AutomationCustomToolRow | null>(null);
   const [drawerTab, setDrawerTab] = useState<"test" | "logs">("test");
@@ -276,6 +266,10 @@ export function AutomationToolsHub({
   useEffect(() => {
     if (editingToolId) setHubTab("mine");
   }, [editingToolId]);
+
+  useEffect(() => {
+    void fetchHelpConfig().then((cfg) => setSupportUrl(cfg.support.whatsappUrl));
+  }, []);
 
   useEffect(() => {
     setCreateConfigJson(JSON.stringify(defaultConfigForCreateType(createType), null, 2));
@@ -417,8 +411,29 @@ export function AutomationToolsHub({
     if (marketFilter === "popular") {
       list = list.slice(0, 18);
     }
+    if (sortOrder === "name") {
+      list = [...list].sort((a, b) =>
+        resolveIntegrationVisual({ presetKey: a.presetKey, name: a.name, marketplace: a.marketplace }).displayName.localeCompare(
+          resolveIntegrationVisual({ presetKey: b.presetKey, name: b.name, marketplace: b.marketplace }).displayName,
+          undefined,
+          { sensitivity: "base" },
+        ),
+      );
+    }
     return list;
-  }, [allMarketplacePresets, catFilter, marketFilter, favorites, presetInstalled, search]);
+  }, [allMarketplacePresets, catFilter, marketFilter, favorites, presetInstalled, search, sortOrder]);
+
+  const executedToolsCount = useMemo(
+    () => tools.filter((tool) => (tool.executionCount ?? 0) > 0).length,
+    [tools],
+  );
+
+  const openConfigureForPreset = (presetKey: string) => {
+    const tool = findToolByPresetKey(tools, presetKey);
+    setDetailPreset(null);
+    setHubTab("mine");
+    if (tool) setEditingToolId(tool.id);
+  };
 
   const loadExecutions = useCallback(async (toolId: string) => {
     setExecLoading(true);
@@ -541,81 +556,60 @@ export function AutomationToolsHub({
     }
   };
 
-  const glass = "glass-panel";
+  const detailVisual = detailPreset
+    ? resolveIntegrationVisual({
+        presetKey: detailPreset.presetKey,
+        name: detailPreset.name,
+        marketplace: detailPreset.marketplace,
+        toolType: detailPreset.toolType,
+      })
+    : null;
+  const detailCategory =
+    detailPreset && effectiveMarketCategory(detailPreset)
+      ? t(`automationPage.toolsMarketCat_${effectiveMarketCategory(detailPreset)}`)
+      : detailPreset?.category ?? "";
 
   return (
-    <div className="space-y-8">
-      <div
-        className={clsx(
-          "relative overflow-hidden rounded-2xl border border-ink-200/80 p-6 dark:border-ink-800/80",
-          "bg-gradient-to-br from-brand-500/10 via-transparent to-violet-600/10 dark:from-brand-600/15 dark:to-violet-900/20",
-        )}
-      >
-        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand-400/20 blur-3xl dark:bg-brand-500/10" />
-        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-              <Sparkles className="h-4 w-4" />
-              {t("automationPage.toolsHubBadge")}
-            </div>
-            <h2 className="mt-2 text-xl font-bold tracking-tight text-ink-900 dark:text-ink-50 md:text-2xl">
-              {t("automationPage.toolsHubTitle")}
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-600 dark:text-ink-400">
-              {t("automationPage.toolsHubSubtitle")}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setHubTab("create")}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-500"
-            >
-              <Plus className="h-4 w-4" />
-              {t("automationPage.toolsHubNewTool")}
-            </button>
-          </div>
-        </div>
-
-        <div className={clsx("relative mt-6 flex flex-wrap gap-1 rounded-xl p-1", glass)}>
-          {(
-            [
-              { id: "marketplace" as const, label: t("automationPage.toolsTabMarketplace"), icon: LayoutGrid },
-              { id: "mine" as const, label: t("automationPage.toolsTabMine"), icon: Wrench },
-              { id: "create" as const, label: t("automationPage.toolsTabCreate"), icon: Terminal },
-            ] as const
-          ).map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              onClick={() => setHubTab(x.id)}
-              className={clsx(
-                "inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-semibold transition-all sm:flex-none sm:text-sm",
-                hubTab === x.id
-                  ? "bg-white text-brand-700 shadow-md dark:bg-ink-800 dark:text-brand-300"
-                  : "text-ink-600 hover:bg-white/50 dark:text-ink-400 dark:hover:bg-ink-800/50",
-              )}
-            >
-              <x.icon className="h-4 w-4 opacity-80" />
-              {x.label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="space-y-6 rounded-xl bg-[#F8FAFC] p-1 dark:bg-transparent sm:space-y-8 sm:p-0">
+      <ToolsHubHero
+        t={t}
+        hubTab={hubTab}
+        onTabChange={setHubTab}
+        onCreateClick={() => setHubTab("create")}
+      />
 
       {hubTab === "marketplace" ? (
-        <div className="space-y-6">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative max-w-md flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+        <div className="space-y-5">
+          <ToolsHubStatsBar
+            t={t}
+            availableCount={toolPresets.length}
+            installedCount={tools.length}
+            favoritesCount={favorites.size}
+            executedCount={executedToolsCount}
+          />
+
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="relative w-full xl:max-w-xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" aria-hidden />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("automationPage.toolsSearchPlaceholder")}
-                className="w-full rounded-xl border border-ink-200/80 bg-white/80 py-2.5 pl-10 pr-4 text-sm shadow-sm backdrop-blur dark:border-ink-700 dark:bg-ink-900/60 dark:text-ink-100"
+                className="w-full rounded-[10px] border border-[#E5E7EB] bg-white py-2.5 pl-10 pr-4 text-sm text-[#0F172A] shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-soft-border-muted dark:bg-soft-surface-2 dark:text-soft-text"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-[#64748B] dark:text-soft-text-secondary">
+                {t("automationPage.toolsSortLabel")}
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as "popular" | "name")}
+                  className="rounded-[10px] border border-[#E5E7EB] bg-white px-3 py-2 text-sm dark:border-soft-border-muted dark:bg-soft-surface-2"
+                >
+                  <option value="popular">{t("automationPage.toolsSortPopular")}</option>
+                  <option value="name">{t("automationPage.toolsSortName")}</option>
+                </select>
+              </label>
               {(
                 [
                   { id: "all" as const, label: t("automationPage.toolsFilterAll"), icon: LayoutGrid },
@@ -631,28 +625,28 @@ export function AutomationToolsHub({
                   className={clsx(
                     "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
                     marketFilter === x.id
-                      ? "border-brand-500 bg-brand-50 text-brand-800 dark:border-brand-600 dark:bg-brand-950/50 dark:text-brand-200"
-                      : "border-ink-200 bg-white/60 text-ink-600 hover:border-ink-300 dark:border-ink-700 dark:bg-ink-900/40 dark:text-ink-400",
+                      ? "border-brand-500 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-600"
+                      : "border-[#E5E7EB] bg-white text-[#64748B] hover:border-brand-200 dark:border-soft-border-muted dark:bg-soft-surface-2 dark:text-soft-text-secondary",
                   )}
                 >
-                  <x.icon className="h-3.5 w-3.5" />
+                  <x.icon className="h-3.5 w-3.5" aria-hidden />
                   {x.label}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
             {MARKETPLACE_FILTER_KEYS.map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => setCatFilter(c)}
                 className={clsx(
-                  "rounded-full px-3 py-1 text-xs font-medium transition",
+                  "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition",
                   catFilter === c
-                    ? "bg-ink-900 text-white dark:bg-ink-100 dark:text-ink-900"
-                    : "bg-ink-100 text-ink-600 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-400 dark:hover:bg-ink-700",
+                    ? "bg-brand-600 text-white"
+                    : "bg-white text-[#64748B] ring-1 ring-[#E5E7EB] hover:text-[#0F172A] dark:bg-soft-surface-2 dark:text-soft-text-secondary dark:ring-soft-border-muted",
                 )}
               >
                 {c === "ALL" ? t("automationPage.toolsCategoryAll") : t(`automationPage.toolsMarketCat_${c}`)}
@@ -661,117 +655,64 @@ export function AutomationToolsHub({
           </div>
 
           {loading && filteredPresets.length === 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="h-40 animate-pulse rounded-2xl bg-ink-100 dark:bg-ink-800/80" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <ToolsHubCardSkeleton key={i} />
               ))}
             </div>
           ) : filteredPresets.length === 0 ? (
-            <div className={clsx("flex flex-col items-center justify-center rounded-2xl py-16 text-center", glass)}>
-              <BookOpen className="h-10 w-10 text-ink-400" />
-              <p className="mt-4 text-sm font-medium text-ink-700 dark:text-ink-300">{t("automationPage.toolsEmptyMarketplace")}</p>
+            <div className="flex flex-col items-center justify-center rounded-xl border border-[#E5E7EB] bg-white py-16 text-center dark:border-soft-border-muted dark:bg-soft-surface-2">
+              <BookOpen className="h-10 w-10 text-[#94A3B8]" aria-hidden />
+              <p className="mt-4 text-sm font-medium text-[#0F172A] dark:text-soft-text">{t("automationPage.toolsEmptyMarketplace")}</p>
+              <p className="mt-1 text-xs text-[#64748B] dark:text-soft-text-secondary">{t("automationPage.toolsEmptyMarketplaceHint")}</p>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {filteredPresets.map((pr) => {
                 const installed = presetInstalled(pr.presetKey);
-                const mk = pr.marketplace;
                 const effCat = effectiveMarketCategory(pr);
-                const iconName = mk?.icon ?? "Puzzle";
-                const logoUrl = mk?.logoUrl ?? paymentToolLogoUrl(pr.presetKey, undefined);
+                const visual = resolveIntegrationVisual({
+                  presetKey: pr.presetKey,
+                  name: pr.name,
+                  marketplace: pr.marketplace,
+                  toolType: pr.toolType,
+                });
+                const categoryLabel = effCat ? t(`automationPage.toolsMarketCat_${effCat}`) : pr.category;
                 return (
-                  <div
+                  <ToolsHubMarketplaceCard
                     key={pr.presetKey}
-                    className={clsx(
-                      "group relative overflow-hidden rounded-2xl border border-ink-200/60 p-5 transition duration-300",
-                      "hover:-translate-y-0.5 hover:border-brand-500/30 hover:shadow-lg hover:shadow-brand-500/10",
-                      "dark:border-ink-700/80 dark:hover:border-brand-500/25",
-                      glass,
-                    )}
-                  >
-                    <div
-                      className={clsx(
-                        "pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100",
-                        mk?.accent ? `bg-gradient-to-br ${mk.accent}` : "bg-gradient-to-br from-brand-500/10 to-violet-600/5",
-                      )}
-                    />
-                    <div className="relative flex items-start justify-between gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white p-1.5 shadow-lg shadow-brand-500/10 ring-1 ring-ink-200/60 dark:bg-ink-900 dark:ring-ink-700/80">
-                        <MarketplaceIcon name={iconName} logoUrl={logoUrl} />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleFavorite(pr.presetKey)}
-                        className={clsx(
-                          "rounded-lg p-1.5 transition",
-                          favorites.has(pr.presetKey)
-                            ? "text-rose-500"
-                            : "text-ink-400 hover:bg-white/50 dark:hover:bg-ink-800/50",
-                        )}
-                        title={t("automationPage.toolsFavorite")}
-                      >
-                        <Heart className={clsx("h-4 w-4", favorites.has(pr.presetKey) && "fill-current")} />
-                      </button>
-                    </div>
-                    <div className="relative mt-4">
-                      <h3 className="font-semibold text-ink-900 dark:text-ink-50">{pr.name}</h3>
-                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-500 dark:text-ink-400">{pr.description}</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span className="rounded-md bg-ink-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-600 dark:bg-ink-800 dark:text-ink-400">
-                          {effCat ? t(`automationPage.toolsMarketCat_${effCat}`) : pr.category}
-                        </span>
-                        <span className="text-[10px] text-ink-400">{pr.toolType}</span>
-                        {installed ? (
-                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                            {t("automationPage.toolInstalled")}
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-ink-500/10 px-2 py-0.5 text-[10px] font-medium text-ink-500">
-                            {t("automationPage.toolsStatusAvailable")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="relative mt-4 flex items-center justify-between gap-2">
-                      {installed ? (
-                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t("automationPage.toolInstalled")}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={loading}
-                          onClick={() => void installToolPreset(pr.presetKey)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
-                        >
-                          {t("automationPage.toolInstall")}
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setHubTab("mine")}
-                        className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                      >
-                        {t("automationPage.toolsViewMine")}
-                      </button>
-                    </div>
-                  </div>
+                    preset={pr}
+                    installed={installed}
+                    favorite={favorites.has(pr.presetKey)}
+                    categoryLabel={categoryLabel}
+                    visual={visual}
+                    loading={loading}
+                    t={t}
+                    onToggleFavorite={() => toggleFavorite(pr.presetKey)}
+                    onInstall={() => void installToolPreset(pr.presetKey)}
+                    onConfigure={() => openConfigureForPreset(pr.presetKey)}
+                    onViewDetails={() => setDetailPreset(pr)}
+                  />
                 );
               })}
+              <ToolsHubSuggestCard t={t} supportUrl={supportUrl} />
             </div>
           )}
+
+          <ToolsHubHelpFooter t={t} supportUrl={supportUrl} />
         </div>
       ) : null}
 
       {hubTab === "mine" ? (
         <div className="space-y-4">
           {tools.length === 0 ? (
-            <div className={clsx("rounded-2xl py-16 text-center", glass)}>
-              <Wrench className="mx-auto h-10 w-10 text-ink-400" />
-              <p className="mt-4 text-sm text-ink-600 dark:text-ink-400">{t("automationPage.toolsEmptyMine")}</p>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white py-16 text-center dark:border-soft-border-muted dark:bg-soft-surface-2">
+              <Wrench className="mx-auto h-10 w-10 text-[#94A3B8]" aria-hidden />
+              <p className="mt-4 text-sm text-[#64748B] dark:text-soft-text-secondary">{t("automationPage.toolsEmptyMine")}</p>
               <button
                 type="button"
                 onClick={() => setHubTab("marketplace")}
-                className="mt-4 text-sm font-semibold text-brand-600 dark:text-brand-400"
+                className="mt-4 text-sm font-semibold text-brand-600 dark:text-brand-300"
               >
                 {t("automationPage.toolsOpenMarketplace")}
               </button>
@@ -789,22 +730,15 @@ export function AutomationToolsHub({
                   isStripeAutomationTool(tool) ||
                   isMercadoPagoAutomationTool(tool);
                 const isHttpCustom = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM";
-                const paymentLogo = isStripeAutomationTool(tool)
-                  ? ("stripe" as const)
-                  : isMercadoPagoAutomationTool(tool)
-                    ? ("mercadopago" as const)
-                    : null;
+                const toolVisual = resolveInstalledToolVisual(tool);
                 return (
                   <div
                     key={tool.id}
-                    className={clsx(
-                      "rounded-2xl border border-ink-200/70 p-5 transition hover:border-brand-500/25 dark:border-ink-700/80",
-                      glass,
-                    )}
+                    className="rounded-xl border border-[#E5E7EB] bg-white p-5 transition hover:border-brand-300 dark:border-soft-border-muted dark:bg-soft-surface-2 dark:hover:border-brand-500/30"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-2.5">
-                        {paymentLogo ? <PaymentProviderLogo provider={paymentLogo} size="sm" className="mt-0.5" /> : null}
+                        <IntegrationBrandLogo visual={toolVisual} size="sm" className="mt-0.5" />
                         <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold text-ink-900 dark:text-ink-50">{tool.name}</h3>
@@ -955,7 +889,7 @@ export function AutomationToolsHub({
       ) : null}
 
       {hubTab === "create" ? (
-        <div className={clsx("grid gap-6 lg:grid-cols-3 rounded-2xl p-5 lg:p-6", glass)}>
+        <div className="grid gap-6 rounded-xl border border-[#E5E7EB] bg-white p-5 lg:grid-cols-3 lg:p-6 dark:border-soft-border-muted dark:bg-soft-surface-2">
           <div className="lg:col-span-2 space-y-4">
             <h3 className="text-sm font-bold text-ink-900 dark:text-ink-50">{t("automationPage.toolsCreateHeading")}</h3>
             <p className="text-xs text-ink-500">{t("automationPage.toolsCreateBlurb")}</p>
@@ -1406,6 +1340,26 @@ export function AutomationToolsHub({
           onClose={() => setSelectedExecution(null)}
         />
       ) : null}
+
+      <ToolsHubPresetDetailModal
+        open={detailPreset != null}
+        preset={detailPreset}
+        visual={detailVisual}
+        installed={detailPreset ? presetInstalled(detailPreset.presetKey) : false}
+        categoryLabel={detailCategory}
+        t={t}
+        loading={loading}
+        onClose={() => setDetailPreset(null)}
+        onInstall={() => {
+          if (!detailPreset) return;
+          void installToolPreset(detailPreset.presetKey);
+          setDetailPreset(null);
+        }}
+        onConfigure={() => {
+          if (!detailPreset) return;
+          openConfigureForPreset(detailPreset.presetKey);
+        }}
+      />
     </div>
   );
 }
