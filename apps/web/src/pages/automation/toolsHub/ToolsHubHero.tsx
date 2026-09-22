@@ -30,19 +30,9 @@ export function ToolsHubHero({ t, hubTab, onTabChange, onCreateClick }: ToolsHub
         className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-500/[0.06] via-transparent to-violet-500/[0.04] dark:from-brand-500/10 dark:to-violet-900/10"
         aria-hidden
       />
-      <div className="pointer-events-none absolute -right-8 top-4 hidden gap-2 opacity-90 lg:flex" aria-hidden>
-        {HERO_DECOR_LOGOS.map((logo) => (
-          <div
-            key={logo.alt}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white p-1.5 shadow-sm dark:border-soft-border-muted dark:bg-soft-surface-3"
-          >
-            <img src={logo.logoUrl} alt="" className="h-6 w-6 object-contain" draggable={false} />
-          </div>
-        ))}
-      </div>
 
-      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl">
+      <div className="relative flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="max-w-2xl xl:pr-6">
           <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-600 dark:text-brand-300">
             <Sparkles className="h-3.5 w-3.5" aria-hidden />
             {t("automationPage.toolsHubBadge")}
@@ -55,14 +45,27 @@ export function ToolsHubHero({ t, hubTab, onTabChange, onCreateClick }: ToolsHub
             {t("automationPage.toolsHubSubtitle")}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onCreateClick}
-          className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-[10px] bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-        >
-          <Plus className="h-4 w-4" aria-hidden />
-          {t("automationPage.toolsHubNewTool")}
-        </button>
+
+        <div className="flex w-full shrink-0 flex-col items-stretch gap-3 sm:items-end xl:w-auto xl:max-w-md">
+          <div className="hidden flex-wrap items-center justify-end gap-2 xl:flex" aria-hidden>
+            {HERO_DECOR_LOGOS.map((logo) => (
+              <div
+                key={logo.alt}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#E5E7EB] bg-white p-1.5 shadow-sm dark:border-soft-border-muted dark:bg-soft-surface-3"
+              >
+                <img src={logo.logoUrl} alt="" className="h-6 w-6 object-contain" draggable={false} />
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={onCreateClick}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-[10px] bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-auto xl:self-end"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            {t("automationPage.toolsHubNewTool")}
+          </button>
+        </div>
       </div>
 
       <div className="relative mt-5 flex flex-wrap gap-1 rounded-[10px] border border-[#E5E7EB] bg-[#F8FAFC] p-1 dark:border-soft-border-muted dark:bg-soft-surface-3">
