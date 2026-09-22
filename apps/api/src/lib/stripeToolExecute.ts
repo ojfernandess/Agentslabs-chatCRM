@@ -1,7 +1,6 @@
 import Stripe from "stripe";
 import { prisma } from "../db.js";
 import type { AutomationHttpToolRow } from "./automationHttpToolExecute.js";
-import type { AutomationHttpToolRow } from "./automationHttpToolExecute.js";
 
 export const ORG_STRIPE_TOOL_SCOPE = "organization_agent";
 

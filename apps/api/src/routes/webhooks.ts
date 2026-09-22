@@ -44,6 +44,12 @@ import { handleNvoipDtmfWebhook } from "../lib/nvoipDtmfWebhook.js";
 import { handleNvoipCallWebhook } from "../lib/nvoipCallWebhook.js";
 import { verifyNvoipCallWebhookSecret } from "../lib/nvoipWebhookSecret.js";
 import {
+  assertOrganizationMercadoPagoWebhookSignature,
+  loadOrganizationMercadoPagoToolForWebhook,
+  OrganizationMercadoPagoWebhookError,
+  processOrganizationMercadoPagoToolWebhook,
+} from "../lib/mercadoPagoToolWebhookHandler.js";
+import {
   constructOrganizationStripeWebhookEvent,
   OrganizationStripeWebhookError,
   processOrganizationStripeToolWebhook,
@@ -1175,6 +1181,71 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(500).send({
           error: "internal_error",
           message: "Organization Stripe tool webhook processing failed",
+          statusCode: 500,
+        });
+      }
+    },
+  );
+
+  app.post<{ Params: { organizationId: string; toolId: string } }>(
+    "/mercadopago/org/:organizationId/:toolId",
+    webhookPostOpts,
+    async (request, reply) => {
+      const body = normalizeJsonBody(request.body);
+      if (body === null) {
+        return reply.status(400).send({ error: "Invalid JSON body" });
+      }
+
+      const query =
+        typeof request.query === "object" && request.query !== null
+          ? (request.query as Record<string, string | undefined>)
+          : {};
+
+      const tool = await loadOrganizationMercadoPagoToolForWebhook({
+        organizationId: request.params.organizationId,
+        toolId: request.params.toolId,
+      });
+      if (!tool) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message: "Mercado Pago tool not found",
+          statusCode: 404,
+        });
+      }
+      if (!tool.isActive) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Mercado Pago tool is inactive",
+          statusCode: 400,
+        });
+      }
+
+      try {
+        assertOrganizationMercadoPagoWebhookSignature(
+          request.headers as Record<string, string | string[] | undefined>,
+          query,
+          tool.cfg.webhookSecret,
+        );
+        const notification = body as MercadoPagoWebhookNotification;
+        const processed = await processOrganizationMercadoPagoToolWebhook({
+          organizationId: request.params.organizationId,
+          toolId: request.params.toolId,
+          notification,
+          rawPayload: body,
+        });
+        return { received: true, duplicate: processed.duplicate, result: processed.result };
+      } catch (err) {
+        if (err instanceof OrganizationMercadoPagoWebhookError) {
+          return reply.status(err.statusCode).send({
+            error: "organization_mercadopago_webhook_error",
+            message: err.message,
+            statusCode: err.statusCode,
+          });
+        }
+        request.log.error({ err }, "Organization Mercado Pago tool webhook processing failed");
+        return reply.status(500).send({
+          error: "internal_error",
+          message: "Organization Mercado Pago tool webhook processing failed",
           statusCode: 500,
         });
       }

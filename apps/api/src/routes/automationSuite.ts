@@ -17,6 +17,12 @@ import {
 } from "../lib/automationHttpToolExecute.js";
 import { runCalComTool } from "../lib/calComToolExecute.js";
 import { isStripeAutomationTool, readStripeToolConfig, runStripeTool } from "../lib/stripeToolExecute.js";
+import {
+  isMercadoPagoAutomationTool,
+  readMercadoPagoToolConfig,
+  runMercadoPagoTool,
+} from "../lib/mercadoPagoToolExecute.js";
+import { organizationMercadoPagoWebhookSetup } from "../lib/mercadoPagoToolWebhookHandler.js";
 import { organizationStripeWebhookSetup } from "../lib/stripeToolWebhookHandler.js";
 import { redactAutomationToolConfig } from "../lib/automationWebhookBundle.js";
 import {
@@ -1881,6 +1887,27 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     });
   });
 
+  app.get<{ Params: { id: string } }>("/custom-tools/:id/mercadopago-webhook", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await canPilotAutomation(request.user, organizationId))) {
+      return reply.status(403).send({ error: "Forbidden", message: "Admin access required", statusCode: 403 });
+    }
+    const tool = await prisma.automationCustomTool.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, toolType: true, config: true, isActive: true },
+    });
+    if (!tool || !isMercadoPagoAutomationTool(tool)) {
+      return reply.status(404).send({ error: "Not Found", message: "Mercado Pago tool not found", statusCode: 404 });
+    }
+    const cfg = readMercadoPagoToolConfig(tool.config);
+    return organizationMercadoPagoWebhookSetup({
+      organizationId,
+      toolId: tool.id,
+      webhookSecretConfigured: Boolean(cfg.webhookSecret && cfg.webhookSecret !== "***"),
+    });
+  });
+
   app.get<{ Params: { id: string } }>("/custom-tools/:id/executions", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -1997,10 +2024,47 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
           body: parsedBody,
         };
       }
+      if (isMercadoPagoAutomationTool(tool)) {
+        const bodyRaw = parsed.data.body;
+        const llmArgs =
+          bodyRaw && typeof bodyRaw === "object" && !Array.isArray(bodyRaw)
+            ? ({ action: "list_plans", ...(bodyRaw as Record<string, unknown>) } as Record<string, unknown>)
+            : ({ action: "list_plans" } as Record<string, unknown>);
+        if (typeof llmArgs.action !== "string" || !llmArgs.action.trim()) llmArgs.action = "list_plans";
+        const exec = await runMercadoPagoTool({
+          tool: {
+            id: tool.id,
+            organizationId: tool.organizationId,
+            name: tool.name,
+            description: tool.description,
+            toolType: tool.toolType,
+            config: tool.config,
+            parametersSchema: tool.parametersSchema,
+          },
+          llmArgs,
+          organizationId,
+          botId: "",
+          conversationId: "",
+          executionSource: "manual_test",
+        });
+        let parsedBody: unknown = exec.responseText;
+        try {
+          parsedBody = JSON.parse(exec.responseText);
+        } catch {
+          parsedBody = exec.responseText;
+        }
+        return {
+          ok: exec.ok,
+          statusCode: exec.statusCode,
+          durationMs: exec.durationMs,
+          error: exec.error,
+          body: parsedBody,
+        };
+      }
       if (tool.toolType !== "HTTP_API" && tool.toolType !== "WEBHOOK") {
         return reply.status(400).send({
           error: "Bad Request",
-          message: "Test runner supports HTTP_API, WEBHOOK, CAL_COM and Stripe tools only",
+          message: "Test runner supports HTTP_API, WEBHOOK, CAL_COM, Stripe and Mercado Pago tools only",
           statusCode: 400,
         });
       }

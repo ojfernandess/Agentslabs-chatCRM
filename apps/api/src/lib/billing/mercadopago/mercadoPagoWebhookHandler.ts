@@ -21,6 +21,7 @@ import {
 } from "./mercadoPagoClient.js";
 import { resolvePlatformMercadoPagoAccessToken } from "../mercadoPagoBillingSettings.js";
 import { verifyMercadoPagoWebhookSignature } from "./mercadoPagoWebhookSignature.js";
+import { isOrganizationAgentMercadoPagoMetadata } from "../../mercadoPagoToolExecute.js";
 
 export class MercadoPagoWebhookError extends Error {
   constructor(
@@ -136,6 +137,10 @@ async function handlePaymentWebhook(paymentId: string, action: string): Promise<
     if (orgToken !== accessToken) {
       payment = await getMercadoPagoPayment(orgToken, paymentId);
     }
+  }
+
+  if (isOrganizationAgentMercadoPagoMetadata(payment.metadata as Record<string, unknown> | null | undefined)) {
+    return null;
   }
 
   if (isAiCreditsMercadoPagoPayment(payment)) {

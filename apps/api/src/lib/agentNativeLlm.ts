@@ -205,6 +205,7 @@ import {
 } from "./automationHttpToolExecute.js";
 import { isAgentExecutableAutomationTool, runGoogleCalendarTool } from "./googleCalendarToolExecute.js";
 import { runCalComTool } from "./calComToolExecute.js";
+import { isMercadoPagoAutomationTool, runMercadoPagoTool } from "./mercadoPagoToolExecute.js";
 import { isStripeAutomationTool, runStripeTool } from "./stripeToolExecute.js";
 import { AUDIO_TRANSCRIPTION_PREFIX } from "./audioTranscription.js";
 import { IMAGE_TRANSCRIPTION_PREFIX } from "./imageTranscription.js";
@@ -1417,6 +1418,15 @@ export async function invokeSingleNativeAgentTool(input: {
                 conversationId: conversation.id,
                 executionSource: "native_agent",
               })
+            : isMercadoPagoAutomationTool(httpRow)
+              ? await runMercadoPagoTool({
+                  tool: httpRow,
+                  llmArgs: args,
+                  organizationId,
+                  botId: bot.id,
+                  conversationId: conversation.id,
+                  executionSource: "native_agent",
+                })
             : await runAutomationHttpLikeTool({
             tool: httpRow,
             llmArgs: args,
@@ -3068,6 +3078,15 @@ async function generateNativeAgentReplyCore(input: {
                           conversationId: conversation.id,
                           executionSource: "native_agent",
                         })
+                      : isMercadoPagoAutomationTool(row)
+                        ? await runMercadoPagoTool({
+                            tool: row,
+                            llmArgs: args,
+                            organizationId,
+                            botId: bot.id,
+                            conversationId: conversation.id,
+                            executionSource: "native_agent",
+                          })
                       : await runAutomationHttpLikeTool({
                       tool: row,
                       llmArgs: args,

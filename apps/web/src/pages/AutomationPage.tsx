@@ -48,6 +48,7 @@ import { KnowledgeEngineAdvancedPanel } from "@/pages/automation/KnowledgeEngine
 import { HttpApiCustomToolBuilder } from "@/pages/automation/HttpApiCustomToolBuilder";
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import { StripeToolSetupHelp } from "@/pages/automation/StripeToolSetupHelp";
+import { MercadoPagoToolSetupHelp } from "@/pages/automation/MercadoPagoToolSetupHelp";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
 import {
   buildPromptAutoInstructionBlock,
@@ -5540,6 +5541,199 @@ function StripeToolEditor({
   );
 }
 
+function MercadoPagoToolEditor({
+  tool,
+  t,
+  onSave,
+}: {
+  tool: AutomationCustomToolRow;
+  t: Translate;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const c = (tool.config ?? {}) as Record<string, unknown>;
+  const [accessToken, setAccessToken] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [successUrl, setSuccessUrl] = useState(String(c.successUrl ?? ""));
+  const [cancelUrl, setCancelUrl] = useState(String(c.cancelUrl ?? ""));
+  const [defaultAmountCents, setDefaultAmountCents] = useState(String(c.defaultAmountCents ?? c.defaultAmount ?? ""));
+  const [defaultTitle, setDefaultTitle] = useState(String(c.defaultTitle ?? "Pagamento"));
+  const [currency, setCurrency] = useState(String(c.currency ?? "BRL"));
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [recommendedEvents, setRecommendedEvents] = useState<string[]>([]);
+  const [additionalEvents, setAdditionalEvents] = useState<string[]>([]);
+  const [webhookSecretConfigured, setWebhookSecretConfigured] = useState(false);
+
+  useEffect(() => {
+    const cfg = (tool.config ?? {}) as Record<string, unknown>;
+    setAccessToken("");
+    setWebhookSecret("");
+    setSuccessUrl(String(cfg.successUrl ?? ""));
+    setCancelUrl(String(cfg.cancelUrl ?? ""));
+    setDefaultAmountCents(String(cfg.defaultAmountCents ?? cfg.defaultAmount ?? ""));
+    setDefaultTitle(String(cfg.defaultTitle ?? "Pagamento"));
+    setCurrency(String(cfg.currency ?? "BRL"));
+  }, [tool.id, tool.config]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const info = await api.get<{
+          webhookUrl: string;
+          recommendedEvents: string[];
+          additionalEvents?: string[];
+          webhookSecretConfigured: boolean;
+        }>(`/automation/custom-tools/${tool.id}/mercadopago-webhook`);
+        if (cancelled) return;
+        setWebhookUrl(info.webhookUrl ?? "");
+        setRecommendedEvents(Array.isArray(info.recommendedEvents) ? info.recommendedEvents : []);
+        setAdditionalEvents(Array.isArray(info.additionalEvents) ? info.additionalEvents : []);
+        setWebhookSecretConfigured(Boolean(info.webhookSecretConfigured));
+      } catch {
+        if (!cancelled) {
+          setWebhookUrl("");
+          setRecommendedEvents([]);
+          setAdditionalEvents([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tool.id]);
+
+  const fieldCls =
+    "mt-1 w-full rounded border border-ink-200 px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-950 dark:text-ink-100";
+  const hasSavedToken = String(c.accessToken ?? c.access_token ?? "").trim().length > 0;
+  const hasSavedWebhookSecret = String(c.webhookSecret ?? "").trim().length > 0 || webhookSecretConfigured;
+
+  const copyWebhookUrl = () => {
+    if (!webhookUrl) return;
+    void navigator.clipboard.writeText(webhookUrl);
+  };
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs text-ink-500">{t("automationPage.toolMercadoPagoHelp")}</p>
+        <MercadoPagoToolSetupHelp
+          t={t}
+          webhookUrl={webhookUrl}
+          recommendedEvents={recommendedEvents}
+          additionalEvents={additionalEvents}
+        />
+      </div>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolMercadoPagoAccessToken")}
+        <input
+          type="password"
+          autoComplete="off"
+          value={accessToken}
+          placeholder={hasSavedToken ? t("automationPage.toolGoogleCalendarSecretPlaceholder") : "APP_USR-…"}
+          onChange={(e) => setAccessToken(e.target.value)}
+          className={fieldCls}
+        />
+      </label>
+      {hasSavedToken ? (
+        <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{t("automationPage.toolMercadoPagoTokenSaved")}</p>
+      ) : null}
+      <div className="rounded-lg border border-ink-200 p-2 dark:border-ink-700">
+        <p className="text-xs font-medium text-ink-700 dark:text-ink-200">{t("automationPage.toolMercadoPagoWebhookTitle")}</p>
+        <p className="mt-1 text-[11px] text-ink-500">{t("automationPage.toolMercadoPagoWebhookHelp")}</p>
+        <label className="mt-2 block text-xs font-medium">
+          {t("automationPage.toolMercadoPagoWebhookUrl")}
+          <div className="mt-1 flex gap-2">
+            <input readOnly value={webhookUrl} className={clsx(fieldCls, "mt-0 font-mono text-[11px]")} />
+            <button
+              type="button"
+              disabled={!webhookUrl}
+              onClick={copyWebhookUrl}
+              className="shrink-0 rounded-lg border border-ink-200 px-2 py-1 text-[11px] font-semibold dark:border-ink-600"
+            >
+              {t("automationPage.toolMercadoPagoWebhookCopy")}
+            </button>
+          </div>
+        </label>
+        <label className="mt-2 block text-xs font-medium">
+          {t("automationPage.toolMercadoPagoWebhookSecret")}
+          <input
+            type="password"
+            autoComplete="off"
+            value={webhookSecret}
+            placeholder={hasSavedWebhookSecret ? t("automationPage.toolGoogleCalendarSecretPlaceholder") : "…"}
+            onChange={(e) => setWebhookSecret(e.target.value)}
+            className={fieldCls}
+          />
+        </label>
+        {hasSavedWebhookSecret ? (
+          <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+            {t("automationPage.toolMercadoPagoWebhookSecretSaved")}
+          </p>
+        ) : null}
+        {recommendedEvents.length > 0 ? (
+          <p className="mt-2 text-[11px] text-ink-500">
+            {t("automationPage.toolMercadoPagoWebhookEvents")}:{" "}
+            <span className="font-mono">{recommendedEvents.join(", ")}</span>
+          </p>
+        ) : null}
+      </div>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolMercadoPagoDefaultAmountCents")}
+        <input
+          value={defaultAmountCents}
+          onChange={(e) => setDefaultAmountCents(e.target.value)}
+          placeholder="9900"
+          className={fieldCls}
+        />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolMercadoPagoDefaultTitle")}
+        <input value={defaultTitle} onChange={(e) => setDefaultTitle(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolMercadoPagoCurrency")}
+        <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="BRL" className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolMercadoPagoSuccessUrl")}
+        <input value={successUrl} onChange={(e) => setSuccessUrl(e.target.value)} className={fieldCls} />
+      </label>
+      <label className="block text-xs font-medium">
+        {t("automationPage.toolMercadoPagoCancelUrl")}
+        <input value={cancelUrl} onChange={(e) => setCancelUrl(e.target.value)} className={fieldCls} />
+      </label>
+      <p className="text-[11px] text-ink-500">{t("automationPage.toolMercadoPagoDocsHint")}</p>
+      <button
+        type="button"
+        onClick={() => {
+          const patch: Record<string, unknown> = {
+            provider: "mercadopago",
+            presetKey: typeof c.presetKey === "string" ? c.presetKey : "int_mercadopago",
+            executor: typeof c.executor === "string" && c.executor ? c.executor : "mercadopago_api",
+            successUrl: successUrl.trim(),
+            cancelUrl: cancelUrl.trim(),
+            defaultTitle: defaultTitle.trim() || "Pagamento",
+            currency: currency.trim().toUpperCase() || "BRL",
+          };
+          const amountTrimmed = defaultAmountCents.trim();
+          if (amountTrimmed) {
+            const n = Number(amountTrimmed);
+            if (Number.isFinite(n) && n > 0) patch.defaultAmountCents = Math.floor(n);
+          }
+          const tokenTrimmed = accessToken.trim();
+          if (tokenTrimmed && tokenTrimmed !== "***") patch.accessToken = tokenTrimmed;
+          const webhookTrimmed = webhookSecret.trim();
+          if (webhookTrimmed && webhookTrimmed !== "***") patch.webhookSecret = webhookTrimmed;
+          onSave(patch);
+        }}
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white"
+      >
+        {t("automationPage.toolSaveCredentials")}
+      </button>
+    </div>
+  );
+}
+
 function parseGoogleCalAvailability(cfg: Record<string, unknown>): { days: number[]; start: string; end: string } {
   const av = (cfg.availability && typeof cfg.availability === "object" ? cfg.availability : {}) as Record<string, unknown>;
   const daysRaw = Array.isArray(av.days) ? (av.days as unknown[]) : [1, 2, 3, 4, 5];
@@ -6158,6 +6352,13 @@ function ToolCredentialEditor({
 
   if (tool.toolType === "STRIPE" || (tool.toolType === "INTEGRATION" && provider === "stripe")) {
     return <StripeToolEditor tool={tool} t={t} onSave={onSave} />;
+  }
+
+  if (
+    tool.toolType === "MERCADO_PAGO" ||
+    (tool.toolType === "INTEGRATION" && (provider === "mercadopago" || provider === "mercado_pago"))
+  ) {
+    return <MercadoPagoToolEditor tool={tool} t={t} onSave={onSave} />;
   }
 
   if (tool.toolType === "HTTP_API" || tool.toolType === "WEBHOOK") {

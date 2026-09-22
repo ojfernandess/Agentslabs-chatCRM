@@ -140,7 +140,7 @@ function effectiveMarketCategory(p: ToolPresetMeta): string | null {
   if (p.marketplace?.category) return p.marketplace.category;
   if (p.category === "EMAIL_API") return "EMAIL";
   if (p.category === "GOOGLE_CALENDAR" || p.category === "CAL_COM") return "PRODUCTIVITY";
-  if (p.category === "STRIPE") return "PAYMENTS";
+  if (p.category === "STRIPE" || p.category === "MERCADO_PAGO") return "PAYMENTS";
   if (p.category === "ELEVENLABS" || p.category === "MCP_NATIVE" || p.category === "HTTP_CUSTOM") return "AUTOMATION";
   if (p.category === "INTEGRATION_MARKETPLACE") return "AUTOMATION";
   return null;
@@ -151,6 +151,14 @@ function isStripeAutomationTool(tool: { toolType: string; config?: unknown }): b
   if (tool.toolType !== "INTEGRATION") return false;
   const c = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
   return String(c.provider ?? "").toLowerCase() === "stripe";
+}
+
+function isMercadoPagoAutomationTool(tool: { toolType: string; config?: unknown }): boolean {
+  if (tool.toolType === "MERCADO_PAGO") return true;
+  if (tool.toolType !== "INTEGRATION") return false;
+  const c = tool.config && typeof tool.config === "object" ? (tool.config as Record<string, unknown>) : {};
+  const provider = String(c.provider ?? "").toLowerCase();
+  return provider === "mercadopago" || provider === "mercado_pago";
 }
 
 function executionSummaryLine(ex: ToolExecutionRow): string {
@@ -764,7 +772,8 @@ export function AutomationToolsHub({
                   tool.toolType === "HTTP_API" ||
                   tool.toolType === "WEBHOOK" ||
                   tool.toolType === "CAL_COM" ||
-                  isStripeAutomationTool(tool);
+                  isStripeAutomationTool(tool) ||
+                  isMercadoPagoAutomationTool(tool);
                 const isHttpCustom = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM";
                 return (
                   <div
@@ -860,6 +869,8 @@ export function AutomationToolsHub({
                             setTestResult(null);
                             if (isStripeAutomationTool(tool)) {
                               setTestBodyJson(JSON.stringify({ action: "list_prices" }, null, 2));
+                            } else if (isMercadoPagoAutomationTool(tool)) {
+                              setTestBodyJson(JSON.stringify({ action: "list_plans" }, null, 2));
                             } else if (tool.toolType === "CAL_COM") {
                               setTestBodyJson(JSON.stringify({ action: "list_event_types" }, null, 2));
                             } else {
@@ -1098,13 +1109,16 @@ export function AutomationToolsHub({
                 drawerTool.toolType === "HTTP_API" ||
                 drawerTool.toolType === "WEBHOOK" ||
                 drawerTool.toolType === "CAL_COM" ||
-                isStripeAutomationTool(drawerTool) ? (
+                isStripeAutomationTool(drawerTool) ||
+                isMercadoPagoAutomationTool(drawerTool) ? (
                   <div className="space-y-3">
                     <p className="text-xs text-ink-500">
                       {drawerTool.toolType === "CAL_COM"
                         ? t("automationPage.toolsTestCalComHelp")
                         : isStripeAutomationTool(drawerTool)
                           ? t("automationPage.toolsTestStripeHelp")
+                          : isMercadoPagoAutomationTool(drawerTool)
+                            ? t("automationPage.toolsTestMercadoPagoHelp")
                         : t("automationPage.toolsTestHelp")}
                     </p>
                     {(() => {

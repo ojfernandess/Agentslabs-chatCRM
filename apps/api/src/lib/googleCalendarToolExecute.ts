@@ -408,7 +408,14 @@ async function logGoogleCalendarExecution(input: {
 
 export function isAgentExecutableAutomationToolType(toolType: string): boolean {
   const t = toolType.toUpperCase().replace(/-/g, "_");
-  return t === "HTTP_API" || t === "WEBHOOK" || t === "GOOGLE_CALENDAR" || t === "CAL_COM" || t === "STRIPE";
+  return (
+    t === "HTTP_API" ||
+    t === "WEBHOOK" ||
+    t === "GOOGLE_CALENDAR" ||
+    t === "CAL_COM" ||
+    t === "STRIPE" ||
+    t === "MERCADO_PAGO"
+  );
 }
 
 export function isAgentExecutableAutomationTool(row: { toolType: string; config?: unknown }): boolean {
@@ -419,7 +426,8 @@ export function isAgentExecutableAutomationTool(row: { toolType: string; config?
     row.config && typeof row.config === "object" && !Array.isArray(row.config)
       ? (row.config as Record<string, unknown>)
       : {};
-  return String(c.provider ?? "")
+  const provider = String(c.provider ?? "")
     .trim()
-    .toLowerCase() === "stripe";
+    .toLowerCase();
+  return provider === "stripe" || provider === "mercadopago" || provider === "mercado_pago";
 }

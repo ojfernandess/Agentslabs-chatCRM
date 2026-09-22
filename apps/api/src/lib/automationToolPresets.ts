@@ -8,6 +8,7 @@ export type AutomationPresetCategory =
   | "GOOGLE_CALENDAR"
   | "CAL_COM"
   | "STRIPE"
+  | "MERCADO_PAGO"
   | "ELEVENLABS"
   | "EMAIL_API"
   | "HTTP_CUSTOM"
@@ -649,6 +650,49 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
       executor: "stripe_api",
     },
     marketplace: { category: "PAYMENTS", icon: "CreditCard", popularity: 82, accent: "from-violet-500/30 to-purple-900/20" },
+  },
+  {
+    presetKey: "int_mercadopago",
+    category: "MERCADO_PAGO",
+    name: "Mercado Pago",
+    description:
+      "Mercado Pago: consultar planos, gerar Checkout (preference) ou cobrança Pix. Auth: Access Token da conta. Fluxo: list_plans → create_checkout_preference ou create_pix_payment.",
+    toolType: "MERCADO_PAGO",
+    parametersSchema: openAiObjectSchema(
+      {
+        action: {
+          type: "string",
+          enum: ["list_plans", "get_payment", "create_checkout_preference", "create_pix_payment"],
+          description:
+            "list_plans = planos de assinatura; get_payment = consultar pagamento; create_checkout_preference = link Checkout; create_pix_payment = QR Pix (requer payerEmail e CPF/CNPJ)",
+        },
+        paymentId: { type: "string", description: "get_payment: ID do pagamento Mercado Pago" },
+        amountCents: { type: "number", description: "Valor em centavos (ex. 9900 = R$ 99,00). Omita se defaultAmountCents estiver no config." },
+        title: { type: "string", description: "Título/descrição do item cobrado" },
+        quantity: { type: "number", description: "Quantidade (predefinido 1)" },
+        successUrl: { type: "string", description: "create_checkout_preference: URL após pagamento aprovado" },
+        cancelUrl: { type: "string", description: "create_checkout_preference: URL se cancelar" },
+        payerEmail: { type: "string", description: "create_pix_payment: e-mail do pagador" },
+        payerIdentificationNumber: { type: "string", description: "create_pix_payment: CPF ou CNPJ (só dígitos)" },
+        cpf: { type: "string", description: "Alias de payerIdentificationNumber (CPF)" },
+        cnpj: { type: "string", description: "Alias de payerIdentificationNumber (CNPJ)" },
+      },
+      ["action"],
+    ),
+    defaultConfig: {
+      presetKey: "int_mercadopago",
+      nativeToolKey: "payments_mercadopago",
+      provider: "mercadopago",
+      accessToken: "",
+      webhookSecret: "",
+      successUrl: "",
+      cancelUrl: "",
+      defaultAmountCents: null,
+      defaultTitle: "Pagamento",
+      currency: "BRL",
+      executor: "mercadopago_api",
+    },
+    marketplace: { category: "PAYMENTS", icon: "CreditCard", popularity: 81, accent: "from-sky-500/30 to-blue-900/20" },
   },
   {
     presetKey: "int_google_sheets",

@@ -2063,6 +2063,22 @@ model AutomationStripeWebhookEvent {
   @@map("automation_stripe_webhook_events")
 }
 
+/// Idempotência de webhooks Mercado Pago por ferramenta de automação (cobrança via agente).
+model AutomationMercadoPagoWebhookEvent {
+  id              String   @id @db.VarChar(255)
+  organizationId  String   @map("organization_id") @db.Uuid
+  toolId          String   @map("tool_id") @db.Uuid
+  externalEventId String   @map("external_event_id") @db.VarChar(255)
+  type            String   @db.VarChar(120)
+  processedAt     DateTime @default(now()) @map("processed_at")
+  payload         Json?
+
+  @@unique([toolId, externalEventId], map: "automation_mercadopago_webhook_events_tool_event_key")
+  @@index([organizationId])
+  @@index([toolId])
+  @@map("automation_mercadopago_webhook_events")
+}
+
 /// Idempotência genérica de webhooks de pagamento (multi-provider).
 model PaymentWebhookEvent {
   id              String          @id @default(uuid()) @db.Uuid

@@ -1803,6 +1803,57 @@ export const messages = {
         "Alteração de plano ou estado de assinatura do cliente.",
       toolStripeEventDesc_customer_subscription_deleted:
         "Assinatura do cliente cancelada ou expirada.",
+      toolMercadoPagoHelp:
+        "Access Token Mercado Pago da conta da organização. Usado só nesta ferramenta — não é a billing da plataforma OpenConduit.",
+      toolMercadoPagoAccessToken: "Access Token",
+      toolMercadoPagoTokenSaved: "Token já configurado. Digite um novo para substituir.",
+      toolMercadoPagoDefaultAmountCents: "Valor predefinido (centavos, ex. 9900 = R$ 99,00)",
+      toolMercadoPagoDefaultTitle: "Título predefinido do item",
+      toolMercadoPagoCurrency: "Moeda (ex. BRL)",
+      toolMercadoPagoSuccessUrl: "URL de sucesso (Checkout)",
+      toolMercadoPagoCancelUrl: "URL de cancelamento (Checkout)",
+      toolMercadoPagoDocsHint:
+        "Ligue a ferramenta no perfil do agente. Fluxo: list_plans → create_checkout_preference ou create_pix_payment. Com webhook configurado, paymentStatus=paid é gravado na conversa após pagamento aprovado.",
+      toolMercadoPagoWebhookTitle: "Webhook Mercado Pago (conta da organização)",
+      toolMercadoPagoWebhookHelp:
+        "No painel Mercado Pago Developers, crie um webhook com a URL abaixo (distinta de /webhooks/mercadopago do billing da plataforma). Cole o secret de assinatura e subscreva os tópicos indicados.",
+      toolMercadoPagoWebhookUrl: "URL do endpoint",
+      toolMercadoPagoWebhookCopy: "Copiar",
+      toolMercadoPagoWebhookSecret: "Secret de assinatura do webhook",
+      toolMercadoPagoWebhookSecretSaved: "Secret já configurado. Digite um novo para substituir.",
+      toolMercadoPagoWebhookEvents: "Tópicos recomendados",
+      toolMercadoPagoSetupHelpOpen: "Guia de configuração Mercado Pago",
+      toolMercadoPagoSetupHelpClose: "Fechar guia",
+      toolMercadoPagoSetupHelpTitle: "Configurar Mercado Pago Developers",
+      toolMercadoPagoSetupHelpIntro:
+        "Use a conta Mercado Pago da sua organização (não a billing OpenConduit). Guarde aqui o Access Token, o webhook e ligue a ferramenta no perfil do agente.",
+      toolMercadoPagoSetupHelpStepsTitle: "Webhook no Mercado Pago",
+      toolMercadoPagoSetupHelpStep1: "Abra a aplicação Mercado Pago da organização (modo teste ou produção).",
+      toolMercadoPagoSetupHelpStep2: "Guarde o Access Token (APP_USR-…) nesta ferramenta.",
+      toolMercadoPagoSetupHelpStep3: "Aceda a",
+      toolMercadoPagoSetupHelpStep4: "Crie ou edite um webhook de produção/teste.",
+      toolMercadoPagoSetupHelpStep5: "Em URL de notificação, cole a URL exclusiva desta ferramenta:",
+      toolMercadoPagoSetupHelpStep6: "Marque o tópico payment (e opcionalmente os adicionais abaixo).",
+      toolMercadoPagoSetupHelpStep7: "Copie o secret de assinatura (Webhooks → Credenciais) para este painel.",
+      toolMercadoPagoSetupHelpStep8: "Grave as credenciais e teste um pagamento — o webhook confirma paymentStatus=paid na conversa.",
+      toolMercadoPagoSetupHelpRecommendedTitle: "Tópicos recomendados (obrigatórios)",
+      toolMercadoPagoSetupHelpRecommendedIntro:
+        "O tópico payment notifica pagamentos aprovados (Checkout, Pix, cartão) e actualiza a conversa do agente.",
+      toolMercadoPagoSetupHelpAdditionalTitle: "Tópicos adicionais (opcionais)",
+      toolMercadoPagoSetupHelpAdditionalIntro:
+        "Úteis para assinaturas ou pedidos; nem todos alteram flowSlots hoje.",
+      toolMercadoPagoSetupHelpPlatformNote:
+        "Nota: /webhooks/mercadopago (billing OpenConduit / planos SaaS) é outro endpoint — não use na conta da organização para cobranças do agente.",
+      toolMercadoPagoEventDesc_payment:
+        "Pagamento criado ou actualizado (Checkout, Pix, cartão). Com status approved, confirma paymentStatus=paid na conversa.",
+      toolMercadoPagoEventDesc_subscription_preapproval:
+        "Assinatura recorrente (preapproval) criada ou alterada.",
+      toolMercadoPagoEventDesc_merchant_order:
+        "Pedido comercial agregando um ou mais pagamentos.",
+      toolMercadoPagoEventDesc_subscription_authorized_payment:
+        "Cobrança autorizada de uma assinatura recorrente.",
+      toolsTestMercadoPagoHelp:
+        'JSON de argumentos. Ex.: {"action":"list_plans"} ou {"action":"create_pix_payment","amountCents":9900,"payerEmail":"…","payerIdentificationNumber":"…"}.',
       toolsTestStripeHelp:
         'JSON de argumentos. Ex.: {"action":"list_prices"} ou {"action":"create_payment_link","priceId":"price_…"}.',
       toolsTestCalComHelp:
@@ -9013,6 +9064,57 @@ export const messages = {
         "Customer subscription plan or status changed.",
       toolStripeEventDesc_customer_subscription_deleted:
         "Customer subscription canceled or expired.",
+      toolMercadoPagoHelp:
+        "Mercado Pago Access Token for the organization account. Used only by this tool — not OpenConduit platform billing.",
+      toolMercadoPagoAccessToken: "Access Token",
+      toolMercadoPagoTokenSaved: "Token already stored. Type a new one to replace it.",
+      toolMercadoPagoDefaultAmountCents: "Default amount (cents, e.g. 9900 = R$ 99.00)",
+      toolMercadoPagoDefaultTitle: "Default item title",
+      toolMercadoPagoCurrency: "Currency (e.g. BRL)",
+      toolMercadoPagoSuccessUrl: "Success URL (Checkout)",
+      toolMercadoPagoCancelUrl: "Cancel URL (Checkout)",
+      toolMercadoPagoDocsHint:
+        "Connect the tool in the agent profile. Flow: list_plans → create_checkout_preference or create_pix_payment. With webhook configured, paymentStatus=paid is stored on the conversation after approval.",
+      toolMercadoPagoWebhookTitle: "Mercado Pago webhook (organization account)",
+      toolMercadoPagoWebhookHelp:
+        "In Mercado Pago Developers, create a webhook with the URL below (distinct from platform billing /webhooks/mercadopago). Paste the signing secret and subscribe to the listed topics.",
+      toolMercadoPagoWebhookUrl: "Endpoint URL",
+      toolMercadoPagoWebhookCopy: "Copy",
+      toolMercadoPagoWebhookSecret: "Webhook signing secret",
+      toolMercadoPagoWebhookSecretSaved: "Signing secret already stored. Type a new one to replace it.",
+      toolMercadoPagoWebhookEvents: "Recommended topics",
+      toolMercadoPagoSetupHelpOpen: "Mercado Pago setup guide",
+      toolMercadoPagoSetupHelpClose: "Close guide",
+      toolMercadoPagoSetupHelpTitle: "Configure Mercado Pago Developers",
+      toolMercadoPagoSetupHelpIntro:
+        "Use your organization's Mercado Pago account (not OpenConduit billing). Save the Access Token and webhook here, then connect the tool in the agent profile.",
+      toolMercadoPagoSetupHelpStepsTitle: "Webhook in Mercado Pago",
+      toolMercadoPagoSetupHelpStep1: "Open the organization's Mercado Pago application (test or production mode).",
+      toolMercadoPagoSetupHelpStep2: "Save the Access Token (APP_USR-…) in this tool.",
+      toolMercadoPagoSetupHelpStep3: "Go to",
+      toolMercadoPagoSetupHelpStep4: "Create or edit a test/production webhook.",
+      toolMercadoPagoSetupHelpStep5: "Under notification URL, paste this tool's dedicated URL:",
+      toolMercadoPagoSetupHelpStep6: "Enable the payment topic (and optional additional topics below).",
+      toolMercadoPagoSetupHelpStep7: "Copy the signing secret (Webhooks → Credentials) into this panel.",
+      toolMercadoPagoSetupHelpStep8: "Save credentials and run a test payment — the webhook sets paymentStatus=paid on the conversation.",
+      toolMercadoPagoSetupHelpRecommendedTitle: "Recommended topics (required)",
+      toolMercadoPagoSetupHelpRecommendedIntro:
+        "The payment topic notifies approved payments (Checkout, Pix, card) and updates the agent conversation.",
+      toolMercadoPagoSetupHelpAdditionalTitle: "Additional topics (optional)",
+      toolMercadoPagoSetupHelpAdditionalIntro:
+        "Useful for subscriptions or orders; not all update flowSlots today.",
+      toolMercadoPagoSetupHelpPlatformNote:
+        "Note: /webhooks/mercadopago (OpenConduit SaaS billing) is a separate endpoint — do not use it on the org account for agent charges.",
+      toolMercadoPagoEventDesc_payment:
+        "Payment created or updated (Checkout, Pix, card). When status is approved, sets paymentStatus=paid on the conversation.",
+      toolMercadoPagoEventDesc_subscription_preapproval:
+        "Recurring subscription (preapproval) created or updated.",
+      toolMercadoPagoEventDesc_merchant_order:
+        "Merchant order grouping one or more payments.",
+      toolMercadoPagoEventDesc_subscription_authorized_payment:
+        "Authorized charge for a recurring subscription.",
+      toolsTestMercadoPagoHelp:
+        'Argument JSON. E.g. {"action":"list_plans"} or {"action":"create_pix_payment","amountCents":9900,"payerEmail":"…","payerIdentificationNumber":"…"}.',
       toolsTestStripeHelp:
         'Argument JSON. E.g. {"action":"list_prices"} or {"action":"create_payment_link","priceId":"price_…"}.',
       toolsTestCalComHelp:

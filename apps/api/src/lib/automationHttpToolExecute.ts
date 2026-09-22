@@ -11,6 +11,7 @@ import { adaptHttpCheckInPayload } from "./agent-engine/checkin/toolOutcomeAdapt
 import { httpToolBodyIndicatesFailure } from "./agent-engine/checkin/toolOutcomeParsing.js";
 import { buildGoogleCalendarAgentToolDescription } from "./googleCalendarToolExecute.js";
 import { buildCalComAgentToolDescription } from "./calComToolExecute.js";
+import { buildMercadoPagoAgentToolDescription, isMercadoPagoAutomationTool } from "./mercadoPagoToolExecute.js";
 import { buildStripeAgentToolDescription, isStripeAutomationTool } from "./stripeToolExecute.js";
 
 const LOCAL_MEDIA_FILENAME_RE = /^[a-f0-9]{32}\.[a-z0-9]+$/i;
@@ -1500,7 +1501,10 @@ export function openAiToolDefinitionForAutomationTool(
     toolType === "GOOGLE_CALENDAR" ? buildGoogleCalendarAgentToolDescription(tool.config) : "";
   const calComHint = toolType === "CAL_COM" ? buildCalComAgentToolDescription(tool.config) : "";
   const stripeHint = isStripeAutomationTool(tool) ? buildStripeAgentToolDescription(tool.config) : "";
-  const integrationHint = calendarHint || calComHint || stripeHint;
+  const mercadoPagoHint = isMercadoPagoAutomationTool(tool)
+    ? buildMercadoPagoAgentToolDescription(tool.config)
+    : "";
+  const integrationHint = calendarHint || calComHint || stripeHint || mercadoPagoHint;
   const baseDesc =
     (tool.description ?? "").trim() ||
     (toolType === "GOOGLE_CALENDAR"
@@ -1509,11 +1513,19 @@ export function openAiToolDefinitionForAutomationTool(
         ? calComHint || `Agendamento Cal.com «${tool.name}».`
         : isStripeAutomationTool(tool)
           ? stripeHint || `Pagamentos Stripe «${tool.name}».`
+          : isMercadoPagoAutomationTool(tool)
+            ? mercadoPagoHint || `Pagamentos Mercado Pago «${tool.name}».`
         : `Ferramenta HTTP da organização «${tool.name}». Invoque quando o cliente precisar dos dados que esta API fornece.`);
   const withCalendarHint =
     integrationHint &&
     !(tool.description ?? "").includes(
-      toolType === "CAL_COM" ? "get_slots" : isStripeAutomationTool(tool) ? "list_prices" : "calendar_name",
+      toolType === "CAL_COM"
+        ? "get_slots"
+        : isStripeAutomationTool(tool)
+          ? "list_prices"
+          : isMercadoPagoAutomationTool(tool)
+            ? "list_plans"
+            : "calendar_name",
     )
       ? `${baseDesc}\n\n${integrationHint}`.trim()
       : baseDesc;
