@@ -35,6 +35,8 @@ describe("mercadoPagoToolExecute helpers", () => {
     assert.equal(cfg.successUrl, "https://example.com/ok");
     assert.equal(cfg.defaultAmountCents, 9900);
     assert.equal(cfg.currency, "BRL");
+    assert.equal(cfg.catalog.length, 1);
+    assert.equal(cfg.catalog[0]?.amountCents, 9900);
   });
 
   it("parses supported actions and aliases", () => {

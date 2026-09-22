@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { AutomationCustomToolRow, AutomationToolsTranslate, ToolPresetMeta } from "./automationToolTypes";
+import { paymentToolLogoUrl } from "./paymentToolBranding";
+import { PaymentProviderLogo } from "./PaymentProviderLogo";
 import { LucideIconPickerField, UiAccentColorPickerField } from "./ToolUiAppearanceFields";
 import { ToolExecutionDetailPanel, type ToolExecutionRow } from "./ToolExecutionDetailPanel";
 import {
@@ -50,7 +52,18 @@ type CredentialEditorProps = {
   onSave: (patch: Record<string, unknown>) => void | Promise<void>;
 };
 
-function MarketplaceIcon({ name }: { name: string }) {
+function MarketplaceIcon({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+  if (logoUrl) {
+    const isStripeWordmark = logoUrl.includes("Stripe");
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        className={isStripeWordmark ? "h-7 w-auto max-w-[5.5rem] object-contain" : "h-7 w-7 object-contain"}
+        draggable={false}
+      />
+    );
+  }
   const Cmp =
     (LucideIcons as unknown as Record<string, LucideIcon>)[name] ?? LucideIcons.Box;
   return <Cmp className="h-6 w-6" strokeWidth={1.5} />;
@@ -665,6 +678,7 @@ export function AutomationToolsHub({
                 const mk = pr.marketplace;
                 const effCat = effectiveMarketCategory(pr);
                 const iconName = mk?.icon ?? "Puzzle";
+                const logoUrl = mk?.logoUrl ?? paymentToolLogoUrl(pr.presetKey, undefined);
                 return (
                   <div
                     key={pr.presetKey}
@@ -682,8 +696,8 @@ export function AutomationToolsHub({
                       )}
                     />
                     <div className="relative flex items-start justify-between gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-lg shadow-brand-500/20">
-                        <MarketplaceIcon name={iconName} />
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white p-1.5 shadow-lg shadow-brand-500/10 ring-1 ring-ink-200/60 dark:bg-ink-900 dark:ring-ink-700/80">
+                        <MarketplaceIcon name={iconName} logoUrl={logoUrl} />
                       </div>
                       <button
                         type="button"
@@ -775,6 +789,11 @@ export function AutomationToolsHub({
                   isStripeAutomationTool(tool) ||
                   isMercadoPagoAutomationTool(tool);
                 const isHttpCustom = (tool.toolType ?? "").toUpperCase().replace(/-/g, "_") === "HTTP_API_CUSTOM";
+                const paymentLogo = isStripeAutomationTool(tool)
+                  ? ("stripe" as const)
+                  : isMercadoPagoAutomationTool(tool)
+                    ? ("mercadopago" as const)
+                    : null;
                 return (
                   <div
                     key={tool.id}
@@ -784,7 +803,9 @@ export function AutomationToolsHub({
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="flex min-w-0 items-start gap-2.5">
+                        {paymentLogo ? <PaymentProviderLogo provider={paymentLogo} size="sm" className="mt-0.5" /> : null}
+                        <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="font-semibold text-ink-900 dark:text-ink-50">{tool.name}</h3>
                           <span
@@ -807,6 +828,7 @@ export function AutomationToolsHub({
                           ) : null}
                         </div>
                         <p className="mt-1 text-xs text-ink-500">{tool.toolType}</p>
+                        </div>
                       </div>
                       <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-600 dark:text-ink-400">
                         <input

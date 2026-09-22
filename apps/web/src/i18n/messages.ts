@@ -1746,10 +1746,21 @@ export const messages = {
       toolCalComDocsHint:
         "Ligue a ferramenta no perfil do agente. O modelo usa action=get_slots e depois create_booking com o horário UTC escolhido.",
       toolStripeHelp:
-        "Secret key Stripe da conta da organização (preferir restricted key com Products/Prices read e Payment Links/Checkout write). Usada só nesta ferramenta — não é a billing da plataforma OpenConduit.",
+        "Secret key Stripe da conta da organização (preferir restricted key com Products/Prices read e Payment Links/Checkout write). Usada só nesta ferramenta.",
       toolStripeSecretKey: "Secret key",
       toolStripeKeySaved: "Chave já configurada. Digite uma nova para substituir.",
       toolStripeDefaultPriceId: "Price ID predefinido (price_…, opcional)",
+      toolStripeCatalogHelp:
+        "Registe os planos/preços que o agente pode oferecer. Marque um como predefinido — o agente ainda pode consultar a API com list_prices.",
+      toolStripeCatalogProductId: "Product ID (prod_…, opcional)",
+      toolStripeCatalogPriceId: "Price ID (price_…)",
+      toolPaymentCatalogTitle: "Catálogo de planos e preços",
+      toolPaymentCatalogItem: "Plano",
+      toolPaymentCatalogDefault: "Predefinido",
+      toolPaymentCatalogRemove: "Remover plano",
+      toolPaymentCatalogAdd: "Adicionar plano",
+      toolPaymentCatalogLabel: "Nome amigável",
+      toolPaymentCatalogLabelPlaceholder: "Ex.: Plano mensal, Consulta avulsa…",
       toolStripeCurrency: "Moeda predefinida para list_prices (ex. brl)",
       toolStripeSuccessUrl: "URL de sucesso (Checkout)",
       toolStripeCancelUrl: "URL de cancelamento (Checkout)",
@@ -1757,7 +1768,7 @@ export const messages = {
         "Ligue a ferramenta no perfil do agente. Fluxo: list_prices → create_payment_link ou create_checkout_session. Com webhook configurado, paymentStatus=paid é gravado na conversa após pagamento.",
       toolStripeWebhookTitle: "Webhook Stripe (conta da organização)",
       toolStripeWebhookHelp:
-        "No Stripe Dashboard → Developers → Webhooks, crie um endpoint com a URL abaixo (distinta de /webhooks/stripe do billing da plataforma). Cole o signing secret (whsec_…) e subscreva os eventos indicados.",
+        "No Stripe Dashboard → Developers → Webhooks, crie um endpoint com a URL abaixo. Cole o signing secret (whsec_…) e subscreva os eventos indicados.",
       toolStripeWebhookUrl: "URL do endpoint",
       toolStripeWebhookCopy: "Copiar",
       toolStripeWebhookSecret: "Signing secret (whsec_…)",
@@ -1767,7 +1778,7 @@ export const messages = {
       toolStripeSetupHelpClose: "Fechar guia",
       toolStripeSetupHelpTitle: "Configurar Stripe Dashboard",
       toolStripeSetupHelpIntro:
-        "Use a conta Stripe da sua organização (não a billing OpenConduit). Guarde aqui a secret key, o webhook e ligue a ferramenta no perfil do agente.",
+        "Use a conta Stripe da sua organização. Guarde aqui a secret key, o webhook e ligue a ferramenta no perfil do agente.",
       toolStripeSetupHelpStepsTitle: "Webhook no Stripe Dashboard",
       toolStripeSetupHelpStep1: "Abra a conta Stripe da organização (modo teste ou live).",
       toolStripeSetupHelpStep2: "Guarde a Secret key (sk_… ou restricted rk_…) nesta ferramenta.",
@@ -1804,10 +1815,14 @@ export const messages = {
       toolStripeEventDesc_customer_subscription_deleted:
         "Assinatura do cliente cancelada ou expirada.",
       toolMercadoPagoHelp:
-        "Access Token Mercado Pago da conta da organização. Usado só nesta ferramenta — não é a billing da plataforma OpenConduit.",
+        "Access Token Mercado Pago da conta da organização. Usado só nesta ferramenta.",
       toolMercadoPagoAccessToken: "Access Token",
       toolMercadoPagoTokenSaved: "Token já configurado. Digite um novo para substituir.",
       toolMercadoPagoDefaultAmountCents: "Valor predefinido (centavos, ex. 9900 = R$ 99,00)",
+      toolMercadoPagoCatalogHelp:
+        "Registe planos e valores que o agente pode oferecer. Marque um como predefinido — o agente ainda pode consultar a API com list_plans.",
+      toolMercadoPagoCatalogPlanId: "Plan ID / preapproval (opcional)",
+      toolMercadoPagoCatalogPlanIdPlaceholder: "ID do plano Mercado Pago (opcional)",
       toolMercadoPagoDefaultTitle: "Título predefinido do item",
       toolMercadoPagoCurrency: "Moeda (ex. BRL)",
       toolMercadoPagoSuccessUrl: "URL de sucesso (Checkout)",
@@ -1816,7 +1831,7 @@ export const messages = {
         "Ligue a ferramenta no perfil do agente. Fluxo: list_plans → create_checkout_preference ou create_pix_payment. Com webhook configurado, paymentStatus=paid é gravado na conversa após pagamento aprovado.",
       toolMercadoPagoWebhookTitle: "Webhook Mercado Pago (conta da organização)",
       toolMercadoPagoWebhookHelp:
-        "No painel Mercado Pago Developers, crie um webhook com a URL abaixo (distinta de /webhooks/mercadopago do billing da plataforma). Cole o secret de assinatura e subscreva os tópicos indicados.",
+        "No painel Mercado Pago Developers, crie um webhook com a URL abaixo. Cole o secret de assinatura e subscreva os tópicos indicados.",
       toolMercadoPagoWebhookUrl: "URL do endpoint",
       toolMercadoPagoWebhookCopy: "Copiar",
       toolMercadoPagoWebhookSecret: "Secret de assinatura do webhook",
@@ -1826,7 +1841,7 @@ export const messages = {
       toolMercadoPagoSetupHelpClose: "Fechar guia",
       toolMercadoPagoSetupHelpTitle: "Configurar Mercado Pago Developers",
       toolMercadoPagoSetupHelpIntro:
-        "Use a conta Mercado Pago da sua organização (não a billing OpenConduit). Guarde aqui o Access Token, o webhook e ligue a ferramenta no perfil do agente.",
+        "Use a conta Mercado Pago da sua organização. Guarde aqui o Access Token, o webhook e ligue a ferramenta no perfil do agente.",
       toolMercadoPagoSetupHelpStepsTitle: "Webhook no Mercado Pago",
       toolMercadoPagoSetupHelpStep1: "Abra a aplicação Mercado Pago da organização (modo teste ou produção).",
       toolMercadoPagoSetupHelpStep2: "Guarde o Access Token (APP_USR-…) nesta ferramenta.",
@@ -9007,10 +9022,21 @@ export const messages = {
       toolCalComDocsHint:
         "Connect this tool on the agent profile. The model should call get_slots, then create_booking with the chosen UTC start.",
       toolStripeHelp:
-        "Stripe secret key for the organization account (prefer a restricted key with Products/Prices read and Payment Links/Checkout write). Used only by this tool — not OpenConduit platform billing.",
+        "Stripe secret key for the organization account (prefer a restricted key with Products/Prices read and Payment Links/Checkout write). Used only by this tool.",
       toolStripeSecretKey: "Secret key",
       toolStripeKeySaved: "Key already stored. Type a new one to replace it.",
       toolStripeDefaultPriceId: "Default price ID (price_…, optional)",
+      toolStripeCatalogHelp:
+        "Register plans/prices the agent can offer. Mark one as default — the agent can still query the API with list_prices.",
+      toolStripeCatalogProductId: "Product ID (prod_…, optional)",
+      toolStripeCatalogPriceId: "Price ID (price_…)",
+      toolPaymentCatalogTitle: "Plans and prices catalog",
+      toolPaymentCatalogItem: "Plan",
+      toolPaymentCatalogDefault: "Default",
+      toolPaymentCatalogRemove: "Remove plan",
+      toolPaymentCatalogAdd: "Add plan",
+      toolPaymentCatalogLabel: "Friendly name",
+      toolPaymentCatalogLabelPlaceholder: "E.g. Monthly plan, One-off consultation…",
       toolStripeCurrency: "Default currency for list_prices (e.g. brl)",
       toolStripeSuccessUrl: "Success URL (Checkout)",
       toolStripeCancelUrl: "Cancel URL (Checkout)",
@@ -9018,7 +9044,7 @@ export const messages = {
         "Connect the tool on the agent profile. Flow: list_prices → create_payment_link or create_checkout_session. With webhook configured, paymentStatus=paid is stored on the conversation after payment.",
       toolStripeWebhookTitle: "Stripe webhook (organization account)",
       toolStripeWebhookHelp:
-        "In Stripe Dashboard → Developers → Webhooks, create an endpoint with the URL below (distinct from platform billing at /webhooks/stripe). Paste the signing secret (whsec_…) and subscribe to the listed events.",
+        "In Stripe Dashboard → Developers → Webhooks, create an endpoint with the URL below. Paste the signing secret (whsec_…) and subscribe to the listed events.",
       toolStripeWebhookUrl: "Endpoint URL",
       toolStripeWebhookCopy: "Copy",
       toolStripeWebhookSecret: "Signing secret (whsec_…)",
@@ -9028,7 +9054,7 @@ export const messages = {
       toolStripeSetupHelpClose: "Close guide",
       toolStripeSetupHelpTitle: "Configure Stripe Dashboard",
       toolStripeSetupHelpIntro:
-        "Use your organization's Stripe account (not OpenConduit platform billing). Store the secret key and webhook here, then connect the tool on the agent profile.",
+        "Use your organization's Stripe account. Store the secret key and webhook here, then connect the tool on the agent profile.",
       toolStripeSetupHelpStepsTitle: "Webhook in Stripe Dashboard",
       toolStripeSetupHelpStep1: "Open the organization's Stripe account (test or live mode).",
       toolStripeSetupHelpStep2: "Save the Secret key (sk_… or restricted rk_…) in this tool.",
@@ -9065,10 +9091,14 @@ export const messages = {
       toolStripeEventDesc_customer_subscription_deleted:
         "Customer subscription canceled or expired.",
       toolMercadoPagoHelp:
-        "Mercado Pago Access Token for the organization account. Used only by this tool — not OpenConduit platform billing.",
+        "Mercado Pago Access Token for the organization account. Used only by this tool.",
       toolMercadoPagoAccessToken: "Access Token",
       toolMercadoPagoTokenSaved: "Token already stored. Type a new one to replace it.",
       toolMercadoPagoDefaultAmountCents: "Default amount (cents, e.g. 9900 = R$ 99.00)",
+      toolMercadoPagoCatalogHelp:
+        "Register plans and amounts the agent can offer. Mark one as default — the agent can still query the API with list_plans.",
+      toolMercadoPagoCatalogPlanId: "Plan ID / preapproval (optional)",
+      toolMercadoPagoCatalogPlanIdPlaceholder: "Mercado Pago plan ID (optional)",
       toolMercadoPagoDefaultTitle: "Default item title",
       toolMercadoPagoCurrency: "Currency (e.g. BRL)",
       toolMercadoPagoSuccessUrl: "Success URL (Checkout)",
@@ -9077,7 +9107,7 @@ export const messages = {
         "Connect the tool in the agent profile. Flow: list_plans → create_checkout_preference or create_pix_payment. With webhook configured, paymentStatus=paid is stored on the conversation after approval.",
       toolMercadoPagoWebhookTitle: "Mercado Pago webhook (organization account)",
       toolMercadoPagoWebhookHelp:
-        "In Mercado Pago Developers, create a webhook with the URL below (distinct from platform billing /webhooks/mercadopago). Paste the signing secret and subscribe to the listed topics.",
+        "In Mercado Pago Developers, create a webhook with the URL below. Paste the signing secret and subscribe to the listed topics.",
       toolMercadoPagoWebhookUrl: "Endpoint URL",
       toolMercadoPagoWebhookCopy: "Copy",
       toolMercadoPagoWebhookSecret: "Webhook signing secret",
@@ -9087,7 +9117,7 @@ export const messages = {
       toolMercadoPagoSetupHelpClose: "Close guide",
       toolMercadoPagoSetupHelpTitle: "Configure Mercado Pago Developers",
       toolMercadoPagoSetupHelpIntro:
-        "Use your organization's Mercado Pago account (not OpenConduit billing). Save the Access Token and webhook here, then connect the tool in the agent profile.",
+        "Use your organization's Mercado Pago account. Save the Access Token and webhook here, then connect the tool in the agent profile.",
       toolMercadoPagoSetupHelpStepsTitle: "Webhook in Mercado Pago",
       toolMercadoPagoSetupHelpStep1: "Open the organization's Mercado Pago application (test or production mode).",
       toolMercadoPagoSetupHelpStep2: "Save the Access Token (APP_USR-…) in this tool.",

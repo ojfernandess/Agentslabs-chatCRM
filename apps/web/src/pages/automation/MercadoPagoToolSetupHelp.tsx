@@ -156,10 +156,6 @@ export function MercadoPagoToolSetupHelp({
                   </p>
                   <EventList events={additionalEvents} descKeys={ADDITIONAL_EVENT_DESC_KEYS} t={t} />
                 </section>
-
-                <p className="text-[10px] leading-relaxed text-ink-500 dark:text-ink-500">
-                  {t("automationPage.toolMercadoPagoSetupHelpPlatformNote")}
-                </p>
               </div>
             </div>
           </div>

@@ -23,6 +23,7 @@ export type ToolPresetMeta = {
   marketplace?: {
     category: string;
     icon: string;
+    logoUrl?: string;
     popularity: number;
     accent: string;
   } | null;

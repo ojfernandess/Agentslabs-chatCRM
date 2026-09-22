@@ -49,6 +49,16 @@ import { HttpApiCustomToolBuilder } from "@/pages/automation/HttpApiCustomToolBu
 import type { AutomationCustomToolRow, ToolPresetMeta } from "@/pages/automation/automationToolTypes";
 import { StripeToolSetupHelp } from "@/pages/automation/StripeToolSetupHelp";
 import { MercadoPagoToolSetupHelp } from "@/pages/automation/MercadoPagoToolSetupHelp";
+import { PaymentProviderLogo } from "@/pages/automation/PaymentProviderLogo";
+import { MercadoPagoCatalogEditor, StripeCatalogEditor } from "@/pages/automation/PaymentToolCatalogEditor";
+import {
+  mercadoPagoCatalogFromConfig,
+  mercadoPagoCatalogToConfigPayload,
+  stripeCatalogFromConfig,
+  stripeCatalogToConfigPayload,
+  type MercadoPagoCatalogRow,
+  type StripeCatalogRow,
+} from "@/pages/automation/paymentToolCatalog";
 import { parsePromptLabels, type PromptModuleRow } from "@/pages/automation/promptHubTypes";
 import {
   buildPromptAutoInstructionBlock,
@@ -5380,8 +5390,7 @@ function StripeToolEditor({
   const [webhookSecret, setWebhookSecret] = useState("");
   const [successUrl, setSuccessUrl] = useState(String(c.successUrl ?? ""));
   const [cancelUrl, setCancelUrl] = useState(String(c.cancelUrl ?? ""));
-  const [defaultPriceId, setDefaultPriceId] = useState(String(c.defaultPriceId ?? ""));
-  const [currency, setCurrency] = useState(String(c.currency ?? ""));
+  const [catalogRows, setCatalogRows] = useState<StripeCatalogRow[]>(() => stripeCatalogFromConfig(c));
   const [webhookUrl, setWebhookUrl] = useState("");
   const [recommendedEvents, setRecommendedEvents] = useState<string[]>([]);
   const [additionalEvents, setAdditionalEvents] = useState<string[]>([]);
@@ -5393,8 +5402,7 @@ function StripeToolEditor({
     setWebhookSecret("");
     setSuccessUrl(String(cfg.successUrl ?? ""));
     setCancelUrl(String(cfg.cancelUrl ?? ""));
-    setDefaultPriceId(String(cfg.defaultPriceId ?? ""));
-    setCurrency(String(cfg.currency ?? ""));
+    setCatalogRows(stripeCatalogFromConfig(cfg));
   }, [tool.id, tool.config]);
 
   useEffect(() => {
@@ -5437,8 +5445,11 @@ function StripeToolEditor({
 
   return (
     <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-ink-500">{t("automationPage.toolStripeHelp")}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <PaymentProviderLogo provider="stripe" size="lg" className="mt-0.5" />
+          <p className="text-xs text-ink-500">{t("automationPage.toolStripeHelp")}</p>
+        </div>
         <StripeToolSetupHelp
           t={t}
           webhookUrl={webhookUrl}
@@ -5498,14 +5509,7 @@ function StripeToolEditor({
           </p>
         ) : null}
       </div>
-      <label className="block text-xs font-medium">
-        {t("automationPage.toolStripeDefaultPriceId")}
-        <input value={defaultPriceId} onChange={(e) => setDefaultPriceId(e.target.value)} className={fieldCls} />
-      </label>
-      <label className="block text-xs font-medium">
-        {t("automationPage.toolStripeCurrency")}
-        <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="brl" className={fieldCls} />
-      </label>
+      <StripeCatalogEditor rows={catalogRows} t={t} onChange={setCatalogRows} />
       <label className="block text-xs font-medium">
         {t("automationPage.toolStripeSuccessUrl")}
         <input value={successUrl} onChange={(e) => setSuccessUrl(e.target.value)} className={fieldCls} />
@@ -5518,14 +5522,16 @@ function StripeToolEditor({
       <button
         type="button"
         onClick={() => {
+          const catalogPayload = stripeCatalogToConfigPayload(catalogRows, "brl");
           const patch: Record<string, unknown> = {
             provider: "stripe",
             presetKey: typeof c.presetKey === "string" ? c.presetKey : "int_stripe",
             executor: typeof c.executor === "string" && c.executor ? c.executor : "stripe_api",
             successUrl: successUrl.trim(),
             cancelUrl: cancelUrl.trim(),
-            defaultPriceId: defaultPriceId.trim(),
-            currency: currency.trim().toLowerCase(),
+            catalog: catalogPayload.catalog,
+            defaultPriceId: catalogPayload.defaultPriceId,
+            currency: catalogPayload.currency,
           };
           const keyTrimmed = secretKey.trim();
           if (keyTrimmed && keyTrimmed !== "***") patch.secretKey = keyTrimmed;
@@ -5555,9 +5561,7 @@ function MercadoPagoToolEditor({
   const [webhookSecret, setWebhookSecret] = useState("");
   const [successUrl, setSuccessUrl] = useState(String(c.successUrl ?? ""));
   const [cancelUrl, setCancelUrl] = useState(String(c.cancelUrl ?? ""));
-  const [defaultAmountCents, setDefaultAmountCents] = useState(String(c.defaultAmountCents ?? c.defaultAmount ?? ""));
-  const [defaultTitle, setDefaultTitle] = useState(String(c.defaultTitle ?? "Pagamento"));
-  const [currency, setCurrency] = useState(String(c.currency ?? "BRL"));
+  const [catalogRows, setCatalogRows] = useState<MercadoPagoCatalogRow[]>(() => mercadoPagoCatalogFromConfig(c));
   const [webhookUrl, setWebhookUrl] = useState("");
   const [recommendedEvents, setRecommendedEvents] = useState<string[]>([]);
   const [additionalEvents, setAdditionalEvents] = useState<string[]>([]);
@@ -5569,9 +5573,7 @@ function MercadoPagoToolEditor({
     setWebhookSecret("");
     setSuccessUrl(String(cfg.successUrl ?? ""));
     setCancelUrl(String(cfg.cancelUrl ?? ""));
-    setDefaultAmountCents(String(cfg.defaultAmountCents ?? cfg.defaultAmount ?? ""));
-    setDefaultTitle(String(cfg.defaultTitle ?? "Pagamento"));
-    setCurrency(String(cfg.currency ?? "BRL"));
+    setCatalogRows(mercadoPagoCatalogFromConfig(cfg));
   }, [tool.id, tool.config]);
 
   useEffect(() => {
@@ -5614,8 +5616,11 @@ function MercadoPagoToolEditor({
 
   return (
     <div className="mt-3 space-y-2 border-t border-ink-200 pt-3 dark:border-ink-700">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-ink-500">{t("automationPage.toolMercadoPagoHelp")}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <PaymentProviderLogo provider="mercadopago" size="lg" className="mt-0.5" />
+          <p className="text-xs text-ink-500">{t("automationPage.toolMercadoPagoHelp")}</p>
+        </div>
         <MercadoPagoToolSetupHelp
           t={t}
           webhookUrl={webhookUrl}
@@ -5677,23 +5682,7 @@ function MercadoPagoToolEditor({
           </p>
         ) : null}
       </div>
-      <label className="block text-xs font-medium">
-        {t("automationPage.toolMercadoPagoDefaultAmountCents")}
-        <input
-          value={defaultAmountCents}
-          onChange={(e) => setDefaultAmountCents(e.target.value)}
-          placeholder="9900"
-          className={fieldCls}
-        />
-      </label>
-      <label className="block text-xs font-medium">
-        {t("automationPage.toolMercadoPagoDefaultTitle")}
-        <input value={defaultTitle} onChange={(e) => setDefaultTitle(e.target.value)} className={fieldCls} />
-      </label>
-      <label className="block text-xs font-medium">
-        {t("automationPage.toolMercadoPagoCurrency")}
-        <input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="BRL" className={fieldCls} />
-      </label>
+      <MercadoPagoCatalogEditor rows={catalogRows} t={t} onChange={setCatalogRows} />
       <label className="block text-xs font-medium">
         {t("automationPage.toolMercadoPagoSuccessUrl")}
         <input value={successUrl} onChange={(e) => setSuccessUrl(e.target.value)} className={fieldCls} />
@@ -5706,20 +5695,18 @@ function MercadoPagoToolEditor({
       <button
         type="button"
         onClick={() => {
+          const catalogPayload = mercadoPagoCatalogToConfigPayload(catalogRows, "BRL", "Pagamento");
           const patch: Record<string, unknown> = {
             provider: "mercadopago",
             presetKey: typeof c.presetKey === "string" ? c.presetKey : "int_mercadopago",
             executor: typeof c.executor === "string" && c.executor ? c.executor : "mercadopago_api",
             successUrl: successUrl.trim(),
             cancelUrl: cancelUrl.trim(),
-            defaultTitle: defaultTitle.trim() || "Pagamento",
-            currency: currency.trim().toUpperCase() || "BRL",
+            catalog: catalogPayload.catalog,
+            defaultAmountCents: catalogPayload.defaultAmountCents,
+            defaultTitle: catalogPayload.defaultTitle,
+            currency: catalogPayload.currency,
           };
-          const amountTrimmed = defaultAmountCents.trim();
-          if (amountTrimmed) {
-            const n = Number(amountTrimmed);
-            if (Number.isFinite(n) && n > 0) patch.defaultAmountCents = Math.floor(n);
-          }
           const tokenTrimmed = accessToken.trim();
           if (tokenTrimmed && tokenTrimmed !== "***") patch.accessToken = tokenTrimmed;
           const webhookTrimmed = webhookSecret.trim();

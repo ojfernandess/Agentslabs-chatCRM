@@ -11,6 +11,15 @@ export type MercadoPagoToolAction =
   | "create_checkout_preference"
   | "create_pix_payment";
 
+export type MercadoPagoCatalogEntry = {
+  label?: string;
+  planId?: string;
+  amountCents?: number;
+  currency?: string;
+  defaultTitle?: string;
+  isDefault?: boolean;
+};
+
 export type MercadoPagoToolConfig = {
   accessToken: string;
   webhookSecret: string;
@@ -19,6 +28,7 @@ export type MercadoPagoToolConfig = {
   defaultAmountCents: number | null;
   defaultTitle: string;
   currency: string;
+  catalog: MercadoPagoCatalogEntry[];
 };
 
 const MP_ACTIONS = new Set<MercadoPagoToolAction>([
@@ -107,17 +117,57 @@ export function parseMercadoPagoAction(raw: unknown): MercadoPagoToolAction | nu
   return MP_ACTIONS.has(normalized as MercadoPagoToolAction) ? (normalized as MercadoPagoToolAction) : null;
 }
 
+export function parseMercadoPagoCatalog(cfg: unknown): MercadoPagoCatalogEntry[] {
+  const c = asRecord(cfg);
+  const raw = c.catalog;
+  if (Array.isArray(raw)) {
+    const entries = raw
+      .map((item) => {
+        const o = asRecord(item);
+        const planId = str(o.planId) || str(o.plan_id);
+        const amountCents = optionalNumber(o.amountCents ?? o.amount_cents);
+        if (!planId && amountCents == null) return null;
+        return {
+          label: str(o.label) || str(o.name) || undefined,
+          planId: planId || undefined,
+          amountCents: amountCents ?? undefined,
+          currency: str(o.currency).toUpperCase() || undefined,
+          defaultTitle: str(o.defaultTitle) || str(o.title) || undefined,
+          isDefault: o.isDefault === true,
+        } satisfies MercadoPagoCatalogEntry;
+      })
+      .filter((x): x is MercadoPagoCatalogEntry => x != null);
+    if (entries.length > 0) return entries;
+  }
+  const legacyAmount = optionalNumber(c.defaultAmountCents ?? c.defaultAmount);
+  if (legacyAmount != null) {
+    return [
+      {
+        amountCents: legacyAmount,
+        isDefault: true,
+        currency: str(c.currency).toUpperCase() || undefined,
+        defaultTitle: str(c.defaultTitle) || undefined,
+      },
+    ];
+  }
+  return [];
+}
+
 export function readMercadoPagoToolConfig(cfg: unknown): MercadoPagoToolConfig {
   const c = asRecord(cfg);
+  const catalog = parseMercadoPagoCatalog(c);
+  const defaultEntry = catalog.find((e) => e.isDefault) ?? catalog[0];
   const amountRaw = c.defaultAmountCents ?? c.defaultAmount;
+  const defaultAmountCents = optionalNumber(amountRaw) ?? defaultEntry?.amountCents ?? null;
   return {
     accessToken: str(c.accessToken) || str(c.access_token),
     webhookSecret: str(c.webhookSecret),
     successUrl: str(c.successUrl),
     cancelUrl: str(c.cancelUrl),
-    defaultAmountCents: optionalNumber(amountRaw),
-    defaultTitle: str(c.defaultTitle) || "Pagamento",
-    currency: str(c.currency).toUpperCase() || "BRL",
+    defaultAmountCents,
+    defaultTitle: str(c.defaultTitle) || defaultEntry?.defaultTitle || "Pagamento",
+    currency: str(c.currency).toUpperCase() || defaultEntry?.currency || "BRL",
+    catalog,
   };
 }
 
@@ -136,6 +186,16 @@ export function buildMercadoPagoAgentToolDescription(config: unknown): string {
     parts.push(`Valor predefinido: ${cfg.defaultAmountCents} centavos (${cfg.currency}).`);
   } else {
     parts.push("Se o valor não estiver no config, passe amountCents ou unitPrice.");
+  }
+  if (cfg.catalog.length > 0) {
+    const lines = cfg.catalog.slice(0, 12).map((e) => {
+      const label = e.label ? `${e.label}: ` : "";
+      const plan = e.planId ? `plano ${e.planId}` : "";
+      const amount = e.amountCents != null ? `${e.amountCents} centavos` : "";
+      const core = [plan, amount].filter(Boolean).join(", ") || "item configurado";
+      return `${label}${core}${e.isDefault ? " (predefinido)" : ""}`;
+    });
+    parts.push(`Catálogo configurado: ${lines.join("; ")}.`);
   }
   if (cfg.webhookSecret) {
     parts.push("Pagamentos aprovados via webhook actualizam paymentStatus=paid nos flowSlots da conversa.");

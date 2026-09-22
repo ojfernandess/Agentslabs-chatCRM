@@ -31,6 +31,14 @@ export type StripeAction =
   | "create_payment_link"
   | "create_checkout_session";
 
+export type StripeCatalogEntry = {
+  label?: string;
+  productId?: string;
+  priceId: string;
+  currency?: string;
+  isDefault?: boolean;
+};
+
 export type StripeToolConfig = {
   secretKey: string;
   webhookSecret: string;
@@ -38,6 +46,7 @@ export type StripeToolConfig = {
   cancelUrl: string;
   defaultPriceId: string;
   currency: string;
+  catalog: StripeCatalogEntry[];
 };
 
 const STRIPE_ACTIONS = new Set<StripeAction>([
@@ -98,15 +107,47 @@ export function parseStripeAction(raw: unknown): StripeAction | null {
   return STRIPE_ACTIONS.has(normalized as StripeAction) ? (normalized as StripeAction) : null;
 }
 
+export function parseStripeCatalog(cfg: unknown): StripeCatalogEntry[] {
+  const c = asRecord(cfg);
+  const raw = c.catalog;
+  if (Array.isArray(raw)) {
+    const entries = raw
+      .map((item) => {
+        const o = asRecord(item);
+        const priceId = str(o.priceId) || str(o.price_id);
+        if (!priceId) return null;
+        return {
+          label: str(o.label) || str(o.name) || undefined,
+          productId: str(o.productId) || str(o.product_id) || undefined,
+          priceId,
+          currency: str(o.currency).toLowerCase() || undefined,
+          isDefault: o.isDefault === true,
+        } satisfies StripeCatalogEntry;
+      })
+      .filter((x): x is StripeCatalogEntry => x != null);
+    if (entries.length > 0) return entries;
+  }
+  const legacyPrice = str(c.defaultPriceId);
+  if (legacyPrice) {
+    return [{ priceId: legacyPrice, isDefault: true, currency: str(c.currency).toLowerCase() || undefined }];
+  }
+  return [];
+}
+
 export function readStripeToolConfig(cfg: unknown): StripeToolConfig {
   const c = asRecord(cfg);
+  const catalog = parseStripeCatalog(c);
+  const defaultEntry = catalog.find((e) => e.isDefault) ?? catalog[0];
+  const defaultPriceId = str(c.defaultPriceId) || defaultEntry?.priceId || "";
+  const currency = str(c.currency).toLowerCase() || defaultEntry?.currency || "";
   return {
     secretKey: str(c.secretKey),
     webhookSecret: str(c.webhookSecret),
     successUrl: str(c.successUrl),
     cancelUrl: str(c.cancelUrl),
-    defaultPriceId: str(c.defaultPriceId),
-    currency: str(c.currency).toLowerCase(),
+    defaultPriceId,
+    currency,
+    catalog,
   };
 }
 
@@ -125,6 +166,16 @@ export function buildStripeAgentToolDescription(config: unknown): string {
     parts.push(`Price ID predefinido: ${cfg.defaultPriceId}.`);
   } else {
     parts.push("Se o priceId não estiver no config, use list_prices antes de gerar o link.");
+  }
+  if (cfg.catalog.length > 0) {
+    const lines = cfg.catalog
+      .slice(0, 12)
+      .map((e) => {
+        const label = e.label ? `${e.label}: ` : "";
+        const product = e.productId ? `prod ${e.productId}, ` : "";
+        return `${label}${product}price ${e.priceId}${e.isDefault ? " (predefinido)" : ""}`;
+      });
+    parts.push(`Catálogo configurado: ${lines.join("; ")}.`);
   }
   if (cfg.successUrl) parts.push(`URL de sucesso predefinida: ${cfg.successUrl}.`);
   if (cfg.cancelUrl) parts.push(`URL de cancelamento predefinida: ${cfg.cancelUrl}.`);

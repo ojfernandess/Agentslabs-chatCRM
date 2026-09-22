@@ -40,6 +40,8 @@ export interface AutomationToolPresetDefinition {
     category: AutomationMarketplaceCategory;
     /** Nome do ícone Lucide (ex.: Mail) */
     icon: string;
+    /** URL pública do logo (ex.: /logo-mercadopago.svg) */
+    logoUrl?: string;
     /** Ordenação “mais usadas” (maior = primeiro) */
     popularity: number;
     /** Cor de destaque (Tailwind) para gradiente do card */
@@ -647,9 +649,16 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
       cancelUrl: "",
       defaultPriceId: "",
       currency: "",
+      catalog: [],
       executor: "stripe_api",
     },
-    marketplace: { category: "PAYMENTS", icon: "CreditCard", popularity: 82, accent: "from-violet-500/30 to-purple-900/20" },
+    marketplace: {
+      category: "PAYMENTS",
+      icon: "CreditCard",
+      logoUrl: "/Stripe%20wordmark%20-%20Blurple.svg",
+      popularity: 82,
+      accent: "from-violet-500/30 to-purple-900/20",
+    },
   },
   {
     presetKey: "int_mercadopago",
@@ -690,9 +699,16 @@ export const AUTOMATION_TOOL_PRESETS: AutomationToolPresetDefinition[] = [
       defaultAmountCents: null,
       defaultTitle: "Pagamento",
       currency: "BRL",
+      catalog: [],
       executor: "mercadopago_api",
     },
-    marketplace: { category: "PAYMENTS", icon: "CreditCard", popularity: 81, accent: "from-sky-500/30 to-blue-900/20" },
+    marketplace: {
+      category: "PAYMENTS",
+      icon: "CreditCard",
+      logoUrl: "/logo-mercadopago.svg",
+      popularity: 81,
+      accent: "from-sky-500/30 to-blue-900/20",
+    },
   },
   {
     presetKey: "int_google_sheets",

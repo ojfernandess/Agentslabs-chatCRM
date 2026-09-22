@@ -34,6 +34,8 @@ describe("stripeToolExecute helpers", () => {
     assert.equal(cfg.successUrl, "https://example.com/ok");
     assert.equal(cfg.defaultPriceId, "price_123");
     assert.equal(cfg.currency, "brl");
+    assert.equal(cfg.catalog.length, 1);
+    assert.equal(cfg.catalog[0]?.priceId, "price_123");
   });
 
   it("parses supported actions and aliases", () => {
