@@ -373,15 +373,31 @@ export async function importContactRows(
   app: FastifyInstance,
   organizationId: string,
   rows: ContactImportRow[],
-  options: { updateExisting: boolean; createdById?: string },
+  options: {
+    updateExisting: boolean;
+    createdById?: string;
+    onRowProcessed?: (processed: number, total: number) => void;
+  },
 ): Promise<ContactImportResult> {
   const result: ContactImportResult = { created: 0, updated: 0, skipped: 0, errors: [] };
+  const progressEvery = rows.length > 200 ? 10 : rows.length > 50 ? 5 : 1;
 
-  for (const row of rows) {
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]!;
+    const reportProgress = () => {
+      if (
+        options.onRowProcessed &&
+        ((index + 1) % progressEvery === 0 || index === rows.length - 1)
+      ) {
+        options.onRowProcessed(index + 1, rows.length);
+      }
+    };
+
     const phone = normalizePhoneE164(row.phone);
     if (!phone) {
       result.skipped++;
       result.errors.push({ row: row.rowNumber, reason: "invalid_phone" });
+      reportProgress();
       continue;
     }
 
@@ -400,6 +416,7 @@ export async function importContactRows(
       if (!options.updateExisting) {
         result.skipped++;
         result.errors.push({ row: row.rowNumber, reason: "duplicate" });
+        reportProgress();
         continue;
       }
 
@@ -424,6 +441,7 @@ export async function importContactRows(
       }
 
       result.updated++;
+      reportProgress();
       continue;
     }
 
@@ -449,6 +467,7 @@ export async function importContactRows(
 
     fireBroadcastEventTriggers(app, organizationId, "NEW_LEAD", { contactId: contact.id });
     result.created++;
+    reportProgress();
   }
 
   return result;

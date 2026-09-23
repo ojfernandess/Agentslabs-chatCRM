@@ -23,6 +23,24 @@ type ImportResult = {
   messages: { created: number; updated: number; skipped: number; errors: { row: number | string; reason: string }[] };
 };
 
+type ImportJobStatus = {
+  jobId: string;
+  status: "running" | "completed" | "failed";
+  phase: "contacts" | "conversations" | "messages" | "done";
+  percent: number;
+  processed: number;
+  total: number;
+  result?: ImportResult;
+  error?: string;
+};
+
+type ImportProgress = {
+  phase: ImportJobStatus["phase"];
+  percent: number;
+  processed: number;
+  total: number;
+};
+
 type Props = {
   org: OrgExportTarget;
   initialTab?: ModalTab;
@@ -48,6 +66,19 @@ function importErrorLabel(reason: string, t: (key: string) => string): string {
   return reason;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function importPhaseLabel(phase: ImportProgress["phase"], t: (key: string) => string): string {
+  if (phase === "contacts") return t("superAdmin.orgImportPhaseContacts");
+  if (phase === "conversations") return t("superAdmin.orgImportPhaseConversations");
+  if (phase === "messages") return t("superAdmin.orgImportPhaseMessages");
+  return t("superAdmin.orgImportPhaseDone");
+}
+
 export function SuperAdminOrgExportModal({ org, initialTab = "export", onClose }: Props) {
   const { t } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +97,7 @@ export function SuperAdminOrgExportModal({ org, initialTab = "export", onClose }
   const [importMessages, setImportMessages] = useState(true);
   const [updateExistingContacts, setUpdateExistingContacts] = useState(true);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +171,7 @@ export function SuperAdminOrgExportModal({ org, initialTab = "export", onClose }
     setError("");
     setSuccess("");
     setImportResult(null);
+    setImportProgress(null);
     setLoading(true);
     try {
       const form = new FormData();
@@ -147,20 +180,56 @@ export function SuperAdminOrgExportModal({ org, initialTab = "export", onClose }
       form.append("importConversations", importConversations ? "true" : "false");
       form.append("importMessages", importMessages ? "true" : "false");
       form.append("updateExistingContacts", updateExistingContacts ? "true" : "false");
+      form.append("trackProgress", "true");
 
-      const result = await api.postMultipart<ImportResult>(`/super/organizations/${org.id}/import`, form);
-      setImportResult(result);
-      setSuccess(
-        t("superAdmin.orgImportSuccess")
-          .replace("{contactsCreated}", String(result.contacts.created))
-          .replace("{contactsUpdated}", String(result.contacts.updated))
-          .replace("{conversationsCreated}", String(result.conversations.created))
-          .replace("{messagesCreated}", String(result.messages.created)),
+      const started = await api.postMultipart<{ jobId: string; status: "running" }>(
+        `/super/organizations/${org.id}/import`,
+        form,
       );
+
+      setImportProgress({
+        phase: "contacts",
+        percent: 0,
+        processed: 0,
+        total: 0,
+      });
+
+      for (;;) {
+        const status = await api.get<ImportJobStatus>(
+          `/super/organizations/${org.id}/import/jobs/${started.jobId}`,
+        );
+
+        setImportProgress({
+          phase: status.phase,
+          percent: status.percent,
+          processed: status.processed,
+          total: status.total,
+        });
+
+        if (status.status === "completed" && status.result) {
+          setImportResult(status.result);
+          setSuccess(
+            t("superAdmin.orgImportSuccess")
+              .replace("{contactsCreated}", String(status.result.contacts.created))
+              .replace("{contactsUpdated}", String(status.result.contacts.updated))
+              .replace("{conversationsCreated}", String(status.result.conversations.created))
+              .replace("{messagesCreated}", String(status.result.messages.created)),
+          );
+          break;
+        }
+
+        if (status.status === "failed") {
+          setError(status.error || t("superAdmin.orgImportFailed"));
+          break;
+        }
+
+        await sleep(500);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("superAdmin.orgImportFailed"));
     } finally {
       setLoading(false);
+      setImportProgress(null);
     }
   };
 
@@ -169,6 +238,7 @@ export function SuperAdminOrgExportModal({ org, initialTab = "export", onClose }
     setError("");
     setSuccess("");
     setImportResult(null);
+    setImportProgress(null);
   };
 
   const allImportErrors = importResult
@@ -376,6 +446,31 @@ export function SuperAdminOrgExportModal({ org, initialTab = "export", onClose }
               <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("superAdmin.orgImportFormatHint")}</p>
             </div>
 
+            {importProgress ? (
+              <div className="rounded-xl border border-brand-200/70 bg-brand-50/60 p-4 dark:border-brand-900/40 dark:bg-brand-950/20">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <p className="font-semibold text-ink-900 dark:text-ink-50">
+                    {importPhaseLabel(importProgress.phase, t)}
+                  </p>
+                  <p className="text-xs font-medium text-ink-600 dark:text-ink-300">{importProgress.percent}%</p>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80 dark:bg-ink-900">
+                  <div
+                    className="h-full rounded-full bg-brand-600 transition-all duration-300"
+                    style={{ width: `${Math.max(importProgress.percent, 4)}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-ink-600 dark:text-ink-300">
+                  {importProgress.total > 0
+                    ? t("superAdmin.orgImportProgressLabel")
+                        .replace("{processed}", String(importProgress.processed))
+                        .replace("{total}", String(importProgress.total))
+                        .replace("{percent}", String(importProgress.percent))
+                    : t("superAdmin.orgImportProgressStarting")}
+                </p>
+              </div>
+            ) : null}
+
             {allImportErrors.length > 0 ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
                 <p className="font-semibold">{t("superAdmin.orgImportErrorsTitle")}</p>
@@ -413,7 +508,9 @@ export function SuperAdminOrgExportModal({ org, initialTab = "export", onClose }
             className="btn-primary"
           >
             {loading
-              ? t("common.loading")
+              ? importProgress
+                ? t("superAdmin.orgImportRunning")
+                : t("common.loading")
               : tab === "export"
                 ? delivery === "download"
                   ? t("superAdmin.orgExportSubmitDownload")

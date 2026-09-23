@@ -15,9 +15,15 @@ import {
   sendOrganizationExportByEmail,
 } from "../lib/organizationDataExport.js";
 import {
+  countOrganizationImportUnits,
   importOrganizationData,
   parseOrganizationImportFile,
 } from "../lib/organizationDataImport.js";
+import {
+  createOrgImportJob,
+  getOrgImportJob,
+  updateOrgImportJob,
+} from "../lib/organizationImportJobs.js";
 import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
 import { applyCatalogPlanToOrganization } from "../lib/billing/planAssignment.js";
 import { BillingError, updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
@@ -1005,18 +1011,86 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const result = await importOrganizationData(
-      app,
-      org.id,
-      parsed.payload,
-      {
-        importContacts,
-        importConversations,
-        importMessages,
-        updateExistingContacts,
-      },
-      request.user.id,
-    );
+    const trackProgress = truthy(fields.trackProgress);
+    const importScope = {
+      importContacts,
+      importConversations,
+      importMessages,
+      updateExistingContacts,
+    };
+
+    const runImport = async (onProgress?: Parameters<typeof importOrganizationData>[3]["onProgress"]) =>
+      importOrganizationData(
+        app,
+        org.id,
+        parsed.payload,
+        { ...importScope, onProgress },
+        request.user.id,
+      );
+
+    if (trackProgress) {
+      const jobId = createOrgImportJob(org.id);
+      void (async () => {
+        try {
+          const result = await runImport((progress) => {
+            updateOrgImportJob(jobId, {
+              status: "running",
+              phase: progress.phase,
+              percent: progress.percent,
+              processed: progress.processed,
+              total: progress.total,
+            });
+          });
+
+          const fullResult = {
+            format: parsed.format,
+            ...result,
+          };
+          const totalUnits = countOrganizationImportUnits(parsed.payload, importScope) || 1;
+
+          updateOrgImportJob(jobId, {
+            status: "completed",
+            phase: "done",
+            percent: 100,
+            processed: totalUnits,
+            total: totalUnits,
+            result: fullResult,
+          });
+
+          await safeAudit(request, {
+            actorUserId: request.user.id,
+            organizationId: org.id,
+            action: "super.organization.import",
+            resourceType: "organization",
+            resourceId: org.id,
+            metadata: {
+              format: parsed.format,
+              importContacts,
+              importConversations,
+              importMessages,
+              updateExistingContacts,
+              contactsCreated: result.contacts.created,
+              contactsUpdated: result.contacts.updated,
+              conversationsCreated: result.conversations.created,
+              messagesCreated: result.messages.created,
+              async: true,
+              jobId,
+            },
+            ip: clientIp(request),
+          });
+        } catch (err) {
+          request.log.error({ err, jobId, organizationId: org.id }, "organization import job failed");
+          updateOrgImportJob(jobId, {
+            status: "failed",
+            error: err instanceof Error ? err.message : "import_failed",
+          });
+        }
+      })();
+
+      return reply.status(202).send({ jobId, status: "running" });
+    }
+
+    const result = await runImport();
 
     await safeAudit(request, {
       actorUserId: request.user.id,
@@ -1043,6 +1117,17 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       ...result,
     };
   });
+
+  app.get<{ Params: { id: string; jobId: string } }>(
+    "/organizations/:id/import/jobs/:jobId",
+    async (request, reply) => {
+      const job = getOrgImportJob(request.params.jobId, request.params.id);
+      if (!job) {
+        return reply.status(404).send({ error: "Not Found", message: "Import job not found", statusCode: 404 });
+      }
+      return job;
+    },
+  );
 
   app.delete<{ Params: { id: string } }>("/organizations/:id", async (request, reply) => {
     const orgId = request.params.id;

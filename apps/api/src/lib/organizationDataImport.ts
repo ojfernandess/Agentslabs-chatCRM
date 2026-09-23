@@ -28,7 +28,27 @@ export type OrganizationImportScope = {
   importConversations: boolean;
   importMessages: boolean;
   updateExistingContacts: boolean;
+  onProgress?: (progress: OrganizationImportProgress) => void;
 };
+
+export type OrganizationImportProgress = {
+  phase: "contacts" | "conversations" | "messages";
+  processed: number;
+  total: number;
+  percent: number;
+};
+
+export function countOrganizationImportUnits(
+  payload: OrganizationImportPayload,
+  scope: Pick<OrganizationImportScope, "importContacts" | "importConversations" | "importMessages">,
+): number {
+  const importConversations = scope.importConversations || scope.importMessages;
+  return (
+    (scope.importContacts ? payload.contacts.length : 0) +
+    (importConversations ? payload.conversations.length : 0) +
+    (scope.importMessages ? payload.messages.length : 0)
+  );
+}
 
 export type OrganizationImportSectionResult = {
   created: number;
@@ -416,6 +436,48 @@ function resolveContactId(
   return null;
 }
 
+function createImportProgressReporter(
+  scope: OrganizationImportScope,
+  payload: OrganizationImportPayload,
+): {
+  emit: (phase: OrganizationImportProgress["phase"], processedInPhase: number, phaseTotal: number) => void;
+  finishPhase: (phaseTotal: number) => void;
+  complete: () => void;
+} {
+  const importConversations = scope.importConversations || scope.importMessages;
+  const contactTotal = scope.importContacts ? payload.contacts.length : 0;
+  const conversationTotal = importConversations ? payload.conversations.length : 0;
+  const messageTotal = scope.importMessages ? payload.messages.length : 0;
+  const grandTotal = contactTotal + conversationTotal + messageTotal || 1;
+  let baseCompleted = 0;
+  const onProgress = scope.onProgress;
+
+  const emit = (
+    phase: OrganizationImportProgress["phase"],
+    processedInPhase: number,
+    phaseTotal: number,
+  ) => {
+    const processed = Math.min(grandTotal, baseCompleted + processedInPhase);
+    const percent = Math.min(99, Math.round((processed / grandTotal) * 100));
+    onProgress?.({ phase, processed, total: grandTotal, percent });
+  };
+
+  const finishPhase = (phaseTotal: number) => {
+    baseCompleted += phaseTotal;
+  };
+
+  const complete = () => {
+    onProgress?.({
+      phase: "messages",
+      processed: grandTotal,
+      total: grandTotal,
+      percent: 100,
+    });
+  };
+
+  return { emit, finishPhase, complete };
+}
+
 export async function importOrganizationData(
   app: FastifyInstance,
   organizationId: string,
@@ -436,7 +498,12 @@ export async function importOrganizationData(
     messages: emptySection(),
   };
 
+  const importConversations = scope.importConversations || scope.importMessages;
+  const progress = createImportProgressReporter(scope, payload);
+
   if (scope.importContacts && payload.contacts.length > 0) {
+    const contactTotal = payload.contacts.length;
+    progress.emit("contacts", 0, contactTotal);
     const rows: ContactImportRow[] = payload.contacts.map((c, index) => ({
       rowNumber: index + 1,
       name: c.name,
@@ -449,6 +516,7 @@ export async function importOrganizationData(
     const contactResult = await importContactRows(app, organizationId, rows, {
       updateExisting: scope.updateExistingContacts,
       createdById,
+      onRowProcessed: (processed) => progress.emit("contacts", processed, contactTotal),
     });
     result.contacts = {
       created: contactResult.created,
@@ -456,13 +524,15 @@ export async function importOrganizationData(
       skipped: contactResult.skipped,
       errors: contactResult.errors.map((e) => ({ row: e.row, reason: e.reason })),
     };
+    progress.finishPhase(contactTotal);
   }
 
   const contactMaps = await refreshContactMaps(organizationId, payload);
   const conversationIdByExportId = new Map<string, string>();
 
-  const importConversations = scope.importConversations || scope.importMessages;
   if (importConversations && payload.conversations.length > 0) {
+    const conversationTotal = payload.conversations.length;
+    progress.emit("conversations", 0, conversationTotal);
     const inboxId = await getDefaultInboxId(organizationId);
     let rowNum = 0;
     for (const conv of payload.conversations) {
@@ -471,6 +541,7 @@ export async function importOrganizationData(
       if (!contactId) {
         result.conversations.skipped++;
         result.conversations.errors.push({ row: rowNum, reason: "contact_not_found" });
+        progress.emit("conversations", rowNum, conversationTotal);
         continue;
       }
 
@@ -494,10 +565,14 @@ export async function importOrganizationData(
         result.conversations.skipped++;
         result.conversations.errors.push({ row: rowNum, reason: "create_failed" });
       }
+      progress.emit("conversations", rowNum, conversationTotal);
     }
+    progress.finishPhase(conversationTotal);
   }
 
   if (scope.importMessages && payload.messages.length > 0) {
+    const messageTotal = payload.messages.length;
+    progress.emit("messages", 0, messageTotal);
     let rowNum = 0;
     for (const msg of payload.messages) {
       rowNum++;
@@ -505,6 +580,7 @@ export async function importOrganizationData(
       if (!conversationId) {
         result.messages.skipped++;
         result.messages.errors.push({ row: rowNum, reason: "conversation_not_found" });
+        progress.emit("messages", rowNum, messageTotal);
         continue;
       }
 
@@ -512,6 +588,7 @@ export async function importOrganizationData(
       if (!VALID_DIRECTION.has(direction)) {
         result.messages.skipped++;
         result.messages.errors.push({ row: rowNum, reason: "invalid_direction" });
+        progress.emit("messages", rowNum, messageTotal);
         continue;
       }
 
@@ -536,8 +613,12 @@ export async function importOrganizationData(
         result.messages.skipped++;
         result.messages.errors.push({ row: rowNum, reason: "create_failed" });
       }
+      progress.emit("messages", rowNum, messageTotal);
     }
+    progress.finishPhase(messageTotal);
   }
+
+  progress.complete();
 
   return result;
 }
