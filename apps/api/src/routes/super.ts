@@ -14,6 +14,10 @@ import {
   resolveOrganizationContactEmail,
   sendOrganizationExportByEmail,
 } from "../lib/organizationDataExport.js";
+import {
+  importOrganizationData,
+  parseOrganizationImportFile,
+} from "../lib/organizationDataImport.js";
 import { reassignUserRestrictReferences } from "../lib/userDeletion.js";
 import { applyCatalogPlanToOrganization } from "../lib/billing/planAssignment.js";
 import { BillingError, updateStripeCustomerFromOrganization } from "../lib/billing/StripeCustomerService.js";
@@ -924,6 +928,119 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       contactEmail: org.contactEmail,
       billingEmail: org.billingEmail,
       resolvedEmail: resolved,
+    };
+  });
+
+  app.post<{ Params: { id: string } }>("/organizations/:id/import", async (request, reply) => {
+    const org = await prisma.organization.findUnique({
+      where: { id: request.params.id },
+      select: { id: true, name: true },
+    });
+    if (!org) {
+      return reply.status(404).send({ error: "Not Found", message: "Organization not found", statusCode: 404 });
+    }
+
+    let fileBuf: Buffer | null = null;
+    let fileName = "upload";
+    let fileMime = "";
+    const fields: Record<string, string> = {};
+
+    try {
+      for await (const part of request.parts()) {
+        if (part.type === "file") {
+          fileBuf = await part.toBuffer();
+          fileName = part.filename || "upload";
+          fileMime = part.mimetype || "";
+        } else {
+          fields[part.fieldname] = String(part.value ?? "");
+        }
+      }
+    } catch (err) {
+      request.log.warn({ err }, "organization import multipart parse failed");
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid multipart body",
+        statusCode: 400,
+      });
+    }
+
+    if (!fileBuf?.length) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Expected one file field in multipart form",
+        statusCode: 400,
+      });
+    }
+
+    let parsed: ReturnType<typeof parseOrganizationImportFile>;
+    try {
+      parsed = parseOrganizationImportFile(fileBuf, fileName, fileMime);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "parse_failed";
+      const status = code === "unsupported_format" ? 415 : 400;
+      return reply.status(status).send({
+        error: status === 415 ? "Unsupported Media Type" : "Bad Request",
+        code,
+        message:
+          code === "unsupported_format"
+            ? "Use JSON or CSV exported from this platform"
+            : code === "empty_file"
+              ? "No contacts, conversations, or messages found in file"
+              : "Could not parse file",
+        statusCode: status,
+      });
+    }
+
+    const truthy = (value: string | undefined) => value !== "false" && value !== "0";
+    const importContacts = fields.importContacts === undefined ? true : truthy(fields.importContacts);
+    const importConversations = fields.importConversations === undefined ? true : truthy(fields.importConversations);
+    const importMessages = fields.importMessages === undefined ? true : truthy(fields.importMessages);
+    const updateExistingContacts = truthy(fields.updateExistingContacts);
+
+    if (!importContacts && !importConversations && !importMessages) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Select at least one import scope (contacts, conversations, or messages).",
+        statusCode: 400,
+      });
+    }
+
+    const result = await importOrganizationData(
+      app,
+      org.id,
+      parsed.payload,
+      {
+        importContacts,
+        importConversations,
+        importMessages,
+        updateExistingContacts,
+      },
+      request.user.id,
+    );
+
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      organizationId: org.id,
+      action: "super.organization.import",
+      resourceType: "organization",
+      resourceId: org.id,
+      metadata: {
+        format: parsed.format,
+        importContacts,
+        importConversations,
+        importMessages,
+        updateExistingContacts,
+        contactsCreated: result.contacts.created,
+        contactsUpdated: result.contacts.updated,
+        conversationsCreated: result.conversations.created,
+        messagesCreated: result.messages.created,
+      },
+      ip: clientIp(request),
+    });
+
+    return {
+      format: parsed.format,
+      ...result,
     };
   });
 
