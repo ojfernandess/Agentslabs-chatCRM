@@ -3923,15 +3923,14 @@ export function ConversationDetailPage() {
                       className={clsx(
                         filledSoftBase,
                         filledSoftSlate,
-                        actionBtnSize,
+                        "p-2",
                         messageSearchOpen && "ring-2 ring-brand-400/60",
                       )}
                       onClick={() => setMessageSearchOpen((open) => !open)}
                       title={t("conversationDetail.messageSearch.open")}
                       aria-label={t("conversationDetail.messageSearch.open")}
                     >
-                      <Search className="h-3.5 w-3.5" />
-                      {t("conversationDetail.messageSearch.open")}
+                      <Search className="h-4 w-4" />
                     </button>
                     <button
                       type="button"
