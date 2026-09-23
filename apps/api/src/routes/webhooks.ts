@@ -36,7 +36,11 @@ import {
 } from "../lib/evolutionGoPlatform.js";
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
-import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
+import {
+  broadcastConversationMessageUpdated,
+  notifyConversationNewMessage,
+  serializeMessageForWorkspaceWs,
+} from "../lib/workspaceMessageBroadcast.js";
 import { scheduleIntelligentTaggingDuringConversation } from "../lib/intelligent-tagging/service.js";
 import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWebhookHandler.js";
 import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
@@ -763,7 +767,11 @@ async function handleWhatsAppPost(
         );
       }
 
-      broadcastConversationUpdated(organizationId, conversation.id);
+      notifyConversationNewMessage(
+        organizationId,
+        conversation.id,
+        serializeMessageForWorkspaceWs(inboundForPipeline),
+      );
 
       scheduleIntelligentTaggingDuringConversation(
         { organizationId, conversationId: conversation.id, triggerMessageId: inboundForPipeline.id },
@@ -783,7 +791,7 @@ async function handleWhatsAppPost(
           providerMsgId: status.waMessageId,
           conversation: { organizationId },
         },
-        select: { conversationId: true },
+        select: { id: true, conversationId: true, status: true },
       });
       await prisma.message.updateMany({
         where: {
@@ -800,7 +808,10 @@ async function handleWhatsAppPost(
         metaPricing: status.metaPricing ?? null,
       });
       if (targetMsg) {
-        broadcastConversationUpdated(organizationId, targetMsg.conversationId);
+        broadcastConversationMessageUpdated(organizationId, targetMsg.conversationId, {
+          id: targetMsg.id,
+          status: status.status,
+        });
       }
       processedWebhookEvents += 1;
     } catch (err) {

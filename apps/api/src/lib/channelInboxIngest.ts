@@ -4,7 +4,7 @@ import type { InboxChannelType, MessageType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
-import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { notifyConversationNewMessage, serializeMessageForWorkspaceWs } from "./workspaceMessageBroadcast.js";
 import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
 import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
 import { maybeTranscribeInboundImageMessage } from "./imageTranscription.js";
@@ -365,7 +365,11 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     }
   }
 
-  broadcastConversationUpdated(organizationId, conversation.id);
+  notifyConversationNewMessage(
+    organizationId,
+    conversation.id,
+    serializeMessageForWorkspaceWs(inboundForPipeline),
+  );
 
   scheduleIntelligentTaggingDuringConversation(
     { organizationId, conversationId: conversation.id, triggerMessageId: inboundForPipeline.id },

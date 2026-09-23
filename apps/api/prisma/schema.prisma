@@ -1281,6 +1281,7 @@ model Message {
   nvoipCallLog   NvoipCallLog?
 
   @@index([conversationId])
+  @@index([conversationId, createdAt])
   @@index([providerMsgId])
   @@index([actorUserId])
   @@map("messages")

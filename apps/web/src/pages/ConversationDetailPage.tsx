@@ -82,6 +82,13 @@ import {
   type UserAvailability,
 } from "@/lib/userAvailability";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
+import { useWorkspaceWebSocketConnected } from "@/lib/workspaceWebSocket";
+import {
+  CONVERSATION_MESSAGE_CREATED_EVENT,
+  CONVERSATION_MESSAGE_UPDATED_EVENT,
+  type ConversationMessageCreatedDetail,
+  type ConversationMessageUpdatedDetail,
+} from "@/lib/conversationMessagePush";
 import { useConversationAgentTyping } from "@/hooks/useConversationAgentTyping";
 import { BotTypingIndicator } from "@/components/conversation/BotTypingIndicator";
 import { useOrgAvailabilityRealtime } from "@/hooks/useOrgAvailabilityRealtime";
@@ -343,6 +350,7 @@ export function ConversationDetailPage() {
   const funnelEnabled = user?.organizationFeatures?.crm_kanban ?? true;
   const crmDealsEnabled = user?.organizationFeatures?.crm_deals ?? false;
   const agentBotTyping = useConversationAgentTyping(id);
+  const workspaceWsConnected = useWorkspaceWebSocketConnected();
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
@@ -954,6 +962,64 @@ export function ConversationDetailPage() {
     }
   }, [id]);
 
+  const loadConversationMeta = useCallback(async () => {
+    if (!id) return;
+    const requestId = id;
+    try {
+      const meta = await api.get<ConversationDetail>(`/conversations/${requestId}?messages=0`);
+      if (requestId !== activeConversationIdRef.current) return;
+      setConversation((prev) => {
+        if (!prev) return meta;
+        const merged: ConversationDetail = {
+          ...meta,
+          messages: prev.messages,
+          messagesHasMore: prev.messagesHasMore,
+        };
+        setCachedConversation(requestId, merged);
+        return merged;
+      });
+      setTeamPickerId(meta.team?.id ?? "");
+    } catch {
+      /* ignore */
+    }
+  }, [id]);
+
+  const appendPushedMessage = useCallback((message: Message) => {
+    if (!id) return;
+    if (seenMessageIds.current.has(message.id)) return;
+    seenMessageIds.current.add(message.id);
+    stickToBottomRef.current = true;
+    setConversation((prev) => {
+      if (!prev) return prev;
+      const existing = prev.messages ?? [];
+      if (existing.some((m) => m.id === message.id)) return prev;
+      const merged: ConversationDetail = {
+        ...prev,
+        messages: [...existing, message],
+      };
+      setCachedConversation(id, merged);
+      return merged;
+    });
+  }, [id]);
+
+  const patchPushedMessageStatus = useCallback((messageId: string, status: string) => {
+    if (!id) return;
+    setConversation((prev) => {
+      if (!prev?.messages?.length) return prev;
+      let changed = false;
+      const messages = prev.messages!.map((m) => {
+        if (m.id !== messageId) return m;
+        if (m.status === status) return m;
+        changed = true;
+        return { ...m, status };
+      });
+      if (!changed) return prev;
+      const merged: ConversationDetail = { ...prev, messages };
+      setCachedConversation(id, merged);
+      return merged;
+    });
+  }, [id]);
+
   useEffect(() => {
     setNewContactNoteDraft("");
     setContactNotesError("");
@@ -1296,14 +1362,47 @@ export function ConversationDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || workspaceWsConnected) return;
     const interval = setInterval(() => void loadConversation({ silent: true }), 5000);
     return () => clearInterval(interval);
-  }, [id, loadConversation]);
+  }, [id, loadConversation, workspaceWsConnected]);
+
+  const prevWorkspaceWsConnectedRef = useRef(false);
+  useEffect(() => {
+    if (!id) return;
+    if (workspaceWsConnected && !prevWorkspaceWsConnectedRef.current) {
+      void loadConversation({ silent: true });
+    }
+    prevWorkspaceWsConnectedRef.current = workspaceWsConnected;
+  }, [id, workspaceWsConnected, loadConversation]);
 
   useDebouncedConversationUpdated(() => {
-    void loadConversation({ silent: true });
+    if (workspaceWsConnected) {
+      void loadConversationMeta();
+    } else {
+      void loadConversation({ silent: true });
+    }
   }, { conversationId: id });
+
+  useEffect(() => {
+    if (!id || !workspaceWsConnected) return;
+    const onMessageCreated = (e: Event) => {
+      const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
+      if (detail?.conversationId !== id || !detail.message) return;
+      appendPushedMessage(detail.message as Message);
+    };
+    const onMessageUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<ConversationMessageUpdatedDetail>).detail;
+      if (detail?.conversationId !== id || !detail.message?.id) return;
+      patchPushedMessageStatus(detail.message.id, detail.message.status);
+    };
+    window.addEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
+    window.addEventListener(CONVERSATION_MESSAGE_UPDATED_EVENT, onMessageUpdated);
+    return () => {
+      window.removeEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
+      window.removeEventListener(CONVERSATION_MESSAGE_UPDATED_EVENT, onMessageUpdated);
+    };
+  }, [id, workspaceWsConnected, appendPushedMessage, patchPushedMessageStatus]);
 
   useEffect(() => {
     if (!id) return;

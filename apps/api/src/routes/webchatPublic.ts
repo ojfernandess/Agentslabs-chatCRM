@@ -11,7 +11,7 @@ import {
 } from "../lib/webchatSession.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
-import { broadcastConversationUpdated } from "../lib/workspaceHub.js";
+import { notifyConversationNewMessage, serializeMessageForWorkspaceWs } from "../lib/workspaceMessageBroadcast.js";
 import {
   allowAudioVoiceUpload,
   allowRichMediaUpload,
@@ -158,7 +158,11 @@ async function dispatchWebchatInbound(params: {
   };
   log: FastifyRequest["log"];
 }): Promise<void> {
-  broadcastConversationUpdated(params.organizationId, params.conversationId);
+  notifyConversationNewMessage(
+    params.organizationId,
+    params.conversationId,
+    serializeMessageForWorkspaceWs(params.message),
+  );
   const agentCtx = await getAgentBotDispatchContextForInbox(params.organizationId, params.inboxId);
   if (!agentCtx) return;
   const fresh = await prisma.conversation.findFirst({ where: { id: params.conversationId } });

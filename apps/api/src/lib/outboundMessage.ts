@@ -15,7 +15,7 @@ import {
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { isWebchatOutboundActive } from "./webchatSession.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
-import { broadcastConversationUpdated } from "./workspaceHub.js";
+import { notifyConversationNewMessage, serializeMessageForWorkspaceWs } from "./workspaceMessageBroadcast.js";
 import { promoteUserToOnlineIfInactive } from "./userAvailability.js";
 import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
@@ -768,7 +768,23 @@ export async function deliverOutboundWhatsAppMessage(options: {
     data: convPatch,
   });
 
-  broadcastConversationUpdated(organizationId, conversation.id);
+  const messageForWs = await prisma.message.findUnique({
+    where: { id: message.id },
+    include: {
+      actorUser: {
+        select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
+      },
+    },
+  });
+
+  notifyConversationNewMessage(
+    organizationId,
+    conversation.id,
+    serializeMessageForWorkspaceWs(messageForWs ?? message),
+    typeof convPatch.awaitingHumanHandoff === "boolean"
+      ? { awaitingHumanHandoff: convPatch.awaitingHumanHandoff }
+      : undefined,
+  );
 
   if (!skipCrmFlowTrigger && !isPrivate && outboundStatus === "SENT") {
     const { fireCrmFlowTriggers } = await import("./crmFlowHooks.js");

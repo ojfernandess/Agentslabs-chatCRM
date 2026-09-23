@@ -20,6 +20,12 @@ import {
   type UserAvailability,
 } from "@/lib/userAvailability";
 import { publishConversationAgentTyping } from "@/lib/conversationAgentTyping";
+import {
+  publishConversationMessageCreated,
+  publishConversationMessageUpdated,
+  type ConversationMessagePushPayload,
+} from "@/lib/conversationMessagePush";
+import { publishWorkspaceWebSocketConnected } from "@/lib/workspaceWebSocket";
 import { api } from "@/lib/api";
 import {
   resolveTransferNotificationFromWs,
@@ -149,6 +155,7 @@ export function WorkspaceRealtime() {
       userId?: string;
       presenceConnected?: boolean;
       effectiveAvailabilityStatus?: string;
+      message?: ConversationMessagePushPayload;
     }) => {
       if (data.type === "user.presence_changed" && data.userId && data.effectiveAvailabilityStatus) {
         publishUserPresenceChanged(
@@ -189,6 +196,27 @@ export function WorkspaceRealtime() {
             detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
           }),
         );
+      } else if (
+        data.type === "message.created" &&
+        typeof data.conversationId === "string" &&
+        data.message &&
+        typeof data.message.id === "string"
+      ) {
+        publishConversationMessageCreated({
+          conversationId: data.conversationId,
+          message: data.message,
+        });
+      } else if (
+        data.type === "message.updated" &&
+        typeof data.conversationId === "string" &&
+        data.message &&
+        typeof data.message.id === "string" &&
+        typeof data.message.status === "string"
+      ) {
+        publishConversationMessageUpdated({
+          conversationId: data.conversationId,
+          message: { id: data.message.id, status: data.message.status },
+        });
       } else if (
         (data.type === "conversation.read" || data.type === "conversation.unread") &&
         typeof data.conversationId === "string" &&
@@ -304,11 +332,13 @@ export function WorkspaceRealtime() {
 
     const connect = () => {
       if (cancelled || isPresenceClientShutdown()) return;
+      publishWorkspaceWebSocketConnected(false);
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {
         retryAttempt = 0;
+        publishWorkspaceWebSocketConnected(true);
         sendHeartbeat();
       };
 
@@ -324,6 +354,7 @@ export function WorkspaceRealtime() {
 
       ws.onclose = () => {
         if (wsRef.current === ws) wsRef.current = null;
+        publishWorkspaceWebSocketConnected(false);
         if (cancelled) return;
         const delay = Math.min(30_000, 1000 * 2 ** Math.min(retryAttempt, 5));
         retryAttempt += 1;
@@ -333,6 +364,7 @@ export function WorkspaceRealtime() {
 
     const stopPresenceTransport = (tokenForSessionEnd?: string) => {
       cancelled = true;
+      publishWorkspaceWebSocketConnected(false);
       if (heartbeatTimer != null) clearInterval(heartbeatTimer);
       heartbeatTimer = null;
       if (reconnectTimer != null) clearTimeout(reconnectTimer);
