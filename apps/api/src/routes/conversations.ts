@@ -85,6 +85,9 @@ import {
   botAttendanceStatuses,
   isOrgAllConversationsListScope,
 } from "../lib/conversationListScope.js";
+import {
+  getConversationMessagesPaginationFromDb,
+} from "../lib/conversationMessagesPaginationSettings.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -149,6 +152,47 @@ const updateSchema = z.object({
 });
 
 const CONTACT_TIMELINE_LIMIT = 80;
+
+const conversationMessageInclude = {
+  actorUser: {
+    select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
+  },
+} as const;
+
+const conversationDetailQuerySchema = z.object({
+  messages: z.enum(["0", "false"]).optional(),
+});
+
+const conversationMessagesQuerySchema = z.object({
+  before: z.string().uuid().optional(),
+  after: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+async function loadLatestConversationMessages(
+  conversationId: string,
+  pagination: { enabled: boolean; pageSize: number },
+): Promise<{ messages: Awaited<ReturnType<typeof prisma.message.findMany>>; messagesHasMore: boolean }> {
+  if (!pagination.enabled) {
+    const messages = await prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "asc" },
+      include: conversationMessageInclude,
+    });
+    return { messages, messagesHasMore: false };
+  }
+
+  const pageSize = pagination.pageSize;
+  const batch = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    take: pageSize + 1,
+    include: conversationMessageInclude,
+  });
+  const messagesHasMore = batch.length > pageSize;
+  const messages = (messagesHasMore ? batch.slice(0, pageSize) : batch).reverse();
+  return { messages, messagesHasMore };
+}
 
 async function fetchContactTimelineForConversation(organizationId: string, contactId: string) {
   return prisma.timelineEvent.findMany({
@@ -1443,9 +1487,102 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.get<{ Params: { id: string } }>("/:id/messages", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const parsedQuery = conversationMessagesQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsedQuery.error.message, statusCode: 400 });
+    }
+
+    const pagination = await getConversationMessagesPaginationFromDb();
+    if (!pagination.enabled) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Conversation message pagination is disabled",
+        statusCode: 400,
+      });
+    }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, teamId: true, inboxId: true },
+    });
+    if (!conversation) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, conversation);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    const limit = parsedQuery.data.limit ?? pagination.pageSize;
+    const { before, after } = parsedQuery.data;
+    if (!before && !after) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Query parameter before or after is required",
+        statusCode: 400,
+      });
+    }
+    if (before && after) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Use either before or after, not both",
+        statusCode: 400,
+      });
+    }
+
+    if (before) {
+      const anchor = await prisma.message.findFirst({
+        where: { id: before, conversationId: conversation.id },
+        select: { createdAt: true },
+      });
+      if (!anchor) {
+        return reply.status(404).send({ error: "Not Found", message: "Message not found", statusCode: 404 });
+      }
+      const batch = await prisma.message.findMany({
+        where: { conversationId: conversation.id, createdAt: { lt: anchor.createdAt } },
+        orderBy: { createdAt: "desc" },
+        take: limit + 1,
+        include: conversationMessageInclude,
+      });
+      const messagesHasMore = batch.length > limit;
+      const messages = (messagesHasMore ? batch.slice(0, limit) : batch).reverse();
+      return { messages, messagesHasMore };
+    }
+
+    const anchor = await prisma.message.findFirst({
+      where: { id: after!, conversationId: conversation.id },
+      select: { createdAt: true },
+    });
+    if (!anchor) {
+      return { messages: [], messagesHasMore: false };
+    }
+    const messages = await prisma.message.findMany({
+      where: { conversationId: conversation.id, createdAt: { gt: anchor.createdAt } },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+      include: conversationMessageInclude,
+    });
+    return { messages, messagesHasMore: false };
+  });
+
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
+
+    const parsedQuery = conversationDetailQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsedQuery.error.message, statusCode: 400 });
+    }
+    const skipMessages = parsedQuery.data.messages === "0" || parsedQuery.data.messages === "false";
+
+    const pagination = await getConversationMessagesPaginationFromDb();
 
     const conversation = await prisma.conversation.findFirst({
       where: { id: request.params.id, organizationId },
@@ -1476,14 +1613,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           orderBy: { sessionIndex: "asc" },
           include: closureRecordInclude,
         },
-        messages: {
-          orderBy: { createdAt: "asc" },
-          include: {
-            actorUser: {
-              select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
-            },
-          },
-        },
+        ...(skipMessages
+          ? {}
+          : pagination.enabled
+            ? {}
+            : {
+                messages: {
+                  orderBy: { createdAt: "asc" },
+                  include: conversationMessageInclude,
+                },
+              }),
       },
     });
 
@@ -1550,8 +1689,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       request.user.id,
     );
 
+    let messages: Awaited<ReturnType<typeof loadLatestConversationMessages>>["messages"] = [];
+    let messagesHasMore = false;
+    if (!skipMessages) {
+      if (pagination.enabled) {
+        const loaded = await loadLatestConversationMessages(conversation.id, pagination);
+        messages = loaded.messages;
+        messagesHasMore = loaded.messagesHasMore;
+      } else {
+        messages = "messages" in conversation ? (conversation.messages ?? []) : [];
+      }
+    }
+
     return {
       ...stripCsatSurveyToken(convRest),
+      ...(skipMessages ? {} : { messages, messagesHasMore: pagination.enabled ? messagesHasMore : false }),
       activeVoiceCall: activeVoiceByConversation.get(conversation.id) ?? null,
       contact: enrichWebsiteContact(
         {

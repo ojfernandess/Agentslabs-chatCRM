@@ -104,6 +104,11 @@ import {
   parseMediaStoragePlatformValue,
 } from "../lib/mediaStorageSettings.js";
 import {
+  CONVERSATION_MESSAGES_PAGINATION_KEY,
+  DEFAULT_CONVERSATION_MESSAGES_PAGE_SIZE,
+  parseConversationMessagesPaginationValue,
+} from "../lib/conversationMessagesPaginationSettings.js";
+import {
   TURNSTILE_PLATFORM_KEY,
   readTurnstileSettings,
 } from "../lib/turnstileSettings.js";
@@ -284,6 +289,11 @@ const mediaStoragePutSchema = z.object({
   useSsl: z.boolean().optional(),
   region: z.string().max(64).optional(),
   publicBaseUrl: z.string().max(500).optional(),
+});
+
+const conversationMessagesPaginationPutSchema = z.object({
+  enabled: z.boolean(),
+  pageSize: z.coerce.number().int().min(10).max(200).optional(),
 });
 
 const platformAppCreateSchema = z.object({
@@ -2333,6 +2343,38 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       publicBaseUrl: value.publicBaseUrl ?? "",
       source: "platform",
     };
+  });
+
+  app.get("/conversation-messages-pagination", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: CONVERSATION_MESSAGES_PAGINATION_KEY },
+    });
+    return parseConversationMessagesPaginationValue(row?.value);
+  });
+
+  app.put("/conversation-messages-pagination", async (request, reply) => {
+    const parsed = conversationMessagesPaginationPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const value = parseConversationMessagesPaginationValue({
+      enabled: parsed.data.enabled,
+      pageSize: parsed.data.pageSize ?? DEFAULT_CONVERSATION_MESSAGES_PAGE_SIZE,
+    });
+    await prisma.platformSetting.upsert({
+      where: { key: CONVERSATION_MESSAGES_PAGINATION_KEY },
+      create: { key: CONVERSATION_MESSAGES_PAGINATION_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.conversation_messages_pagination.upsert",
+      resourceType: "platform_setting",
+      resourceId: CONVERSATION_MESSAGES_PAGINATION_KEY,
+      metadata: { enabled: value.enabled, pageSize: value.pageSize },
+      ip: clientIp(request),
+    });
+    return value;
   });
 
   app.get("/conversation-media/stats", async (request, reply) => {

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { FileText, Download } from "lucide-react";
 import clsx from "clsx";
 
@@ -68,6 +69,12 @@ export function ChatImageThumbnail({
   outbound: boolean;
   onOpen: () => void;
 }) {
+  const [isPortrait, setIsPortrait] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setIsPortrait(null);
+  }, [src]);
+
   return (
     <button
       type="button"
@@ -75,13 +82,28 @@ export function ChatImageThumbnail({
       className="chat-image-thumb block w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
       aria-label={alt || undefined}
     >
-      <span className="chat-image-thumb__frame">
+      <span
+        className={clsx(
+          "chat-image-thumb__frame",
+          isPortrait === true && "chat-image-thumb__frame--portrait",
+        )}
+      >
         <img
           src={src}
           alt={alt}
-          className={clsx("chat-image-thumb__img", outbound && "opacity-95")}
+          className={clsx(
+            "chat-image-thumb__img",
+            isPortrait === true
+              ? "chat-image-thumb__img--cover"
+              : "chat-image-thumb__img--contain",
+            outbound && "opacity-95",
+          )}
           loading="lazy"
           decoding="async"
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            setIsPortrait(img.naturalHeight > img.naturalWidth);
+          }}
         />
       </span>
     </button>

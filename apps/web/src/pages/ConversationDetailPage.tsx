@@ -300,6 +300,7 @@ interface ConversationDetail {
   };
   team: { id: string; name: string } | null;
   messages?: Message[];
+  messagesHasMore?: boolean;
   contactTimeline?: ContactTimelineEvent[];
   leadOwnerConflict?: LeadOwnerConflict | null;
 }
@@ -343,6 +344,7 @@ export function ConversationDetailPage() {
   const crmDealsEnabled = user?.organizationFeatures?.crm_deals ?? false;
   const agentBotTyping = useConversationAgentTyping(id);
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
@@ -608,6 +610,10 @@ export function ConversationDetailPage() {
   const crmAsideScrollRef = useRef<HTMLDivElement>(null);
   /** Só faz auto-scroll ao fundo se o utilizador já estava junto ao fundo (evita saltar ao fazer poll / ler histórico). */
   const stickToBottomRef = useRef(true);
+  const hasPrependedOlderRef = useRef(false);
+  const loadingOlderRef = useRef(false);
+  const messagesRef = useRef<Message[]>([]);
+  const messagesHasMoreRef = useRef(false);
   const seenMessageIds = useRef(new Set<string>());
   const activeConversationIdRef = useRef(id);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -615,8 +621,16 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     activeConversationIdRef.current = id;
+    hasPrependedOlderRef.current = false;
+    loadingOlderRef.current = false;
+    setLoadingOlderMessages(false);
     setFlowError("");
   }, [id]);
+
+  useEffect(() => {
+    messagesRef.current = conversation?.messages ?? [];
+    messagesHasMoreRef.current = Boolean(conversation?.messagesHasMore);
+  }, [conversation?.messages, conversation?.messagesHasMore]);
 
   useEffect(() => {
     // No workspace de e-mail o utilizador lê de cima para baixo — não forçar o fundo.
@@ -813,12 +827,59 @@ export function ConversationDetailPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [id, navigate, nextConversationId, openResolveModal, location.search]);
 
+  const loadOlderMessages = useCallback(async () => {
+    if (!id || loadingOlderRef.current) return;
+    const msgs = messagesRef.current;
+    if (!msgs.length || !messagesHasMoreRef.current) return;
+
+    loadingOlderRef.current = true;
+    setLoadingOlderMessages(true);
+    const firstId = msgs[0].id;
+    const viewport = messagesViewportRef.current;
+    const prevScrollHeight = viewport?.scrollHeight ?? 0;
+
+    try {
+      const data = await api.get<{ messages: Message[]; messagesHasMore: boolean }>(
+        `/conversations/${id}/messages?before=${firstId}`,
+      );
+      if (id !== activeConversationIdRef.current) return;
+      hasPrependedOlderRef.current = true;
+      for (const m of data.messages) seenMessageIds.current.add(m.id);
+      setConversation((prev) => {
+        if (!prev) return prev;
+        const merged: ConversationDetail = {
+          ...prev,
+          messages: [...data.messages, ...(prev.messages ?? [])],
+          messagesHasMore: data.messagesHasMore,
+        };
+        setCachedConversation(id, merged);
+        return merged;
+      });
+      requestAnimationFrame(() => {
+        if (viewport) viewport.scrollTop = viewport.scrollHeight - prevScrollHeight;
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      loadingOlderRef.current = false;
+      if (id === activeConversationIdRef.current) setLoadingOlderMessages(false);
+    }
+  }, [id]);
+
   const onMessagesViewportScroll = useCallback(() => {
     const el = messagesViewportRef.current;
     if (!el) return;
     const threshold = 120;
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-  }, []);
+    if (
+      !isEmailLayout &&
+      el.scrollTop < 80 &&
+      messagesHasMoreRef.current &&
+      !loadingOlderRef.current
+    ) {
+      void loadOlderMessages();
+    }
+  }, [isEmailLayout, loadOlderMessages]);
 
   useEffect(() => {
     seenMessageIds.current.clear();
@@ -843,6 +904,36 @@ export function ConversationDetailPage() {
     if (!id) return;
     const requestId = id;
     try {
+      if (opts?.silent && hasPrependedOlderRef.current) {
+        const prevMessages = messagesRef.current;
+        const lastId = prevMessages[prevMessages.length - 1]?.id;
+        const [meta, tail] = await Promise.all([
+          api.get<ConversationDetail>(`/conversations/${requestId}?messages=0`),
+          lastId
+            ? api
+                .get<{ messages: Message[] }>(`/conversations/${requestId}/messages?after=${lastId}`)
+                .catch(() => ({ messages: [] as Message[] }))
+            : Promise.resolve({ messages: [] as Message[] }),
+        ]);
+        if (requestId !== activeConversationIdRef.current) return;
+        const existingIds = new Set(prevMessages.map((m) => m.id));
+        const newMessages = tail.messages.filter((m) => !existingIds.has(m.id));
+        for (const m of newMessages) seenMessageIds.current.add(m.id);
+        setConversation((prev) => {
+          const merged: ConversationDetail = {
+            ...meta,
+            messages: newMessages.length ? [...prevMessages, ...newMessages] : prevMessages,
+            messagesHasMore: prev?.messagesHasMore ?? meta.messagesHasMore,
+          };
+          setCachedConversation(requestId, merged);
+          return merged;
+        });
+        setTeamPickerId(meta.team?.id ?? "");
+        return;
+      }
+
+      if (!opts?.silent) hasPrependedOlderRef.current = false;
+
       let pending = getInflightConversation<ConversationDetail>(requestId);
       if (!pending) {
         pending = api.get<ConversationDetail>(`/conversations/${requestId}`);
@@ -3799,6 +3890,11 @@ export function ConversationDetailPage() {
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           )}
           <div className={clsx("relative flex w-full min-w-0 flex-col gap-3")}>
+            {loadingOlderMessages ? (
+              <div className="flex justify-center py-2">
+                <span className="text-xs text-ink-500">{t("conversationDetail.loadingOlderMessages")}</span>
+              </div>
+            ) : null}
             {conversationChatFeed.map((feedItem, feedIndex) => {
               if (feedItem.kind === "handoff") {
                 return (
@@ -3874,7 +3970,8 @@ export function ConversationDetailPage() {
               const bubble = (
                 <div
                   className={clsx(
-                    "crm-bubble relative min-w-0 p-4",
+                    "crm-bubble relative min-w-0",
+                    msg.type === "IMAGE" && msg.mediaUrl ? "crm-bubble--media p-1" : "p-4",
                     emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && "email-workspace-msg",
                     emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && inbound && "email-workspace-msg-in",
                     emailWorkspaceMode && isEmailInbox && msg.type === "TEXT" && !inbound && "email-workspace-msg-out",

@@ -26,6 +26,7 @@ import { SuperAdminOrgExportModal } from "@/components/super-admin/SuperAdminOrg
 import { SuperAdminOrganizationsSection } from "@/components/super-admin/SuperAdminOrganizationsSection";
 import { SuperAdminPublicDocsPanel } from "@/components/super-admin/SuperAdminPublicDocsPanel";
 import { SuperAdminApiRateLimitPanel } from "@/components/super-admin/SuperAdminApiRateLimitPanel";
+import { SuperAdminConversationMessagesPanel } from "@/components/super-admin/SuperAdminConversationMessagesPanel";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 import { ResendBillingReminderTemplateEditor } from "@/components/ResendBillingReminderTemplateEditor";
@@ -2073,6 +2074,9 @@ export function SuperAdminPage() {
               </div>
               <SuperAdminPublicDocsPanel />
               <SuperAdminApiRateLimitPanel />
+
+              <SuperAdminConversationMessagesPanel />
+
               <section className="card-surface p-6">
                 <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.mediaStorageTitle")}</h2>
                 <p className="mb-4 text-sm text-ink-600">{t("superAdmin.mediaStorageSubtitle")}</p>
