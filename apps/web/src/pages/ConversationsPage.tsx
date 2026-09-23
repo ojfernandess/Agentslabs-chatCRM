@@ -94,6 +94,14 @@ function applySyncedContactAvatars(rows: Conversation[], syncedIds: string[]): C
   );
 }
 
+const CONVERSATION_LIST_PAGE_SIZE = 50;
+
+type ConversationListScopeCache = {
+  rows: Conversation[];
+  total: number;
+  page: number;
+};
+
 function buildConversationListQuery(input: {
   organizationId?: string | null;
   botAttendanceActive: boolean;
@@ -103,8 +111,12 @@ function buildConversationListQuery(input: {
   teamFilter: string;
   inboxFilter: string;
   leadTypeFilter: string;
+  page?: number;
 }): { fetchKey: string; params: URLSearchParams } {
-  const params = new URLSearchParams({ pageSize: "50" });
+  const params = new URLSearchParams({
+    page: String(input.page ?? 1),
+    pageSize: String(CONVERSATION_LIST_PAGE_SIZE),
+  });
   if (input.botAttendanceActive) {
     params.set("botAttendance", "1");
   } else if (input.attendanceScopeActive && input.mineActive) {
@@ -161,9 +173,15 @@ export function ConversationsPage({
   } | null>(null);
   const hasAnimated = useRef(false);
   const listFetchGenRef = useRef(0);
-  const listScopeCacheRef = useRef(new Map<string, Conversation[]>());
+  const listScopeCacheRef = useRef(new Map<string, ConversationListScopeCache>());
   const listFetchKeyRef = useRef("");
+  const listPageRef = useRef(1);
+  const listTotalRef = useRef(0);
+  const listHasMoreRef = useRef(false);
+  const loadingMoreRef = useRef(false);
+  const listViewportRef = useRef<HTMLDivElement>(null);
   const initialAttendanceScopeApplied = useRef(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
@@ -518,61 +536,147 @@ export function ConversationsPage({
   useLayoutEffect(() => {
     listFetchKeyRef.current = activeListFetchKey;
     listFetchGenRef.current += 1;
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
     const cached = listScopeCacheRef.current.get(activeListFetchKey);
     if (cached) {
-      setConversations(cached);
+      setConversations(cached.rows);
+      listPageRef.current = cached.page;
+      listTotalRef.current = cached.total;
+      listHasMoreRef.current = cached.rows.length < cached.total;
       setLoading(false);
     } else {
       setConversations([]);
+      listPageRef.current = 1;
+      listTotalRef.current = 0;
+      listHasMoreRef.current = false;
       setLoading(true);
     }
   }, [activeListFetchKey]);
 
+  const syncConversationListAvatars = useCallback(
+    (fetchKey: string, gen: number, contactIds: string[]) => {
+      if (contactIds.length === 0) return;
+      void api
+        .post<{ synced: string[]; failed: string[] }>("/contacts/sync-avatars", { contactIds })
+        .then((syncRes) => {
+          if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
+          if (!syncRes.synced?.length) return;
+          setConversations((prev) => {
+            const next = applySyncedContactAvatars(prev, syncRes.synced);
+            const cached = listScopeCacheRef.current.get(fetchKey);
+            if (cached) {
+              listScopeCacheRef.current.set(fetchKey, { ...cached, rows: next });
+            }
+            return next;
+          });
+        })
+        .catch(() => {});
+    },
+    [],
+  );
+
+  const persistConversationListIds = useCallback((rows: Conversation[]) => {
+    try {
+      localStorage.setItem(
+        "openconduit_conversation_list_ids",
+        JSON.stringify(rows.map((c) => c.id)),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const loadConversations = useCallback(async () => {
     const { fetchKey, params } = buildListQuery();
+    params.set("page", "1");
     listFetchKeyRef.current = fetchKey;
+    listPageRef.current = 1;
     const gen = ++listFetchGenRef.current;
     const cached = listScopeCacheRef.current.get(fetchKey);
 
     try {
-      const res = await api.get<{ data: Conversation[] }>(`/conversations?${params}`);
+      const res = await api.get<{ data: Conversation[]; total: number }>(`/conversations?${params}`);
       if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
 
-      listScopeCacheRef.current.set(fetchKey, res.data);
+      const total = res.total ?? res.data.length;
+      listTotalRef.current = total;
+      listHasMoreRef.current = res.data.length < total;
+      listScopeCacheRef.current.set(fetchKey, { rows: res.data, total, page: 1 });
       setConversations(res.data);
-
-      const contactIds = res.data.map((c) => c.contact.id).slice(0, 40);
-      if (contactIds.length > 0) {
-        void api
-          .post<{ synced: string[]; failed: string[] }>("/contacts/sync-avatars", { contactIds })
-          .then((syncRes) => {
-            if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
-            if (!syncRes.synced?.length) return;
-            setConversations((prev) => {
-              const next = applySyncedContactAvatars(prev, syncRes.synced);
-              listScopeCacheRef.current.set(fetchKey, next);
-              return next;
-            });
-          })
-          .catch(() => {});
-      }
-      try {
-        localStorage.setItem(
-          "openconduit_conversation_list_ids",
-          JSON.stringify(res.data.map((c) => c.id)),
-        );
-      } catch {
-      }
+      syncConversationListAvatars(
+        fetchKey,
+        gen,
+        res.data.map((c) => c.contact.id).slice(0, 40),
+      );
+      persistConversationListIds(res.data);
     } catch {
       if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
-      if (!cached) setConversations([]);
+      if (!cached) {
+        setConversations([]);
+        listTotalRef.current = 0;
+        listHasMoreRef.current = false;
+      }
     } finally {
       if (gen === listFetchGenRef.current && listFetchKeyRef.current === fetchKey) {
         hasAnimated.current = true;
         setLoading(false);
       }
     }
-  }, [buildListQuery]);
+  }, [buildListQuery, persistConversationListIds, syncConversationListAvatars]);
+
+  const loadMoreConversations = useCallback(async () => {
+    if (loadingMoreRef.current || !listHasMoreRef.current || loading) return;
+
+    const { fetchKey, params } = buildListQuery();
+    const nextPage = listPageRef.current + 1;
+    params.set("page", String(nextPage));
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    const gen = listFetchGenRef.current;
+
+    try {
+      const res = await api.get<{ data: Conversation[]; total: number }>(`/conversations?${params}`);
+      if (gen !== listFetchGenRef.current || listFetchKeyRef.current !== fetchKey) return;
+
+      const total = res.total ?? listTotalRef.current;
+      listTotalRef.current = total;
+      listPageRef.current = nextPage;
+
+      let nextRows: Conversation[] = [];
+      let appendedRows: Conversation[] = [];
+      setConversations((prev) => {
+        const existingIds = new Set(prev.map((c) => c.id));
+        appendedRows = res.data.filter((c) => !existingIds.has(c.id));
+        nextRows = appendedRows.length ? [...prev, ...appendedRows] : prev;
+        listHasMoreRef.current = nextRows.length < total;
+        listScopeCacheRef.current.set(fetchKey, { rows: nextRows, total, page: nextPage });
+        return nextRows;
+      });
+      persistConversationListIds(nextRows);
+      syncConversationListAvatars(
+        fetchKey,
+        gen,
+        appendedRows.map((c) => c.contact.id).slice(0, 40),
+      );
+    } catch {
+      /* ignore */
+    } finally {
+      if (gen === listFetchGenRef.current && listFetchKeyRef.current === fetchKey) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [buildListQuery, loading, persistConversationListIds, syncConversationListAvatars]);
+
+  const onConversationListScroll = useCallback(() => {
+    const el = listViewportRef.current;
+    if (!el || loading || loadingMoreRef.current || !listHasMoreRef.current) return;
+    const threshold = 120;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+      void loadMoreConversations();
+    }
+  }, [loadMoreConversations, loading]);
 
   useEffect(() => {
     listScopeCacheRef.current.clear();
@@ -1091,7 +1195,11 @@ export function ConversationsPage({
               </div>
             ) : null}
 
-            <div className={clsx("min-h-0 flex-1 overflow-y-auto", splitView ? "p-0" : "p-3 sm:p-4")}>
+            <div
+              ref={listViewportRef}
+              onScroll={onConversationListScroll}
+              className={clsx("min-h-0 flex-1 overflow-y-auto", splitView ? "p-0" : "p-3 sm:p-4")}
+            >
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-500 border-t-transparent" />
@@ -1162,6 +1270,18 @@ export function ConversationsPage({
                       }}
                     />
                   ))}
+                  {loadingMore ? (
+                    <div
+                      className="flex justify-center py-4"
+                      role="status"
+                      aria-label={t("conversations.loadingMore")}
+                    >
+                      <div
+                        className="h-6 w-6 animate-spin rounded-full border-[3px] border-brand-500/20 border-t-brand-500 dark:border-brand-400/25 dark:border-t-brand-400"
+                        aria-hidden
+                      />
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -1211,7 +1331,15 @@ export function ConversationsPage({
         onDeleted={(conversationId) => {
           setConversations((prev) => {
             const next = prev.filter((c) => c.id !== conversationId);
-            listScopeCacheRef.current.set(listFetchKeyRef.current, next);
+            const cached = listScopeCacheRef.current.get(listFetchKeyRef.current);
+            const total = Math.max(0, (cached?.total ?? listTotalRef.current) - 1);
+            listTotalRef.current = total;
+            listHasMoreRef.current = next.length < total;
+            listScopeCacheRef.current.set(listFetchKeyRef.current, {
+              rows: next,
+              total,
+              page: listPageRef.current,
+            });
             return next;
           });
           setContextMenu(null);

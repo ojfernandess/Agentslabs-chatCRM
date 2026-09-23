@@ -1,6 +1,10 @@
 import type { MessageDirection, MessageStatus, MessageType } from "@prisma/client";
 import { prisma } from "../db.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
+import {
+  encodeConversationMessageCursor,
+  messageRowToCursor,
+} from "./conversationMessageCursor.js";
 
 export type WorkspaceMessagePayload = {
   id: string;
@@ -14,6 +18,7 @@ export type WorkspaceMessagePayload = {
   sentAt: string;
   createdAt: string;
   channel?: string | null;
+  cursor?: string | null;
   actorUser?: {
     id: string;
     name: string;
@@ -64,6 +69,7 @@ export function serializeMessageForWorkspaceWs(message: MessageLike): WorkspaceM
     sentAt: sentAt.toISOString(),
     createdAt: message.createdAt.toISOString(),
     channel: message.channel ?? null,
+    cursor: encodeConversationMessageCursor(messageRowToCursor({ id: message.id, createdAt: message.createdAt })),
     actorUser: message.actorUser
       ? {
           id: message.actorUser.id,

@@ -10,6 +10,7 @@ export type ConversationMessagePushPayload = {
   sentAt: string;
   createdAt: string;
   channel?: string | null;
+  cursor?: string | null;
   actorUser?: {
     id: string;
     name: string;

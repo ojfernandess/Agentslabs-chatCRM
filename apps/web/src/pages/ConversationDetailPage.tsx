@@ -308,6 +308,8 @@ interface ConversationDetail {
   team: { id: string; name: string } | null;
   messages?: Message[];
   messagesHasMore?: boolean;
+  messagesOlderCursor?: string | null;
+  messagesNewerCursor?: string | null;
   contactTimeline?: ContactTimelineEvent[];
   leadOwnerConflict?: LeadOwnerConflict | null;
 }
@@ -622,6 +624,8 @@ export function ConversationDetailPage() {
   const loadingOlderRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
   const messagesHasMoreRef = useRef(false);
+  const messagesOlderCursorRef = useRef<string | null>(null);
+  const messagesNewerCursorRef = useRef<string | null>(null);
   const seenMessageIds = useRef(new Set<string>());
   const activeConversationIdRef = useRef(id);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -638,7 +642,14 @@ export function ConversationDetailPage() {
   useEffect(() => {
     messagesRef.current = conversation?.messages ?? [];
     messagesHasMoreRef.current = Boolean(conversation?.messagesHasMore);
-  }, [conversation?.messages, conversation?.messagesHasMore]);
+    messagesOlderCursorRef.current = conversation?.messagesOlderCursor ?? null;
+    messagesNewerCursorRef.current = conversation?.messagesNewerCursor ?? null;
+  }, [
+    conversation?.messages,
+    conversation?.messagesHasMore,
+    conversation?.messagesOlderCursor,
+    conversation?.messagesNewerCursor,
+  ]);
 
   useEffect(() => {
     // No workspace de e-mail o utilizador lê de cima para baixo — não forçar o fundo.
@@ -840,15 +851,21 @@ export function ConversationDetailPage() {
     const msgs = messagesRef.current;
     if (!msgs.length || !messagesHasMoreRef.current) return;
 
+    const olderCursor = messagesOlderCursorRef.current;
+    if (!olderCursor) return;
+
     loadingOlderRef.current = true;
     setLoadingOlderMessages(true);
-    const firstId = msgs[0].id;
     const viewport = messagesViewportRef.current;
     const prevScrollHeight = viewport?.scrollHeight ?? 0;
 
     try {
-      const data = await api.get<{ messages: Message[]; messagesHasMore: boolean }>(
-        `/conversations/${id}/messages?before=${firstId}`,
+      const data = await api.get<{
+        messages: Message[];
+        messagesHasMore: boolean;
+        nextCursor: string | null;
+      }>(
+        `/conversations/${id}/messages?cursor=${encodeURIComponent(olderCursor)}&direction=older`,
       );
       if (id !== activeConversationIdRef.current) return;
       hasPrependedOlderRef.current = true;
@@ -859,6 +876,7 @@ export function ConversationDetailPage() {
           ...prev,
           messages: [...data.messages, ...(prev.messages ?? [])],
           messagesHasMore: data.messagesHasMore,
+          messagesOlderCursor: data.nextCursor,
         };
         setCachedConversation(id, merged);
         return merged;
@@ -914,14 +932,16 @@ export function ConversationDetailPage() {
     try {
       if (opts?.silent && hasPrependedOlderRef.current) {
         const prevMessages = messagesRef.current;
-        const lastId = prevMessages[prevMessages.length - 1]?.id;
+        const newerCursor = messagesNewerCursorRef.current;
         const [meta, tail] = await Promise.all([
           api.get<ConversationDetail>(`/conversations/${requestId}?messages=0`),
-          lastId
+          newerCursor
             ? api
-                .get<{ messages: Message[] }>(`/conversations/${requestId}/messages?after=${lastId}`)
-                .catch(() => ({ messages: [] as Message[] }))
-            : Promise.resolve({ messages: [] as Message[] }),
+                .get<{ messages: Message[]; newestCursor: string | null }>(
+                  `/conversations/${requestId}/messages?cursor=${encodeURIComponent(newerCursor)}&direction=newer`,
+                )
+                .catch(() => ({ messages: [] as Message[], newestCursor: newerCursor }))
+            : Promise.resolve({ messages: [] as Message[], newestCursor: null as string | null }),
         ]);
         if (requestId !== activeConversationIdRef.current) return;
         const existingIds = new Set(prevMessages.map((m) => m.id));
@@ -932,6 +952,8 @@ export function ConversationDetailPage() {
             ...meta,
             messages: newMessages.length ? [...prevMessages, ...newMessages] : prevMessages,
             messagesHasMore: prev?.messagesHasMore ?? meta.messagesHasMore,
+            messagesOlderCursor: prev?.messagesOlderCursor ?? meta.messagesOlderCursor,
+            messagesNewerCursor: tail.newestCursor ?? prev?.messagesNewerCursor ?? meta.messagesNewerCursor,
           };
           setCachedConversation(requestId, merged);
           return merged;
@@ -974,6 +996,8 @@ export function ConversationDetailPage() {
           ...meta,
           messages: prev.messages,
           messagesHasMore: prev.messagesHasMore,
+          messagesOlderCursor: prev.messagesOlderCursor,
+          messagesNewerCursor: prev.messagesNewerCursor,
         };
         setCachedConversation(requestId, merged);
         return merged;
@@ -984,7 +1008,7 @@ export function ConversationDetailPage() {
     }
   }, [id]);
 
-  const appendPushedMessage = useCallback((message: Message) => {
+  const appendPushedMessage = useCallback((message: Message, newerCursor?: string | null) => {
     if (!id) return;
     if (seenMessageIds.current.has(message.id)) return;
     seenMessageIds.current.add(message.id);
@@ -996,6 +1020,7 @@ export function ConversationDetailPage() {
       const merged: ConversationDetail = {
         ...prev,
         messages: [...existing, message],
+        ...(newerCursor ? { messagesNewerCursor: newerCursor } : {}),
       };
       setCachedConversation(id, merged);
       return merged;
@@ -1389,7 +1414,7 @@ export function ConversationDetailPage() {
     const onMessageCreated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
       if (detail?.conversationId !== id || !detail.message) return;
-      appendPushedMessage(detail.message as Message);
+      appendPushedMessage(detail.message as Message, detail.message.cursor);
     };
     const onMessageUpdated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageUpdatedDetail>).detail;

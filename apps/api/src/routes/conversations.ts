@@ -88,6 +88,13 @@ import {
 import {
   getConversationMessagesPaginationFromDb,
 } from "../lib/conversationMessagesPaginationSettings.js";
+import {
+  buildNewerMessageCursor,
+  buildOlderMessageCursor,
+  decodeConversationMessageCursor,
+  encodeConversationMessageCursor,
+  messageRowToCursor,
+} from "../lib/conversationMessageCursor.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -166,20 +173,107 @@ const conversationDetailQuerySchema = z.object({
 const conversationMessagesQuerySchema = z.object({
   before: z.string().uuid().optional(),
   after: z.string().uuid().optional(),
+  cursor: z.string().max(512).optional(),
+  direction: z.enum(["older", "newer"]).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
+
+type MessageAnchor = { id: string; createdAt: Date };
+
+async function resolveConversationMessageAnchor(
+  conversationId: string,
+  query: z.infer<typeof conversationMessagesQuerySchema>,
+): Promise<MessageAnchor | null | "invalid"> {
+  const { before, after, cursor, direction } = query;
+
+  if (cursor) {
+    if (!direction) return "invalid";
+    const decoded = decodeConversationMessageCursor(cursor);
+    if (!decoded) return "invalid";
+    const row = await prisma.message.findFirst({
+      where: { id: decoded.id, conversationId },
+      select: { id: true, createdAt: true },
+    });
+    if (!row) return null;
+    if (row.createdAt.toISOString() !== decoded.createdAt) return "invalid";
+    return row;
+  }
+
+  const legacyId = before ?? after;
+  if (!legacyId) return "invalid";
+
+  const row = await prisma.message.findFirst({
+    where: { id: legacyId, conversationId },
+    select: { id: true, createdAt: true },
+  });
+  return row ?? null;
+}
+
+async function loadOlderConversationMessages(
+  conversationId: string,
+  anchor: MessageAnchor,
+  limit: number,
+): Promise<{
+  messages: Awaited<ReturnType<typeof prisma.message.findMany>>;
+  messagesHasMore: boolean;
+  nextCursor: string | null;
+}> {
+  const batch = await prisma.message.findMany({
+    where: { conversationId, createdAt: { lt: anchor.createdAt } },
+    orderBy: { createdAt: "desc" },
+    take: limit + 1,
+    include: conversationMessageInclude,
+  });
+  const messagesHasMore = batch.length > limit;
+  const messages = (messagesHasMore ? batch.slice(0, limit) : batch).reverse();
+  return {
+    messages,
+    messagesHasMore,
+    nextCursor: buildOlderMessageCursor(messages, messagesHasMore),
+  };
+}
+
+async function loadNewerConversationMessages(
+  conversationId: string,
+  anchor: MessageAnchor,
+  limit: number,
+): Promise<{
+  messages: Awaited<ReturnType<typeof prisma.message.findMany>>;
+  newestCursor: string | null;
+}> {
+  const messages = await prisma.message.findMany({
+    where: { conversationId, createdAt: { gt: anchor.createdAt } },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    include: conversationMessageInclude,
+  });
+  return {
+    messages,
+    newestCursor: buildNewerMessageCursor(messages) ?? encodeConversationMessageCursor(messageRowToCursor(anchor)),
+  };
+}
 
 async function loadLatestConversationMessages(
   conversationId: string,
   pagination: { enabled: boolean; pageSize: number },
-): Promise<{ messages: Awaited<ReturnType<typeof prisma.message.findMany>>; messagesHasMore: boolean }> {
+): Promise<{
+  messages: Awaited<ReturnType<typeof prisma.message.findMany>>;
+  messagesHasMore: boolean;
+  messagesOlderCursor: string | null;
+  messagesNewerCursor: string | null;
+}> {
   if (!pagination.enabled) {
     const messages = await prisma.message.findMany({
       where: { conversationId },
       orderBy: { createdAt: "asc" },
       include: conversationMessageInclude,
     });
-    return { messages, messagesHasMore: false };
+    return {
+      messages,
+      messagesHasMore: false,
+      messagesOlderCursor: null,
+      messagesNewerCursor: null,
+    };
   }
 
   const pageSize = pagination.pageSize;
@@ -191,7 +285,12 @@ async function loadLatestConversationMessages(
   });
   const messagesHasMore = batch.length > pageSize;
   const messages = (messagesHasMore ? batch.slice(0, pageSize) : batch).reverse();
-  return { messages, messagesHasMore };
+  return {
+    messages,
+    messagesHasMore,
+    messagesOlderCursor: buildOlderMessageCursor(messages, messagesHasMore),
+    messagesNewerCursor: buildNewerMessageCursor(messages),
+  };
 }
 
 async function fetchContactTimelineForConversation(organizationId: string, contactId: string) {
@@ -1521,11 +1620,20 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const limit = parsedQuery.data.limit ?? pagination.pageSize;
-    const { before, after } = parsedQuery.data;
-    if (!before && !after) {
+    const { before, after, cursor, direction } = parsedQuery.data;
+    const hasLegacy = Boolean(before || after);
+    const hasCursor = Boolean(cursor);
+    if (!hasLegacy && !hasCursor) {
       return reply.status(400).send({
         error: "Bad Request",
-        message: "Query parameter before or after is required",
+        message: "Query parameter cursor or before/after is required",
+        statusCode: 400,
+      });
+    }
+    if (hasLegacy && hasCursor) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Use either cursor or before/after, not both",
         statusCode: 400,
       });
     }
@@ -1537,39 +1645,34 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    if (before) {
-      const anchor = await prisma.message.findFirst({
-        where: { id: before, conversationId: conversation.id },
-        select: { createdAt: true },
+    const anchor = await resolveConversationMessageAnchor(conversation.id, parsedQuery.data);
+    if (anchor === "invalid") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Invalid message cursor or query parameters",
+        statusCode: 400,
       });
-      if (!anchor) {
-        return reply.status(404).send({ error: "Not Found", message: "Message not found", statusCode: 404 });
-      }
-      const batch = await prisma.message.findMany({
-        where: { conversationId: conversation.id, createdAt: { lt: anchor.createdAt } },
-        orderBy: { createdAt: "desc" },
-        take: limit + 1,
-        include: conversationMessageInclude,
-      });
-      const messagesHasMore = batch.length > limit;
-      const messages = (messagesHasMore ? batch.slice(0, limit) : batch).reverse();
-      return { messages, messagesHasMore };
+    }
+    if (!anchor) {
+      return reply.status(404).send({ error: "Not Found", message: "Message not found", statusCode: 404 });
     }
 
-    const anchor = await prisma.message.findFirst({
-      where: { id: after!, conversationId: conversation.id },
-      select: { createdAt: true },
-    });
-    if (!anchor) {
-      return { messages: [], messagesHasMore: false };
+    const loadOlder = cursor ? direction === "older" : Boolean(before);
+    if (loadOlder) {
+      const loaded = await loadOlderConversationMessages(conversation.id, anchor, limit);
+      return {
+        messages: loaded.messages,
+        messagesHasMore: loaded.messagesHasMore,
+        nextCursor: loaded.nextCursor,
+      };
     }
-    const messages = await prisma.message.findMany({
-      where: { conversationId: conversation.id, createdAt: { gt: anchor.createdAt } },
-      orderBy: { createdAt: "asc" },
-      take: limit,
-      include: conversationMessageInclude,
-    });
-    return { messages, messagesHasMore: false };
+
+    const loaded = await loadNewerConversationMessages(conversation.id, anchor, limit);
+    return {
+      messages: loaded.messages,
+      messagesHasMore: false,
+      newestCursor: loaded.newestCursor,
+    };
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -1691,11 +1794,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     let messages: Awaited<ReturnType<typeof loadLatestConversationMessages>>["messages"] = [];
     let messagesHasMore = false;
+    let messagesOlderCursor: string | null = null;
+    let messagesNewerCursor: string | null = null;
     if (!skipMessages) {
       if (pagination.enabled) {
         const loaded = await loadLatestConversationMessages(conversation.id, pagination);
         messages = loaded.messages;
         messagesHasMore = loaded.messagesHasMore;
+        messagesOlderCursor = loaded.messagesOlderCursor;
+        messagesNewerCursor = loaded.messagesNewerCursor;
       } else {
         messages = "messages" in conversation ? (conversation.messages ?? []) : [];
       }
@@ -1703,7 +1810,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       ...stripCsatSurveyToken(convRest),
-      ...(skipMessages ? {} : { messages, messagesHasMore: pagination.enabled ? messagesHasMore : false }),
+      ...(skipMessages
+        ? {}
+        : {
+            messages,
+            messagesHasMore: pagination.enabled ? messagesHasMore : false,
+            messagesOlderCursor: pagination.enabled ? messagesOlderCursor : null,
+            messagesNewerCursor: pagination.enabled ? messagesNewerCursor : null,
+          }),
       activeVoiceCall: activeVoiceByConversation.get(conversation.id) ?? null,
       contact: enrichWebsiteContact(
         {
