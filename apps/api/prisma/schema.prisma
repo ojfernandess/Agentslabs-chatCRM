@@ -269,6 +269,7 @@ model Organization {
   whatsappPricingRules           WhatsappPricingRule[]
   whatsappPricingVolumeTiers     WhatsappPricingVolumeTier[]
   presenceSessions               UserPresenceSession[]
+  helpdeskRequests               OrgHelpdeskRequest[]
 
   @@map("organizations")
 }
@@ -606,6 +607,11 @@ model User {
   mcpAuditLogs                 McpAuditLog[]
   intelligentTagSuggestionsReviewed IntelligentTagSuggestion[] @relation("IntelligentTagSuggestionReviewer")
   presenceSessions             UserPresenceSession[]
+  helpdeskRequestsCreated      OrgHelpdeskRequest[]          @relation("HelpdeskRequestCreator")
+  helpdeskRequestsAssigned     OrgHelpdeskRequest[]          @relation("HelpdeskRequestAssignee")
+  helpdeskRequestsAccepted     OrgHelpdeskRequest[]          @relation("HelpdeskRequestAccepter")
+  helpdeskMessages             OrgHelpdeskMessage[]
+  helpdeskAttachments          OrgHelpdeskAttachment[]
 
   @@index([organizationId])
   @@map("users")
@@ -3340,4 +3346,70 @@ model WhatsappPricingVolumeTier {
   @@index([countryCode, category, version])
   @@index([organizationId])
   @@map("whatsapp_pricing_volume_tiers")
+}
+
+/// Solicitações de helpdesk enviadas por administradores de organização ao super admin.
+model OrgHelpdeskRequest {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category        String   @db.VarChar(32)
+  subject         String   @db.VarChar(500)
+  description     String   @db.Text
+  status          String   @default("OPEN") @db.VarChar(32)
+  progressNote    String?  @map("progress_note") @db.Text
+  progressPercent Int?     @map("progress_percent")
+  createdById     String   @map("created_by_id") @db.Uuid
+  createdBy       User     @relation("HelpdeskRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedToId    String?  @map("assigned_to_id") @db.Uuid
+  assignedTo      User?    @relation("HelpdeskRequestAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  acceptedAt      DateTime? @map("accepted_at")
+  acceptedById    String?  @map("accepted_by_id") @db.Uuid
+  acceptedBy      User?    @relation("HelpdeskRequestAccepter", fields: [acceptedById], references: [id], onDelete: SetNull)
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  messages    OrgHelpdeskMessage[]
+  attachments OrgHelpdeskAttachment[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("org_helpdesk_requests")
+}
+
+model OrgHelpdeskMessage {
+  id           String   @id @default(uuid()) @db.Uuid
+  requestId    String   @map("request_id") @db.Uuid
+  request      OrgHelpdeskRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorUserId String   @map("author_user_id") @db.Uuid
+  authorUser   User     @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  body         String   @db.Text
+  isStaffReply Boolean  @default(false) @map("is_staff_reply")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  attachments OrgHelpdeskAttachment[]
+
+  @@index([requestId, createdAt])
+  @@map("org_helpdesk_messages")
+}
+
+model OrgHelpdeskAttachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  requestId    String   @map("request_id") @db.Uuid
+  request      OrgHelpdeskRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  messageId    String?  @map("message_id") @db.Uuid
+  message      OrgHelpdeskMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  filename     String   @db.VarChar(255)
+  originalName String   @map("original_name") @db.VarChar(255)
+  mimeType     String   @map("mime_type") @db.VarChar(120)
+  sizeBytes    Int      @map("size_bytes")
+  url          String   @db.VarChar(2048)
+  uploadedById String   @map("uploaded_by_id") @db.Uuid
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([requestId])
+  @@map("org_helpdesk_attachments")
 }

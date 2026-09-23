@@ -25,6 +25,7 @@ import {
   CheckCheck,
   Phone,
   CreditCard,
+  LifeBuoy,
 } from "lucide-react";
 import { BillingSettingsPanel } from "@/pages/settings/BillingSettingsPanel";
 import { WhatsappOrgPolicyPanel } from "@/pages/settings/WhatsappOrgPolicyPanel";
@@ -39,6 +40,7 @@ import { SlaPoliciesSettings } from "@/components/settings/SlaPoliciesSettings";
 import { CannedResponsesSettings } from "@/components/settings/CannedResponsesSettings";
 import { OrganizationTagsPanel } from "@/components/settings/OrganizationTagsPanel";
 import { TeamSettingsPanel } from "@/components/settings/TeamSettingsPanel";
+import { SettingsHelpdeskPanel } from "@/components/settings/SettingsHelpdeskPanel";
 import { DealCategorySettingsPanel } from "@/components/settings/DealCategorySettingsPanel";
 import { PageTransition, motion, staggerContainer, staggerItem } from "@/components/Motion";
 import { HelpContextButton } from "@/components/help/HelpContextButton";
@@ -103,6 +105,7 @@ type SettingsSection =
   | "templates"
   | "tags"
   | "team"
+  | "helpdesk"
   | "wavoip"
   | "threecx"
   | "nvoip"
@@ -252,6 +255,7 @@ export function SettingsPage() {
     if (initialSection === "threecx" && showThreeCx) return "threecx";
     if (initialSection === "nvoip" && showNvoip) return "nvoip";
     if (initialSection === "billing" && isAdmin) return "billing";
+    if (initialSection === "helpdesk" && isAdmin) return "helpdesk";
     return "channel";
   });
   const effectiveOrgId = user?.actingOrganizationId ?? user?.organizationId ?? null;
@@ -1325,6 +1329,7 @@ export function SettingsPage() {
                   ...(showThreeCx ? ([["threecx", t("settings.sectionThreeCx"), Phone]] as const) : []),
                   ...(showNvoip ? ([["nvoip", t("settings.sectionNvoip"), Phone]] as const) : []),
                   ...(isAdmin ? ([["billing", t("settings.sectionBilling"), CreditCard]] as const) : []),
+                  ...(isAdmin ? ([["helpdesk", t("settings.sectionHelpdesk"), LifeBuoy]] as const) : []),
                   ["templates", t("settings.sectionTemplates"), FileText],
                   ["tags", t("settings.sectionTags"), Tag],
                   ["team", t("settings.sectionTeam"), UserPlus],
@@ -3340,6 +3345,12 @@ export function SettingsPage() {
                   <TeamSettingsPanel isAdmin={isAdmin} currentUserId={user?.id} />
                 </motion.div>
               )}
+
+              {section === "helpdesk" && isAdmin ? (
+                <motion.div variants={staggerItem}>
+                  <SettingsHelpdeskPanel />
+                </motion.div>
+              ) : null}
 
               {section === "wavoip" && showWavoip && (
                 <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
