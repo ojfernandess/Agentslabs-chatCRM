@@ -72,15 +72,18 @@ export function ChatImageThumbnail({
     <button
       type="button"
       onClick={onOpen}
-      className="block w-full cursor-zoom-in overflow-hidden rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+      className="chat-image-thumb block w-full cursor-zoom-in text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+      aria-label={alt || undefined}
     >
-      <img
-        src={src}
-        alt={alt}
-        className={clsx("max-h-64 max-w-full object-contain", outbound && "opacity-95")}
-        loading="lazy"
-        decoding="async"
-      />
+      <span className="chat-image-thumb__frame">
+        <img
+          src={src}
+          alt={alt}
+          className={clsx("chat-image-thumb__img", outbound && "opacity-95")}
+          loading="lazy"
+          decoding="async"
+        />
+      </span>
     </button>
   );
 }

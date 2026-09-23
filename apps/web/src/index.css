@@ -653,6 +653,30 @@
     color: var(--chat-audio-control);
   }
 
+  .chat-image-thumb {
+    max-width: 17.5rem;
+  }
+
+  .chat-image-thumb__frame {
+    display: block;
+    width: 100%;
+    min-width: 12.5rem;
+    max-width: 17.5rem;
+    aspect-ratio: 3 / 4;
+    max-height: 22rem;
+    overflow: hidden;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--crm-bubble-text, #0f172a) 4%, transparent);
+  }
+
+  .chat-image-thumb__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+  }
+
   .chat-audio-player__surface {
     background-color: var(--chat-audio-surface);
     border-radius: 10px;
