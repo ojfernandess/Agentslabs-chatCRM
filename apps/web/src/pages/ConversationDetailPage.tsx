@@ -3665,13 +3665,12 @@ export function ConversationDetailPage() {
               <div className="flex flex-col gap-2">
                 <div
                   className={clsx(
-                    "flex flex-wrap items-start justify-between gap-3",
+                    "flex items-start gap-3",
                     isSplitLayout && "max-lg:flex-col max-lg:items-stretch max-lg:gap-2",
                   )}
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-start gap-2">
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Link
                         to={`/contacts/${conversation.contact.id}`}
                         title={t("conversationDetail.viewContactDetails")}
@@ -3736,7 +3735,6 @@ export function ConversationDetailPage() {
                           {t("conversationDetail.awaitingHumanBadge")}
                         </span>
                       ) : null}
-                      </div>
                       {!emailWorkspaceMode ? (
                         <button
                           type="button"
@@ -3827,10 +3825,10 @@ export function ConversationDetailPage() {
 
                   <div
                     className={clsx(
-                      "flex max-w-full items-center justify-end gap-2",
+                      "flex shrink-0 items-start justify-end gap-2 self-start",
                       isSplitLayout
-                        ? "max-lg:w-full max-lg:flex-nowrap max-lg:justify-start max-lg:overflow-x-auto max-lg:pb-0.5 max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden"
-                        : "flex-wrap",
+                        ? "max-lg:w-full max-lg:shrink max-lg:flex-nowrap max-lg:justify-start max-lg:overflow-x-auto max-lg:pb-0.5 max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden lg:max-w-[min(100%,28rem)] lg:flex-nowrap lg:overflow-x-auto lg:pb-0.5 lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden"
+                        : "max-w-[min(100%,40rem)] flex-wrap",
                     )}
                   >
                     {!isWebsiteInbox && contactDialPhone ? (
