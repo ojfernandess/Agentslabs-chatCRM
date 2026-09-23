@@ -609,6 +609,50 @@
     font-size: 0.6875rem;
   }
 
+  .chat-media-transcription__body--collapsed {
+    max-height: 9.5rem;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .chat-media-transcription__body--collapsed::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1.75rem;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in srgb, var(--chat-audio-surface) 20%, transparent),
+      var(--chat-audio-surface)
+    );
+  }
+
+  .chat-media-transcription__read-more {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.45rem 0.75rem;
+    border: 0;
+    border-top: 1px solid color-mix(in srgb, var(--chat-audio-control) 12%, transparent);
+    background: color-mix(in srgb, var(--chat-audio-control) 4%, var(--chat-audio-surface));
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--chat-audio-control) 82%, transparent);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .chat-media-transcription__read-more:hover {
+    background: color-mix(in srgb, var(--chat-audio-control) 8%, var(--chat-audio-surface));
+    color: var(--chat-audio-control);
+  }
+
   .chat-audio-player__surface {
     background-color: var(--chat-audio-surface);
     border-radius: 10px;

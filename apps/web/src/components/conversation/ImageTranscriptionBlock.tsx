@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { ScanLine } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { TranscriptionCollapsibleBody } from "@/components/conversation/TranscriptionCollapsibleBody";
 import { IMAGE_TRANSCRIPTION_PREFIX, parseImageTranscriptionBody } from "@/lib/messagePreviewText";
 
 export { IMAGE_TRANSCRIPTION_PREFIX, parseImageTranscriptionBody };
@@ -36,7 +37,7 @@ export function ImageTranscriptionBlock({ body, outbound = false, className }: P
           {t("conversationDetail.imageTranscriptionTitle")}
         </span>
       </div>
-      <div className="chat-media-transcription__body space-y-3">
+      <TranscriptionCollapsibleBody className="chat-media-transcription__body space-y-3">
         {description ? (
           <div>
             <p className="chat-media-transcription__section-label">
@@ -53,7 +54,7 @@ export function ImageTranscriptionBlock({ body, outbound = false, className }: P
             <p className="chat-media-transcription__extracted">{extractedText}</p>
           </div>
         ) : null}
-      </div>
+      </TranscriptionCollapsibleBody>
     </div>
   );
 }

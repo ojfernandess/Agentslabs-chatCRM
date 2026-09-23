@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { Subtitles } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { TranscriptionCollapsibleBody } from "@/components/conversation/TranscriptionCollapsibleBody";
 
 type Props = {
   text: string;
@@ -28,7 +29,9 @@ export function AudioTranscriptionBlock({ text, outbound = false, className }: P
           {t("conversationDetail.imageTranscriptionTitle")}
         </span>
       </div>
-      <p className="chat-media-transcription__body">{spoken}</p>
+      <TranscriptionCollapsibleBody className="chat-media-transcription__body">
+        <p>{spoken}</p>
+      </TranscriptionCollapsibleBody>
     </div>
   );
 }
