@@ -365,6 +365,7 @@ export function ConversationDetailPage() {
   const [messageSearchOpen, setMessageSearchOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
+  const [floatingToolbarExpanded, setFloatingToolbarExpanded] = useState(true);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
@@ -649,8 +650,17 @@ export function ConversationDetailPage() {
     setMessageSearchOpen(false);
     setHighlightedMessageId(null);
     setMessageSearchQuery("");
+    setFloatingToolbarExpanded(true);
     setFlowError("");
   }, [id]);
+
+  useEffect(() => {
+    if (messageSearchOpen) {
+      setFloatingToolbarExpanded(false);
+    } else {
+      setFloatingToolbarExpanded(true);
+    }
+  }, [messageSearchOpen]);
 
   useEffect(() => {
     messagesRef.current = conversation?.messages ?? [];
@@ -3660,7 +3670,8 @@ export function ConversationDetailPage() {
                   )}
                 >
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-start gap-2">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                       <Link
                         to={`/contacts/${conversation.contact.id}`}
                         title={t("conversationDetail.viewContactDetails")}
@@ -3724,6 +3735,21 @@ export function ConversationDetailPage() {
                           <Headset className="h-3 w-3 shrink-0" aria-hidden />
                           {t("conversationDetail.awaitingHumanBadge")}
                         </span>
+                      ) : null}
+                      </div>
+                      {!emailWorkspaceMode ? (
+                        <button
+                          type="button"
+                          className={clsx(
+                            "inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 dark:text-ink-400 dark:hover:bg-white/10 dark:hover:text-ink-100",
+                            messageSearchOpen && "bg-brand-50 text-brand-600 ring-2 ring-brand-400/60 dark:bg-brand-500/10 dark:text-brand-300",
+                          )}
+                          onClick={() => setMessageSearchOpen((open) => !open)}
+                          title={t("conversationDetail.messageSearch.open")}
+                          aria-label={t("conversationDetail.messageSearch.open")}
+                        >
+                          <Search className="h-4 w-4" />
+                        </button>
                       ) : null}
                     </div>
 
@@ -3918,20 +3944,6 @@ export function ConversationDetailPage() {
                         {t("conversationDetail.reopen")}
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      className={clsx(
-                        filledSoftBase,
-                        filledSoftSlate,
-                        "p-2",
-                        messageSearchOpen && "ring-2 ring-brand-400/60",
-                      )}
-                      onClick={() => setMessageSearchOpen((open) => !open)}
-                      title={t("conversationDetail.messageSearch.open")}
-                      aria-label={t("conversationDetail.messageSearch.open")}
-                    >
-                      <Search className="h-4 w-4" />
-                    </button>
                     <button
                       type="button"
                       className={clsx(filledSoftBase, filledSoftSlate, "p-2 xl:hidden")}
@@ -4852,50 +4864,79 @@ export function ConversationDetailPage() {
           </form>
         </motion.div>
 
-        <div className={clsx("pointer-events-auto absolute right-3 top-28 z-30 hidden xl:block", emailWorkspaceMode && "!hidden")}>
-          <div className="flex flex-col gap-1 rounded-2xl border border-ink-200 bg-white/90 p-1 shadow-lg backdrop-blur dark:border-soft-border dark:bg-[#151826]/70 dark:shadow-black/30">
+        <div
+          className={clsx(
+            "pointer-events-auto absolute right-3 z-30 hidden xl:block",
+            emailWorkspaceMode && "!hidden",
+            messageSearchOpen ? "top-52" : "top-28",
+          )}
+        >
+          {messageSearchOpen && !floatingToolbarExpanded ? (
             <button
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => toggleCrmDesktopPanel()}
-              title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
-              aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
-              className={clsx(
-                "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
-                crmDesktopOpen
-                  ? "bg-ink-100 text-ink-900 dark:bg-white/10 dark:text-ink-50"
-                  : "text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5",
-              )}
+              onClick={() => setFloatingToolbarExpanded(true)}
+              title={t("conversationDetail.floatingToolbarExpand")}
+              aria-label={t("conversationDetail.floatingToolbarExpand")}
+              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-ink-200 bg-white/90 text-ink-600 shadow-lg backdrop-blur transition-colors hover:bg-ink-100 dark:border-soft-border dark:bg-[#151826]/70 dark:text-ink-200 dark:hover:bg-white/10"
             >
-              <User className="h-5 w-5" />
+              <ChevronRight className="h-4 w-4" />
             </button>
-            {copilotEnabled ? (
+          ) : (
+            <div className="flex flex-col gap-1 rounded-2xl border border-ink-200 bg-white/90 p-1 shadow-lg backdrop-blur dark:border-soft-border dark:bg-[#151826]/70 dark:shadow-black/30">
               <button
                 type="button"
-                onClick={toggleCopilotPanel}
-                title={t("conversationDetail.copilotToggle")}
-                aria-label={t("conversationDetail.copilotToggle")}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => toggleCrmDesktopPanel()}
+                title={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
+                aria-label={crmDesktopOpen ? t("conversationDetail.crmPanelCollapse") : t("conversationDetail.crmPanelExpand")}
                 className={clsx(
                   "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
-                  copilotDesktopOpen
-                    ? "bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-200"
+                  crmDesktopOpen
+                    ? "bg-ink-100 text-ink-900 dark:bg-white/10 dark:text-ink-50"
                     : "text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5",
                 )}
               >
-                <Sparkles className="h-5 w-5" />
+                <User className="h-5 w-5" />
               </button>
-            ) : null}
-            {funnelEnabled ? (
-              <Link
-                to="/crm"
-                title={t("conversationDetail.openKanban")}
-                aria-label={t("conversationDetail.openKanban")}
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5"
-              >
-                <Kanban className="h-5 w-5" />
-              </Link>
-            ) : null}
-          </div>
+              {copilotEnabled ? (
+                <button
+                  type="button"
+                  onClick={toggleCopilotPanel}
+                  title={t("conversationDetail.copilotToggle")}
+                  aria-label={t("conversationDetail.copilotToggle")}
+                  className={clsx(
+                    "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
+                    copilotDesktopOpen
+                      ? "bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-200"
+                      : "text-ink-700 hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5",
+                  )}
+                >
+                  <Sparkles className="h-5 w-5" />
+                </button>
+              ) : null}
+              {funnelEnabled ? (
+                <Link
+                  to="/crm"
+                  title={t("conversationDetail.openKanban")}
+                  aria-label={t("conversationDetail.openKanban")}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-700 transition-colors hover:bg-ink-100 dark:text-ink-200 dark:hover:bg-white/5"
+                >
+                  <Kanban className="h-5 w-5" />
+                </Link>
+              ) : null}
+              {messageSearchOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setFloatingToolbarExpanded(false)}
+                  title={t("conversationDetail.floatingToolbarCollapse")}
+                  aria-label={t("conversationDetail.floatingToolbarCollapse")}
+                  className="flex h-8 w-10 items-center justify-center rounded-xl text-ink-500 transition-colors hover:bg-ink-100 dark:text-ink-400 dark:hover:bg-white/5"
+                >
+                  <ChevronRight className="h-4 w-4 rotate-180" />
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 

@@ -336,7 +336,7 @@ export function ConversationMessageSearchPanel({
       {error ? <p className="mt-2 text-xs text-red-600 dark:text-red-300">{error}</p> : null}
 
       {results.length > 0 ? (
-        <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-ink-200/80 dark:border-soft-border">
+        <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-ink-200/80 pr-1 dark:border-soft-border xl:pr-12">
           {results.map((result, index) => (
             <button
               key={result.message.id}
