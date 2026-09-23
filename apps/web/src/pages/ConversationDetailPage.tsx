@@ -3663,12 +3663,7 @@ export function ConversationDetailPage() {
             />
             <div className="min-w-0 flex-1">
               <div className="flex flex-col gap-2">
-                <div
-                  className={clsx(
-                    "flex items-start gap-3",
-                    isSplitLayout && "max-lg:flex-col max-lg:items-stretch max-lg:gap-2",
-                  )}
-                >
+                <div className="flex min-w-0 items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
@@ -3825,12 +3820,18 @@ export function ConversationDetailPage() {
 
                   <div
                     className={clsx(
-                      "flex shrink-0 items-start justify-end gap-2 self-start",
+                      "min-w-0 flex-[0_1_auto] self-start",
                       isSplitLayout
-                        ? "max-lg:w-full max-lg:shrink max-lg:flex-nowrap max-lg:justify-start max-lg:overflow-x-auto max-lg:pb-0.5 max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden lg:max-w-[min(100%,28rem)] lg:flex-nowrap lg:overflow-x-auto lg:pb-0.5 lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden"
-                        : "max-w-[min(100%,40rem)] flex-wrap",
+                        ? "max-w-[min(100%,54%)] overflow-x-auto overscroll-x-contain pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        : "max-w-[min(100%,42rem)]",
                     )}
                   >
+                    <div
+                      className={clsx(
+                        "flex w-max min-w-full gap-2",
+                        isSplitLayout ? "flex-nowrap justify-end" : "flex-wrap justify-end",
+                      )}
+                    >
                     {!isWebsiteInbox && contactDialPhone ? (
                       <TelephonyCallButton
                         phone={contactDialPhone}
@@ -3950,6 +3951,7 @@ export function ConversationDetailPage() {
                     >
                       <LayoutGrid className="h-5 w-5" />
                     </button>
+                    </div>
                   </div>
                 </div>
               </div>
