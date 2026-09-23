@@ -64,22 +64,121 @@ function mapQualityLevel(rating: string | undefined): WhatsappAccountHealthPaylo
   return "unknown";
 }
 
-function nameStatusOk(status: string | undefined): boolean {
-  const u = (status ?? "").toUpperCase();
-  return u === "APPROVED" || u === "AVAILABLE_WITHOUT_REVIEW";
+type MetaHealthEntity = {
+  entity_type?: string;
+  can_send_message?: string;
+  errors?: Array<{ error_code?: number }>;
+};
+
+type MetaHealthStatus = {
+  can_send_message?: string;
+  entities?: MetaHealthEntity[];
+};
+
+/** Meta enum values are lowercase; some responses return uppercase (e.g. VERIFIED). */
+function normalizeMetaToken(value: string | undefined): string {
+  return (value ?? "").trim().toUpperCase().replace(/-/g, "_");
 }
 
-function businessVerifiedOk(status: string | undefined): boolean {
-  const u = (status ?? "").toLowerCase();
-  return u === "verified" || u === "approved";
+function healthEntityHasErrorCode(
+  health: MetaHealthStatus | undefined,
+  codes: ReadonlySet<number>,
+  entityTypes?: ReadonlySet<string>,
+): boolean {
+  if (!health?.entities?.length) return false;
+  for (const entity of health.entities) {
+    if (entityTypes && entity.entity_type && !entityTypes.has(entity.entity_type)) continue;
+    for (const err of entity.errors ?? []) {
+      if (typeof err.error_code === "number" && codes.has(err.error_code)) return true;
+    }
+  }
+  return false;
 }
 
-function paymentOk(waba: {
-  account_review_status?: string;
-  primary_funding_id?: string;
+const META_PAYMENT_ERROR_CODES = new Set([141006, 141007]);
+const META_BUSINESS_VERIFICATION_ERROR_CODES = new Set([141010]);
+
+export function nameStatusOk(
+  status: string | undefined,
+  fallback?: { verifiedName?: string | null; phoneConnected?: boolean },
+): boolean {
+  const normalized = normalizeMetaToken(status);
+  if (normalized === "APPROVED" || normalized === "AVAILABLE_WITHOUT_REVIEW") return true;
+  // name_status is beta and may be omitted even when verified_name is active.
+  if (!status?.trim() && fallback?.verifiedName?.trim() && fallback.phoneConnected) return true;
+  return false;
+}
+
+export function businessVerifiedOk(
+  status: string | undefined,
+  healthStatus?: MetaHealthStatus,
+): boolean {
+  if (normalizeMetaToken(status) === "VERIFIED") return true;
+  if (
+    healthStatus &&
+    !healthEntityHasErrorCode(
+      healthStatus,
+      META_BUSINESS_VERIFICATION_ERROR_CODES,
+      new Set(["BUSINESS"]),
+    )
+  ) {
+    const business = healthStatus.entities?.find((entity) => entity.entity_type === "BUSINESS");
+    if (business?.can_send_message === "AVAILABLE") return true;
+  }
+  return false;
+}
+
+export function paymentOk(input: {
+  primaryFundingId?: string;
+  accountReviewStatus?: string;
+  healthStatus?: MetaHealthStatus;
+  wabaStatus?: string;
+  currency?: string;
 }): boolean {
-  if (waba.primary_funding_id?.trim()) return true;
-  return (waba.account_review_status ?? "").toUpperCase() === "APPROVED";
+  if (
+    input.healthStatus &&
+    healthEntityHasErrorCode(input.healthStatus, META_PAYMENT_ERROR_CODES, new Set(["WABA", "BUSINESS"]))
+  ) {
+    return false;
+  }
+  if (input.primaryFundingId?.trim()) return true;
+  if (normalizeMetaToken(input.accountReviewStatus) === "APPROVED") return true;
+  if (normalizeMetaToken(input.wabaStatus) === "ACTIVE" && input.currency?.trim()) return true;
+  return false;
+}
+
+async function fetchWabaAccountFields(
+  wabaId: string,
+  accessToken: string,
+): Promise<{
+  account_review_status?: string;
+  business_verification_status?: string;
+  status?: string;
+  currency?: string;
+  primary_funding_id?: string;
+}> {
+  const waba = await graphGet<{
+    account_review_status?: string;
+    business_verification_status?: string;
+    status?: string;
+    currency?: string;
+  }>(
+    `/${wabaId}?fields=account_review_status,business_verification_status,status,currency`,
+    accessToken,
+  );
+
+  let primaryFundingId: string | undefined;
+  try {
+    const funding = await graphGet<{ primary_funding_id?: string }>(
+      `/${wabaId}?fields=primary_funding_id`,
+      accessToken,
+    );
+    primaryFundingId = funding.primary_funding_id;
+  } catch {
+    /* primary_funding_id exige permissões BSP em alguns apps — não bloqueia os demais campos */
+  }
+
+  return { ...waba, primary_funding_id: primaryFundingId };
 }
 
 async function graphGet<T>(path: string, accessToken: string): Promise<T> {
@@ -192,27 +291,32 @@ export async function fetchMetaWhatsappAccountHealth(input: {
       quality_rating?: string;
       name_status?: string;
       status?: string;
+      health_status?: MetaHealthStatus;
     }>(
-      `/${phoneNumberId}?fields=verified_name,display_phone_number,quality_rating,name_status,status`,
+      `/${phoneNumberId}?fields=verified_name,display_phone_number,quality_rating,name_status,status,health_status`,
       accessToken,
     );
 
-    const wabaId =
-      parsed.whatsappBusinessAccountId?.trim() ??
-      (await fetchWabaIdFromPhoneNumberId(phoneNumberId, accessToken));
+    let wabaId = parsed.whatsappBusinessAccountId?.trim() ?? null;
+    if (!wabaId) {
+      try {
+        wabaId = await fetchWabaIdFromPhoneNumberId(phoneNumberId, accessToken);
+      } catch {
+        /* WABA ID opcional — checks de pagamento/empresa ficam conservadores */
+      }
+    }
 
     let waba: {
       account_review_status?: string;
       business_verification_status?: string;
       primary_funding_id?: string;
+      status?: string;
+      currency?: string;
     } = {};
 
     if (wabaId) {
       try {
-        waba = await graphGet(
-          `/${wabaId}?fields=account_review_status,business_verification_status,primary_funding_id`,
-          accessToken,
-        );
+        waba = await fetchWabaAccountFields(wabaId, accessToken);
       } catch {
         /* WABA fields opcionais — checks de pagamento/empresa ficam conservadores */
       }
@@ -230,19 +334,28 @@ export async function fetchMetaWhatsappAccountHealth(input: {
       },
       {
         id: "display_name",
-        ok: nameStatusOk(phone.name_status),
+        ok: nameStatusOk(phone.name_status, {
+          verifiedName: phone.verified_name ?? null,
+          phoneConnected,
+        }),
         meta: { nameStatus: phone.name_status ?? "UNKNOWN" },
       },
       {
         id: "payment_active",
-        ok: paymentOk(waba),
+        ok: paymentOk({
+          primaryFundingId: waba.primary_funding_id,
+          accountReviewStatus: waba.account_review_status,
+          healthStatus: phone.health_status,
+          wabaStatus: waba.status,
+          currency: waba.currency,
+        }),
         meta: {
           accountReviewStatus: waba.account_review_status ?? "UNKNOWN",
         },
       },
       {
         id: "business_verified",
-        ok: businessVerifiedOk(waba.business_verification_status),
+        ok: businessVerifiedOk(waba.business_verification_status, phone.health_status),
         meta: {
           verificationStatus: waba.business_verification_status ?? "UNKNOWN",
         },
