@@ -95,6 +95,11 @@ import {
   encodeConversationMessageCursor,
   messageRowToCursor,
 } from "../lib/conversationMessageCursor.js";
+import {
+  loadAroundConversationMessages,
+  parseConversationMessageSearchDate,
+  searchConversationMessages,
+} from "../lib/conversationMessageSearch.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -175,28 +180,50 @@ const conversationMessagesQuerySchema = z.object({
   after: z.string().uuid().optional(),
   cursor: z.string().max(512).optional(),
   direction: z.enum(["older", "newer"]).optional(),
+  around: z.string().max(512).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
+const conversationMessagesSearchQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  type: z.enum(["TEXT", "IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "TEMPLATE"]).optional(),
+  direction: z.enum(["INBOUND", "OUTBOUND"]).optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  cursor: z.string().max(512).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 type MessageAnchor = { id: string; createdAt: Date };
+
+async function resolveConversationMessageAnchorFromCursor(
+  conversationId: string,
+  rawCursor: string,
+): Promise<MessageAnchor | null | "invalid"> {
+  const decoded = decodeConversationMessageCursor(rawCursor);
+  if (!decoded) return "invalid";
+  const row = await prisma.message.findFirst({
+    where: { id: decoded.id, conversationId },
+    select: { id: true, createdAt: true },
+  });
+  if (!row) return null;
+  if (row.createdAt.toISOString() !== decoded.createdAt) return "invalid";
+  return row;
+}
 
 async function resolveConversationMessageAnchor(
   conversationId: string,
   query: z.infer<typeof conversationMessagesQuerySchema>,
 ): Promise<MessageAnchor | null | "invalid"> {
-  const { before, after, cursor, direction } = query;
+  const { before, after, cursor, direction, around } = query;
+
+  if (around) {
+    return resolveConversationMessageAnchorFromCursor(conversationId, around);
+  }
 
   if (cursor) {
     if (!direction) return "invalid";
-    const decoded = decodeConversationMessageCursor(cursor);
-    if (!decoded) return "invalid";
-    const row = await prisma.message.findFirst({
-      where: { id: decoded.id, conversationId },
-      select: { id: true, createdAt: true },
-    });
-    if (!row) return null;
-    if (row.createdAt.toISOString() !== decoded.createdAt) return "invalid";
-    return row;
+    return resolveConversationMessageAnchorFromCursor(conversationId, cursor);
   }
 
   const legacyId = before ?? after;
@@ -1596,7 +1623,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const pagination = await getConversationMessagesPaginationFromDb();
-    if (!pagination.enabled) {
+    const parsedAround = parsedQuery.data.around;
+    if (!pagination.enabled && !parsedAround) {
       return reply.status(400).send({
         error: "Bad Request",
         message: "Conversation message pagination is disabled",
@@ -1620,20 +1648,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const limit = parsedQuery.data.limit ?? pagination.pageSize;
-    const { before, after, cursor, direction } = parsedQuery.data;
+    const { before, after, cursor, direction, around } = parsedQuery.data;
     const hasLegacy = Boolean(before || after);
     const hasCursor = Boolean(cursor);
-    if (!hasLegacy && !hasCursor) {
+    const hasAround = Boolean(around);
+    if (!hasLegacy && !hasCursor && !hasAround) {
       return reply.status(400).send({
         error: "Bad Request",
-        message: "Query parameter cursor or before/after is required",
+        message: "Query parameter cursor, around, or before/after is required",
         statusCode: 400,
       });
     }
-    if (hasLegacy && hasCursor) {
+    if (Number([hasLegacy, hasCursor, hasAround].filter(Boolean).length) > 1) {
       return reply.status(400).send({
         error: "Bad Request",
-        message: "Use either cursor or before/after, not both",
+        message: "Use only one of cursor, around, or before/after",
         statusCode: 400,
       });
     }
@@ -1657,6 +1686,23 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "Message not found", statusCode: 404 });
     }
 
+    if (hasAround) {
+      const loaded = await loadAroundConversationMessages(
+        conversation.id,
+        anchor,
+        limit,
+        conversationMessageInclude,
+      );
+      return {
+        messages: loaded.messages,
+        messagesHasMore: loaded.messagesHasMoreBefore,
+        messagesHasMoreAfter: loaded.messagesHasMoreAfter,
+        messagesOlderCursor: loaded.messagesOlderCursor,
+        messagesNewerCursor: loaded.messagesNewerCursor,
+        focusMessageId: loaded.focusMessageId,
+      };
+    }
+
     const loadOlder = cursor ? direction === "older" : Boolean(before);
     if (loadOlder) {
       const loaded = await loadOlderConversationMessages(conversation.id, anchor, limit);
@@ -1673,6 +1719,83 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       messagesHasMore: false,
       newestCursor: loaded.newestCursor,
     };
+  });
+
+  app.get<{ Params: { id: string } }>("/:id/messages/search", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const parsedQuery = conversationMessagesSearchQuerySchema.safeParse(request.query);
+    if (!parsedQuery.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsedQuery.error.message, statusCode: 400 });
+    }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId },
+      select: { id: true, teamId: true, inboxId: true },
+    });
+    if (!conversation) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, conversation);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    const q = parsedQuery.data.q?.trim() ?? "";
+    const hasText = q.length >= 2;
+    const hasStructuredFilter = Boolean(
+      parsedQuery.data.type ||
+        parsedQuery.data.direction ||
+        parsedQuery.data.from ||
+        parsedQuery.data.to,
+    );
+    if (!hasText && !hasStructuredFilter) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Provide q (min 2 chars) or at least one filter",
+        statusCode: 400,
+      });
+    }
+
+    const from = parseConversationMessageSearchDate(parsedQuery.data.from);
+    if (from === "invalid") {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid from date", statusCode: 400 });
+    }
+    const to = parseConversationMessageSearchDate(parsedQuery.data.to);
+    if (to === "invalid") {
+      return reply.status(400).send({ error: "Bad Request", message: "Invalid to date", statusCode: 400 });
+    }
+
+    const limit = parsedQuery.data.limit ?? 20;
+    try {
+      const loaded = await searchConversationMessages({
+        conversationId: conversation.id,
+        filters: {
+          q: hasText ? q : undefined,
+          type: parsedQuery.data.type,
+          direction: parsedQuery.data.direction,
+          from,
+          to,
+        },
+        limit,
+        cursor: parsedQuery.data.cursor,
+        include: conversationMessageInclude,
+      });
+      return loaded;
+    } catch (err) {
+      if (err instanceof Error && err.message === "INVALID_CURSOR") {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "Invalid message cursor",
+          statusCode: 400,
+        });
+      }
+      throw err;
+    }
   });
 
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
@@ -1817,6 +1940,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             messagesHasMore: pagination.enabled ? messagesHasMore : false,
             messagesOlderCursor: pagination.enabled ? messagesOlderCursor : null,
             messagesNewerCursor: pagination.enabled ? messagesNewerCursor : null,
+            messagesPaginationEnabled: pagination.enabled,
           }),
       activeVoiceCall: activeVoiceByConversation.get(conversation.id) ?? null,
       contact: enrichWebsiteContact(

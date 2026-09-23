@@ -60,6 +60,7 @@ import {
   ShieldBan,
   ExternalLink,
   Globe,
+  Search,
 } from "lucide-react";
 import { WebchatLinkModal } from "@/components/WebchatLinkModal";
 import clsx from "clsx";
@@ -176,6 +177,11 @@ import {
 } from "@/lib/contactTimeline";
 import { buildConversationChatFeed, shouldShowChatDaySeparator } from "@/lib/conversationChatFeed";
 import { ConversationTransferSystemEvent } from "@/components/conversation/ConversationTransferSystemEvent";
+import {
+  ConversationMessageSearchPanel,
+  type ConversationMessageSearchResult,
+} from "@/components/conversation/ConversationMessageSearchPanel";
+import { MessageTextWithHighlight } from "@/lib/conversationMessageSearchHighlight";
 
 interface Message {
   id: string;
@@ -310,6 +316,7 @@ interface ConversationDetail {
   messagesHasMore?: boolean;
   messagesOlderCursor?: string | null;
   messagesNewerCursor?: string | null;
+  messagesPaginationEnabled?: boolean;
   contactTimeline?: ContactTimelineEvent[];
   leadOwnerConflict?: LeadOwnerConflict | null;
 }
@@ -355,6 +362,9 @@ export function ConversationDetailPage() {
   const workspaceWsConnected = useWorkspaceWebSocketConnected();
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [messageSearchOpen, setMessageSearchOpen] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
@@ -636,6 +646,9 @@ export function ConversationDetailPage() {
     hasPrependedOlderRef.current = false;
     loadingOlderRef.current = false;
     setLoadingOlderMessages(false);
+    setMessageSearchOpen(false);
+    setHighlightedMessageId(null);
+    setMessageSearchQuery("");
     setFlowError("");
   }, [id]);
 
@@ -828,6 +841,13 @@ export function ConversationDetailPage() {
         return;
       }
 
+      if (mod && k === "f") {
+        if (typing) return;
+        e.preventDefault();
+        setMessageSearchOpen((open) => !open);
+        return;
+      }
+
       if (e.altKey && k === "j") {
         const nextId = nextConversationId("next");
         if (!nextId) return;
@@ -907,6 +927,12 @@ export function ConversationDetailPage() {
     }
   }, [isEmailLayout, loadOlderMessages]);
 
+  const scrollToMessage = useCallback((messageId: string) => {
+    stickToBottomRef.current = false;
+    const el = document.getElementById(`conversation-message-${messageId}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   useEffect(() => {
     seenMessageIds.current.clear();
   }, [id]);
@@ -984,6 +1010,56 @@ export function ConversationDetailPage() {
     }
   }, [id]);
 
+  const jumpToSearchResult = useCallback(
+    async (result: ConversationMessageSearchResult, _index: number, _total: number, query: string) => {
+      if (!id) return;
+      setHighlightedMessageId(result.message.id);
+      setMessageSearchQuery(query);
+
+      const existing = messagesRef.current.some((m) => m.id === result.message.id);
+      if (existing) {
+        scrollToMessage(result.message.id);
+        return;
+      }
+
+      const useAround = Boolean(conversation?.messagesPaginationEnabled);
+      if (useAround) {
+        try {
+          const data = await api.get<{
+            messages: Message[];
+            messagesHasMore: boolean;
+            messagesOlderCursor: string | null;
+            messagesNewerCursor: string | null;
+            focusMessageId: string;
+          }>(`/conversations/${id}/messages?around=${encodeURIComponent(result.cursor)}`);
+          if (id !== activeConversationIdRef.current) return;
+          hasPrependedOlderRef.current = true;
+          for (const m of data.messages) seenMessageIds.current.add(m.id);
+          setConversation((prev) => {
+            if (!prev) return prev;
+            const merged: ConversationDetail = {
+              ...prev,
+              messages: data.messages,
+              messagesHasMore: data.messagesHasMore,
+              messagesOlderCursor: data.messagesOlderCursor,
+              messagesNewerCursor: data.messagesNewerCursor,
+            };
+            setCachedConversation(id, merged);
+            return merged;
+          });
+          window.requestAnimationFrame(() => scrollToMessage(result.message.id));
+          return;
+        } catch {
+          /* fall through to full reload */
+        }
+      }
+
+      await loadConversation();
+      window.requestAnimationFrame(() => scrollToMessage(result.message.id));
+    },
+    [conversation?.messagesPaginationEnabled, id, loadConversation, scrollToMessage],
+  );
+
   const loadConversationMeta = useCallback(async () => {
     if (!id) return;
     const requestId = id;
@@ -998,6 +1074,7 @@ export function ConversationDetailPage() {
           messagesHasMore: prev.messagesHasMore,
           messagesOlderCursor: prev.messagesOlderCursor,
           messagesNewerCursor: prev.messagesNewerCursor,
+          messagesPaginationEnabled: prev.messagesPaginationEnabled ?? meta.messagesPaginationEnabled,
         };
         setCachedConversation(requestId, merged);
         return merged;
@@ -3843,6 +3920,21 @@ export function ConversationDetailPage() {
                     ) : null}
                     <button
                       type="button"
+                      className={clsx(
+                        filledSoftBase,
+                        filledSoftSlate,
+                        actionBtnSize,
+                        messageSearchOpen && "ring-2 ring-brand-400/60",
+                      )}
+                      onClick={() => setMessageSearchOpen((open) => !open)}
+                      title={t("conversationDetail.messageSearch.open")}
+                      aria-label={t("conversationDetail.messageSearch.open")}
+                    >
+                      <Search className="h-3.5 w-3.5" />
+                      {t("conversationDetail.messageSearch.open")}
+                    </button>
+                    <button
+                      type="button"
                       className={clsx(filledSoftBase, filledSoftSlate, "p-2 xl:hidden")}
                       onClick={() => setCrmMobileOpen(true)}
                       aria-label={t("conversationDetail.crmDrawerToggle")}
@@ -3891,6 +3983,20 @@ export function ConversationDetailPage() {
           </div>
           ) : null}
         </motion.div>
+        ) : null}
+
+        {conversation && !emailWorkspaceMode ? (
+          <ConversationMessageSearchPanel
+            conversationId={conversation.id}
+            open={messageSearchOpen}
+            onClose={() => {
+              setMessageSearchOpen(false);
+              setHighlightedMessageId(null);
+              setMessageSearchQuery("");
+            }}
+            onJumpToResult={jumpToSearchResult}
+            dateLocale={dateLocale}
+          />
         ) : null}
 
         {flowError && (
@@ -4052,6 +4158,7 @@ export function ConversationDetailPage() {
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
+              const isHighlighted = highlightedMessageId === msg.id;
               const audioTranscriptionText =
                 msg.type === "AUDIO" ? parseAudioTranscriptionBody(msg.body) : null;
               const displayBody =
@@ -4112,6 +4219,7 @@ export function ConversationDetailPage() {
                         : "max-w-[min(calc(100%-2.5rem),48rem)]"
                       : "max-w-[min(calc(100%-2.5rem),28rem)]",
                     isNew && "crm-bubble-unread",
+                    isHighlighted && "ring-2 ring-amber-400/80 ring-offset-2 ring-offset-white dark:ring-offset-[#151826]",
                     msg.isPrivate
                       ? "crm-bubble-private border border-amber-300/45 dark:border-amber-500/35"
                       : inbound
@@ -4186,6 +4294,12 @@ export function ConversationDetailPage() {
                   {displayBody && msg.type !== "DOCUMENT" && msg.type !== "IMAGE" && msg.type !== "AUDIO" ? (
                     isEmailInbox && msg.type === "TEXT" ? (
                       <EmailMessageBody body={msg.body} />
+                    ) : isHighlighted && messageSearchQuery ? (
+                      <MessageTextWithHighlight
+                        text={displayBody}
+                        query={messageSearchQuery}
+                        className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+                      />
                     ) : (
                       <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{displayBody}</p>
                     )
@@ -4253,6 +4367,7 @@ export function ConversationDetailPage() {
               return (
                 <motion.div
                   key={msg.id}
+                  id={`conversation-message-${msg.id}`}
                   className={clsx(
                     "flex w-full min-w-0 gap-3",
                     emailWorkspaceMode && msg.type === "TEXT" ? "items-stretch" : "",
