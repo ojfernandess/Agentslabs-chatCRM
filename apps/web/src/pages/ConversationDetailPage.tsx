@@ -3891,8 +3891,15 @@ export function ConversationDetailPage() {
           )}
           <div className={clsx("relative flex w-full min-w-0 flex-col gap-3")}>
             {loadingOlderMessages ? (
-              <div className="flex justify-center py-2">
-                <span className="text-xs text-ink-500">{t("conversationDetail.loadingOlderMessages")}</span>
+              <div
+                className="flex justify-center py-3"
+                role="status"
+                aria-label={t("conversationDetail.loadingOlderMessages")}
+              >
+                <div
+                  className="h-6 w-6 animate-spin rounded-full border-[3px] border-brand-500/20 border-t-brand-500 dark:border-brand-400/25 dark:border-t-brand-400"
+                  aria-hidden
+                />
               </div>
             ) : null}
             {conversationChatFeed.map((feedItem, feedIndex) => {
