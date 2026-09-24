@@ -181,6 +181,7 @@ import {
   ConversationMessageSearchPanel,
   type ConversationMessageSearchResult,
 } from "@/components/conversation/ConversationMessageSearchPanel";
+import { ConversationScrollToLatestButton } from "@/components/conversation/ConversationScrollToLatestButton";
 import { MessageTextWithHighlight } from "@/lib/conversationMessageSearchHighlight";
 
 interface Message {
@@ -366,6 +367,7 @@ export function ConversationDetailPage() {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [floatingToolbarExpanded, setFloatingToolbarExpanded] = useState(true);
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [leadTypes, setLeadTypes] = useState<LeadTypeRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
@@ -651,6 +653,7 @@ export function ConversationDetailPage() {
     setHighlightedMessageId(null);
     setMessageSearchQuery("");
     setFloatingToolbarExpanded(true);
+    setShowScrollToLatest(false);
     setFlowError("");
   }, [id]);
 
@@ -926,7 +929,9 @@ export function ConversationDetailPage() {
     const el = messagesViewportRef.current;
     if (!el) return;
     const threshold = 120;
-    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    stickToBottomRef.current = atBottom;
+    if (!isEmailLayout) setShowScrollToLatest(!atBottom);
     if (
       !isEmailLayout &&
       el.scrollTop < 80 &&
@@ -937,8 +942,20 @@ export function ConversationDetailPage() {
     }
   }, [isEmailLayout, loadOlderMessages]);
 
+  const scrollToLatestMessages = useCallback(() => {
+    const viewport = messagesViewportRef.current;
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    }
+    stickToBottomRef.current = true;
+    setShowScrollToLatest(false);
+  }, []);
+
   const scrollToMessage = useCallback((messageId: string) => {
     stickToBottomRef.current = false;
+    setShowScrollToLatest(true);
     const el = document.getElementById(`conversation-message-${messageId}`);
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
@@ -1543,10 +1560,12 @@ export function ConversationDetailPage() {
     const viewport = messagesViewportRef.current;
     if (viewport) {
       viewport.scrollTop = viewport.scrollHeight;
+      setShowScrollToLatest(false);
       return;
     }
     // Fallback: nunca usar scrollIntoView no documento/main (salta a página ao abrir painéis).
     messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "nearest", inline: "nearest" });
+    setShowScrollToLatest(false);
   }, [conversation?.messages, isEmailLayout]);
 
   const lastInbound = conversation?.messages?.filter((m) => m.direction === "INBOUND").at(-1);
@@ -4439,6 +4458,13 @@ export function ConversationDetailPage() {
             ) : null}
             <div ref={messagesEndRef} />
           </div>
+          {!isEmailLayout ? (
+            <ConversationScrollToLatestButton
+              visible={showScrollToLatest}
+              label={t("conversationDetail.scrollToLatest")}
+              onClick={scrollToLatestMessages}
+            />
+          ) : null}
         </div>
 
         <motion.div

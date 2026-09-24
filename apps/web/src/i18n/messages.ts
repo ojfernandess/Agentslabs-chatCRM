@@ -4982,6 +4982,7 @@ export const messages = {
       placeholderTemplate: "Fora da sessão — use apenas modelos",
       notFound: "Conversa não encontrada",
       loadingOlderMessages: "Carregando mensagens anteriores…",
+      scrollToLatest: "Ir para mensagens recentes",
       messageSearch: {
         open: "Buscar no histórico",
         close: "Fechar busca",
@@ -12438,6 +12439,7 @@ export const messages = {
       placeholderTemplate: "Outside session — templates only",
       notFound: "Conversation not found",
       loadingOlderMessages: "Loading older messages…",
+      scrollToLatest: "Jump to latest messages",
       messageSearch: {
         open: "Search history",
         close: "Close search",
