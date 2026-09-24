@@ -334,11 +334,28 @@ type LeadOwnerConflict = {
 const MSG_GROUP_MINUTES = 5;
 const PRESENCE_RECENT_MINUTES = 15;
 
+function outboundMessageActorKey(message: Message): string | null {
+  return message.actorUser?.id ?? null;
+}
+
+function outboundMessageActorLabel(message: Message, viewerName?: string | null): string {
+  const fromActor =
+    message.actorUser?.displayName?.trim() || message.actorUser?.name?.trim() || "";
+  if (fromActor) return fromActor;
+  return viewerName?.trim() || "A";
+}
+
 function messageGroupedWithPrevious(messages: Message[], index: number): boolean {
   if (index <= 0) return false;
   const prev = messages[index - 1];
   const cur = messages[index];
   if (prev.direction !== cur.direction || !!prev.isPrivate !== !!cur.isPrivate) return false;
+  if (
+    prev.direction === "OUTBOUND" &&
+    outboundMessageActorKey(prev) !== outboundMessageActorKey(cur)
+  ) {
+    return false;
+  }
   return differenceInMinutes(new Date(cur.createdAt), new Date(prev.createdAt)) <= MSG_GROUP_MINUTES;
 }
 
@@ -4239,6 +4256,8 @@ export function ConversationDetailPage() {
                 msg.type === "AUDIO";
               if (isEmailInbox && msg.type === "TEXT" && !hasRenderableBody) return null;
 
+              const outboundActorLabel = outboundMessageActorLabel(msg, user?.name);
+
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
                   {showAvatar ? (
@@ -4255,9 +4274,9 @@ export function ConversationDetailPage() {
                     ) : (
                       <div
                         className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shadow-sm"
-                        title={user?.name ?? ""}
+                        title={outboundActorLabel}
                       >
-                        {(user?.name ?? "A").charAt(0).toUpperCase()}
+                        {outboundActorLabel.charAt(0).toUpperCase()}
                       </div>
                     )
                   ) : (
