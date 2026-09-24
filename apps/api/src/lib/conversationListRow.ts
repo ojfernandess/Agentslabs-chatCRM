@@ -95,7 +95,7 @@ export async function fetchConversationListRow(
       ? await buildWebsiteVisitorIndexMap(organizationId)
       : new Map<string, number>();
 
-  const { lastMessage: _lastMessage, messages: _messages, ...rest } = withFlag;
+  const { lastMessage: _lastMessage, ...rest } = withFlag;
   const emailState = emailStateByConversation.get(row.id);
   const contactBase = {
     ...rest.contact,

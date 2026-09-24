@@ -682,6 +682,12 @@ async function handleWhatsAppPost(
         },
       });
 
+      notifyConversationNewMessage(
+        organizationId,
+        conversation.id,
+        serializeMessageForWorkspaceWs(inbound),
+      );
+
       let inboundForPipeline = await maybeTranscribeInboundAudioMessage({
         message: inbound,
         enabled: channelSettings.audioTranscriptionEnabled,
@@ -718,12 +724,6 @@ async function handleWhatsAppPost(
         where: { id: conversation.id },
         data: { updatedAt: new Date() },
       });
-
-      notifyConversationNewMessage(
-        organizationId,
-        conversation.id,
-        serializeMessageForWorkspaceWs(inboundForPipeline),
-      );
 
       if (inboundBodyForRules) {
         const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });

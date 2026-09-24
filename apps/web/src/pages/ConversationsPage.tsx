@@ -840,8 +840,13 @@ export function ConversationsPage({
               if (idx < 0) return prev;
               return prev.filter((c) => c.id !== conversationId);
             }
+            const existing = idx >= 0 ? prev[idx] : null;
+            const mergedRow =
+              row.messages?.length || !existing?.messages?.length
+                ? row
+                : { ...row, messages: existing.messages };
             const without = prev.filter((c) => c.id !== conversationId);
-            const next = [row, ...without];
+            const next = [mergedRow, ...without];
             applyListRowToCache(fetchKey, next);
             persistConversationListIds(next);
             return next;
@@ -979,16 +984,18 @@ export function ConversationsPage({
     const onUpdated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationUpdatedDetail>).detail;
       if (!detail?.conversationId) return;
-      if (
+      const hasStructuralChange =
         detail.status ||
         detail.assignedToId !== undefined ||
+        detail.teamId !== undefined ||
+        detail.inboxId ||
         detail.awaitingHumanHandoff !== undefined ||
-        detail.agentBotTriageActive !== undefined
-      ) {
+        detail.agentBotTriageActive !== undefined;
+      if (hasStructuralChange) {
         syncConversationFromHint(detail);
         return;
       }
-      void syncConversationListRow(detail.conversationId);
+      // Nova mensagem: preview já vem via message.created — evita GET list-row sem preview.
     };
     const onTransferred = (e: Event) => {
       const detail = (e as CustomEvent<{ conversationId?: string }>).detail;

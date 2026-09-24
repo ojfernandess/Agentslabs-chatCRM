@@ -1153,10 +1153,15 @@ export function ConversationDetailPage() {
     if (!id) return;
     if (seenMessageIds.current.has(message.id)) return;
     seenMessageIds.current.add(message.id);
+    let applied = false;
     setConversation((prev) => {
       if (!prev) return prev;
       const existing = prev.messages ?? [];
-      if (existing.some((m) => m.id === message.id)) return prev;
+      if (existing.some((m) => m.id === message.id)) {
+        applied = true;
+        return prev;
+      }
+      applied = true;
       const merged: ConversationDetail = {
         ...prev,
         messages: [...existing, message],
@@ -1165,8 +1170,12 @@ export function ConversationDetailPage() {
       setCachedConversation(id, merged);
       return merged;
     });
+    if (!applied) {
+      void loadConversation({ silent: true });
+      return;
+    }
     window.requestAnimationFrame(() => syncMessagesScrollState());
-  }, [id, syncMessagesScrollState]);
+  }, [id, loadConversation, syncMessagesScrollState]);
 
   const patchPushedMessageStatus = useCallback((messageId: string, status: string) => {
     if (!id) return;
@@ -1551,7 +1560,7 @@ export function ConversationDetailPage() {
   }, { conversationId: id });
 
   useEffect(() => {
-    if (!id || !workspaceWsConnected) return;
+    if (!id) return;
     const onMessageCreated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
       if (detail?.conversationId !== id || !detail.message) return;
@@ -1568,7 +1577,7 @@ export function ConversationDetailPage() {
       window.removeEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
       window.removeEventListener(CONVERSATION_MESSAGE_UPDATED_EVENT, onMessageUpdated);
     };
-  }, [id, workspaceWsConnected, appendPushedMessage, patchPushedMessageStatus]);
+  }, [id, appendPushedMessage, patchPushedMessageStatus]);
 
   useEffect(() => {
     if (!id) return;
