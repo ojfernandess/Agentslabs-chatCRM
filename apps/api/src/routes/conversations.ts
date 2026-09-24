@@ -100,6 +100,10 @@ import {
   parseConversationMessageSearchDate,
   searchConversationMessages,
 } from "../lib/conversationMessageSearch.js";
+import {
+  buildConversationListSyncPayload,
+  fetchConversationListRow,
+} from "../lib/conversationListRow.js";
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -390,6 +394,33 @@ async function buildAgentBotTriageMapForInboxes(
     );
   }
   return triageMap;
+}
+
+async function broadcastConversationListSync(
+  organizationId: string,
+  conversation: {
+    id: string;
+    status: string;
+    assignedToId: string | null;
+    teamId: string | null;
+    inboxId: string;
+    awaitingHumanHandoff: boolean;
+    updatedAt: Date;
+    inbox: { channelType: string };
+  },
+): Promise<void> {
+  const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
+  const agentBotTriageActive = computeAgentBotTriageActive(
+    agentCtx,
+    conversation.inbox.channelType as InboxChannelType,
+  );
+  broadcastToOrganization(
+    organizationId,
+    {
+      type: "conversation.updated",
+      ...buildConversationListSyncPayload({ ...conversation, agentBotTriageActive }),
+    },
+  );
 }
 
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
@@ -1798,6 +1829,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.get<{ Params: { id: string } }>("/:id/list-row", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const existing = await prisma.conversation.findFirst({
+      where: { id: request.params.id, organizationId, deletedAt: null },
+      select: { id: true, teamId: true, inboxId: true },
+    });
+    if (!existing) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    if (request.user.role === "AGENT") {
+      const ok = await agentCanAccessConversation(request.user.id, organizationId, existing);
+      if (!ok) {
+        return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+      }
+    }
+
+    const row = await fetchConversationListRow(organizationId, existing.id, request.user.id);
+    if (!row) {
+      return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+    }
+    return row;
+  });
+
   app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -2160,10 +2216,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           previousAssignedToId: prevAssignedToId,
           contact: updated.contact,
         });
-        broadcastToOrganization(organizationId, {
-          type: "conversation.updated",
-          conversationId: updated.id,
-        });
+        await broadcastConversationListSync(organizationId, updated);
       }
     }
 
@@ -2855,18 +2908,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           previousAssignedToId: prevAssignedToId,
           contact: conversation.contact,
         });
-        broadcastToOrganization(organizationId, {
-          type: "conversation.updated",
-          conversationId: conversation.id,
-        });
-      }
-
-      if (existing.awaitingHumanHandoff !== conversation.awaitingHumanHandoff) {
-        broadcastToOrganization(organizationId, {
-          type: "conversation.updated",
-          conversationId: conversation.id,
-          awaitingHumanHandoff: conversation.awaitingHumanHandoff,
-        });
+        await broadcastConversationListSync(organizationId, conversation);
+      } else {
+        const statusChanged = conversation.status !== existing.status;
+        const handoffChanged = conversation.awaitingHumanHandoff !== existing.awaitingHumanHandoff;
+        if (statusChanged || handoffChanged) {
+          await broadcastConversationListSync(organizationId, conversation);
+        }
       }
 
       const contactTimeline = await fetchContactTimelineForConversation(organizationId, conversation.contactId);

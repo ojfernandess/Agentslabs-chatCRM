@@ -3,14 +3,22 @@ import { useLocation, useMatch, useNavigate, useSearchParams } from "react-route
 import { api } from "@/lib/api";
 import { MessageSquare, Clock, UsersRound, UserCircle, Inbox, Bot, Headset, Search, MessageSquarePlus, Phone, Tag } from "lucide-react";
 import clsx from "clsx";
-import { PageTransition, motion } from "@/components/Motion";
+import { PageTransition, motion, AnimatePresence } from "@/components/Motion";
 import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
+import {
+  useDebouncedConversationUpdated,
+  type ConversationUpdatedDetail,
+} from "@/hooks/useDebouncedConversationUpdated";
 import {
   CONVERSATION_MESSAGE_CREATED_EVENT,
   type ConversationMessageCreatedDetail,
 } from "@/lib/conversationMessagePush";
+import {
+  conversationMatchesListScope,
+  mergeConversationScopeHint,
+  type ConversationListScopeState,
+} from "@/lib/conversationListScope";
 import { useConversationAgentTypingMap } from "@/hooks/useConversationAgentTyping";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
@@ -185,7 +193,20 @@ export function ConversationsPage({
   const loadingMoreRef = useRef(false);
   const listViewportRef = useRef<HTMLDivElement>(null);
   const initialAttendanceScopeApplied = useRef(false);
+  const listSyncInflightRef = useRef(new Map<string, Promise<void>>());
+  const listScopeRef = useRef<ConversationListScopeState>({
+    botAttendanceActive: false,
+    attendanceScopeActive: false,
+    mineActive: false,
+    statusFilter: "",
+    teamFilter: "",
+    inboxFilter: "",
+    leadTypeFilter: "",
+    hideResolvedInAllScope: false,
+    orgAllScopeHumanOnly: false,
+  });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [listMotionIds, setListMotionIds] = useState<Set<string>>(() => new Set());
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
@@ -221,6 +242,26 @@ export function ConversationsPage({
 
   const orgAllScopeActive = !mineActive && !botAttendanceActive && !attendanceScopeActive;
   const hideResolvedInAllScope = orgAllScopeHumanOnly && orgAllScopeActive;
+
+  listScopeRef.current = {
+    botAttendanceActive,
+    attendanceScopeActive,
+    mineActive,
+    statusFilter,
+    teamFilter,
+    inboxFilter,
+    leadTypeFilter,
+    hideResolvedInAllScope,
+    orgAllScopeHumanOnly,
+    userId: user?.id,
+  };
+
+  const applyListRowToCache = useCallback((fetchKey: string, rows: Conversation[]) => {
+    const cached = listScopeCacheRef.current.get(fetchKey);
+    if (cached) {
+      listScopeCacheRef.current.set(fetchKey, { ...cached, rows });
+    }
+  }, []);
 
   type ConversationListScope = "org" | "mine" | "bot" | "attendance";
 
@@ -781,6 +822,127 @@ export function ConversationsPage({
     hideResolvedInAllScope,
   ]);
 
+  const syncConversationListRow = useCallback(
+    async (conversationId: string, options?: { highlight?: "enter" | "transfer" | "exit" }) => {
+      const existing = listSyncInflightRef.current.get(conversationId);
+      if (existing) return existing;
+
+      const promise = (async () => {
+        const scope = listScopeRef.current;
+        const fetchKey = listFetchKeyRef.current;
+        try {
+          const row = await api.get<Conversation>(`/conversations/${conversationId}/list-row`);
+          const matches = conversationMatchesListScope(row, scope);
+
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c.id === conversationId);
+            if (!matches) {
+              if (idx < 0) return prev;
+              return prev.filter((c) => c.id !== conversationId);
+            }
+            const without = prev.filter((c) => c.id !== conversationId);
+            const next = [row, ...without];
+            applyListRowToCache(fetchKey, next);
+            persistConversationListIds(next);
+            return next;
+          });
+
+          if (matches && options?.highlight) {
+            setListMotionIds((prev) => new Set(prev).add(conversationId));
+            window.setTimeout(() => {
+              setListMotionIds((prev) => {
+                const next = new Set(prev);
+                next.delete(conversationId);
+                return next;
+              });
+            }, options.highlight === "exit" ? 400 : 1200);
+          }
+
+          void loadScopeCounts();
+          void loadStatusCounts();
+        } catch {
+          setConversations((prev) => {
+            if (!prev.some((c) => c.id === conversationId)) return prev;
+            const next = prev.filter((c) => c.id !== conversationId);
+            applyListRowToCache(fetchKey, next);
+            return next;
+          });
+          if (options?.highlight === "exit") {
+            setListMotionIds((prev) => new Set(prev).add(conversationId));
+            window.setTimeout(() => {
+              setListMotionIds((prev) => {
+                const next = new Set(prev);
+                next.delete(conversationId);
+                return next;
+              });
+            }, 400);
+          }
+          void loadScopeCounts();
+          void loadStatusCounts();
+        }
+      })().finally(() => {
+        listSyncInflightRef.current.delete(conversationId);
+      });
+
+      listSyncInflightRef.current.set(conversationId, promise);
+      return promise;
+    },
+    [applyListRowToCache, loadScopeCounts, loadStatusCounts, persistConversationListIds],
+  );
+
+  const syncConversationFromHint = useCallback(
+    (detail: ConversationUpdatedDetail | undefined, highlight?: "enter" | "transfer" | "exit") => {
+      const conversationId = detail?.conversationId;
+      if (!conversationId) return;
+
+      const scope = listScopeRef.current;
+      let fetchRow = false;
+      let removed = false;
+
+      setConversations((prev) => {
+        const existing = prev.find((c) => c.id === conversationId);
+        if (!existing) {
+          fetchRow = true;
+          return prev;
+        }
+        const merged = mergeConversationScopeHint(existing, detail);
+        if (!conversationMatchesListScope(merged, scope)) {
+          removed = true;
+          const next = prev.filter((c) => c.id !== conversationId);
+          applyListRowToCache(listFetchKeyRef.current, next);
+          return next;
+        }
+        const patched = {
+          ...existing,
+          ...merged,
+          updatedAt: detail?.updatedAt ?? existing.updatedAt,
+        };
+        const next = [patched, ...prev.filter((c) => c.id !== conversationId)];
+        applyListRowToCache(listFetchKeyRef.current, next);
+        return next;
+      });
+
+      if (fetchRow) {
+        void syncConversationListRow(conversationId, { highlight: highlight ?? "enter" });
+        return;
+      }
+
+      if (highlight) {
+        setListMotionIds((prev) => new Set(prev).add(conversationId));
+        window.setTimeout(() => {
+          setListMotionIds((prev) => {
+            const next = new Set(prev);
+            next.delete(conversationId);
+            return next;
+          });
+        }, removed ? 400 : 1200);
+      }
+      void loadScopeCounts();
+      void loadStatusCounts();
+    },
+    [applyListRowToCache, loadScopeCounts, loadStatusCounts, syncConversationListRow],
+  );
+
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
@@ -809,10 +971,37 @@ export function ConversationsPage({
   }, [loadStatusCounts]);
 
   useDebouncedConversationUpdated(() => {
-    void loadConversations();
     void loadScopeCounts();
     void loadStatusCounts();
   });
+
+  useEffect(() => {
+    const onUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<ConversationUpdatedDetail>).detail;
+      if (!detail?.conversationId) return;
+      if (
+        detail.status ||
+        detail.assignedToId !== undefined ||
+        detail.awaitingHumanHandoff !== undefined ||
+        detail.agentBotTriageActive !== undefined
+      ) {
+        syncConversationFromHint(detail);
+        return;
+      }
+      void syncConversationListRow(detail.conversationId);
+    };
+    const onTransferred = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationId?: string }>).detail;
+      if (!detail?.conversationId) return;
+      void syncConversationListRow(detail.conversationId, { highlight: "transfer" });
+    };
+    window.addEventListener("openconduit:conversation-updated", onUpdated);
+    window.addEventListener("openconduit:conversation-transferred", onTransferred);
+    return () => {
+      window.removeEventListener("openconduit:conversation-updated", onUpdated);
+      window.removeEventListener("openconduit:conversation-transferred", onTransferred);
+    };
+  }, [syncConversationFromHint, syncConversationListRow]);
 
   useEffect(() => {
     const onMessageCreated = (e: Event) => {
@@ -820,7 +1009,10 @@ export function ConversationsPage({
       if (!detail?.conversationId || !detail.message) return;
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === detail.conversationId);
-        if (idx < 0) return prev;
+        if (idx < 0) {
+          void syncConversationListRow(detail.conversationId, { highlight: "enter" });
+          return prev;
+        }
         const conv = prev[idx];
         const preview = {
           body: detail.message.body,
@@ -1271,50 +1463,62 @@ export function ConversationsPage({
                   </p>
                 </motion.div>
               ) : (
-                <div>
+                <AnimatePresence initial={false} mode="popLayout">
                   {filteredConversations.map((conv) => (
-                    <ConversationListItem
+                    <motion.div
                       key={conv.id}
-                      conv={conv}
-                      isSelected={Boolean(splitView && activeThreadId === conv.id)}
-                      linkTo={`/conversations/${conv.id}${conversationLinkSuffix}`}
-                      statusLabel={statusLabel}
-                      fmtMoney={fmtMoney}
-                      showContactTags={orgListShowContactTags}
-                      showWhatsappIcon={!splitView || orgListShowWhatsappIcon}
-                      splitView={splitView}
-                      agentTyping={agentTypingByConversation.get(conv.id) ?? null}
-                      currentUserId={user?.id}
-                      onPrefetch={() => prefetchConversation(conv.id)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setContextMenu({
-                          target: {
-                            id: conv.id,
-                            status: conv.status,
-                            priority: conv.priority ?? null,
-                            isUnread: conv.isUnread,
-                            contact: { id: conv.contact.id, name: conv.contact.name },
-                          },
-                          position: { x: e.clientX, y: e.clientY },
-                        });
-                      }}
-                    />
-                  ))}
-                  {loadingMore ? (
-                    <div
-                      className="flex justify-center py-4"
-                      role="status"
-                      aria-label={t("conversations.loadingMore")}
+                      layout
+                      initial={{ opacity: 0, y: -10, scale: 0.985 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, x: -28, height: 0, marginTop: 0, marginBottom: 0, overflow: "hidden" }}
+                      transition={{ duration: 0.26, ease: "easeOut" }}
+                      className={clsx(
+                        listMotionIds.has(conv.id) &&
+                          "rounded-xl ring-2 ring-brand-400/70 shadow-[0_0_0_1px_rgba(103,52,255,0.12)] transition-shadow duration-300 dark:ring-brand-500/50",
+                      )}
                     >
-                      <div
-                        className="h-6 w-6 animate-spin rounded-full border-[3px] border-brand-500/20 border-t-brand-500 dark:border-brand-400/25 dark:border-t-brand-400"
-                        aria-hidden
+                      <ConversationListItem
+                        conv={conv}
+                        isSelected={Boolean(splitView && activeThreadId === conv.id)}
+                        linkTo={`/conversations/${conv.id}${conversationLinkSuffix}`}
+                        statusLabel={statusLabel}
+                        fmtMoney={fmtMoney}
+                        showContactTags={orgListShowContactTags}
+                        showWhatsappIcon={!splitView || orgListShowWhatsappIcon}
+                        splitView={splitView}
+                        agentTyping={agentTypingByConversation.get(conv.id) ?? null}
+                        currentUserId={user?.id}
+                        onPrefetch={() => prefetchConversation(conv.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({
+                            target: {
+                              id: conv.id,
+                              status: conv.status,
+                              priority: conv.priority ?? null,
+                              isUnread: conv.isUnread,
+                              contact: { id: conv.contact.id, name: conv.contact.name },
+                            },
+                            position: { x: e.clientX, y: e.clientY },
+                          });
+                        }}
                       />
-                    </div>
-                  ) : null}
-                </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               )}
+              {!loading && loadingMore ? (
+                <div
+                  className="flex justify-center py-4"
+                  role="status"
+                  aria-label={t("conversations.loadingMore")}
+                >
+                  <div
+                    className="h-6 w-6 animate-spin rounded-full border-[3px] border-brand-500/20 border-t-brand-500 dark:border-brand-400/25 dark:border-t-brand-400"
+                    aria-hidden
+                  />
+                </div>
+              ) : null}
             </div>
           </section>
         </div>

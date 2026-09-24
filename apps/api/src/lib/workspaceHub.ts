@@ -54,11 +54,21 @@ export function broadcastConversationAgentTyping(
   });
 }
 
+export type ConversationUpdatedBroadcast = {
+  awaitingHumanHandoff?: boolean;
+  status?: string;
+  assignedToId?: string | null;
+  teamId?: string | null;
+  inboxId?: string;
+  agentBotTriageActive?: boolean;
+  updatedAt?: string;
+};
+
 /** Notifica clientes conectados para recarregar lista/detalhe da conversa (novas mensagens, status, etc.). */
 export function broadcastConversationUpdated(
   organizationId: string,
   conversationId: string,
-  extra?: { awaitingHumanHandoff?: boolean },
+  extra?: ConversationUpdatedBroadcast,
 ): void {
   broadcastToOrganization(organizationId, {
     type: "conversation.updated",

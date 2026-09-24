@@ -5,6 +5,12 @@ const DEBOUNCE_MS = 350;
 export type ConversationUpdatedDetail = {
   conversationId?: string;
   awaitingHumanHandoff?: boolean;
+  status?: string;
+  assignedToId?: string | null;
+  teamId?: string | null;
+  inboxId?: string;
+  agentBotTriageActive?: boolean;
+  updatedAt?: string;
 };
 
 /**

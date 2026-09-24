@@ -145,11 +145,15 @@ export function WorkspaceRealtime() {
       typing?: boolean;
       botId?: string;
       botName?: string;
+      status?: string;
+      assignedToId?: string | null;
+      inboxId?: string;
+      agentBotTriageActive?: boolean;
+      updatedAt?: string;
       caller?: string;
       deviceId?: string;
       whatsappCallId?: number;
       contactId?: string | null;
-      status?: string;
       linkedPhone?: string | null;
       targetUserIds?: string[] | null;
       userId?: string;
@@ -193,7 +197,16 @@ export function WorkspaceRealtime() {
       } else if (data.type === "conversation.updated" && typeof data.conversationId === "string") {
         window.dispatchEvent(
           new CustomEvent("openconduit:conversation-updated", {
-            detail: { conversationId: data.conversationId, awaitingHumanHandoff: data.awaitingHumanHandoff },
+            detail: {
+              conversationId: data.conversationId,
+              awaitingHumanHandoff: data.awaitingHumanHandoff,
+              status: data.status,
+              assignedToId: data.assignedToId,
+              teamId: data.teamId,
+              inboxId: data.inboxId,
+              agentBotTriageActive: data.agentBotTriageActive,
+              updatedAt: data.updatedAt,
+            },
           }),
         );
       } else if (
