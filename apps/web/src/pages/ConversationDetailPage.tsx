@@ -633,6 +633,7 @@ export function ConversationDetailPage() {
   const crmAsideScrollRef = useRef<HTMLDivElement>(null);
   /** Só faz auto-scroll ao fundo se o utilizador já estava junto ao fundo (evita saltar ao fazer poll / ler histórico). */
   const stickToBottomRef = useRef(true);
+  const scrollStateRafRef = useRef<number | null>(null);
   const hasPrependedOlderRef = useRef(false);
   const loadingOlderRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
@@ -879,6 +880,18 @@ export function ConversationDetailPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [id, navigate, nextConversationId, openResolveModal, location.search]);
 
+  const syncMessagesScrollState = useCallback(() => {
+    const el = messagesViewportRef.current;
+    if (!el || isEmailLayout) return;
+    const threshold = 96;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    stickToBottomRef.current = atBottom;
+    setShowScrollToLatest((prev) => {
+      const next = !atBottom;
+      return prev === next ? prev : next;
+    });
+  }, [isEmailLayout]);
+
   const loadOlderMessages = useCallback(async () => {
     if (!id || loadingOlderRef.current) return;
     const msgs = messagesRef.current;
@@ -916,6 +929,7 @@ export function ConversationDetailPage() {
       });
       requestAnimationFrame(() => {
         if (viewport) viewport.scrollTop = viewport.scrollHeight - prevScrollHeight;
+        syncMessagesScrollState();
       });
     } catch {
       /* ignore */
@@ -923,42 +937,46 @@ export function ConversationDetailPage() {
       loadingOlderRef.current = false;
       if (id === activeConversationIdRef.current) setLoadingOlderMessages(false);
     }
-  }, [id]);
+  }, [id, syncMessagesScrollState]);
 
   const onMessagesViewportScroll = useCallback(() => {
-    const el = messagesViewportRef.current;
-    if (!el) return;
-    const threshold = 120;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-    stickToBottomRef.current = atBottom;
-    if (!isEmailLayout) setShowScrollToLatest(!atBottom);
-    if (
-      !isEmailLayout &&
-      el.scrollTop < 80 &&
-      messagesHasMoreRef.current &&
-      !loadingOlderRef.current
-    ) {
-      void loadOlderMessages();
-    }
-  }, [isEmailLayout, loadOlderMessages]);
+    if (scrollStateRafRef.current != null) return;
+    scrollStateRafRef.current = window.requestAnimationFrame(() => {
+      scrollStateRafRef.current = null;
+      syncMessagesScrollState();
+      const el = messagesViewportRef.current;
+      if (
+        el &&
+        !isEmailLayout &&
+        el.scrollTop < 80 &&
+        messagesHasMoreRef.current &&
+        !loadingOlderRef.current
+      ) {
+        void loadOlderMessages();
+      }
+    });
+  }, [isEmailLayout, loadOlderMessages, syncMessagesScrollState]);
 
   const scrollToLatestMessages = useCallback(() => {
+    stickToBottomRef.current = true;
     const viewport = messagesViewportRef.current;
     if (viewport) {
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
-    } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      viewport.addEventListener("scrollend", () => syncMessagesScrollState(), { once: true });
+      window.setTimeout(() => syncMessagesScrollState(), 450);
+      return;
     }
-    stickToBottomRef.current = true;
-    setShowScrollToLatest(false);
-  }, []);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    window.setTimeout(() => syncMessagesScrollState(), 450);
+  }, [syncMessagesScrollState]);
 
   const scrollToMessage = useCallback((messageId: string) => {
     stickToBottomRef.current = false;
     setShowScrollToLatest(true);
     const el = document.getElementById(`conversation-message-${messageId}`);
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, []);
+    window.setTimeout(() => syncMessagesScrollState(), 450);
+  }, [syncMessagesScrollState]);
 
   useEffect(() => {
     seenMessageIds.current.clear();
@@ -1116,7 +1134,6 @@ export function ConversationDetailPage() {
     if (!id) return;
     if (seenMessageIds.current.has(message.id)) return;
     seenMessageIds.current.add(message.id);
-    stickToBottomRef.current = true;
     setConversation((prev) => {
       if (!prev) return prev;
       const existing = prev.messages ?? [];
@@ -1129,7 +1146,8 @@ export function ConversationDetailPage() {
       setCachedConversation(id, merged);
       return merged;
     });
-  }, [id]);
+    window.requestAnimationFrame(() => syncMessagesScrollState());
+  }, [id, syncMessagesScrollState]);
 
   const patchPushedMessageStatus = useCallback((messageId: string, status: string) => {
     if (!id) return;
@@ -1556,17 +1574,29 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (isEmailLayout) return;
-    if (!stickToBottomRef.current) return;
-    const viewport = messagesViewportRef.current;
-    if (viewport) {
-      viewport.scrollTop = viewport.scrollHeight;
-      setShowScrollToLatest(false);
-      return;
+    if (stickToBottomRef.current) {
+      const viewport = messagesViewportRef.current;
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "nearest", inline: "nearest" });
+      }
     }
-    // Fallback: nunca usar scrollIntoView no documento/main (salta a página ao abrir painéis).
-    messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "nearest", inline: "nearest" });
-    setShowScrollToLatest(false);
-  }, [conversation?.messages, isEmailLayout]);
+    window.requestAnimationFrame(() => syncMessagesScrollState());
+  }, [conversation?.messages, isEmailLayout, syncMessagesScrollState]);
+
+  useEffect(() => {
+    if (isEmailLayout) return;
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(() => syncMessagesScrollState());
+    observer.observe(viewport);
+    for (const child of viewport.children) {
+      if (child instanceof HTMLElement) observer.observe(child);
+    }
+    syncMessagesScrollState();
+    return () => observer.disconnect();
+  }, [id, isEmailLayout, syncMessagesScrollState, conversation?.messages?.length]);
 
   const lastInbound = conversation?.messages?.filter((m) => m.direction === "INBOUND").at(-1);
 
@@ -4134,11 +4164,12 @@ export function ConversationDetailPage() {
           </div>
         ) : null}
 
+        <div className="relative min-h-0 flex-1">
         <div
           ref={messagesViewportRef}
           onScroll={onMessagesViewportScroll}
           className={clsx(
-            "relative min-h-0 flex-1 overflow-auto overflow-x-hidden",
+            "relative h-full min-h-0 overflow-auto overflow-x-hidden",
             emailWorkspaceMode
               ? "bg-ink-50 px-3 py-4 dark:bg-[#0F1420] sm:px-5"
               : "px-3 py-4 sm:px-5 xl:pr-14",
@@ -4458,6 +4489,7 @@ export function ConversationDetailPage() {
             ) : null}
             <div ref={messagesEndRef} />
           </div>
+        </div>
           {!isEmailLayout ? (
             <ConversationScrollToLatestButton
               visible={showScrollToLatest}
