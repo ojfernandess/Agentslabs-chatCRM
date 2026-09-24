@@ -288,6 +288,7 @@ interface ConversationDetail {
   /** Presente na API — caixa e flag do bot por canal. */
   inbox?: { id: string; name: string; isDefault?: boolean; channelType?: string } | null;
   agentBotTriageActive?: boolean;
+  agentBotName?: string | null;
   awaitingHumanHandoff?: boolean;
   activeVoiceCall?: ActiveVoiceCall | null;
   contact: {
@@ -338,11 +339,12 @@ function outboundMessageActorKey(message: Message): string | null {
   return message.actorUser?.id ?? null;
 }
 
-function outboundMessageActorLabel(message: Message, viewerName?: string | null): string {
+function outboundMessageActorLabel(message: Message, botName?: string | null): string {
   const fromActor =
     message.actorUser?.displayName?.trim() || message.actorUser?.name?.trim() || "";
   if (fromActor) return fromActor;
-  return viewerName?.trim() || "A";
+  // Outbound sem actorUser = bot/automação — nunca usar o atendente logado na tela.
+  return botName?.trim() || "A";
 }
 
 function messageGroupedWithPrevious(messages: Message[], index: number): boolean {
@@ -2497,6 +2499,8 @@ export function ConversationDetailPage() {
   const hasHumanAssignee = typeof assigneeId === "string" && assigneeId.length > 0;
   const hasNoHumanAssignee = !hasHumanAssignee;
   const agentBotTriageActive = conversation.agentBotTriageActive ?? false;
+  const conversationBotName =
+    conversation.agentBotName?.trim() || agentBotTyping?.botName?.trim() || "";
   const isActiveConversation =
     conversation.status === "OPEN" || conversation.status === "PENDING";
   const canResolve = isActiveConversation && hasHumanAssignee;
@@ -4256,7 +4260,7 @@ export function ConversationDetailPage() {
                 msg.type === "AUDIO";
               if (isEmailInbox && msg.type === "TEXT" && !hasRenderableBody) return null;
 
-              const outboundActorLabel = outboundMessageActorLabel(msg, user?.name);
+              const outboundActorLabel = outboundMessageActorLabel(msg, conversationBotName);
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
