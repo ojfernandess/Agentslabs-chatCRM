@@ -58,3 +58,38 @@ export async function applyAllConversationsHumanAttendanceScope(
 export function botAttendanceStatuses(includeResolvedFromAllScope: boolean): Array<"OPEN" | "PENDING" | "RESOLVED"> {
   return includeResolvedFromAllScope ? ["OPEN", "PENDING", "RESOLVED"] : ["OPEN", "PENDING"];
 }
+
+/** Início do dia local do servidor (mesmo critério de dashboard/lembretes). */
+export function conversationDayStart(now = new Date()): Date {
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  return dayStart;
+}
+
+/**
+ * Restringe o contador «Bot em atendimento» a conversas com interação hoje:
+ * mensagem inbound do contacto ou resposta registada no orçamento de interações.
+ */
+export function applyBotInteractionTodayScope(
+  where: Prisma.ConversationWhereInput,
+  dayStart: Date,
+): void {
+  appendConversationWhereAnd(where, {
+    OR: [
+      {
+        messages: {
+          some: {
+            direction: "INBOUND",
+            isPrivate: false,
+            createdAt: { gte: dayStart },
+          },
+        },
+      },
+      {
+        interactionBudget: {
+          lastInteractionAt: { gte: dayStart },
+        },
+      },
+    ],
+  });
+}

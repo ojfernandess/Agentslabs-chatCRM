@@ -82,7 +82,9 @@ import {
 } from "../lib/conversationUserEmailState.js";
 import {
   applyAllConversationsHumanAttendanceScope,
+  applyBotInteractionTodayScope,
   botAttendanceStatuses,
+  conversationDayStart,
   isOrgAllConversationsListScope,
 } from "../lib/conversationListScope.js";
 import {
@@ -116,6 +118,8 @@ const querySchema = z.object({
   inboxId: z.string().uuid().optional(),
   mine: z.enum(["1", "true", "0", "false"]).optional(),
   botAttendance: z.enum(["1", "true", "0", "false"]).optional(),
+  /** Com botAttendance: contador só inclui conversas com interação hoje (badge da aba Bot). */
+  botInteractionToday: z.enum(["1", "true", "0", "false"]).optional(),
   waitingAttendance: z.enum(["1", "true", "0", "false"]).optional(),
   /** OPEN em atendimento humano (com ou sem atendente) — usado no contador da aba Atendimento. */
   activeAttendance: z.enum(["1", "true", "0", "false"]).optional(),
@@ -437,6 +441,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const query = querySchema.parse(request.query);
     const where: Prisma.ConversationWhereInput = { organizationId };
     const botAttendance = isMineFlag(query.botAttendance);
+    const botInteractionToday = isMineFlag(query.botInteractionToday);
     const waitingAttendance = isMineFlag(query.waitingAttendance);
     const activeAttendance = isMineFlag(query.activeAttendance);
     const mineRequested = isMineFlag(query.mine);
@@ -553,6 +558,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       };
       where.assignedToId = null;
       where.awaitingHumanHandoff = false;
+      if (botInteractionToday) {
+        applyBotInteractionTodayScope(where, conversationDayStart());
+      }
     }
 
     const orgAllScope = isOrgAllConversationsListScope({

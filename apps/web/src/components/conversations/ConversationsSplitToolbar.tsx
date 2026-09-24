@@ -64,7 +64,16 @@ type Props = {
 
 const splitSelectClass = "conversations-filter-select conversations-filter-select--compact";
 
-function SplitScopeCount({ count, active }: { count: number; active: boolean }) {
+function SplitScopeCount({
+  count,
+  active,
+  hideWhenZero,
+}: {
+  count: number;
+  active: boolean;
+  hideWhenZero?: boolean;
+}) {
+  if (hideWhenZero && count <= 0) return null;
   return (
     <span
       className={clsx(
@@ -319,7 +328,7 @@ export function ConversationsSplitToolbar(props: Props) {
               className={clsx(scopeIconClass(botAttendanceActive), botAttendanceActive && "animate-bot-head-nod")}
               strokeWidth={2}
             />
-            <SplitScopeCount count={scopeCounts.bot} active={botAttendanceActive} />
+            <SplitScopeCount count={scopeCounts.bot} active={botAttendanceActive} hideWhenZero />
             {botAttendanceActive ? (
               <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-full bg-brand-500 dark:bg-brand-400" aria-hidden />
             ) : null}

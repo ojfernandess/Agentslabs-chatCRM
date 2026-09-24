@@ -74,7 +74,16 @@ interface Conversation {
   activeVoiceCall?: ActiveVoiceCall | null;
 }
 
-function ScopeTabCount({ count, selected }: { count: number; selected: boolean }) {
+function ScopeTabCount({
+  count,
+  selected,
+  hideWhenZero,
+}: {
+  count: number;
+  selected: boolean;
+  hideWhenZero?: boolean;
+}) {
+  if (hideWhenZero && count <= 0) return null;
   return (
     <span
       className={clsx(
@@ -740,6 +749,7 @@ export function ConversationsPage({
       const orgParams = new URLSearchParams(base);
       const botParams = new URLSearchParams(base);
       botParams.set("botAttendance", "1");
+      botParams.set("botInteractionToday", "1");
       const queueParams = new URLSearchParams(base);
       queueParams.set("waitingAttendance", "1");
       const activeParams = new URLSearchParams(base);
@@ -1315,7 +1325,11 @@ export function ConversationsPage({
                   >
                     <Bot className={clsx("h-3.5 w-3.5", botAttendanceActive && "animate-bot-head-nod")} />
                     {t("conversations.scopeBotAttendance")}
-                    <ScopeTabCount count={scopeCounts.bot} selected={botAttendanceActive} />
+                    <ScopeTabCount
+                      count={scopeCounts.bot}
+                      selected={botAttendanceActive}
+                      hideWhenZero
+                    />
                   </button>
                 ) : null}
               </div>
