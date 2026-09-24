@@ -2272,7 +2272,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       })),
       contactTimeline,
       agentBotTriageActive,
-      agentBotName: agentCtx?.agentBot.name?.trim() ?? null,
+      agentBotName: agentCtxTransfer?.agentBot.name?.trim() ?? null,
       leadOwnerConflict,
     };
   });
