@@ -147,6 +147,7 @@ export function WorkspaceRealtime() {
       botName?: string;
       status?: string;
       assignedToId?: string | null;
+      assignedTo?: { id: string; name: string } | null;
       inboxId?: string;
       agentBotTriageActive?: boolean;
       updatedAt?: string;
