@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ChangeEvent, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import clsx from "clsx";
 import {
@@ -66,15 +66,35 @@ type SessionFailurePayload = {
   organizationLogoUrl?: string | null;
 };
 
-const POLL_INTERVAL_MS = 3500;
+const POLL_INTERVAL_MS = 2000;
 const WEBCHAT_CLIENT_SESSION_PREFIX = "webchat_client_session:";
 /** Cache em memória — mesmo segredo por aba quando localStorage falha (ex.: WhatsApp in-app). */
 const webchatClientSessionCache = new Map<string, string>();
 const QUICK_EMOJIS = ["😊", "👍", "🙏", "❤️", "😅", "🎉"];
 const WEBCHAT_VIEWPORT =
   "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content";
+const WEBCHAT_MOBILE_MAX_WIDTH_PX = 767;
 const DRAFT_MIN_HEIGHT_PX = 40;
 const DRAFT_MAX_HEIGHT_PX = 132;
+
+type WebchatLayoutMode = "mobile" | "desktop";
+
+function useWebchatLayoutMode(): WebchatLayoutMode {
+  const [mode, setMode] = useState<WebchatLayoutMode>(() => {
+    if (typeof window === "undefined") return "desktop";
+    return window.matchMedia(`(max-width: ${WEBCHAT_MOBILE_MAX_WIDTH_PX}px)`).matches ? "mobile" : "desktop";
+  });
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${WEBCHAT_MOBILE_MAX_WIDTH_PX}px)`);
+    const sync = () => setMode(mq.matches ? "mobile" : "desktop");
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  return mode;
+}
 
 function getOrCreateWebchatClientSession(token: string): string {
   const trimmedToken = token.trim();
@@ -296,12 +316,14 @@ function MessageBubble({
   t,
   orgName,
   orgLogoUrl,
+  wideLayout = false,
 }: {
   message: PublicMessage;
   locale: string;
   t: (path: string) => string;
   orgName: string;
   orgLogoUrl: string | null;
+  wideLayout?: boolean;
 }) {
   const mine = message.direction === "INBOUND";
   const read = message.status === "READ" || message.status === "DELIVERED";
@@ -310,7 +332,12 @@ function MessageBubble({
   return (
     <div className={clsx("flex gap-2", mine ? "justify-end" : "justify-start")}>
       {!mine ? <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} onDark={false} /> : null}
-      <div className={clsx("max-w-[min(82%,20rem)]", mine ? "items-end" : "items-start")}>
+      <div
+        className={clsx(
+          wideLayout ? "max-w-[min(72%,42rem)]" : "max-w-[min(82%,20rem)]",
+          mine ? "items-end" : "items-start",
+        )}
+      >
         <div
           className={clsx(
             "rounded-2xl px-3.5 py-2.5 text-[15px] leading-snug shadow-sm",
@@ -378,16 +405,71 @@ function MessageBubble({
   );
 }
 
+function WebchatDesktopShell({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="flex min-h-dvh w-full justify-center bg-[#dadde1] md:p-3 lg:p-5">
+      <div
+        className={clsx(
+          "flex h-dvh w-full max-w-[1600px] overflow-hidden bg-white shadow-2xl md:h-[calc(100dvh-1.5rem)] md:rounded-[4px] md:border md:border-black/10 lg:h-[calc(100dvh-2.5rem)]",
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function WebchatDesktopSidebar({
+  orgName,
+  orgLogoUrl,
+  headerSubtitle,
+  t,
+}: {
+  orgName: string;
+  orgLogoUrl: string | null;
+  headerSubtitle: string;
+  t: (path: string) => string;
+}) {
+  return (
+    <aside className="hidden min-w-[280px] max-w-[420px] flex-col border-r border-black/5 bg-[#f0f2f5] md:flex md:w-[38%] lg:w-[34%]">
+      <div className="border-b border-black/5 bg-[#008069] px-5 py-4 text-white">
+        <p className="text-sm font-semibold uppercase tracking-wide text-white/80">{t("webchat.headerTitle")}</p>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center px-8 py-10 text-center">
+        <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} className="!h-24 !w-24 ring-2 ring-white" />
+        <h1 className="mt-5 text-xl font-semibold text-gray-900">{orgName}</h1>
+        <p className="mt-2 text-sm text-gray-600">{headerSubtitle}</p>
+        <p className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm">
+          <Lock className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+          {t("webchat.secureChat")}
+        </p>
+      </div>
+      <div className="border-t border-black/5 px-5 py-4 text-center text-[11px] text-gray-500">
+        {t("webchat.poweredBy")} <span className="font-semibold text-gray-700">OpenNexo</span>
+      </div>
+    </aside>
+  );
+}
+
 function WebchatSessionClosedScreen({
   endInfo,
   fallbackOrgName,
   fallbackOrgLogoUrl,
   t,
+  layoutMode,
 }: {
   endInfo: SessionEndInfo | null;
   fallbackOrgName: string;
   fallbackOrgLogoUrl: string | null;
   t: (path: string) => string;
+  layoutMode: WebchatLayoutMode;
 }) {
   const orgName = endInfo?.organizationName?.trim() || fallbackOrgName;
   const orgLogoUrl = endInfo?.organizationLogoUrl ?? fallbackOrgLogoUrl;
@@ -409,79 +491,105 @@ function WebchatSessionClosedScreen({
       ? t("webchat.resolvedBody")
       : t("webchat.revokedBody");
 
-  return (
-    <div
-      className="fixed inset-x-0 top-0 mx-auto flex w-full max-w-lg items-center justify-center bg-[#eceff1] p-6"
-      style={{
-        height: "var(--webchat-vh, 100dvh)",
-        transform: "translateY(var(--webchat-vt, 0px))",
-        paddingBottom: "env(safe-area-inset-bottom)",
-      }}
-    >
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
-        <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} className="mx-auto !h-14 !w-14" />
-        <div className="mt-5 flex justify-center">
-          {isBotTransfer ? (
-            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 ring-4 ring-brand-100">
-              <span className="absolute inset-0 animate-ping rounded-full bg-brand-200/40" aria-hidden />
-              <Bot className="relative h-8 w-8 animate-bounce text-brand-600" aria-hidden />
-            </span>
-          ) : (
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 ring-4 ring-emerald-100">
-              <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
-            </span>
-          )}
-        </div>
-        <h1 className="mt-5 text-lg font-bold text-gray-900">{title}</h1>
-        <p className="mt-3 text-sm leading-relaxed text-gray-600">{body}</p>
-        {isResolved && (
-          <p className="mt-3 text-xs leading-relaxed text-gray-500">{t("webchat.whatsappHint")}</p>
+  const card = (
+    <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg md:max-w-md md:p-10">
+      <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} className="mx-auto !h-14 !w-14" />
+      <div className="mt-5 flex justify-center">
+        {isBotTransfer ? (
+          <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 ring-4 ring-brand-100">
+            <span className="absolute inset-0 animate-ping rounded-full bg-brand-200/40" aria-hidden />
+            <Bot className="relative h-8 w-8 animate-bounce text-brand-600" aria-hidden />
+          </span>
+        ) : (
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 ring-4 ring-emerald-100">
+            <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
+          </span>
         )}
       </div>
+      <h1 className="mt-5 text-lg font-bold text-gray-900">{title}</h1>
+      <p className="mt-3 text-sm leading-relaxed text-gray-600">{body}</p>
+      {isResolved && <p className="mt-3 text-xs leading-relaxed text-gray-500">{t("webchat.whatsappHint")}</p>}
     </div>
+  );
+
+  if (layoutMode === "mobile") {
+    return (
+      <div
+        className="fixed inset-x-0 top-0 mx-auto flex w-full max-w-lg items-center justify-center bg-[#eceff1] p-6"
+        style={{
+          height: "var(--webchat-vh, 100dvh)",
+          transform: "translateY(var(--webchat-vt, 0px))",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+      >
+        {card}
+      </div>
+    );
+  }
+
+  return (
+    <WebchatDesktopShell className="items-center justify-center bg-[#eceff1]">
+      <div className="flex w-full items-center justify-center p-8">{card}</div>
+    </WebchatDesktopShell>
   );
 }
 
 function WebchatGenericErrorScreen({
   sessionError,
   t,
+  layoutMode,
 }: {
   sessionError: SessionErrorCode;
   t: (path: string) => string;
+  layoutMode: WebchatLayoutMode;
 }) {
-  return (
-    <div
-      className="fixed inset-x-0 top-0 mx-auto flex w-full max-w-lg items-center justify-center bg-[#eceff1] p-6"
-      style={{
-        height: "var(--webchat-vh, 100dvh)",
-        transform: "translateY(var(--webchat-vt, 0px))",
-        paddingBottom: "env(safe-area-inset-bottom)",
-      }}
-    >
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg">
-        <WebchatOrgAvatar logoUrl={null} label="OpenNexo" className="mx-auto" />
-        <h1 className="mt-4 text-lg font-bold text-gray-900">
-          {sessionError === "SESSION_EXPIRED"
-            ? t("webchat.expiredTitle")
-            : sessionError === "SESSION_CLAIMED"
-              ? t("webchat.claimedTitle")
-              : t("webchat.notFoundTitle")}
-        </h1>
-        <p className="mt-2 text-sm text-gray-500">
-          {sessionError === "SESSION_EXPIRED"
-            ? t("webchat.expiredBody")
-            : sessionError === "SESSION_CLAIMED"
-              ? t("webchat.claimedBody")
-              : t("webchat.notFoundBody")}
-        </p>
-      </div>
+  const card = (
+    <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow-lg md:max-w-md md:p-10">
+      <WebchatOrgAvatar logoUrl={null} label="OpenNexo" className="mx-auto" />
+      <h1 className="mt-4 text-lg font-bold text-gray-900">
+        {sessionError === "SESSION_EXPIRED"
+          ? t("webchat.expiredTitle")
+          : sessionError === "SESSION_CLAIMED"
+            ? t("webchat.claimedTitle")
+            : t("webchat.notFoundTitle")}
+      </h1>
+      <p className="mt-2 text-sm text-gray-500">
+        {sessionError === "SESSION_EXPIRED"
+          ? t("webchat.expiredBody")
+          : sessionError === "SESSION_CLAIMED"
+            ? t("webchat.claimedBody")
+            : t("webchat.notFoundBody")}
+      </p>
     </div>
+  );
+
+  if (layoutMode === "mobile") {
+    return (
+      <div
+        className="fixed inset-x-0 top-0 mx-auto flex w-full max-w-lg items-center justify-center bg-[#eceff1] p-6"
+        style={{
+          height: "var(--webchat-vh, 100dvh)",
+          transform: "translateY(var(--webchat-vt, 0px))",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+      >
+        {card}
+      </div>
+    );
+  }
+
+  return (
+    <WebchatDesktopShell className="items-center justify-center bg-[#eceff1]">
+      <div className="flex w-full items-center justify-center p-8">{card}</div>
+    </WebchatDesktopShell>
   );
 }
 
 export default function WebChatPage() {
   const { token = "" } = useParams<{ token: string }>();
   const { t, locale } = useI18n();
+  const layoutMode = useWebchatLayoutMode();
+  const isMobileLayout = layoutMode === "mobile";
   const localeTag = locale === "pt-BR" ? "pt-BR" : "en";
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [sessionError, setSessionError] = useState<SessionErrorCode | null>(null);
@@ -531,7 +639,7 @@ export default function WebChatPage() {
     setSessionEndInfo(null);
   }, [token]);
 
-  useWebchatMobileShell(!sessionError);
+  useWebchatMobileShell(!sessionError && isMobileLayout);
 
   const orgName = session?.organizationName ?? t("webchat.headerTitle");
   const orgLogoUrl = session?.organizationLogoUrl ?? null;
@@ -571,11 +679,12 @@ export default function WebChatPage() {
 
   const base = `/api/v1/public/webchat/${encodeURIComponent(token)}`;
 
-  const shellStyle = {
-    height: "var(--webchat-vh, 100dvh)",
-    transform: "translateY(var(--webchat-vt, 0px))",
-    paddingBottom: "env(safe-area-inset-bottom)",
-  } as const;
+  const shellStyle = isMobileLayout
+    ? ({
+        height: "var(--webchat-vh, 100dvh)",
+        transform: "translateY(var(--webchat-vt, 0px))",
+      } as const)
+    : undefined;
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = listRef.current;
@@ -627,6 +736,38 @@ export default function WebChatPage() {
     return true;
   }, [base, webchatAuthHeaders]);
 
+  const pollNewMessages = useCallback(async () => {
+    if (!messagesUnlockedRef.current) return;
+    try {
+      const since = lastCreatedAtRef.current;
+      const res = await fetch(
+        `${base}/messages${since ? `?since=${encodeURIComponent(since)}` : ""}`,
+        { headers: webchatAuthHeaders() },
+      );
+      if (!res.ok) {
+        if (res.status === 410 || res.status === 403) {
+          const data = (await res.json().catch(() => null)) as SessionFailurePayload | null;
+          applySessionFailure(res.status, data, setSessionError, setSessionEndInfo);
+          return;
+        }
+        setConnection("RECONNECTING");
+        return;
+      }
+      const data = (await res.json()) as {
+        messages: PublicMessage[];
+        humanActive: boolean;
+        assigneeName?: string | null;
+      };
+      setHumanActive(Boolean(data.humanActive));
+      if (data.assigneeName !== undefined) setAssigneeName(data.assigneeName);
+      if (data.messages.length > 0) stickToBottomRef.current = true;
+      mergeMessages(data.messages);
+      setConnection("CONNECTED");
+    } catch {
+      setConnection(navigator.onLine ? "RECONNECTING" : "OFFLINE");
+    }
+  }, [base, mergeMessages, webchatAuthHeaders]);
+
   const postMessage = useCallback(
     async (payload: Record<string, unknown>) => {
       const res = await fetch(`${base}/messages`, {
@@ -651,10 +792,11 @@ export default function WebChatPage() {
       } else {
         stickToBottomRef.current = true;
         mergeMessages([data.message]);
+        void pollNewMessages();
       }
       return data.message;
     },
-    [base, mergeMessages, reloadMessageHistory, webchatAuthHeaders],
+    [base, mergeMessages, pollNewMessages, reloadMessageHistory, webchatAuthHeaders],
   );
 
   const uploadFile = useCallback(
@@ -731,39 +873,10 @@ export default function WebChatPage() {
   useEffect(() => {
     if (!session || sessionError || !messagesUnlocked) return;
     const timer = window.setInterval(() => {
-      void (async () => {
-        try {
-          const since = lastCreatedAtRef.current;
-          const res = await fetch(
-            `${base}/messages${since ? `?since=${encodeURIComponent(since)}` : ""}`,
-            { headers: webchatAuthHeaders() },
-          );
-          if (!res.ok) {
-            if (res.status === 410 || res.status === 403) {
-              const data = (await res.json().catch(() => null)) as SessionFailurePayload | null;
-              applySessionFailure(res.status, data, setSessionError, setSessionEndInfo);
-              return;
-            }
-            setConnection("RECONNECTING");
-            return;
-          }
-          const data = (await res.json()) as {
-            messages: PublicMessage[];
-            humanActive: boolean;
-            assigneeName?: string | null;
-          };
-          setHumanActive(Boolean(data.humanActive));
-          if (data.assigneeName !== undefined) setAssigneeName(data.assigneeName);
-          if (data.messages.length > 0) stickToBottomRef.current = true;
-          mergeMessages(data.messages);
-          setConnection("CONNECTED");
-        } catch {
-          setConnection(navigator.onLine ? "RECONNECTING" : "OFFLINE");
-        }
-      })();
+      void pollNewMessages();
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [base, session, sessionError, messagesUnlocked, mergeMessages, webchatAuthHeaders]);
+  }, [session, sessionError, messagesUnlocked, pollNewMessages]);
 
   useEffect(() => {
     const onOnline = () => setConnection((c) => (c === "OFFLINE" ? "RECONNECTING" : c));
@@ -932,20 +1045,30 @@ export default function WebChatPage() {
         fallbackOrgName={orgName}
         fallbackOrgLogoUrl={orgLogoUrl}
         t={t}
+        layoutMode={layoutMode}
       />
     );
   }
 
   if (sessionError) {
-    return <WebchatGenericErrorScreen sessionError={sessionError} t={t} />;
+    return <WebchatGenericErrorScreen sessionError={sessionError} t={t} layoutMode={layoutMode} />;
   }
 
-  return (
+  const chatPanel = (
     <div
-      className="fixed inset-x-0 top-0 z-10 mx-auto flex w-full max-w-lg flex-col overflow-hidden bg-[#f4f6f8] shadow-2xl"
+      className={clsx(
+        "flex min-h-0 flex-col overflow-hidden bg-[#f4f6f8]",
+        isMobileLayout && "fixed inset-x-0 top-0 z-10 mx-auto w-full max-w-lg shadow-2xl",
+        !isMobileLayout && "h-full min-w-0 flex-1",
+      )}
       style={shellStyle}
     >
-      <header className="shrink-0 bg-[#008069] px-3 py-2 pt-[max(0.45rem,env(safe-area-inset-top))] text-white shadow-sm">
+      <header
+        className={clsx(
+          "shrink-0 bg-[#008069] text-white shadow-sm",
+          isMobileLayout ? "px-3 py-2 pt-[max(0.45rem,env(safe-area-inset-top))]" : "px-4 py-3",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-2.5">
           <WebchatOrgAvatar logoUrl={orgLogoUrl} label={orgName} onDark className="!h-10 !w-10" />
           <div className="min-w-0 flex-1">
@@ -957,12 +1080,27 @@ export default function WebChatPage() {
             title={t("webchat.secureChat")}
           >
             <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span>{t("webchat.secureChat")}</span>
+            <span className={clsx(!isMobileLayout && "hidden sm:inline")}>{t("webchat.secureChat")}</span>
           </div>
         </div>
       </header>
 
-      <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
+      <div
+        ref={listRef}
+        onScroll={onListScroll}
+        className={clsx(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4",
+          !isMobileLayout && "bg-[#efeae2] md:px-8 md:py-5",
+        )}
+        style={
+          !isMobileLayout
+            ? {
+                backgroundImage:
+                  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23d9d2ca' fill-opacity='0.45'%3E%3Ccircle cx='12' cy='18' r='2'/%3E%3Ccircle cx='58' cy='42' r='1.5'/%3E%3Ccircle cx='92' cy='14' r='1.5'/%3E%3Ccircle cx='34' cy='88' r='2'/%3E%3Ccircle cx='88' cy='76' r='1.5'/%3E%3C/g%3E%3C/svg%3E\")",
+              }
+            : undefined
+        }
+      >
         {grouped.map((group) => (
           <div key={group.day} className="space-y-3">
             <div className="flex justify-center py-1">
@@ -978,6 +1116,7 @@ export default function WebChatPage() {
                 t={t}
                 orgName={orgName}
                 orgLogoUrl={orgLogoUrl}
+                wideLayout={!isMobileLayout}
               />
             ))}
           </div>
@@ -990,7 +1129,13 @@ export default function WebChatPage() {
         <div ref={messagesEndRef} aria-hidden className="h-px shrink-0" />
       </div>
 
-      <form onSubmit={sendText} className="shrink-0 border-t border-black/5 bg-white px-3 py-3">
+      <form
+        onSubmit={sendText}
+        className={clsx(
+          "min-w-0 shrink-0 border-t border-black/5 bg-white px-3 py-3",
+          !isMobileLayout && "md:px-5 md:py-4",
+        )}
+      >
         {recording ? (
           <VoiceRecordingPanel seconds={recordingSeconds} onStop={() => void finishRecording()} />
         ) : voicePreview && voicePreviewUrl ? (
@@ -1016,7 +1161,7 @@ export default function WebChatPage() {
                 ))}
               </div>
             ) : null}
-            <div className="flex items-end gap-2">
+            <div className="flex w-full min-w-0 items-end gap-2">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1024,7 +1169,7 @@ export default function WebChatPage() {
                 accept="image/*,audio/*,video/*,application/pdf,.doc,.docx"
                 onChange={onFileChange}
               />
-              <div className="flex min-h-[48px] flex-1 items-end gap-1 rounded-[22px] border border-gray-200 bg-white px-2 py-1 shadow-sm">
+              <div className="flex min-h-[48px] min-w-0 flex-1 items-end gap-1 rounded-[22px] border border-gray-200 bg-white px-2 py-1 shadow-sm">
                 <button
                   type="button"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100"
@@ -1049,7 +1194,7 @@ export default function WebChatPage() {
                   aria-label={t("webchat.inputPlaceholder")}
                   enterKeyHint="send"
                   inputMode="text"
-                  className="max-h-[132px] min-h-[40px] flex-1 resize-none overflow-hidden bg-transparent px-1 py-2 text-base leading-snug text-gray-900 outline-none"
+                  className="max-h-[132px] min-h-[40px] min-w-0 flex-1 resize-none overflow-hidden bg-transparent px-1 py-2 text-base leading-snug text-gray-900 outline-none"
                 />
                 <button
                   type="button"
@@ -1084,7 +1229,13 @@ export default function WebChatPage() {
         )}
       </form>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-black/5 bg-[#f8faf9] px-4 py-2.5 text-[11px] text-gray-600">
+      <footer
+        className={clsx(
+          "flex shrink-0 items-center justify-between gap-3 border-t border-black/5 bg-[#f8faf9] px-4 py-2.5 text-[11px] text-gray-600",
+          !isMobileLayout && "md:px-5",
+          isMobileLayout && "pb-[max(0.625rem,env(safe-area-inset-bottom))]",
+        )}
+      >
         <p className="flex items-center gap-1.5">
           <Shield className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
           {t("webchat.securityFooter")}
@@ -1094,5 +1245,21 @@ export default function WebChatPage() {
         </p>
       </footer>
     </div>
+  );
+
+  if (isMobileLayout) {
+    return chatPanel;
+  }
+
+  return (
+    <WebchatDesktopShell>
+      <WebchatDesktopSidebar
+        orgName={orgName}
+        orgLogoUrl={orgLogoUrl}
+        headerSubtitle={headerSubtitle}
+        t={t}
+      />
+      {chatPanel}
+    </WebchatDesktopShell>
   );
 }

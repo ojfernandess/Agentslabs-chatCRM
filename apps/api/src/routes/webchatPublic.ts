@@ -158,26 +158,27 @@ async function dispatchWebchatInbound(params: {
   };
   log: FastifyRequest["log"];
 }): Promise<void> {
-  notifyConversationNewMessage(
-    params.organizationId,
-    params.conversationId,
-    serializeMessageForWorkspaceWs(params.message),
-  );
-  const agentCtx = await getAgentBotDispatchContextForInbox(params.organizationId, params.inboxId);
-  if (!agentCtx) return;
-  const fresh = await prisma.conversation.findFirst({ where: { id: params.conversationId } });
-  const contact = await prisma.contact.findFirst({
-    where: { id: params.contactId, organizationId: params.organizationId },
-  });
-  if (!fresh || !contact) return;
-  void dispatchAgentBotWebhook({
-    organizationId: params.organizationId,
-    settings: { agentBotId: agentCtx.agentBotId, agentBot: agentCtx.agentBot },
-    conversation: fresh,
-    contact,
-    message: params.message as Parameters<typeof dispatchAgentBotWebhook>[0]["message"],
-    log: params.log,
-  });
+  void (async () => {
+    try {
+      const agentCtx = await getAgentBotDispatchContextForInbox(params.organizationId, params.inboxId);
+      if (!agentCtx) return;
+      const fresh = await prisma.conversation.findFirst({ where: { id: params.conversationId } });
+      const contact = await prisma.contact.findFirst({
+        where: { id: params.contactId, organizationId: params.organizationId },
+      });
+      if (!fresh || !contact) return;
+      await dispatchAgentBotWebhook({
+        organizationId: params.organizationId,
+        settings: { agentBotId: agentCtx.agentBotId, agentBot: agentCtx.agentBot },
+        conversation: fresh,
+        contact,
+        message: params.message as Parameters<typeof dispatchAgentBotWebhook>[0]["message"],
+        log: params.log,
+      });
+    } catch (err) {
+      params.log.warn({ err, conversationId: params.conversationId }, "webchat agent dispatch failed");
+    }
+  })();
 }
 
 function resolveInboundMessageType(input: {
@@ -413,12 +414,22 @@ export async function webchatPublicRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { updatedAt: new Date() },
-    });
+    notifyConversationNewMessage(
+      organizationId,
+      conversation.id,
+      serializeMessageForWorkspaceWs(message),
+    );
 
-    await dispatchWebchatInbound({
+    void prisma.conversation
+      .update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() },
+      })
+      .catch((err) => {
+        request.log.warn({ err, conversationId: conversation.id }, "webchat conversation touch failed");
+      });
+
+    void dispatchWebchatInbound({
       organizationId,
       conversationId: conversation.id,
       contactId: contact.id,
