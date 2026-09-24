@@ -10,7 +10,8 @@ import type {
   IntelligentTaggingTrigger,
   LlmTaggingResult,
 } from "../types.js";
-import { parseLlmTaggingResponse } from "./helpers.js";
+import { DURING_CONVERSATION_MAX_TAGS } from "../types.js";
+import { enrichTagCatalogForLlm, parseLlmTaggingResponse } from "./helpers.js";
 
 export async function inferTagsWithLlm(input: {
   contactName: string;
@@ -25,27 +26,41 @@ export async function inferTagsWithLlm(input: {
   ctx: ResolvedAssistLlmContext;
   conversationId?: string | null;
 }): Promise<LlmTaggingResult> {
-  const catalogJson = JSON.stringify(
-    input.tagCatalog.map((t) => ({ id: t.id, name: t.name })),
-  );
   const duringConversation = input.trigger === "during_conversation";
+  const effectiveMaxTags = duringConversation
+    ? Math.min(input.maxTags, DURING_CONVERSATION_MAX_TAGS)
+    : input.maxTags;
+
+  const catalogJson = JSON.stringify(enrichTagCatalogForLlm(input.tagCatalog));
 
   const systemParts = [
-    "És um classificador de CRM. Analisa a conversa e escolhe etiquetas EXISTENTES do catálogo.",
+    "És um classificador de CRM especializado em intenção do cliente.",
     "Responde APENAS com JSON válido:",
-    '{"tags":[{"tagId":"uuid ou null","tagName":"nome","confidence":0.0-1.0,"rationale":"string","suggestedNewTag":false}],"suggestedNewTags":["nome se nenhuma etiqueta existente servir"]}',
-    `Escolhe no máximo ${input.maxTags} etiquetas. confidence é probabilidade de acerto (0-1).`,
-    "Só uses tagId/tagName do catálogo. Se nenhuma servir, suggestedNewTag=true e lista em suggestedNewTags.",
+    '{"primaryIntent":"quote|complaint|question|support|payment|scheduling|sales|other|none","tags":[{"tagId":"uuid","tagName":"nome","confidence":0.0-1.0,"rationale":"cita trecho da mensagem actual","suggestedNewTag":false}],"suggestedNewTags":[]}',
+    `Escolhe no máximo ${effectiveMaxTags} etiqueta(s). confidence = certeza (0-1).`,
+    "Só uses tagId/tagName do catálogo (campo hint explica quando cada etiqueta se aplica).",
+    "Se nenhuma etiqueta do catálogo corresponder com clareza, devolve tags:[] e primaryIntent:\"none\".",
+    "Preferência: precisão sobre cobertura — melhor zero etiquetas do que etiqueta errada.",
   ];
+
   if (duringConversation) {
     systemParts.push(
-      "Modo tempo real: classifica APENAS com base na(s) mensagem(ns) do cliente marcada(s) como «mensagem actual».",
-      "Ignora temas de mensagens anteriores ou de contexto já resolvido. Se a mensagem actual não justificar nova etiqueta, devolve tags vazio.",
-      "Não repitas etiquetas que o contacto já tem, salvo se a mensagem actual exigir claramente uma etiqueta diferente.",
+      "Modo TEMPO REAL (during_conversation):",
+      "1) Lê primaryIntent com base APENAS na(s) linha(s) «mensagem actual».",
+      "2) Mapeia primaryIntent → etiqueta cujo hint/nome seja coerente (ex.: quote→Cotação/Orçamento; complaint→Reclamação; question→Dúvida).",
+      "3) Ignora temas do «contexto anterior» ou mensagens antigas já tratadas.",
+      "4) rationale DEVE citar palavras ou paráfrase curta da mensagem actual.",
+      "5) Não repitas etiquetas já no contacto salvo nova evidência clara na mensagem actual.",
+      "6) Mensagens genéricas (oi, ok, obrigado, sim) → primaryIntent:none e tags:[].",
+      "7) Uma mensagem = no máximo 1 etiqueta principal (a mais específica).",
     );
   } else {
-    systemParts.push("Considera temas, intenção, urgência e tipo de problema.");
+    systemParts.push(
+      "Considera temas, intenção, urgência e tipo de pedido ao longo da conversa.",
+      "primaryIntent resume o motivo principal do contacto.",
+    );
   }
+
   const system = systemParts.join(" ");
 
   const userParts = [
@@ -53,17 +68,17 @@ export async function inferTagsWithLlm(input: {
     `Metadados: ${input.metadataSummary}`,
   ];
   if (input.existingTagNames.length) {
-    userParts.push(`Etiquetas já no contacto: ${input.existingTagNames.join(", ")}`);
+    userParts.push(`Etiquetas já no contacto (evitar repetir): ${input.existingTagNames.join(", ")}`);
   }
   if (!duringConversation && input.mem0Context.trim()) {
     userParts.push(`Contexto histórico (Mem0): ${input.mem0Context.trim()}`);
   }
-  userParts.push(`Catálogo de etiquetas: ${catalogJson}`, "", "Conversa:", input.transcript.trim() || "(vazio)");
+  userParts.push(`Catálogo (id, name, hint): ${catalogJson}`, "", "Conversa:", input.transcript.trim() || "(vazio)");
 
   const { text } = await callAssistLlmChat(
     input.ctx,
     {
-      temperature: 0.2,
+      temperature: duringConversation ? 0.05 : 0.2,
       maxTokens: 800,
       system,
       history: [],
@@ -82,8 +97,16 @@ export async function inferTagsWithLlm(input: {
   }
 
   const result = parseLlmTaggingResponse(parsed, input.tagCatalog);
+
+  if (parsed && typeof parsed === "object") {
+    const primaryIntent = (parsed as Record<string, unknown>).primaryIntent;
+    if (duringConversation && primaryIntent === "none") {
+      return { classifications: [], suggestedNewTags: [] };
+    }
+  }
+
   return {
-    classifications: result.classifications.slice(0, input.maxTags),
+    classifications: result.classifications.slice(0, effectiveMaxTags),
     suggestedNewTags: result.suggestedNewTags,
   };
 }

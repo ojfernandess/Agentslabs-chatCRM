@@ -1,5 +1,8 @@
 export const DEFAULT_MIN_CONFIDENCE = 0.85;
+/** Limiar mais alto no modo automático durante a conversa — evita falsos positivos. */
+export const DURING_CONVERSATION_MIN_CONFIDENCE = 0.88;
 export const DEFAULT_MAX_TAGS = 5;
+export const DURING_CONVERSATION_MAX_TAGS = 2;
 
 export type TagCatalogEntry = {
   id: string;

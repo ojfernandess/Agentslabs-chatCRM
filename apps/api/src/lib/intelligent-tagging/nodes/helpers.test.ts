@@ -2,7 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDuringConversationTranscript,
+  enrichTagCatalogForLlm,
+  extractCurrentCustomerMessage,
   filterAlreadyAppliedTags,
+  filterClassificationsByMessageEvidence,
+  inferTagUsageHint,
   normalizeConfidence,
   parseLlmTaggingResponse,
   splitByConfidence,
@@ -58,7 +62,7 @@ describe("intelligent-tagging helpers", () => {
       "m3",
     );
     assert.match(transcript, /mensagem actual.*cancelar o plano/i);
-    assert.doesNotMatch(transcript, /fatura antiga/i);
+    assert.equal(extractCurrentCustomerMessage(transcript).toLowerCase(), "quero cancelar o plano");
   });
 
   it("filterAlreadyAppliedTags removes tags already on contact", () => {
@@ -71,5 +75,47 @@ describe("intelligent-tagging helpers", () => {
     );
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0]?.tagName, "Vendas");
+  });
+
+  it("extractCurrentCustomerMessage reads marked current lines", () => {
+    const msg = extractCurrentCustomerMessage(
+      "Cliente (mensagem actual — classificar SÓ com base nisto): quero uma cotação para 10 unidades",
+    );
+    assert.match(msg, /cotação/i);
+  });
+
+  it("filterClassificationsByMessageEvidence rejects mismatched intent", () => {
+    const catalog = [
+      { id: "t1", name: "Reclamação" },
+      { id: "t2", name: "Cotação" },
+    ];
+    const kept = filterClassificationsByMessageEvidence(
+      [
+        {
+          tagId: "t2",
+          tagName: "Cotação",
+          confidence: 0.95,
+          rationale: "pediu cotação de 10 unidades",
+          suggestedNewTag: false,
+        },
+        {
+          tagId: "t1",
+          tagName: "Reclamação",
+          confidence: 0.95,
+          rationale: "cliente insatisfeito",
+          suggestedNewTag: false,
+        },
+      ],
+      "quero uma cotação para 10 unidades",
+      catalog,
+    );
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.tagName, "Cotação");
+  });
+
+  it("enrichTagCatalogForLlm adds semantic hints from tag names", () => {
+    const rows = enrichTagCatalogForLlm([{ id: "t1", name: "Cotação" }]);
+    assert.match(rows[0]?.hint ?? "", /orçamento|cotação/i);
+    assert.equal(inferTagUsageHint("Dúvidas").length > 10, true);
   });
 });
