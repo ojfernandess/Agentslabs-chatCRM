@@ -15,7 +15,12 @@ import {
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { isWebchatOutboundActive } from "./webchatSession.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
-import { notifyConversationNewMessage, serializeMessageForWorkspaceWs } from "./workspaceMessageBroadcast.js";
+import {
+  broadcastConversationMessageUpdated,
+  notifyConversationNewMessage,
+  serializeMessageForWorkspaceWs,
+} from "./workspaceMessageBroadcast.js";
+import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { promoteUserToOnlineIfInactive } from "./userAvailability.js";
 import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
@@ -433,9 +438,39 @@ export async function deliverOutboundWhatsAppMessage(options: {
     );
   }
 
+  let storedBody = messageBody;
+
+  let message = await prisma.message.create({
+    data: {
+      conversationId: conversation.id,
+      direction: "OUTBOUND",
+      type,
+      body: storedBody,
+      mediaUrl,
+      mediaType: mediaType ?? (type === "AUDIO" ? "audio/*" : undefined),
+      isPrivate: Boolean(isPrivate),
+      providerMsgId: null,
+      channel: resolvedDeliveryChannel ?? null,
+      status: "SENT",
+      actorUserId: actor.kind === "user" ? actor.userId : null,
+    },
+    include: {
+      actorUser: {
+        select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
+      },
+    },
+  });
+
+  notifyConversationNewMessage(
+    organizationId,
+    conversation.id,
+    serializeMessageForWorkspaceWs(message),
+  );
+
   let providerMsgId: string | undefined;
   /** Assunto resolvido no canal EMAIL — persistido no body para listagens/títulos. */
   let resolvedEmailSubject: string | null = null;
+  let providerDeliveryError: Error | null = null;
   if (!isPrivate && !resolvedDeliveryChannel && !skipWhatsappProviderDelivery && inboxChannelType === "WHATSAPP") {
     try {
       const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
@@ -483,7 +518,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       }
     } catch (err) {
       log.error(err, "Failed to send message via WhatsApp provider");
-      throw err instanceof Error ? err : new Error(String(err));
+      providerDeliveryError = err instanceof Error ? err : new Error(String(err));
     }
   } else if (!isPrivate && !resolvedDeliveryChannel && inboxChannelType === "TELEGRAM") {
     const cfg = inboxChannelConfig as ChannelNativeConfig | null;
@@ -590,9 +625,19 @@ export async function deliverOutboundWhatsAppMessage(options: {
         providerMsgId = sent.messageId ?? undefined;
       } catch (err) {
         log.error(err, "Failed to send message via inbox SMTP");
-        throw err instanceof Error ? err : new Error(String(err));
+        providerDeliveryError = err instanceof Error ? err : new Error(String(err));
       }
     }
+  }
+
+  if (
+    !isPrivate &&
+    inboxChannelType === "EMAIL" &&
+    resolvedEmailSubject &&
+    type === "TEXT" &&
+    messageBody != null
+  ) {
+    storedBody = composeEmailInboundBody(resolvedEmailSubject, messageBody, { stripQuotes: false });
   }
 
   const outboundStatus = skipWhatsappProviderDelivery && !isPrivate && inboxChannelType === "WHATSAPP"
@@ -616,32 +661,36 @@ export async function deliverOutboundWhatsAppMessage(options: {
             : "FAILED"
           : "SENT";
 
-  let storedBody = messageBody;
-  if (
-    !isPrivate &&
-    inboxChannelType === "EMAIL" &&
-    resolvedEmailSubject &&
-    type === "TEXT" &&
-    messageBody != null
-  ) {
-    storedBody = composeEmailInboundBody(resolvedEmailSubject, messageBody, { stripQuotes: false });
+  const needsMessagePatch =
+    (providerMsgId ?? null) !== message.providerMsgId ||
+    outboundStatus !== message.status ||
+    storedBody !== message.body;
+
+  if (needsMessagePatch) {
+    message = await prisma.message.update({
+      where: { id: message.id },
+      data: {
+        providerMsgId: providerMsgId ?? null,
+        status: outboundStatus,
+        body: storedBody,
+      },
+      include: {
+        actorUser: {
+          select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
+        },
+      },
+    });
+    if (outboundStatus === "FAILED") {
+      broadcastConversationMessageUpdated(organizationId, conversation.id, {
+        id: message.id,
+        status: outboundStatus,
+      });
+    }
   }
 
-  const message = await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      direction: "OUTBOUND",
-      type,
-      body: storedBody,
-      mediaUrl,
-      mediaType: mediaType ?? (type === "AUDIO" ? "audio/*" : undefined),
-      isPrivate: Boolean(isPrivate),
-      providerMsgId,
-      channel: resolvedDeliveryChannel ?? null,
-      status: outboundStatus,
-      actorUserId: actor.kind === "user" ? actor.userId : null,
-    },
-  });
+  if (providerDeliveryError) {
+    throw providerDeliveryError;
+  }
 
   /** Cost Policy: ledger de mensagens (ESTIMATIVA — nunca cobrança oficial; fire-and-forget). */
   if (!isPrivate) {
@@ -768,19 +817,9 @@ export async function deliverOutboundWhatsAppMessage(options: {
     data: convPatch,
   });
 
-  const messageForWs = await prisma.message.findUnique({
-    where: { id: message.id },
-    include: {
-      actorUser: {
-        select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
-      },
-    },
-  });
-
-  notifyConversationNewMessage(
+  broadcastConversationUpdated(
     organizationId,
     conversation.id,
-    serializeMessageForWorkspaceWs(messageForWs ?? message),
     typeof convPatch.awaitingHumanHandoff === "boolean"
       ? { awaitingHumanHandoff: convPatch.awaitingHumanHandoff }
       : undefined,

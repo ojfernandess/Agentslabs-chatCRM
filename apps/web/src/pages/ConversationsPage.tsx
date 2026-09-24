@@ -7,6 +7,10 @@ import { PageTransition, motion } from "@/components/Motion";
 import { HelpContextButton } from "@/components/help/HelpContextButton";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
+import {
+  CONVERSATION_MESSAGE_CREATED_EVENT,
+  type ConversationMessageCreatedDetail,
+} from "@/lib/conversationMessagePush";
 import { useConversationAgentTypingMap } from "@/hooks/useConversationAgentTyping";
 import { formatCurrencyUnits } from "@/lib/currency";
 import { ContactQuickMessageModal } from "@/components/ContactQuickMessageModal";
@@ -809,6 +813,33 @@ export function ConversationsPage({
     void loadScopeCounts();
     void loadStatusCounts();
   });
+
+  useEffect(() => {
+    const onMessageCreated = (e: Event) => {
+      const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
+      if (!detail?.conversationId || !detail.message) return;
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === detail.conversationId);
+        if (idx < 0) return prev;
+        const conv = prev[idx];
+        const preview = {
+          body: detail.message.body,
+          direction: detail.message.direction,
+          createdAt: detail.message.createdAt,
+          type: detail.message.type,
+        };
+        const updated: Conversation = {
+          ...conv,
+          updatedAt: detail.message.createdAt,
+          isUnread: detail.message.direction === "INBOUND" ? true : conv.isUnread,
+          messages: [preview, ...(conv.messages?.slice(1) ?? [])],
+        };
+        return [updated, ...prev.filter((_, i) => i !== idx)];
+      });
+    };
+    window.addEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
+    return () => window.removeEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
+  }, []);
 
   useEffect(() => {
     const onRead = (e: Event) => {

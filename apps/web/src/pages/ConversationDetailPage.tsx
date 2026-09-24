@@ -1529,7 +1529,7 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (!id || workspaceWsConnected) return;
-    const interval = setInterval(() => void loadConversation({ silent: true }), 5000);
+    const interval = setInterval(() => void loadConversation({ silent: true }), 2500);
     return () => clearInterval(interval);
   }, [id, loadConversation, workspaceWsConnected]);
 

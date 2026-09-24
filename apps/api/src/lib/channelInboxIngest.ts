@@ -332,6 +332,12 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     data: { updatedAt: new Date() },
   });
 
+  notifyConversationNewMessage(
+    organizationId,
+    conversation.id,
+    serializeMessageForWorkspaceWs(inboundForPipeline),
+  );
+
   const inboundBody = inboundForPipeline.body?.trim() ?? "";
   if (inboundBody) {
     const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
@@ -364,12 +370,6 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
       });
     }
   }
-
-  notifyConversationNewMessage(
-    organizationId,
-    conversation.id,
-    serializeMessageForWorkspaceWs(inboundForPipeline),
-  );
 
   scheduleIntelligentTaggingDuringConversation(
     { organizationId, conversationId: conversation.id, triggerMessageId: inboundForPipeline.id },

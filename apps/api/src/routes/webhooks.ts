@@ -719,6 +719,12 @@ async function handleWhatsAppPost(
         data: { updatedAt: new Date() },
       });
 
+      notifyConversationNewMessage(
+        organizationId,
+        conversation.id,
+        serializeMessageForWorkspaceWs(inboundForPipeline),
+      );
+
       if (inboundBodyForRules) {
         const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
         for (const rule of rules) {
@@ -766,12 +772,6 @@ async function handleWhatsAppPost(
           "Agent bot dispatch skipped: no active bot context found for inbox/settings",
         );
       }
-
-      notifyConversationNewMessage(
-        organizationId,
-        conversation.id,
-        serializeMessageForWorkspaceWs(inboundForPipeline),
-      );
 
       scheduleIntelligentTaggingDuringConversation(
         { organizationId, conversationId: conversation.id, triggerMessageId: inboundForPipeline.id },
