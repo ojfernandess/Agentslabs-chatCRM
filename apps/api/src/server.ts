@@ -66,6 +66,7 @@ import { mcpRoutes } from "./routes/mcp.js";
 import { publicChatbotFlowRoutes } from "./routes/publicChatbotFlowRoutes.js";
 import { publicKnowledgeSourcePushRoutes } from "./routes/publicKnowledgeSourcePush.js";
 import { publicTurnstileRoutes } from "./routes/publicTurnstile.js";
+import { publicPlatformTypographyRoutes } from "./routes/publicPlatformTypography.js";
 import { helpCenterRoutes } from "./routes/helpCenter.js";
 import { helpdeskRoutes } from "./routes/helpdesk.js";
 import { superHelpdeskRoutes } from "./routes/superHelpdesk.js";
@@ -178,6 +179,7 @@ await app.register(rateLimit, {
       path.startsWith("/api/v1/public/system-documentation") ||
       path.startsWith("/api/v1/public/knowledge-source-push/") ||
       path === "/api/v1/public/turnstile-config" ||
+      path === "/api/v1/public/platform-typography" ||
       path.startsWith("/api/v1/integrations/google-calendar/")
     );
   },
@@ -203,6 +205,7 @@ await app.register(channelInboxPublicRoutes, { prefix: "/api/v1/public/inbox" })
 await app.register(channelNativePublicRoutes, { prefix: "/api/v1/public/channels" });
 await app.register(publicKnowledgeSourcePushRoutes, { prefix: "/api/v1/public" });
 await app.register(publicTurnstileRoutes, { prefix: "/api/v1/public" });
+await app.register(publicPlatformTypographyRoutes, { prefix: "/api/v1/public" });
 await app.register(webchatPublicRoutes, { prefix: "/api/v1/public/webchat" });
 await app.register(googleCalendarPublicRoutes);
 

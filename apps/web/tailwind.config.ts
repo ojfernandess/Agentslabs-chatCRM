@@ -18,17 +18,7 @@ export default {
         full: "9999px",
       },
       fontFamily: {
-        sans: [
-          '"Avenir Next"',
-          "Avenir",
-          '"Nunito Sans"',
-          "-apple-system",
-          "BlinkMacSystemFont",
-          '"Segoe UI"',
-          "Roboto",
-          "system-ui",
-          "sans-serif",
-        ],
+        sans: ["var(--font-sans)"],
       },
       colors: {
         brand: {

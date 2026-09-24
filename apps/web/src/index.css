@@ -8,6 +8,7 @@
     --brand-secondary: #6366f1;
     --brand-primary-rgb: 103 52 255;
     --brand-secondary-rgb: 99 102 241;
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
 
   /** Soft dark palette (modo escuro) — não altera bolhas .crm-bubble* */
@@ -51,8 +52,16 @@
     max-width: 100%;
     min-width: 0;
     overflow-x: clip;
+    font-family: var(--font-sans);
     @apply min-h-[100dvh] bg-ink-50 font-sans text-ink-900;
     @apply dark:text-soft-text;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font-family: var(--font-sans);
   }
 
   /** /docs — tema isolado aplica .dark no wrapper, não em html.dark global */

@@ -109,6 +109,11 @@ import {
   parseConversationMessagesPaginationValue,
 } from "../lib/conversationMessagesPaginationSettings.js";
 import {
+  ALLOWED_PLATFORM_FONTS,
+  PLATFORM_TYPOGRAPHY_KEY,
+  parsePlatformTypographyValue,
+} from "../lib/platformTypographySettings.js";
+import {
   TURNSTILE_PLATFORM_KEY,
   readTurnstileSettings,
 } from "../lib/turnstileSettings.js";
@@ -294,6 +299,10 @@ const mediaStoragePutSchema = z.object({
 const conversationMessagesPaginationPutSchema = z.object({
   enabled: z.boolean(),
   pageSize: z.coerce.number().int().min(10).max(200).optional(),
+});
+
+const platformTypographyPutSchema = z.object({
+  font: z.enum(ALLOWED_PLATFORM_FONTS),
 });
 
 const platformAppCreateSchema = z.object({
@@ -2372,6 +2381,35 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       resourceType: "platform_setting",
       resourceId: CONVERSATION_MESSAGES_PAGINATION_KEY,
       metadata: { enabled: value.enabled, pageSize: value.pageSize },
+      ip: clientIp(request),
+    });
+    return value;
+  });
+
+  app.get("/platform-typography", async () => {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: PLATFORM_TYPOGRAPHY_KEY },
+    });
+    return parsePlatformTypographyValue(row?.value);
+  });
+
+  app.put("/platform-typography", async (request, reply) => {
+    const parsed = platformTypographyPutSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+    }
+    const value = parsePlatformTypographyValue({ font: parsed.data.font });
+    await prisma.platformSetting.upsert({
+      where: { key: PLATFORM_TYPOGRAPHY_KEY },
+      create: { key: PLATFORM_TYPOGRAPHY_KEY, value: value as Prisma.InputJsonValue },
+      update: { value: value as Prisma.InputJsonValue },
+    });
+    await safeAudit(request, {
+      actorUserId: request.user.id,
+      action: "super.platform_typography.upsert",
+      resourceType: "platform_setting",
+      resourceId: PLATFORM_TYPOGRAPHY_KEY,
+      metadata: { font: value.font },
       ip: clientIp(request),
     });
     return value;

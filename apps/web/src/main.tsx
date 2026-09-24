@@ -6,6 +6,7 @@ import { App } from "@/App";
 import { initThemeFromStorage } from "@/lib/themeStorage";
 import { initFontSizeFromStorage } from "@/lib/profilePrefs";
 import { initDesktopViewportScale } from "@/lib/desktopViewportScale";
+import { initPlatformTypography } from "@/lib/platformTypography";
 import { redirectLegacyInviteUrls } from "@/lib/inviteTokenRedirect";
 import "./index.css";
 
@@ -13,6 +14,7 @@ redirectLegacyInviteUrls();
 initThemeFromStorage();
 initFontSizeFromStorage();
 initDesktopViewportScale();
+void initPlatformTypography();
 
 createRoot(document.getElementById("root")!).render(
   <BrowserRouter>

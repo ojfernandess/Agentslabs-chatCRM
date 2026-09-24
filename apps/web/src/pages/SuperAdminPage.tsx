@@ -27,6 +27,7 @@ import { SuperAdminOrganizationsSection } from "@/components/super-admin/SuperAd
 import { SuperAdminPublicDocsPanel } from "@/components/super-admin/SuperAdminPublicDocsPanel";
 import { SuperAdminApiRateLimitPanel } from "@/components/super-admin/SuperAdminApiRateLimitPanel";
 import { SuperAdminConversationMessagesPanel } from "@/components/super-admin/SuperAdminConversationMessagesPanel";
+import { SuperAdminPlatformTypographyPanel } from "@/components/super-admin/SuperAdminPlatformTypographyPanel";
 import { ResendPasswordResetTemplateEditor } from "@/components/ResendPasswordResetTemplateEditor";
 import { ResendUserInviteTemplateEditor } from "@/components/ResendUserInviteTemplateEditor";
 import { ResendBillingReminderTemplateEditor } from "@/components/ResendBillingReminderTemplateEditor";
@@ -2074,7 +2075,7 @@ export function SuperAdminPage() {
               </div>
               <SuperAdminPublicDocsPanel />
               <SuperAdminApiRateLimitPanel />
-
+              <SuperAdminPlatformTypographyPanel />
               <SuperAdminConversationMessagesPanel />
 
               <section className="card-surface p-6">
