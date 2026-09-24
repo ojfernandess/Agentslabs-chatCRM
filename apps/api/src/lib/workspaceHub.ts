@@ -58,6 +58,7 @@ export type ConversationUpdatedBroadcast = {
   awaitingHumanHandoff?: boolean;
   status?: string;
   assignedToId?: string | null;
+  assignedTo?: { id: string; name: string } | null;
   teamId?: string | null;
   inboxId?: string;
   agentBotTriageActive?: boolean;

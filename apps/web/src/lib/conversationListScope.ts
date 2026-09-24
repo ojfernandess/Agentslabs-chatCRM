@@ -9,6 +9,7 @@ export type ConversationListScopeState = {
   hideResolvedInAllScope: boolean;
   orgAllScopeHumanOnly: boolean;
   userId?: string;
+  userName?: string;
 };
 
 export type ConversationScopeRow = {
@@ -87,10 +88,27 @@ export function conversationMatchesListScope(
 export function mergeConversationScopeHint<T extends ConversationScopeRow>(
   row: T,
   hint?: Partial<ConversationScopeRow> | null,
+  options?: { currentUserId?: string; currentUserName?: string },
 ): T {
   if (!hint) return row;
   const assignedToId =
     hint.assignedToId !== undefined ? hint.assignedToId : (row.assignedToId ?? row.assignedTo?.id ?? null);
+
+  let assignedTo = row.assignedTo;
+  if (hint.assignedTo !== undefined) {
+    assignedTo = hint.assignedTo;
+  } else if (hint.assignedToId !== undefined) {
+    if (!assignedToId) {
+      assignedTo = null;
+    } else if (row.assignedTo?.id === assignedToId && row.assignedTo.name) {
+      assignedTo = row.assignedTo;
+    } else if (options?.currentUserId === assignedToId && options.currentUserName) {
+      assignedTo = { id: assignedToId, name: options.currentUserName };
+    } else {
+      assignedTo = { id: assignedToId, name: "" };
+    }
+  }
+
   return {
     ...row,
     status: hint.status ?? row.status,
@@ -99,13 +117,6 @@ export function mergeConversationScopeHint<T extends ConversationScopeRow>(
     inboxId: hint.inboxId ?? row.inboxId ?? row.inbox?.id,
     awaitingHumanHandoff: hint.awaitingHumanHandoff ?? row.awaitingHumanHandoff,
     agentBotTriageActive: hint.agentBotTriageActive ?? row.agentBotTriageActive,
-    assignedTo:
-      hint.assignedToId !== undefined
-        ? assignedToId
-          ? row.assignedTo?.id === assignedToId
-            ? row.assignedTo
-            : { id: assignedToId, name: row.assignedTo?.name ?? "" }
-          : null
-        : row.assignedTo,
+    assignedTo,
   };
 }

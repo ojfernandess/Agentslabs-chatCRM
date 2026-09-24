@@ -75,12 +75,21 @@ export async function tryAutoAssignInboxConversation(params: {
   const assigneeId = await pickAutoAssigneeForInbox(inboxId, organizationId);
   if (!assigneeId) return false;
 
+  const assignee = await prisma.user.findFirst({
+    where: { id: assigneeId },
+    select: { id: true, name: true },
+  });
+
   await prisma.conversation.update({
     where: { id: conversationId },
     data: { assignedToId: assigneeId, updatedAt: new Date() },
   });
 
-  broadcastConversationUpdated(organizationId, conversationId);
+  broadcastConversationUpdated(organizationId, conversationId, {
+    assignedToId: assigneeId,
+    assignedTo: assignee,
+    updatedAt: new Date().toISOString(),
+  });
   log?.info({ conversationId, inboxId, assigneeId }, "inbox_auto_assign_applied");
   return true;
 }

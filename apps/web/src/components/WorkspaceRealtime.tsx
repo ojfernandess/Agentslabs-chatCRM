@@ -202,6 +202,7 @@ export function WorkspaceRealtime() {
               awaitingHumanHandoff: data.awaitingHumanHandoff,
               status: data.status,
               assignedToId: data.assignedToId,
+              assignedTo: data.assignedTo,
               teamId: data.teamId,
               inboxId: data.inboxId,
               agentBotTriageActive: data.agentBotTriageActive,

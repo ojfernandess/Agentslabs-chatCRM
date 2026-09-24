@@ -118,6 +118,7 @@ export type ConversationListSyncPayload = {
   conversationId: string;
   status?: string;
   assignedToId?: string | null;
+  assignedTo?: { id: string; name: string } | null;
   teamId?: string | null;
   inboxId?: string;
   awaitingHumanHandoff?: boolean;
@@ -129,6 +130,7 @@ export function buildConversationListSyncPayload(input: {
   id: string;
   status: string;
   assignedToId: string | null;
+  assignedTo?: { id: string; name: string } | null;
   teamId: string | null;
   inboxId: string;
   awaitingHumanHandoff: boolean;
@@ -139,6 +141,7 @@ export function buildConversationListSyncPayload(input: {
     conversationId: input.id,
     status: input.status,
     assignedToId: input.assignedToId,
+    assignedTo: input.assignedTo ?? null,
     teamId: input.teamId,
     inboxId: input.inboxId,
     awaitingHumanHandoff: input.awaitingHumanHandoff,

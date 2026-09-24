@@ -254,6 +254,7 @@ export function ConversationsPage({
     hideResolvedInAllScope,
     orgAllScopeHumanOnly,
     userId: user?.id,
+    userName: user?.name,
   };
 
   const applyListRowToCache = useCallback((fetchKey: string, rows: Conversation[]) => {
@@ -910,7 +911,10 @@ export function ConversationsPage({
           fetchRow = true;
           return prev;
         }
-        const merged = mergeConversationScopeHint(existing, detail);
+        const merged = mergeConversationScopeHint(existing, detail, {
+          currentUserId: scope.userId,
+          currentUserName: scope.userName,
+        });
         if (!conversationMatchesListScope(merged, scope)) {
           removed = true;
           const next = prev.filter((c) => c.id !== conversationId);

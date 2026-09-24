@@ -396,31 +396,35 @@ async function buildAgentBotTriageMapForInboxes(
   return triageMap;
 }
 
-async function broadcastConversationListSync(
+function broadcastConversationListSync(
   organizationId: string,
   conversation: {
     id: string;
     status: string;
     assignedToId: string | null;
+    assignedTo?: { id: string; name: string } | null;
     teamId: string | null;
     inboxId: string;
     awaitingHumanHandoff: boolean;
     updatedAt: Date;
     inbox: { channelType: string };
   },
-): Promise<void> {
-  const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
-  const agentBotTriageActive = computeAgentBotTriageActive(
-    agentCtx,
-    conversation.inbox.channelType as InboxChannelType,
-  );
-  broadcastToOrganization(
-    organizationId,
-    {
-      type: "conversation.updated",
-      ...buildConversationListSyncPayload({ ...conversation, agentBotTriageActive }),
-    },
-  );
+  agentBotTriageActive: boolean,
+): void {
+  broadcastToOrganization(organizationId, {
+    type: "conversation.updated",
+    ...buildConversationListSyncPayload({
+      id: conversation.id,
+      status: conversation.status,
+      assignedToId: conversation.assignedToId,
+      assignedTo: conversation.assignedTo ?? null,
+      teamId: conversation.teamId,
+      inboxId: conversation.inboxId,
+      awaitingHumanHandoff: conversation.awaitingHumanHandoff,
+      updatedAt: conversation.updatedAt,
+      agentBotTriageActive,
+    }),
+  });
 }
 
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
@@ -2202,6 +2206,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
     }
 
+    const agentCtxTransfer = await getAgentBotDispatchContextForInbox(organizationId, updated.inboxId);
+    const agentBotTriageActiveTransfer = computeAgentBotTriageActive(
+      agentCtxTransfer,
+      updated.inbox.channelType,
+    );
+
     if (parsed.data.action === "transfer") {
       const teamChanged = updated.teamId !== prevTeamId;
       const assigneeChanged = updated.assignedToId !== prevAssignedToId;
@@ -2216,13 +2226,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           previousAssignedToId: prevAssignedToId,
           contact: updated.contact,
         });
-        await broadcastConversationListSync(organizationId, updated);
+        broadcastConversationListSync(organizationId, updated, agentBotTriageActiveTransfer);
       }
     }
 
     const contactTimeline = await fetchContactTimelineForConversation(organizationId, updated.contactId);
-    const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, updated.inboxId);
-    const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, updated.inbox.channelType);
+    const agentBotTriageActive = agentBotTriageActiveTransfer;
     const contactHasAvatar = await hasContactAvatarCache(organizationId, updated.contact.id);
     const { closureRecords, ...convRest } = updated;
     const leadOwnerConflict = await buildLeadOwnerConflict(updated.contact, updated, request.user.id);
@@ -2857,6 +2866,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      const agentCtxPut = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
+      const agentBotTriageActive = computeAgentBotTriageActive(agentCtxPut, conversation.inbox.channelType);
+
       const teamChanged = conversation.teamId !== prevTeamId;
       const assigneeChanged = conversation.assignedToId !== prevAssignedToId;
       if (teamChanged || assigneeChanged) {
@@ -2908,19 +2920,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           previousAssignedToId: prevAssignedToId,
           contact: conversation.contact,
         });
-        await broadcastConversationListSync(organizationId, conversation);
+        broadcastConversationListSync(organizationId, conversation, agentBotTriageActive);
       } else {
         const statusChanged = conversation.status !== existing.status;
         const handoffChanged = conversation.awaitingHumanHandoff !== existing.awaitingHumanHandoff;
         if (statusChanged || handoffChanged) {
-          await broadcastConversationListSync(organizationId, conversation);
+          broadcastConversationListSync(organizationId, conversation, agentBotTriageActive);
         }
       }
 
       const contactTimeline = await fetchContactTimelineForConversation(organizationId, conversation.contactId);
-
-      const agentCtxPut = await getAgentBotDispatchContextForInbox(organizationId, conversation.inboxId);
-      const agentBotTriageActive = computeAgentBotTriageActive(agentCtxPut, conversation.inbox.channelType);
       const { closureRecords, ...convBody } = conversation;
       const leadOwnerConflict = await buildLeadOwnerConflict(
         conversation.contact,
