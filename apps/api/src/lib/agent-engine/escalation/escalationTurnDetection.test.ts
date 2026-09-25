@@ -3,8 +3,11 @@ import test from "node:test";
 import {
   messageLooksLikeOperationalComplaint,
   messageLooksLikeHumanHandoffRequest,
+  messageLooksLikeReservationUpdateRequest,
+  messageLooksLikeVagueProblemReport,
   shouldRequireCallHumanThisTurn,
   assistantIsComplaintDataCollection,
+  assistantIsReservationChannelPrompt,
   guestProvidesComplaintContext,
 } from "./escalationTurnDetection.js";
 
@@ -41,12 +44,37 @@ test("shouldRequireCallHumanThisTurn on payment continuation without context", (
   );
 });
 
-test("shouldRequireCallHumanThisTurn on room change request", () => {
+test("shouldRequireCallHumanThisTurn not on vague problem (triage first)", () => {
+  assert.equal(messageLooksLikeVagueProblemReport("Estou tentando aqui e não está dando certo."), true);
   assert.equal(
     shouldRequireCallHumanThisTurn({
-      userMessage: "Posso pedir para o pessoal trocar de quarto hoje às 12:00 ?",
+      userMessage: "Estou tentando aqui e não está dando certo.",
+    }),
+    false,
+  );
+});
+
+test("messageLooksLikeReservationUpdateRequest detects update wording", () => {
+  assert.equal(messageLooksLikeReservationUpdateRequest("preciso atualizar uma reserva"), true);
+});
+
+test("shouldRequireCallHumanThisTurn on C24 direct channel after prompt", () => {
+  const last =
+    "Para alterações na reserva, preciso saber: onde ela foi realizada? Booking, Airbnb, Expedia, outra OTA ou conosco/direto?";
+  assert.equal(assistantIsReservationChannelPrompt(last), true);
+  assert.equal(
+    shouldRequireCallHumanThisTurn({
+      userMessage: "foi feita com vocês pelo atendimento",
+      lastAssistantMessage: last,
     }),
     true,
+  );
+  assert.equal(
+    shouldRequireCallHumanThisTurn({
+      userMessage: "Booking",
+      lastAssistantMessage: last,
+    }),
+    false,
   );
 });
 

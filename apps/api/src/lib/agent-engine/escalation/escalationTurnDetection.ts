@@ -37,6 +37,18 @@ export function messageLooksLikeHumanHandoffRequest(userMessage?: string | null)
   );
 }
 
+/** Relato vago de problema — C13t triagem (não handoff imediato). */
+export function messageLooksLikeVagueProblemReport(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    /\bn[aã]o est[aá] (?:dando certo|funcionando|conseguindo)\b/i.test(t) ||
+    /\bestou tentando\b[\s\S]{0,60}\bn[aã]o\b/i.test(t) ||
+    /\btenho (?:um )?problema\b/i.test(t) ||
+    /\bpreciso de ajuda\b/i.test(t)
+  );
+}
+
 /** Pagamento/prazo/valor — C21, inclusive retomada fora de contexto (reserva via atendimento humano). */
 export function messageLooksLikeReservationPaymentOperational(
   userMessage?: string | null,
@@ -61,7 +73,39 @@ export function messageLooksLikeReservationPaymentOperational(
   return false;
 }
 
-/** Pedido operacional de estadia (troca de quarto, etc.) — handoff humano. */
+/** Pedido de alteração/atualização de reserva — C24. */
+export function messageLooksLikeReservationUpdateRequest(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    /\b(?:atualizar|alterar|modificar|mudar|trocar)\b[\s\S]{0,50}\breserva\b/i.test(t) ||
+    /\breserva\b[\s\S]{0,50}\b(?:atualizar|alterar|modificar|mudar|trocar)\b/i.test(t)
+  );
+}
+
+/** Canal OTA informado pelo hóspede (C24). */
+export function messageLooksLikeOtaChannel(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  return /\b(?:booking(?:\.com)?|airbnb|expedia|decolar|hotels\.com|agoda|trip\.com|hoteis\.com|ota)\b/i.test(
+    t,
+  );
+}
+
+/** Reserva feita direto com a Audaar/atendimento (C24 → handoff). */
+export function messageLooksLikeDirectReservationChannel(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (messageLooksLikeOtaChannel(t)) return false;
+  return (
+    /\b(?:conosco|com voc[eê]s|com a audaar|direto(?:mente)?|no site|pelo site|balc[aã]o|atendimento|telefone|whatsapp)\b/i.test(
+      t,
+    ) ||
+    /\b(?:fiz|feita|realizada)\s+(?:por|com|no|na)\s+(?:voc[eê]s|audaar|atendimento|equipe)\b/i.test(t)
+  );
+}
+
+/** Pedido operacional de estadia (troca de quarto, etc.). */
 export function messageLooksLikeStayOperationalRequest(userMessage?: string | null): boolean {
   const t = (userMessage ?? "").trim();
   if (!t) return false;
@@ -90,6 +134,16 @@ export function assistantIsComplaintDataCollection(lastAssistantMessage?: string
   );
 }
 
+/** Última msg do agente perguntou o canal da reserva (C24). */
+export function assistantIsReservationChannelPrompt(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    /onde\s+(?:foi\s+)?realizada\s+a\s+reserva/i.test(t) ||
+    (/booking|airbnb|expedia|ota/i.test(t) && /(?:onde|local|canal|plataforma)/i.test(t))
+  );
+}
+
 /** Hóspede informou unidade e/ou quarto após coleta C13. */
 export function guestProvidesComplaintContext(userMessage?: string | null): boolean {
   const msg = (userMessage ?? "").trim();
@@ -111,21 +165,37 @@ export function shouldRequireCallHumanThisTurn(opts: {
 }): boolean {
   const msg = (opts.userMessage ?? "").trim();
   if (!msg) return false;
+
+  // C13a — pedido humano explícito (imediato).
   if (messageLooksLikeHumanHandoffRequest(msg)) return true;
+
+  // C21 — pagamento/prazo (imediato).
   if (messageLooksLikeReservationPaymentOperational(msg)) return true;
-  if (messageLooksLikeStayOperationalRequest(msg)) return true;
+
+  // C24 — reserva direta/conosco após pergunta de canal (não OTA).
+  if (
+    assistantIsReservationChannelPrompt(opts.lastAssistantMessage) &&
+    messageLooksLikeDirectReservationChannel(msg)
+  ) {
+    return true;
+  }
+
+  // C13 — após coleta de reclamação.
   if (
     assistantIsComplaintDataCollection(opts.lastAssistantMessage) &&
     guestProvidesComplaintContext(msg)
   ) {
     return true;
   }
+
+  // Reclamação irritada/urgente.
   if (
     messageLooksLikeOperationalComplaint(msg) &&
     /\b(irritad|impacient|agora|j[aá]|urgente|imediato)\b/i.test(msg)
   ) {
     return true;
   }
+
   return false;
 }
 
