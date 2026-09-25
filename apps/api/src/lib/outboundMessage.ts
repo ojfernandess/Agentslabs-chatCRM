@@ -25,6 +25,7 @@ import { promoteUserToOnlineIfInactive } from "./userAvailability.js";
 import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
 import { recordMessageLedgerEntry } from "./messageBillingLedger.js";
+import { withNetworkRetry } from "./networkRetry.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
@@ -499,22 +500,24 @@ export async function deliverOutboundWhatsAppMessage(options: {
           Boolean(templateRow?.providerTemplateId) &&
           (isMetaProvider || provider instanceof MetaCloudApiProvider);
 
-        providerMsgId = await provider.sendMessage({
-          to,
-          type,
-          body: bodyForExternal,
-          mediaUrl,
-          mediaType,
-          ...(usesMetaTemplateApi
-            ? {
-                templateName: templateRow!.providerTemplateId!,
-                templateLanguage: templateRow!.templateLanguage,
-                templateBodyParameters:
-                  templateRow!.bodyVariableCount > 0 ? (data.templateBodyParameters ?? []) : undefined,
-                templateComponents: templateMetaComponents,
-              }
-            : {}),
-        });
+        providerMsgId = await withNetworkRetry(() =>
+          provider.sendMessage({
+            to,
+            type,
+            body: bodyForExternal,
+            mediaUrl,
+            mediaType,
+            ...(usesMetaTemplateApi
+              ? {
+                  templateName: templateRow!.providerTemplateId!,
+                  templateLanguage: templateRow!.templateLanguage,
+                  templateBodyParameters:
+                    templateRow!.bodyVariableCount > 0 ? (data.templateBodyParameters ?? []) : undefined,
+                  templateComponents: templateMetaComponents,
+                }
+              : {}),
+          }),
+        );
       }
     } catch (err) {
       log.error(err, "Failed to send message via WhatsApp provider");

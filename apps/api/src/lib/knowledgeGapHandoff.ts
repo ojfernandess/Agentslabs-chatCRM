@@ -9,6 +9,7 @@ import {
   messageLooksLikeReservationPaymentOperational,
   messageLooksLikeReservationUpdateRequest,
   messageLooksLikeVagueProblemReport,
+  userMessageLooksLikeAccessBlockedProblem,
 } from "./agent-engine/escalation/escalationTurnDetection.js";
 import { extractKbTextFromToolOutcome } from "./nfFlowReply.js";
 import {
@@ -19,6 +20,7 @@ import {
 import {
   userMessageLooksLikeAmenityItemQuestion,
   userMessageLooksLikeCheckoutProcedureQuestion,
+  userMessageLooksLikeEstablishmentEntryFaqQuestion,
   userMessageLooksLikeReceiptOrInvoiceRequest,
 } from "./unitKnowledgeFlow.js";
 
@@ -43,6 +45,8 @@ export function userMessageLooksLikeKbEscalationCandidate(userMessage?: string |
   if (messageLooksLikeReservationUpdateRequest(msg)) return false;
   if (messageLooksLikeVagueProblemReport(msg)) return false;
   if (isOperationalQuoteMessage(msg)) return false;
+  if (userMessageLooksLikeAccessBlockedProblem(msg)) return false;
+  if (userMessageLooksLikeEstablishmentEntryFaqQuestion(msg)) return false;
 
   if (
     userMessageLooksLikeCheckoutProcedureQuestion(msg) ||

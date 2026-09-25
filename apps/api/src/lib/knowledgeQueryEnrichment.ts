@@ -1,6 +1,9 @@
 import { extractQuerySegmentTokens, queryTerms } from "./knowledgeSearchRanking.js";
 import { stripProactiveKnowledgeAppendixShell } from "./kbAppendix.js";
-import { messageLooksLikeEscalationTurn } from "./agent-engine/escalation/escalationTurnDetection.js";
+import {
+  messageLooksLikeEscalationTurn,
+  userMessageLooksLikeAccessBlockedProblem,
+} from "./agent-engine/escalation/escalationTurnDetection.js";
 import {
   userMessageLooksLikeCheckoutProcedureQuestion,
   userMessageLooksLikeReceiptOrInvoiceRequest,
@@ -186,6 +189,9 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
     return false;
   }
   if (messageLooksLikeEscalationTurn(t)) {
+    return false;
+  }
+  if (userMessageLooksLikeAccessBlockedProblem(t)) {
     return false;
   }
   if (

@@ -5,6 +5,7 @@ import {
   messageLooksLikeHumanHandoffRequest,
   messageLooksLikeReservationUpdateRequest,
   messageLooksLikeVagueProblemReport,
+  userMessageLooksLikeAccessBlockedProblem,
   shouldRequireCallHumanThisTurn,
   assistantIsComplaintDataCollection,
   assistantIsReservationChannelPrompt,
@@ -24,6 +25,23 @@ test("messageLooksLikeHumanHandoffRequest accepts atendimento wording", () => {
 test("shouldRequireCallHumanThisTurn on explicit human request", () => {
   assert.equal(shouldRequireCallHumanThisTurn({ userMessage: "falar com atendimento" }), true);
   assert.equal(shouldRequireCallHumanThisTurn({ userMessage: "meu quarto está sujo" }), false);
+});
+
+test("userMessageLooksLikeAccessBlockedProblem detects blocked entry", () => {
+  assert.equal(userMessageLooksLikeAccessBlockedProblem("não consigo entrar no quarto"), true);
+  assert.equal(userMessageLooksLikeAccessBlockedProblem("a portaria não liberou"), true);
+  assert.equal(
+    userMessageLooksLikeAccessBlockedProblem("Como funciona a entrada no audaar tech?"),
+    false,
+  );
+  assert.equal(userMessageLooksLikeAccessBlockedProblem("podem liberar a entrada?"), false);
+});
+
+test("shouldRequireCallHumanThisTurn on access blocked problem", () => {
+  assert.equal(
+    shouldRequireCallHumanThisTurn({ userMessage: "não consigo entrar no estabelecimento" }),
+    true,
+  );
 });
 
 test("messageLooksLikeHumanHandoffRequest accepts named attendant", () => {

@@ -37,6 +37,32 @@ export function messageLooksLikeHumanHandoffRequest(userMessage?: string | null)
   );
 }
 
+/**
+ * Hóspede relata bloqueio de acesso (não consegue entrar, porta/portão/portaria travada).
+ * ≠ FAQ "como funciona a entrada" (C5e/KB) · ≠ pedido operacional "liberar entrada" (C23).
+ */
+export function userMessageLooksLikeAccessBlockedProblem(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (/\b(?:liberar|podem\s+liberar|pode\s+liberar)\b/i.test(t)) return false;
+  if (/\bcomo\s+(?:funciona|é|fa[cç]o|fazer)\b/i.test(t)) return false;
+
+  return (
+    /\bn[aã]o\s+(?:estou\s+)?consigo\b[\s\S]{0,50}\b(?:entrar|acessar)\b/i.test(t) ||
+    /\bn[aã]o\s+(?:est[aá]|consegui)\s+entrar\b/i.test(t) ||
+    /\b(?:porta|port[aã]o|portaria|catraca|elevador)\b[\s\S]{0,40}\b(?:n[aã]o\s+(?:abre|liberou|funciona)|travou|bloqueou)\b/i.test(
+      t,
+    ) ||
+    /\b(?:travado|bloqueado|preso)\b[\s\S]{0,40}\b(?:portaria|entrada|port[aã]o|quarto|condom[ií]nio|estabelecimento)\b/i.test(
+      t,
+    ) ||
+    (/\b(?:c[oó]digo|senha|chave|cart[aã]o)\b[\s\S]{0,40}\b(?:n[aã]o\s+funciona|n[aã]o\s+abre|inv[aá]lid)\b/i.test(
+      t,
+    ) &&
+      /\b(?:quarto|entrada|portaria|acesso|estabelecimento)\b/i.test(t))
+  );
+}
+
 /** Relato vago de problema — C13t triagem (não handoff imediato). */
 export function messageLooksLikeVagueProblemReport(userMessage?: string | null): boolean {
   const t = (userMessage ?? "").trim();
@@ -171,6 +197,9 @@ export function shouldRequireCallHumanThisTurn(opts: {
 
   // C21 — pagamento/prazo (imediato).
   if (messageLooksLikeReservationPaymentOperational(msg)) return true;
+
+  // Bloqueio de acesso — não consegue entrar no estabelecimento/quarto.
+  if (userMessageLooksLikeAccessBlockedProblem(msg)) return true;
 
   // C24 — reserva direta/conosco após pergunta de canal (não OTA).
   if (

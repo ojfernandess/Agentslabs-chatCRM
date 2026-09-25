@@ -6,7 +6,10 @@ import {
   extractReservationReferenceFromMessage,
   isOperationalQuoteMessage,
 } from "./knowledgeQueryEnrichment.js";
-import { messageLooksLikeHumanHandoffRequest } from "./agent-engine/escalation/escalationTurnDetection.js";
+import {
+  messageLooksLikeHumanHandoffRequest,
+  userMessageLooksLikeAccessBlockedProblem,
+} from "./agent-engine/escalation/escalationTurnDetection.js";
 import {
   assistantIsQuoteAbertura,
   assistantIsQuoteAvailabilityConfirm,
@@ -57,6 +60,36 @@ export function userMessageLooksLikeCheckoutProcedureQuestion(userMessage?: stri
     /\bhora\s+(?:de\s+)?(?:sa[ií]da|check[\s-]?out)\b/i.test(t) ||
     /\bcomo\s+(?:funciona|fa[cç]o)\s+(?:a\s+)?sa[ií]da\b/i.test(t) ||
     /\bcomo\s+sair\s+do\s+(?:hotel|quarto|apartamento)\b/i.test(t)
+  );
+}
+
+/**
+ * FAQ informativa sobre procedimento de entrada/acesso ao estabelecimento (C5e).
+ * ≠ liberação operacional C23 · ≠ bloqueio de acesso (call_human).
+ */
+export function userMessageLooksLikeEstablishmentEntryFaqQuestion(
+  userMessage?: string | null,
+): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (userMessageLooksLikeAccessBlockedProblem(t)) return false;
+  if (/\b(?:liberar|podem\s+liberar|pode\s+liberar)\b/i.test(t)) return false;
+  if (/\bcheck[\s-]?in\b/i.test(t)) return false;
+  if (
+    /\b(?:quarto|su[ií]te)\b/i.test(t) &&
+    /\b(?:entrar|acesso|senha|c[oó]digo)\b/i.test(t) &&
+    !/\b(?:estabelecimento|hotel|condom[ií]nio|portaria)\b/i.test(t)
+  ) {
+    return false;
+  }
+
+  return (
+    /\bcomo\s+(?:funciona|é|fa[cç]o|fazer|realizar)\b[\s\S]{0,70}\b(?:entrada|acesso)\b/i.test(t) ||
+    /\bcomo\s+(?:funciona|é)\s+(?:a\s+)?entrada\b/i.test(t) ||
+    /\b(?:qual|quais)\s+(?:o\s+)?(?:procedimento|processo)\s+(?:de\s+)?(?:entrada|acesso)\b/i.test(
+      t,
+    ) ||
+    (/\bentrada\b/i.test(t) && /\bcomo\b/i.test(t))
   );
 }
 
@@ -146,6 +179,7 @@ export function unitKbTurnNeedsEstablishmentCollection(opts: {
   if (!msg) return false;
   const needsUnit =
     userMessageLooksLikeCheckoutProcedureQuestion(msg) ||
+    userMessageLooksLikeEstablishmentEntryFaqQuestion(msg) ||
     userMessageLooksLikeReceiptOrInvoiceRequest(msg) ||
     userMessageLooksLikeAmenityItemQuestion(msg);
   if (!needsUnit) return false;
@@ -180,7 +214,8 @@ export function assistantRequestedEstablishmentForUnitKb(
     showsEstablishmentMenu ||
     /\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t) ||
     /\bcheck[\s-]?out\b/i.test(t) ||
-    /\b(?:ferro|secador|comodidade)\b/i.test(t)
+    /\b(?:ferro|secador|comodidade)\b/i.test(t) ||
+    /\b(?:entrada|acesso|portaria)\b/i.test(t)
   );
 }
 
@@ -208,6 +243,7 @@ export function shouldRequireUnitKnowledgeLookupThisTurn(opts: {
 
   if (
     userMessageLooksLikeCheckoutProcedureQuestion(msg) ||
+    userMessageLooksLikeEstablishmentEntryFaqQuestion(msg) ||
     userMessageLooksLikeReceiptOrInvoiceRequest(msg) ||
     userMessageLooksLikeAmenityItemQuestion(msg)
   ) {

@@ -3,7 +3,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { generateNativeAgentReplyWithResult } from "./agentNativeLlm.js";
 import { deliverAgentReplyMessage } from "./agentVoiceReply.js";
-import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
+import { deliverEscalationTransferMessage } from "./escalationTransferDelivery.js";
 import { withConversationAgentReplyLock } from "./llmSharedQuotaGate.js";
 import type { AutomationExecutionLogHandle } from "./automationExecutionLog.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
@@ -311,43 +311,76 @@ export async function runNativeAgentReplyAndDeliver(input: {
 
       if (transferConfigured) {
         const transferBody = await maybeEnrichReplyForWebchat(transferConfigured, profileEsc?.behaviorConfig);
-        try {
-          await deliverOutboundWhatsAppMessage({
-            organizationId,
-            data: {
-              contactId: contact.id,
-              conversationId: conversation.id,
-              type: "TEXT",
-              body: transferBody,
+        const fallbackReply = await maybeEnrichReplyForWebchat(replyText, profileEsc?.behaviorConfig);
+        const delivery = await deliverEscalationTransferMessage({
+          organizationId,
+          botId: bot.id,
+          conversation,
+          contact,
+          primaryBody: transferBody,
+          fallbackBody: fallbackReply,
+          log,
+        });
+
+        if (delivery.delivered) {
+          exLog.info(
+            { id: "outbound", name: "Resposta" },
+            delivery.usedFallback
+              ? "Transferência para humano — mensagem de fallback do modelo enviada ao cliente"
+              : "Transferência para humano — mensagem das regras de escalonamento enviada ao cliente",
+            {
+              output: {
+                chars: delivery.body.length,
+                modelReplyChars: replyText.length,
+                usedFallback: delivery.usedFallback,
+              },
             },
-            actor: { kind: "agent_bot", botId: bot.id },
-            log,
-            newConversation: { status: "PENDING", assignedToId: null },
-          });
-        } catch (err) {
-          log.warn({ err, botId: bot.id }, "Agent bot escalation transfer message send failed");
-          await exLog.completeError(err);
+          );
+          await prisma.automationInteraction
+            .create({
+              data: {
+                organizationId,
+                botId: bot.id,
+                conversationId: conversation.id,
+                userMessage,
+                assistantMessage: delivery.body,
+                responseType: "native_fallback",
+              },
+            })
+            .catch(() => {});
+          await registerBudgetAfterDelivery(true, undefined, delivery.body);
+          await exLog.completeSuccess();
           return;
         }
-        exLog.info(
-          { id: "outbound", name: "Resposta" },
-          "Transferência para humano — mensagem das regras de escalonamento enviada ao cliente",
-          { output: { chars: transferBody.length, modelReplyChars: replyText.length } },
+
+        log.warn(
+          {
+            err: delivery.lastError,
+            botId: bot.id,
+            callHumanOk,
+            usedFallback: delivery.usedFallback,
+          },
+          "Agent bot escalation transfer message send failed after retries/fallback",
         );
-        await prisma.automationInteraction
-          .create({
-            data: {
-              organizationId,
-              botId: bot.id,
-              conversationId: conversation.id,
-              userMessage,
-              assistantMessage: transferBody,
-              responseType: "native_fallback",
+        exLog.warn(
+          { id: "outbound", name: "Resposta" },
+          callHumanOk
+            ? "Transferência interna concluída — mensagem WhatsApp de escalonamento não entregue"
+            : "Mensagem de transferência não entregue ao cliente",
+          {
+            output: {
+              error: delivery.lastError?.message ?? "unknown",
+              transferChars: transferBody.length,
+              modelReplyChars: replyText.length,
             },
-          })
-          .catch(() => {});
-        await registerBudgetAfterDelivery(true, undefined, transferBody);
-        await exLog.completeSuccess();
+            stack: delivery.lastError?.stack,
+          },
+        );
+        if (callHumanOk) {
+          await exLog.completeSuccess();
+          return;
+        }
+        await exLog.completeError(delivery.lastError ?? new Error("escalation transfer delivery failed"));
         return;
       }
       if (shouldAppendWebchatLinkOnReply(profileEsc?.behaviorConfig, budgetState)) {

@@ -123,6 +123,7 @@ import {
 } from "../escalation/escalationTurnDetection.js";
 import {
   userMessageLooksLikeCheckoutProcedureQuestion,
+  userMessageLooksLikeEstablishmentEntryFaqQuestion,
   userMessageLooksLikeReceiptOrInvoiceRequest,
   userMessageLooksLikeAmenityItemQuestion,
   unitKbTurnNeedsEstablishmentCollection,
@@ -162,6 +163,7 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
       if (isOperationalQuoteMessage(m)) return false;
       if (messageLooksLikeEscalationTurn(m)) return false;
       if (userMessageLooksLikeCheckoutProcedureQuestion(m)) return false;
+      if (userMessageLooksLikeEstablishmentEntryFaqQuestion(m)) return false;
       if (userMessageLooksLikeReceiptOrInvoiceRequest(m)) return false;
       if (userMessageLooksLikeAmenityItemQuestion(m)) return false;
       if (userMessageLooksLikeReservationVerificationIntent(m)) {
@@ -220,6 +222,12 @@ export const GENERIC_TURN_PATTERNS: TurnToolPattern[] = [
     id: "checkout_procedure",
     test: (m) => userMessageLooksLikeCheckoutProcedureQuestion(m),
     playbookHints: /\b(C17|check-out|checkout|procedimento de checkout|procedimento de sa[ií]da)\b/i,
+  },
+  {
+    id: "establishment_entry_faq",
+    test: (m) => userMessageLooksLikeEstablishmentEntryFaqQuestion(m),
+    playbookHints:
+      /\b(C5e|entrada do estabelecimento|procedimento de entrada|como funciona a entrada|acesso ao estabelecimento)\b/i,
   },
   {
     id: "receipt_invoice",
