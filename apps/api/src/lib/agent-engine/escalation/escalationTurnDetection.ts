@@ -26,12 +26,49 @@ export function messageLooksLikeHumanHandoffRequest(userMessage?: string | null)
   if (!t) return false;
   return (
     /\bfalar com (?:um )?(?:humano|atendente|atendimento|pessoa|gente)\b/i.test(t) ||
+    /\bfalar com\b[\s\S]{0,80}\b(?:time|equipe)\s+de\s+atendimento\b/i.test(t) ||
+    /\b(?:gostaria|quero|preciso)\s+(?:de\s+)?falar\s+com\b/i.test(t) ||
     /\bquero (?:um )?(?:humano|atendente|atendimento|pessoa)\b/i.test(t) ||
     /\b(?:me )?(?:transfere|transfer[ei]|encaminh)[ae]?\b[\s\S]{0,40}\b(?:humano|atendente|atendimento|equipe)\b/i.test(
       t,
     ) ||
     /\bpreciso falar com\b/i.test(t) ||
     /\batendimento humano\b/i.test(t)
+  );
+}
+
+/** Pagamento/prazo/valor — C21, inclusive retomada fora de contexto (reserva via atendimento humano). */
+export function messageLooksLikeReservationPaymentOperational(
+  userMessage?: string | null,
+): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  if (
+    /\bpagament/i.test(t) &&
+    (/\bR\$\s*[\d.,]+/i.test(t) ||
+      /\bser[aá]\s+feito\s+hoje\b/i.test(t) ||
+      /\bhoje\s+tamb[eé]m\b/i.test(t) ||
+      /\bvalor\b/i.test(t))
+  ) {
+    return true;
+  }
+  if (/\b(?:realizar|fazer|efetuar)\s+(?:o\s+)?pagament/i.test(t)) return true;
+  if (/\b(?:segurar|prorrogar|manter)\b[\s\S]{0,40}\b(?:di[aá]ria|reserva|prazo)\b/i.test(t)) {
+    return true;
+  }
+  if (/\b(?:bloqueio|cancelament).*\breserva\b/i.test(t)) return true;
+  if (/\bj[aá]\s+paguei\b/i.test(t)) return true;
+  return false;
+}
+
+/** Pedido operacional de estadia (troca de quarto, etc.) — handoff humano. */
+export function messageLooksLikeStayOperationalRequest(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    /\btrocar de quarto\b/i.test(t) ||
+    /\btroca de quarto\b/i.test(t) ||
+    /\bmudar de quarto\b/i.test(t)
   );
 }
 
@@ -75,6 +112,8 @@ export function shouldRequireCallHumanThisTurn(opts: {
   const msg = (opts.userMessage ?? "").trim();
   if (!msg) return false;
   if (messageLooksLikeHumanHandoffRequest(msg)) return true;
+  if (messageLooksLikeReservationPaymentOperational(msg)) return true;
+  if (messageLooksLikeStayOperationalRequest(msg)) return true;
   if (
     assistantIsComplaintDataCollection(opts.lastAssistantMessage) &&
     guestProvidesComplaintContext(msg)

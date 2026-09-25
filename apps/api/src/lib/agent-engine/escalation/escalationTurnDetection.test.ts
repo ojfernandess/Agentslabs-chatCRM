@@ -23,6 +23,33 @@ test("shouldRequireCallHumanThisTurn on explicit human request", () => {
   assert.equal(shouldRequireCallHumanThisTurn({ userMessage: "meu quarto está sujo" }), false);
 });
 
+test("messageLooksLikeHumanHandoffRequest accepts named attendant", () => {
+  assert.equal(
+    messageLooksLikeHumanHandoffRequest(
+      "Gostaria de falar com o William do time de atendimento",
+    ),
+    true,
+  );
+});
+
+test("shouldRequireCallHumanThisTurn on payment continuation without context", () => {
+  assert.equal(
+    shouldRequireCallHumanThisTurn({
+      userMessage: "O Pagamento dos R$ 760,00 será feito hoje também",
+    }),
+    true,
+  );
+});
+
+test("shouldRequireCallHumanThisTurn on room change request", () => {
+  assert.equal(
+    shouldRequireCallHumanThisTurn({
+      userMessage: "Posso pedir para o pessoal trocar de quarto hoje às 12:00 ?",
+    }),
+    true,
+  );
+});
+
 test("shouldRequireCallHumanThisTurn after C13 data collection", () => {
   const last =
     "Sinto muito pelo ocorrido. Para agilizar, pode me informar o nome da hospedagem e o número do quarto?";
