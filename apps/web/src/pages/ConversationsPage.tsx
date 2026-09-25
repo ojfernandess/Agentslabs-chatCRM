@@ -1527,7 +1527,7 @@ export function ConversationsPage({
                               marginBottom: 0,
                               overflow: "hidden",
                             }
-                          : false
+                          : undefined
                       }
                       transition={motionActive ? { duration: 0.26, ease: "easeOut" } : { duration: 0 }}
                       className={clsx(
