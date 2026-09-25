@@ -157,12 +157,20 @@ import {
   type EmailRecipientFieldsValue,
 } from "@/components/inboxes/EmailRecipientFields";
 import {
+  clearInflightConversation,
   getCachedConversation,
   getInflightConversation,
   invalidateCachedConversation,
   setCachedConversation,
+  setCachedConversationMerged,
   setInflightConversation,
 } from "@/lib/conversationDetailCache";
+import { mergeIncrementalConversationSnapshot } from "@/lib/conversationIncrementalLoad";
+import { mergeConversationWithRemote } from "@/lib/mergeConversationMessages";
+import {
+  createOptimisticOutboundMessage,
+  stripOptimisticOutboundMessages,
+} from "@/lib/optimisticOutboundMessage";
 import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import {
   isWebsiteContactPhone,
@@ -663,11 +671,21 @@ export function ConversationDetailPage() {
   const messagesNewerCursorRef = useRef<string | null>(null);
   const seenMessageIds = useRef(new Set<string>());
   const activeConversationIdRef = useRef(id);
+  const conversationLoadEpochRef = useRef(0);
+  const workspaceWsConnectedRef = useRef(workspaceWsConnected);
+  const pendingOutboundOptimisticRef = useRef<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
+    workspaceWsConnectedRef.current = workspaceWsConnected;
+  }, [workspaceWsConnected]);
+
+  useEffect(() => {
     activeConversationIdRef.current = id;
+    conversationLoadEpochRef.current += 1;
+    pendingOutboundOptimisticRef.current = null;
+    if (id) clearInflightConversation(id);
     hasPrependedOlderRef.current = false;
     loadingOlderRef.current = false;
     setLoadingOlderMessages(false);
@@ -1021,8 +1039,14 @@ export function ConversationDetailPage() {
   const loadConversation = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
     const requestId = id;
+    const epoch = ++conversationLoadEpochRef.current;
     try {
-      if (opts?.silent && hasPrependedOlderRef.current) {
+      const useIncrementalSilent =
+        Boolean(opts?.silent) &&
+        (hasPrependedOlderRef.current ||
+          (workspaceWsConnectedRef.current && messagesRef.current.length > 0));
+
+      if (useIncrementalSilent) {
         const prevMessages = messagesRef.current;
         const newerCursor = messagesNewerCursorRef.current;
         const [meta, tail] = await Promise.all([
@@ -1035,19 +1059,20 @@ export function ConversationDetailPage() {
                 .catch(() => ({ messages: [] as Message[], newestCursor: newerCursor }))
             : Promise.resolve({ messages: [] as Message[], newestCursor: null as string | null }),
         ]);
+        if (epoch !== conversationLoadEpochRef.current) return;
         if (requestId !== activeConversationIdRef.current) return;
-        const existingIds = new Set(prevMessages.map((m) => m.id));
-        const newMessages = tail.messages.filter((m) => !existingIds.has(m.id));
-        for (const m of newMessages) seenMessageIds.current.add(m.id);
+        for (const m of tail.messages) {
+          if (!prevMessages.some((row) => row.id === m.id)) seenMessageIds.current.add(m.id);
+        }
         setConversation((prev) => {
-          const merged: ConversationDetail = {
-            ...meta,
-            messages: newMessages.length ? [...prevMessages, ...newMessages] : prevMessages,
-            messagesHasMore: prev?.messagesHasMore ?? meta.messagesHasMore,
-            messagesOlderCursor: prev?.messagesOlderCursor ?? meta.messagesOlderCursor,
-            messagesNewerCursor: tail.newestCursor ?? prev?.messagesNewerCursor ?? meta.messagesNewerCursor,
-          };
-          setCachedConversation(requestId, merged);
+          const merged = mergeIncrementalConversationSnapshot({
+            meta,
+            prev: prev && prev.id === meta.id ? prev : null,
+            prevMessages,
+            tailMessages: tail.messages,
+            newestCursor: tail.newestCursor,
+          }) as ConversationDetail;
+          setCachedConversationMerged(requestId, merged, prev && prev.id === meta.id ? prev : null);
           return merged;
         });
         setTeamPickerId(meta.team?.id ?? "");
@@ -1062,12 +1087,16 @@ export function ConversationDetailPage() {
         setInflightConversation(requestId, pending);
       }
       const data = await pending;
+      if (epoch !== conversationLoadEpochRef.current) return;
       if (requestId !== activeConversationIdRef.current) return;
-      for (const m of data.messages ?? []) {
-        seenMessageIds.current.add(m.id);
-      }
-      setCachedConversation(requestId, data);
-      setConversation(data);
+      setConversation((prev) => {
+        const merged = mergeConversationWithRemote(prev && prev.id === data.id ? prev : null, data);
+        for (const m of merged.messages ?? []) {
+          seenMessageIds.current.add(m.id);
+        }
+        setCachedConversationMerged(requestId, merged, prev && prev.id === data.id ? prev : null);
+        return merged;
+      });
       setTeamPickerId(data.team?.id ?? "");
     } catch {
       if (!opts?.silent && requestId === activeConversationIdRef.current) setConversation(null);
@@ -1151,6 +1180,79 @@ export function ConversationDetailPage() {
     }
   }, [id]);
 
+  const refreshConversationAfterSuccessfulSend = useCallback(async () => {
+    try {
+      if (workspaceWsConnected) {
+        await loadConversationMeta();
+      } else {
+        await loadConversation({ silent: true });
+      }
+      void emailOutlet?.refreshThreads?.();
+      void conversationsOutlet?.refreshList?.();
+    } catch {
+      /* realtime/WS costuma actualizar; evita falso erro após envio bem-sucedido */
+    }
+  }, [
+    workspaceWsConnected,
+    loadConversation,
+    loadConversationMeta,
+    emailOutlet,
+    conversationsOutlet,
+  ]);
+
+  const appendOptimisticOutboundMessage = useCallback((message: Message) => {
+    if (!id) return;
+    pendingOutboundOptimisticRef.current = message.id;
+    setConversation((prev) => {
+      if (!prev) return prev;
+      const merged: ConversationDetail = {
+        ...prev,
+        messages: [...(prev.messages ?? []), message],
+      };
+      setCachedConversationMerged(id, merged, prev);
+      return merged;
+    });
+    if (!isEmailLayout) stickToBottomRef.current = true;
+  }, [id, isEmailLayout]);
+
+  const clearOptimisticOutboundMessage = useCallback((optimisticId: string) => {
+    if (!id) return;
+    if (pendingOutboundOptimisticRef.current === optimisticId) {
+      pendingOutboundOptimisticRef.current = null;
+    }
+    setConversation((prev) => {
+      if (!prev?.messages?.length) return prev;
+      const messages = prev.messages.filter((m) => m.id !== optimisticId);
+      if (messages.length === prev.messages.length) return prev;
+      const merged: ConversationDetail = { ...prev, messages };
+      setCachedConversation(id, merged);
+      return merged;
+    });
+  }, [id]);
+
+  const reconcileOptimisticOutboundMessage = useCallback((optimisticId: string, persisted: Message) => {
+    if (!id) return;
+    if (pendingOutboundOptimisticRef.current === optimisticId) {
+      pendingOutboundOptimisticRef.current = null;
+    }
+    seenMessageIds.current.add(persisted.id);
+    setConversation((prev) => {
+      if (!prev) return prev;
+      const withoutOptimistic = (prev.messages ?? []).filter((m) => m.id !== optimisticId);
+      if (withoutOptimistic.some((m) => m.id === persisted.id)) {
+        const merged: ConversationDetail = { ...prev, messages: withoutOptimistic };
+        setCachedConversation(id, merged);
+        return merged;
+      }
+      const merged: ConversationDetail = {
+        ...prev,
+        messages: [...withoutOptimistic, persisted],
+      };
+      setCachedConversationMerged(id, merged, prev);
+      return merged;
+    });
+  }, [id]);
+
   const appendPushedMessage = useCallback((message: Message, newerCursor?: string | null) => {
     if (!id) return;
     if (seenMessageIds.current.has(message.id)) return;
@@ -1158,10 +1260,14 @@ export function ConversationDetailPage() {
     let applied = false;
     setConversation((prev) => {
       if (!prev) return prev;
-      const existing = prev.messages ?? [];
+      let existing = prev.messages ?? [];
+      if (message.direction === "OUTBOUND") {
+        existing = stripOptimisticOutboundMessages(existing);
+        pendingOutboundOptimisticRef.current = null;
+      }
       if (existing.some((m) => m.id === message.id)) {
         applied = true;
-        return prev;
+        return { ...prev, messages: existing };
       }
       applied = true;
       const merged: ConversationDetail = {
@@ -1169,7 +1275,7 @@ export function ConversationDetailPage() {
         messages: [...existing, message],
         ...(newerCursor ? { messagesNewerCursor: newerCursor } : {}),
       };
-      setCachedConversation(id, merged);
+      setCachedConversationMerged(id, merged, prev);
       return merged;
     });
     if (!applied) {
@@ -1758,7 +1864,7 @@ export function ConversationDetailPage() {
       setVoicePreview(null);
       if (!isEmailLayout) stickToBottomRef.current = true;
       try {
-        await loadConversation();
+        await refreshConversationAfterSuccessfulSend();
       } catch {
         /* ignore refresh errors after successful send */
       }
@@ -1855,9 +1961,7 @@ export function ConversationDetailPage() {
       if (kind === "IMAGE") setImageSentNotice(true);
       if (!isEmailLayout) stickToBottomRef.current = true;
       try {
-        await loadConversation();
-        void emailOutlet?.refreshThreads?.();
-        void conversationsOutlet?.refreshList?.();
+        await refreshConversationAfterSuccessfulSend();
       } catch {
         /* ignore refresh errors after successful send */
       }
@@ -1896,6 +2000,20 @@ export function ConversationDetailPage() {
     setNewMessage("");
     setSending(true);
     setFlowError("");
+    const optimisticMessage = createOptimisticOutboundMessage({
+      body: bodyToSend,
+      type: "TEXT",
+      isPrivate: privateNote || undefined,
+      actorUser: user
+        ? {
+            id: user.id,
+            name: user.name,
+            displayName: user.displayName ?? null,
+            showAgentNameInChat: user.showAgentNameInChat,
+          }
+        : null,
+    });
+    appendOptimisticOutboundMessage(optimisticMessage as Message);
     try {
       const emailExtra =
         !privateNote && (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
@@ -1904,7 +2022,7 @@ export function ConversationDetailPage() {
               ...emailRecipientsPayload(emailRecipients),
             }
           : {};
-      await api.post("/messages", {
+      const created = await api.post<Message>("/messages", {
         contactId: conversation.contact.id,
         conversationId: conversation.id,
         type: "TEXT",
@@ -1912,16 +2030,12 @@ export function ConversationDetailPage() {
         isPrivate: privateNote || undefined,
         ...emailExtra,
       });
+      reconcileOptimisticOutboundMessage(optimisticMessage.id, created);
       if (!isEmailLayout) stickToBottomRef.current = true;
       // Refresh após envio bem-sucedido: falha aqui não deve parecer falha de envio.
-      try {
-        await loadConversation();
-        void emailOutlet?.refreshThreads();
-        void conversationsOutlet?.refreshList?.();
-      } catch {
-        /* realtime/WS costuma actualizar; evita toast "não foi possível enviar" falso */
-      }
+      await refreshConversationAfterSuccessfulSend();
     } catch (err) {
+      clearOptimisticOutboundMessage(optimisticMessage.id);
       setNewMessage(savedMessage);
       setFlowError(
         err instanceof ApiError

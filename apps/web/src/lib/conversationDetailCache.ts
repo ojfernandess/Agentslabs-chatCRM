@@ -1,3 +1,5 @@
+import { mergeMessagesById, type MergeableMessage } from "./mergeConversationMessages.js";
+
 type CachedConversation = {
   data: unknown;
   fetchedAt: number;
@@ -27,6 +29,28 @@ export function setCachedConversation<T>(id: string, data: T): void {
   }
 }
 
+type CachedConversationWithMessages = {
+  messages?: MergeableMessage[];
+};
+
+/** Avoid poisoning cache with an HTTP snapshot that drops newer local/realtime messages. */
+export function setCachedConversationMerged<T extends CachedConversationWithMessages>(
+  id: string,
+  data: T,
+  previous?: T | null,
+): void {
+  const prevMessages = previous?.messages ?? [];
+  const nextMessages = data.messages ?? [];
+  if (prevMessages.length > 0 && nextMessages.length > 0) {
+    const mergedMessages = mergeMessagesById(prevMessages, nextMessages);
+    if (mergedMessages.length > nextMessages.length) {
+      setCachedConversation(id, { ...data, messages: mergedMessages });
+      return;
+    }
+  }
+  setCachedConversation(id, data);
+}
+
 export function getInflightConversation<T>(id: string): Promise<T> | null {
   const pending = inflight.get(id);
   return pending ? (pending as Promise<T>) : null;
@@ -42,5 +66,9 @@ export function setInflightConversation<T>(id: string, promise: Promise<T>): Pro
 
 export function invalidateCachedConversation(id: string): void {
   cache.delete(id);
+  inflight.delete(id);
+}
+
+export function clearInflightConversation(id: string): void {
   inflight.delete(id);
 }
