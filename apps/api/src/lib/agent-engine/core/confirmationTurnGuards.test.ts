@@ -6,6 +6,8 @@ import {
   shouldSuppressConfirmationExclusiveTools,
   assistantIsQuoteAbertura,
   assistantIsQuoteAvailabilityConfirm,
+  assistantOfferedHumanHandoff,
+  shouldRequireCallHumanAfterHandoffOffer,
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
   messageLooksLikeQuoteOptionChoice,
@@ -196,6 +198,32 @@ test("sim after Modelo C6 Confirm does not suppress exclusive gate", () => {
   assert.equal(
     shouldSuppressConfirmationExclusiveTools({
       lastAssistantMessage: C6_CONFIRM,
+      userMessage: "Sim",
+    }),
+    false,
+  );
+});
+
+const C14_HANDOFF_OFFER = `Como você já concluiu o check-in, aqui estão as informações de acesso.
+
+Se precisar de mais ajuda, posso encaminhar você para nossa equipe de atendimento humano. Deseja que eu faça isso?`;
+
+test("assistantOfferedHumanHandoff detects Deseja que eu faça isso", () => {
+  assert.equal(assistantOfferedHumanHandoff(C14_HANDOFF_OFFER), true);
+  assert.equal(assistantOfferedHumanHandoff(C6_CONFIRM), false);
+});
+
+test("shouldRequireCallHumanAfterHandoffOffer on sim after handoff offer", () => {
+  assert.equal(
+    shouldRequireCallHumanAfterHandoffOffer({
+      lastAssistantMessage: C14_HANDOFF_OFFER,
+      userMessage: "Sim",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldSuppressConfirmationExclusiveTools({
+      lastAssistantMessage: C14_HANDOFF_OFFER,
       userMessage: "Sim",
     }),
     false,

@@ -176,6 +176,31 @@ const C6_DISCOUNT_OFFER_MSG = `Entendo sua preocupação com o valor. Não posso
 
 Deseja que eu faça essa transferência?`;
 
+const C14_HANDOFF_OFFER = `Se precisar de mais ajuda, posso encaminhar você para nossa equipe de atendimento humano. Deseja que eu faça isso?`;
+
+test("planScheduledToolInvocations schedules call_human on sim after generic handoff offer", () => {
+  const ctx = buildTurnContext({
+    turnId: "hc-sim",
+    behaviorConfig: {
+      promptBuilder: {
+        useFullPrompt: true,
+        userCore: `
+| Hc | Sim pós oferta handoff | sim após Deseja que eu faça isso | call_human | call_human |
+| C14 | Senha / acesso | entrar no quarto | GATE C14 | ZERO |
+`,
+      },
+    },
+    userMessage: "sim",
+    lastAssistantMessage: C14_HANDOFF_OFFER,
+    availableToolNames: ["call_human"],
+  });
+  const plan = planScheduledToolInvocations(ctx, []);
+  assert.deepEqual(
+    plan.map((p) => p.toolName),
+    ["call_human"],
+  );
+});
+
 test("planScheduledToolInvocations schedules call_human on sim after C6 discount offer", () => {
   const ctx = buildTurnContext({
     turnId: "c6f-sim",

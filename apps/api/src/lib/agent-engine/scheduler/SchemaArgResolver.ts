@@ -11,6 +11,7 @@ import {
 } from "../quote/quoteAvailabilityReply.js";
 import {
   assistantIsQuoteAvailabilityConfirm,
+  assistantOfferedHumanHandoff,
   readLastAssistantPreview,
   resolveKnowledgeLookupOfferQuery,
   shouldRequireKnowledgeLookupAfterOffer,
@@ -312,6 +313,9 @@ export function resolveSchemaToolArgs(opts: ResolveSchemaToolArgsOpts): Record<s
     if (toolName.trim().toLowerCase() === "call_human") {
       if (assistantIsQuoteAvailabilityConfirm(lastAssistant)) {
         return { reason: "Cotação — encaminhamento após confirmação dos dados" };
+      }
+      if (assistantOfferedHumanHandoff(lastAssistant)) {
+        return { reason: "Hóspede confirmou encaminhamento para atendimento humano" };
       }
       if (/deseja que eu fa[cç]a essa transfer[eê]ncia/i.test(lastAssistant)) {
         return { reason: "Cotação — hóspede solicitou verificação de desconto" };

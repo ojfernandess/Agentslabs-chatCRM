@@ -27,9 +27,11 @@ import {
   assistantIsQuoteDiscountTransferOffer,
   assistantIsQuoteOptionsList,
   assistantIsQuoteAvailabilityConfirm,
+  buildGenericHandoffConfirmReply,
   guestSelectedQuoteOption,
   guestAsksQuoteCategoryInfo,
   isQuoteDiscountTransferDeclined,
+  shouldRequireCallHumanAfterHandoffOffer,
 } from "../core/confirmationTurnGuards.js";
 import {
   replyClaimsHumanTransfer,
@@ -82,6 +84,9 @@ export type EnsureDeliveringReplyResult = {
     | "quote_call_human_failed"
     | "quote_call_human_missing"
     | "escalation_call_human_missing"
+    | "handoff_confirm"
+    | "handoff_confirm_call_human_missing"
+    | "handoff_confirm_call_human_failed"
     | "quote_c6_category_info_return"
     | "nf_receipt_only"
     | "nf_form_no_locator"
@@ -393,6 +398,10 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     userMessage: input.userMessage,
     lastAssistantMessage: input.lastAssistantMessage,
   });
+  const handoffConfirmTurn = shouldRequireCallHumanAfterHandoffOffer({
+    userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
+  });
   const nfUnitKbTurn = isNfUnitKnowledgeReplyTurn({
     userMessage: input.userMessage,
     lastAssistantMessage: input.lastAssistantMessage,
@@ -507,9 +516,25 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
       }
     }
     if (
+      handoffConfirmTurn &&
+      !callHumanSucceeded &&
+      (failedCallHuman ||
+        isNonDeliveringAgentReply(input.replyText, input.configuredStallMessages) ||
+        !replyClaimsHumanTransfer(input.replyText))
+    ) {
+      return {
+        reply:
+          "Recebi sua confirmação. Tive um problema ao encaminhar para a equipe agora. " +
+          "Pode confirmar novamente com *sim*?",
+        replaced: true,
+        reason: failedCallHuman ? "handoff_confirm_call_human_failed" : "handoff_confirm_call_human_missing",
+      };
+    }
+    if (
       !quoteChoiceTurn &&
       !quoteDiscountAcceptTurn &&
       !quoteC6ConfirmTurn &&
+      !handoffConfirmTurn &&
       !nfUnitKbTurn &&
       !nfDataCollectionTurn &&
       !failedCallHuman &&
@@ -631,9 +656,20 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   if (
     !postCompletionTurn &&
     callHuman &&
-    (quoteC6ConfirmTurn || quoteChoiceTurn || quoteDiscountAcceptTurn || soleCallHuman) &&
+    (quoteC6ConfirmTurn ||
+      quoteChoiceTurn ||
+      quoteDiscountAcceptTurn ||
+      handoffConfirmTurn ||
+      soleCallHuman) &&
     !replyLooksLikeModeloC6Handoff(input.replyText)
   ) {
+    if (handoffConfirmTurn && !quoteC6ConfirmTurn && !quoteDiscountAcceptTurn) {
+      return {
+        reply: buildGenericHandoffConfirmReply(),
+        replaced: true,
+        reason: "handoff_confirm",
+      };
+    }
     if (quoteC6ConfirmTurn) {
       const handoff = buildModeloC6HandoffConfirmReply({
         flowSlots: input.flowSlots,

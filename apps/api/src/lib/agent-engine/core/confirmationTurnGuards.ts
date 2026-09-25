@@ -210,6 +210,41 @@ export function assistantIsQuoteDiscountTransferOffer(lastAssistantMessage?: str
   );
 }
 
+/**
+ * Última msg SUA ofereceu encaminhamento à equipe humana (Hc / C14 / S1b / C23 / C18 / C20…).
+ * Exclui ofertas já cobertas por C6c, C6f e C19.
+ */
+export function assistantOfferedHumanHandoff(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t) return false;
+  if (assistantIsQuoteAvailabilityConfirm(t)) return false;
+  if (assistantIsQuoteDiscountTransferOffer(t)) return false;
+  if (assistantSentNfConfirmationMirror(t) || assistantSentReceiptConfirmationMirror(t)) return false;
+  return (
+    /deseja que eu fa[cç]a isso\?/i.test(t) ||
+    /deseja que eu encaminhe/i.test(t) ||
+    (/posso encaminhar/i.test(t) &&
+      /atendimento humano|equipe de atendimento/i.test(t) &&
+      /\?/.test(t)) ||
+    (/se precisar,\s*posso encaminhar/i.test(t) && /atendimento humano|equipe/i.test(t))
+  );
+}
+
+/** Hc: `sim`/`ok` pós oferta de handoff → `call_human` obrigatório neste turno. */
+export function shouldRequireCallHumanAfterHandoffOffer(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  return (
+    isShortAffirmativeConfirmation(opts.userMessage) &&
+    assistantOfferedHumanHandoff(opts.lastAssistantMessage)
+  );
+}
+
+export function buildGenericHandoffConfirmReply(): string {
+  return "Já encaminhei para nossa equipe de atendimento humano.\n\nUm momento, por favor.";
+}
+
 /** Hóspede escolhe opção após Modelo C6 Opções (C6e). */
 export function messageLooksLikeQuoteOptionChoice(userMessage?: string | null): boolean {
   const msg = (userMessage ?? "").trim();
@@ -425,6 +460,11 @@ export function shouldSuppressConfirmationExclusiveTools(opts: {
 
   // C6f: sim pós oferta de transferência por desconto → call_human (não suppress).
   if (isYes && assistantIsQuoteDiscountTransferOffer(opts.lastAssistantMessage)) {
+    return false;
+  }
+
+  // Hc: sim pós oferta genérica de handoff (C14/S1b/C23/…) → call_human (não suppress).
+  if (isYes && assistantOfferedHumanHandoff(opts.lastAssistantMessage)) {
     return false;
   }
 

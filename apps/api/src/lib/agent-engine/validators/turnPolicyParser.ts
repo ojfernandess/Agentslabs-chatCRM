@@ -36,6 +36,7 @@ import {
   assistantIsFichaMirrorConfirm,
   assistantIsCompanionOptInPrompt,
   assistantIsQuoteAvailabilityConfirm,
+  shouldRequireCallHumanAfterHandoffOffer,
   assistantIsQuoteDiscountTransferOffer,
   isCompanionRegistrationDeclined,
   isShortAffirmativeConfirmation,
@@ -523,6 +524,18 @@ export function resolveTurnPolicy(
     // C6f: sim pós oferta de desconto → call_human (exclusive; sempre neste turno).
     exclusiveAllowedTools = ["call_human"];
     forceExclusiveExecution = true;
+  } else if (
+    !forceExclusiveExecution &&
+    shouldRequireCallHumanAfterHandoffOffer({
+      userMessage,
+      lastAssistantMessage: options.lastAssistantMessage,
+    })
+  ) {
+    // Hc: sim pós oferta de handoff (C14/S1b/C23/…) → call_human (exclusive).
+    if (available.size === 0 || available.has("call_human")) {
+      exclusiveAllowedTools = ["call_human"];
+      forceExclusiveExecution = true;
+    }
   } else if (
     // HJ2XQZXO-FICHA: `sim` no espelho FICHA → S10 exclusive (nunca reabrir embratur-reference).
     fichaConfirm &&
