@@ -32,6 +32,12 @@ import {
   replyContainsWebchatUrl,
   sendWebchatContinuityLinkToContact,
 } from "./webchatSession.js";
+import {
+  shouldDeliverEscalationTransferAfterGeneration,
+  shouldDiscardStaleAgentTurn,
+  shouldInvokeAutomaticHandoff,
+} from "./agentHandoffTurnGuards.js";
+import type { NativeAgentCoreResult } from "./agentNativeLlm.js";
 
 function parseEscalationTransferMessage(behaviorConfig: unknown): string {
   if (!behaviorConfig || typeof behaviorConfig !== "object") return "";
@@ -127,12 +133,27 @@ export async function runNativeAgentReplyAndDeliver(input: {
     } catch (err) {
       log.warn({ err, conversationId: conversation.id }, "interaction budget state load failed");
     }
+
+    const convAtTurnStart = await prisma.conversation.findFirst({
+      where: { id: conversation.id },
+      select: { awaitingHumanHandoff: true },
+    });
+    const handoffAtTurnStart = convAtTurnStart?.awaitingHumanHandoff === true;
+    if (shouldDiscardStaleAgentTurn(handoffAtTurnStart)) {
+      exLog.info(
+        { id: "interaction_budget", name: "Controle de atendimento" },
+        "Handoff humano já activo — turno automático descartado (sem LLM nem outbound)",
+      );
+      await exLog.completeSuccess();
+      return;
+    }
+
     if (budgetState?.enabled && budgetState.blocked) {
       const convNow = await prisma.conversation.findFirst({
         where: { id: conversation.id },
         select: { awaitingHumanHandoff: true },
       });
-      if (!convNow?.awaitingHumanHandoff) {
+      if (shouldInvokeAutomaticHandoff(convNow?.awaitingHumanHandoff === true)) {
         await callHumanForConversationForOrg(prisma, {
           organizationId,
           conversationId: conversation.id,
@@ -196,33 +217,39 @@ export async function runNativeAgentReplyAndDeliver(input: {
             { output: { interactionCount: r.count, interactionLimit: r.limit, automatic: true } },
           );
           const cfg = parseInteractionLimitFromBehavior(profilePre?.behaviorConfig);
-          if (
-            cfg.offerWebchatOnLimit &&
-            deliveredBody &&
-            !replyContainsWebchatUrl(deliveredBody)
-          ) {
-            try {
-              await sendWebchatContinuityLinkToContact({
-                organizationId,
-                conversationId: conversation.id,
-                contactId: contact.id,
-                botId: bot.id,
-                log,
-                continuityMessageOverride: cfg.webchatMessageOnLimit,
-              });
-            } catch (err) {
-              log.warn({ err, conversationId: conversation.id }, "webchat continuity fallback send failed");
-            }
-          }
-          await callHumanForConversationForOrg(prisma, {
-            organizationId,
-            conversationId: conversation.id,
-            reason: `INTERACTION_LIMIT_REACHED — ${r.count}/${r.limit} interações (transferência automática)`,
-            userMessageSnippet: userMessage,
-            botId: bot.id,
-            log,
+          const convBeforeHandoff = await prisma.conversation.findFirst({
+            where: { id: conversation.id },
+            select: { awaitingHumanHandoff: true },
           });
-          await markInteractionBudgetHumanActive(conversation.id);
+          if (shouldInvokeAutomaticHandoff(convBeforeHandoff?.awaitingHumanHandoff === true)) {
+            if (
+              cfg.offerWebchatOnLimit &&
+              deliveredBody &&
+              !replyContainsWebchatUrl(deliveredBody)
+            ) {
+              try {
+                await sendWebchatContinuityLinkToContact({
+                  organizationId,
+                  conversationId: conversation.id,
+                  contactId: contact.id,
+                  botId: bot.id,
+                  log,
+                  continuityMessageOverride: cfg.webchatMessageOnLimit,
+                });
+              } catch (err) {
+                log.warn({ err, conversationId: conversation.id }, "webchat continuity fallback send failed");
+              }
+            }
+            await callHumanForConversationForOrg(prisma, {
+              organizationId,
+              conversationId: conversation.id,
+              reason: `INTERACTION_LIMIT_REACHED — ${r.count}/${r.limit} interações (transferência automática)`,
+              userMessageSnippet: userMessage,
+              botId: bot.id,
+              log,
+            });
+            await markInteractionBudgetHumanActive(conversation.id);
+          }
         } else if (r.nearLimit) {
           exLog.info(
             { id: "interaction_budget", name: "Controle de atendimento" },
@@ -235,19 +262,58 @@ export async function runNativeAgentReplyAndDeliver(input: {
       }
     };
 
-    const replyResult = await withConversationAgentReplyLock(conversation.id, () =>
-      generateNativeAgentReplyWithResult({
-        organizationId,
-        bot,
-        conversation,
-        message,
-        log,
-        executionLog: exLog.child("agent_llm"),
-        contactId: contact.id,
-        userMessageOverride: input.userMessageOverride,
-        batchedMessageIds: input.batchedMessageIds,
-      }),
+    const replyResult = await withConversationAgentReplyLock(
+      conversation.id,
+      async (): Promise<NativeAgentCoreResult | null> => {
+        const convAfterQueue = await prisma.conversation.findFirst({
+          where: { id: conversation.id },
+          select: { awaitingHumanHandoff: true },
+        });
+        if (convAfterQueue?.awaitingHumanHandoff) {
+          return null;
+        }
+        try {
+          budgetState = await getInteractionBudgetState({
+            organizationId,
+            conversationId: conversation.id,
+            behaviorConfig: profilePre?.behaviorConfig,
+            inboxId: conversation.inboxId,
+          });
+        } catch (err) {
+          log.warn({ err, conversationId: conversation.id }, "interaction budget refresh after queue failed");
+        }
+        if (budgetState?.enabled && budgetState.blocked) {
+          return null;
+        }
+        return generateNativeAgentReplyWithResult({
+          organizationId,
+          bot,
+          conversation,
+          message,
+          log,
+          executionLog: exLog.child("agent_llm"),
+          contactId: contact.id,
+          userMessageOverride: input.userMessageOverride,
+          batchedMessageIds: input.batchedMessageIds,
+        });
+      },
     );
+
+    if (replyResult === null) {
+      const convAfterSkip = await prisma.conversation.findFirst({
+        where: { id: conversation.id },
+        select: { awaitingHumanHandoff: true },
+      });
+      exLog.info(
+        { id: "interaction_budget", name: "Controle de atendimento" },
+        convAfterSkip?.awaitingHumanHandoff
+          ? "Turno cancelado após fila — handoff humano já activo"
+          : "Turno cancelado após fila — limite de interações já atingido",
+      );
+      await exLog.completeSuccess();
+      return;
+    }
+
     const replyText = replyResult.reply;
     const clientStreamDelivered = replyResult.clientStreamDelivered === true;
     const toolOutcomes = replyResult.toolOutcomes ?? [];
@@ -265,6 +331,23 @@ export async function runNativeAgentReplyAndDeliver(input: {
       const callHumanOk = toolOutcomes.some(
         (t) => t.ok !== false && /^call_human$/i.test(t.name),
       );
+      const deliverHandoffOutbound = shouldDeliverEscalationTransferAfterGeneration(
+        handoffAtTurnStart,
+        true,
+        callHumanOk,
+      );
+      if (!deliverHandoffOutbound) {
+        exLog.info(
+          { id: "outbound", name: "Resposta" },
+          handoffAtTurnStart
+            ? "Handoff humano já activo no início do turno — sem reenvio de transferência"
+            : "Handoff humano activado por outro turno — sem reenvio de transferência",
+          { output: { replyChars: replyText.length, callHumanThisTurn: callHumanOk } },
+        );
+        await exLog.completeSuccess();
+        return;
+      }
+
       const deliverQuoteHandoff = replyShouldPreemptEscalationTransferMessage(replyText);
 
       if (deliverQuoteHandoff && replyText.trim()) {
