@@ -4,6 +4,7 @@
 
 import {
   extractReservationReferenceFromMessage,
+  isOperationalQuoteMessage,
 } from "./knowledgeQueryEnrichment.js";
 import { messageLooksLikeHumanHandoffRequest } from "./agent-engine/escalation/escalationTurnDetection.js";
 import {
@@ -157,6 +158,9 @@ export function assistantRequestedEstablishmentForUnitKb(
   const t = (lastAssistantMessage ?? "").trim();
   if (!t) return false;
   if (assistantIsQuoteAbertura(t) || assistantIsQuoteAvailabilityConfirm(t)) return false;
+  if (/vou te ajudar com a cota[cç][aã]o|preparar sua cota[cç][aã]o com nossa equipe/i.test(t)) {
+    return false;
+  }
 
   const showsEstablishmentMenu =
     (/1️⃣/.test(t) && /7️⃣/.test(t)) ||
@@ -191,9 +195,10 @@ export function shouldRequireUnitKnowledgeLookupThisTurn(opts: {
   if (assistantIsQuoteAbertura(opts.lastAssistantMessage)) return false;
   if (assistantIsQuoteAvailabilityConfirm(opts.lastAssistantMessage)) return false;
 
-  if (!resolveEstablishmentInConversation(opts)) return false;
-
   const msg = (opts.userMessage ?? "").trim();
+  if (msg && isOperationalQuoteMessage(msg)) return false;
+
+  if (!resolveEstablishmentInConversation(opts)) return false;
   if (userMessageLooksLikeReceiptFormSubmission(msg)) return false;
   if (assistantSentReceiptDataForm(opts.lastAssistantMessage) && msg) return false;
   if (userMessageLooksLikeNfFormSubmission(msg)) return false;

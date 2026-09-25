@@ -215,7 +215,34 @@ export function ConversationsPage({
     orgAllScopeHumanOnly: false,
   });
   const [loadingMore, setLoadingMore] = useState(false);
+  const listMotionIdsRef = useRef(new Set<string>());
   const [listMotionIds, setListMotionIds] = useState<Set<string>>(() => new Set());
+
+  const listTransferRingIdsRef = useRef(new Set<string>());
+  const [listTransferRingIds, setListTransferRingIds] = useState<Set<string>>(() => new Set());
+
+  const markListMotion = useCallback(
+    (conversationId: string, kind: "enter" | "transfer" | "exit" = "enter") => {
+      const durationMs = kind === "exit" ? 400 : 1200;
+      if (!listMotionIdsRef.current.has(conversationId)) {
+        listMotionIdsRef.current.add(conversationId);
+        setListMotionIds(new Set(listMotionIdsRef.current));
+        window.setTimeout(() => {
+          listMotionIdsRef.current.delete(conversationId);
+          setListMotionIds(new Set(listMotionIdsRef.current));
+        }, durationMs);
+      }
+      if (kind === "transfer" && !listTransferRingIdsRef.current.has(conversationId)) {
+        listTransferRingIdsRef.current.add(conversationId);
+        setListTransferRingIds(new Set(listTransferRingIdsRef.current));
+        window.setTimeout(() => {
+          listTransferRingIdsRef.current.delete(conversationId);
+          setListTransferRingIds(new Set(listTransferRingIdsRef.current));
+        }, 1200);
+      }
+    },
+    [],
+  );
 
   const fmtMoney = (n: number) => formatCurrencyUnits(n);
 
@@ -593,6 +620,10 @@ export function ConversationsPage({
     listFetchGenRef.current += 1;
     loadingMoreRef.current = false;
     setLoadingMore(false);
+    listMotionIdsRef.current.clear();
+    setListMotionIds(new Set());
+    listTransferRingIdsRef.current.clear();
+    setListTransferRingIds(new Set());
     const cached = listScopeCacheRef.current.get(activeListFetchKey);
     if (cached) {
       setConversations(cached.rows);
@@ -845,7 +876,14 @@ export function ConversationsPage({
           const row = await api.get<Conversation>(`/conversations/${conversationId}/list-row`);
           const matches = conversationMatchesListScope(row, scope);
 
+          if (options?.highlight && listFetchKeyRef.current === fetchKey) {
+            if (matches || options.highlight === "exit") {
+              markListMotion(conversationId, options.highlight);
+            }
+          }
+
           setConversations((prev) => {
+            if (listFetchKeyRef.current !== fetchKey) return prev;
             const idx = prev.findIndex((c) => c.id === conversationId);
             if (!matches) {
               if (idx < 0) return prev;
@@ -863,35 +901,18 @@ export function ConversationsPage({
             return next;
           });
 
-          if (matches && options?.highlight) {
-            setListMotionIds((prev) => new Set(prev).add(conversationId));
-            window.setTimeout(() => {
-              setListMotionIds((prev) => {
-                const next = new Set(prev);
-                next.delete(conversationId);
-                return next;
-              });
-            }, options.highlight === "exit" ? 400 : 1200);
-          }
-
           void loadScopeCounts();
           void loadStatusCounts();
         } catch {
           setConversations((prev) => {
+            if (listFetchKeyRef.current !== fetchKey) return prev;
             if (!prev.some((c) => c.id === conversationId)) return prev;
             const next = prev.filter((c) => c.id !== conversationId);
             applyListRowToCache(fetchKey, next);
             return next;
           });
-          if (options?.highlight === "exit") {
-            setListMotionIds((prev) => new Set(prev).add(conversationId));
-            window.setTimeout(() => {
-              setListMotionIds((prev) => {
-                const next = new Set(prev);
-                next.delete(conversationId);
-                return next;
-              });
-            }, 400);
+          if (options?.highlight === "exit" && listFetchKeyRef.current === fetchKey) {
+            markListMotion(conversationId, "exit");
           }
           void loadScopeCounts();
           void loadStatusCounts();
@@ -903,7 +924,7 @@ export function ConversationsPage({
       listSyncInflightRef.current.set(conversationId, promise);
       return promise;
     },
-    [applyListRowToCache, loadScopeCounts, loadStatusCounts, persistConversationListIds],
+    [applyListRowToCache, loadScopeCounts, loadStatusCounts, markListMotion, persistConversationListIds],
   );
 
   const syncConversationFromHint = useCallback(
@@ -912,10 +933,12 @@ export function ConversationsPage({
       if (!conversationId) return;
 
       const scope = listScopeRef.current;
+      const fetchKey = listFetchKeyRef.current;
       let fetchRow = false;
       let removed = false;
 
       setConversations((prev) => {
+        if (listFetchKeyRef.current !== fetchKey) return prev;
         const existing = prev.find((c) => c.id === conversationId);
         if (!existing) {
           fetchRow = true;
@@ -928,7 +951,7 @@ export function ConversationsPage({
         if (!conversationMatchesListScope(merged, scope)) {
           removed = true;
           const next = prev.filter((c) => c.id !== conversationId);
-          applyListRowToCache(listFetchKeyRef.current, next);
+          applyListRowToCache(fetchKey, next);
           return next;
         }
         const patched = {
@@ -937,29 +960,26 @@ export function ConversationsPage({
           updatedAt: detail?.updatedAt ?? existing.updatedAt,
         };
         const next = [patched, ...prev.filter((c) => c.id !== conversationId)];
-        applyListRowToCache(listFetchKeyRef.current, next);
+        applyListRowToCache(fetchKey, next);
         return next;
       });
+
+      if (listFetchKeyRef.current !== fetchKey) return;
 
       if (fetchRow) {
         void syncConversationListRow(conversationId, { highlight: highlight ?? "enter" });
         return;
       }
 
-      if (highlight) {
-        setListMotionIds((prev) => new Set(prev).add(conversationId));
-        window.setTimeout(() => {
-          setListMotionIds((prev) => {
-            const next = new Set(prev);
-            next.delete(conversationId);
-            return next;
-          });
-        }, removed ? 400 : 1200);
+      if (removed) {
+        markListMotion(conversationId, "exit");
+      } else if (highlight) {
+        markListMotion(conversationId, highlight);
       }
       void loadScopeCounts();
       void loadStatusCounts();
     },
-    [applyListRowToCache, loadScopeCounts, loadStatusCounts, syncConversationListRow],
+    [applyListRowToCache, loadScopeCounts, loadStatusCounts, markListMotion, syncConversationListRow],
   );
 
   useEffect(() => {
@@ -1488,17 +1508,30 @@ export function ConversationsPage({
                   </p>
                 </motion.div>
               ) : (
-                <AnimatePresence initial={false} mode="popLayout">
-                  {filteredConversations.map((conv) => (
+                <AnimatePresence initial={false} mode="popLayout" key={activeListFetchKey}>
+                  {filteredConversations.map((conv) => {
+                    const motionActive = listMotionIds.has(conv.id);
+                    return (
                     <motion.div
                       key={conv.id}
-                      layout
-                      initial={{ opacity: 0, y: -10, scale: 0.985 }}
+                      layout={motionActive}
+                      initial={motionActive ? { opacity: 0, y: -10, scale: 0.985 } : false}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, x: -28, height: 0, marginTop: 0, marginBottom: 0, overflow: "hidden" }}
-                      transition={{ duration: 0.26, ease: "easeOut" }}
+                      exit={
+                        motionActive
+                          ? {
+                              opacity: 0,
+                              x: -28,
+                              height: 0,
+                              marginTop: 0,
+                              marginBottom: 0,
+                              overflow: "hidden",
+                            }
+                          : false
+                      }
+                      transition={motionActive ? { duration: 0.26, ease: "easeOut" } : { duration: 0 }}
                       className={clsx(
-                        listMotionIds.has(conv.id) &&
+                        listTransferRingIds.has(conv.id) &&
                           "rounded-xl ring-2 ring-brand-400/70 shadow-[0_0_0_1px_rgba(103,52,255,0.12)] transition-shadow duration-300 dark:ring-brand-500/50",
                       )}
                     >
@@ -1529,7 +1562,8 @@ export function ConversationsPage({
                         }}
                       />
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </AnimatePresence>
               )}
               {!loading && loadingMore ? (

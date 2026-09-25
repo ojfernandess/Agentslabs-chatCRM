@@ -8,6 +8,10 @@ import {
   resolveEstablishmentInConversation,
   assistantRequestedEstablishmentForUnitKb,
 } from "./unitKnowledgeFlow.js";
+import {
+  assistantIsQuoteAbertura,
+  assistantIsQuoteAvailabilityConfirm,
+} from "./agent-engine/core/confirmationTurnGuards.js";
 
 export type KnowledgeConversationTurn = {
   role: "user" | "assistant";
@@ -343,6 +347,10 @@ export function resolveKnowledgeSearchSkip(
   ctx: KnowledgeSearchSkipContext = {},
 ): KnowledgeSearchSkipReason | null {
   const lastAssistant = ctx.lastAssistantMessage?.trim() ?? "";
+  if (isOperationalQuoteMessage(userMessage)) return "operational_quote";
+  if (assistantIsQuoteAbertura(lastAssistant) || assistantIsQuoteAvailabilityConfirm(lastAssistant)) {
+    return "operational_quote";
+  }
   if (
     resolveEstablishmentInConversation({
       userMessage,

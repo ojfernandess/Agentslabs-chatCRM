@@ -147,10 +147,18 @@ export function assistantIsQuoteAbertura(lastAssistantMessage?: string | null): 
   if (!t) return false;
   if (assistantIsQuoteOptionsList(t)) return false;
   if (assistantIsQuoteAvailabilityConfirm(t)) return false;
+  const hasQuoteIntent = /cota[cç][aã]o|disponibilidade|reservar/i.test(t);
+  const hasFourFieldLabels =
+    /(?:propriedade\/unidade|propriedade|unidade|estabelecimento|🏢)/i.test(t) &&
+    /(?:chegada|check-in|partida|checkout|📅)/i.test(t) &&
+    /(?:quantidade de pessoas|pessoas|hóspedes|👤)/i.test(t);
   return (
-    /vou te ajudar com a cota[cç][aã]o|preparar sua cota[cç][aã]o com nossa equipe/i.test(t) &&
-    /(?:propriedade\/unidade|propriedade).*chegada|data de chegada\s*\(check-in\)/i.test(t) &&
-    /(?:quantidade de pessoas|👤)/i.test(t)
+    (/vou te ajudar com a cota[cç][aã]o|preparar sua cota[cç][aã]o com nossa equipe/i.test(t) &&
+      /(?:propriedade\/unidade|propriedade)[\s\S]{0,500}?(?:chegada|check-in)|data de chegada\s*\(check-in\)/i.test(
+        t,
+      ) &&
+      /(?:quantidade de pessoas|👤)/i.test(t)) ||
+    (hasQuoteIntent && hasFourFieldLabels)
   );
 }
 
