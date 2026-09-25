@@ -8,7 +8,7 @@
  *   EIL_BOT_ID=e8ca18c8-3088-4e75-b381-0d3163011584
  *   AUDA_INTERACTION_LIMIT=20
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { parseInteractionLimitFromBehavior } from "../lib/interactionBudget.js";
 
 const BOT_ID = process.env.EIL_BOT_ID ?? "e8ca18c8-3088-4e75-b381-0d3163011584";
@@ -47,7 +47,7 @@ async function main() {
 
     await prisma.automationAgentProfile.update({
       where: { id: profile.id },
-      data: { behaviorConfig: behavior },
+      data: { behaviorConfig: behavior as Prisma.InputJsonValue },
     });
 
     console.log(
