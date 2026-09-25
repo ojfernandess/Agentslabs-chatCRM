@@ -108,6 +108,7 @@ import {
 } from "./agent-engine/quote/quoteFlowSlots.js";
 import { shouldRequireCallHumanThisTurn } from "./agent-engine/escalation/escalationTurnDetection.js";
 import { shouldRequireCallHumanAfterNfConfirmation } from "./unitKnowledgeFlow.js";
+import { isKnowledgeGapSynthesizerReason } from "./knowledgeGapHandoff.js";
 import { messageLooksLikeQuoteDiscountObjection } from "./agent-engine/quote/quoteAvailabilityReply.js";
 import {
   ensureDeliveringReply,
@@ -3476,6 +3477,38 @@ async function generateNativeAgentReplyCore(input: {
         { id: "reply_synthesizer", name: "Reply Synthesizer" },
         JSON.stringify({ reason: synthesized.reason, afterChars: replyText.length }),
       );
+    }
+    if (
+      isKnowledgeGapSynthesizerReason(synthesized.reason) &&
+      !toolRoundOutcomes.some((t) => t.ok !== false && /^call_human$/i.test(t.name))
+    ) {
+      try {
+        const handoff = await callHumanForConversationForOrg(prisma, {
+          organizationId,
+          conversationId: conversation.id,
+          reason: "KB_GAP — informação ausente na base de conhecimento",
+          userMessageSnippet: userMessage,
+          botId: bot.id,
+          log,
+        });
+        toolRoundOutcomes.push({
+          name: "call_human",
+          ok: true,
+          preview: JSON.stringify({ ok: true, message: handoff.payload.message }),
+          monitored: false,
+        });
+        ex?.info(
+          { id: "knowledge_gap_handoff", name: "Knowledge Gap Handoff" },
+          "call_human automático após lacuna na base de conhecimento",
+        );
+      } catch (err) {
+        log.warn({ err, conversationId: conversation.id }, "knowledge gap call_human rescue failed");
+        ex?.warn(
+          { id: "knowledge_gap_handoff", name: "Knowledge Gap Handoff" },
+          "Falha ao invocar call_human após lacuna na KB",
+          { stack: err instanceof Error ? err.stack : undefined },
+        );
+      }
     }
     for (const t of toolRoundOutcomes) {
       if (t.ok === false) continue;

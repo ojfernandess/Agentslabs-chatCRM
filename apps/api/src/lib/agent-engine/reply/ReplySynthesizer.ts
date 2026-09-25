@@ -47,6 +47,10 @@ import {
 import { isLikelyCheckinUrl, resolveCheckinLink } from "./checkinLink.js";
 import { tryNfEstablishmentKbReply, extractKbTextFromToolOutcome, kbTextIndicatesReceiptOnlyNoNf, tryReceiptFormSubmissionReply, tryNfFormSubmissionReply } from "../../nfFlowReply.js";
 import { isNfUnitKnowledgeReplyTurn, isNfDataCollectionTurn, resolveEstablishmentInConversation, isReceiptFormSubmissionTurn, shouldRequireCallHumanAfterNfConfirmation } from "../../unitKnowledgeFlow.js";
+import {
+  buildKnowledgeGapHandoffReply,
+  shouldEscalateAfterKnowledgeGap,
+} from "../../knowledgeGapHandoff.js";
 
 export type { SynthesizerToolOutcome };
 
@@ -92,7 +96,9 @@ export type EnsureDeliveringReplyResult = {
     | "nf_form_no_locator"
     | "receipt_confirmation_mirror"
     | "nf_confirmation_mirror"
-    | "escalation_use_transfer_message";
+    | "escalation_use_transfer_message"
+    | "knowledge_gap_escalation"
+    | "knowledge_gap_call_human_missing";
 };
 
 export { extractReservationDisplayFields };
@@ -420,6 +426,11 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   const callHumanSucceeded = input.toolOutcomes.some(
     (t) => t.ok !== false && /^call_human$/i.test(t.name),
   );
+  const knowledgeGapTurn = shouldEscalateAfterKnowledgeGap({
+    userMessage: input.userMessage,
+    toolOutcomes: input.toolOutcomes,
+    callHumanSucceeded,
+  });
 
   const availabilityThisTurn = findAvailabilityLookupOutcome(
     input.toolOutcomes.filter((t) => t.ok !== false),
@@ -528,6 +539,25 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
           "Pode confirmar novamente com *sim*?",
         replaced: true,
         reason: failedCallHuman ? "handoff_confirm_call_human_failed" : "handoff_confirm_call_human_missing",
+      };
+    }
+    if (
+      knowledgeGapTurn &&
+      !quoteChoiceTurn &&
+      !quoteDiscountAcceptTurn &&
+      !quoteC6ConfirmTurn &&
+      !quoteCategoryInfoTurn &&
+      !handoffConfirmTurn &&
+      !nfUnitKbTurn &&
+      !nfDataCollectionTurn &&
+      !failedCallHuman
+    ) {
+      return {
+        reply: buildKnowledgeGapHandoffReply(),
+        replaced: true,
+        reason: replyClaimsHumanTransfer(input.replyText)
+          ? "knowledge_gap_call_human_missing"
+          : "knowledge_gap_escalation",
       };
     }
     if (
@@ -775,6 +805,28 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
     if (rendered) {
       return { reply: rendered, replaced: true, reason: input.promptIr ? "ir_template" : "reservation_s1" };
     }
+  }
+
+  if (
+    !postCompletionTurn &&
+    knowledgeGapTurn &&
+    !quoteChoiceTurn &&
+    !quoteDiscountAcceptTurn &&
+    !quoteC6ConfirmTurn &&
+    !quoteCategoryInfoTurn &&
+    !handoffConfirmTurn &&
+    !nfUnitKbTurn &&
+    !nfDataCollectionTurn &&
+    !failedCallHuman &&
+    !callHumanSucceeded
+  ) {
+    return {
+      reply: buildKnowledgeGapHandoffReply(),
+      replaced: true,
+      reason: replyClaimsHumanTransfer(input.replyText)
+        ? "knowledge_gap_call_human_missing"
+        : "knowledge_gap_escalation",
+    };
   }
 
   const nonDelivering =

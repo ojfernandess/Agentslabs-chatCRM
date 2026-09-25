@@ -390,6 +390,29 @@ test("ensureDeliveringReply blocks fake C13 transfer when call_human did not run
   assert.match(result.reply, /problema ao transferir/i);
 });
 
+test("ensureDeliveringReply escalates pet question when KB does not cover topic", () => {
+  const result = ensureDeliveringReply({
+    replyText:
+      "Vou verificar com a equipe sobre pets no Residencial Anchieta Riviera e retorno em breve.",
+    userMessage: "pode pet pequeno porte no Achieta Riviera?",
+    toolOutcomes: [
+      {
+        name: "buscar_conhecimento",
+        ok: true,
+        preview: "Check-out: deixe as chaves na recepção até 12h.",
+      },
+    ],
+  });
+  assert.equal(result.replaced, true);
+  assert.ok(
+    result.reason === "knowledge_gap_escalation" ||
+      result.reason === "knowledge_gap_call_human_missing",
+  );
+  assert.match(result.reply, /base de conhecimento/i);
+  assert.match(result.reply, /atendente/i);
+  assert.doesNotMatch(result.reply, /problema ao transferir/i);
+});
+
 test("ensureDeliveringReply replaces main_guest stall with deterministic fallback (09:47 bug)", () => {
   const mainGuestPayload = {
     found: true,

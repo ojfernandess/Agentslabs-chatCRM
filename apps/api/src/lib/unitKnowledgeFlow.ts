@@ -77,10 +77,11 @@ export function userMessageLooksLikeAmenityItemQuestion(userMessage?: string | n
   if (userMessageLooksLikeCheckoutProcedureQuestion(t)) return false;
   if (userMessageLooksLikeReceiptOrInvoiceRequest(t)) return false;
   return (
-    /\b(?:tem|possui|h[aá]|disponibiliza|fornece)\s+(?:um\s+)?(?:ferro|secador|cafeteira|micro[\s-]?ondas|frigobar|toalha|len[cç][oó]l)\b/i.test(
+    /\b(?:tem|possui|h[aá]|disponibiliza|fornece|pode|aceita|permite)\s+(?:um\s+)?(?:ferro|secador|cafeteira|micro[\s-]?ondas|frigobar|toalha|len[cç][oó]l|pet|cachorro|gato|animal)\b/i.test(
       t,
     ) ||
     /\bferro\s+de\s+passar\b/i.test(t) ||
+    /\b(?:pet|pets|cachorro|gato|animal(?:is)?\s+de\s+estima[cç][aã]o)\b/i.test(t) ||
     /\b(?:item|comodidade|equipamento)\b/i.test(t)
   );
 }
