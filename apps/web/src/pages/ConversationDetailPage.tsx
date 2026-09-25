@@ -114,7 +114,8 @@ import {
   isPipelineClosureActiveForRollup,
   shouldDisplayClosureValueBadge,
 } from "@/lib/closureValueRollup";
-import { TemplateSendModal } from "@/components/TemplateSendModal";
+import { ComposerTemplatePickerModal } from "@/components/ComposerTemplatePickerModal";
+import { TemplateSendModal, type TemplateSendModalMode } from "@/components/TemplateSendModal";
 import { TelephonyCallButton } from "@/components/telephony/TelephonyCallButton";
 import { WavoipConversationOnCallBadge } from "@/components/wavoip/WavoipConversationOnCallBadge";
 import { WavoipForceEndCallButton } from "@/components/wavoip/WavoipForceEndCallButton";
@@ -431,6 +432,8 @@ export function ConversationDetailPage() {
   const [evolutionRichChat, setEvolutionRichChat] = useState(false);
   const [whatsappProvider, setWhatsappProvider] = useState<string | null>(null);
   const [templateModalTemplate, setTemplateModalTemplate] = useState<MessageTemplateRow | null>(null);
+  const [templateModalMode, setTemplateModalMode] = useState<TemplateSendModalMode>("send");
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [attachKind, setAttachKind] = useState<"IMAGE" | "DOCUMENT" | null>(null);
   const [imageSentNotice, setImageSentNotice] = useState(false);
@@ -453,7 +456,6 @@ export function ConversationDetailPage() {
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copilotError, setCopilotError] = useState("");
   const [copilotInsights, setCopilotInsights] = useState<CopilotInsights | null>(null);
-  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [cannedMenuOpen, setCannedMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [webchatModalOpen, setWebchatModalOpen] = useState(false);
@@ -1538,7 +1540,7 @@ export function ConversationDetailPage() {
     (row: CannedResponseRow) => {
       setNewMessage(resolveCannedResponseVariables(row.content, user));
       setCannedMenuOpen(false);
-      setTemplateMenuOpen(false);
+      setTemplatePickerOpen(false);
       setEmojiOpen(false);
     },
     [user],
@@ -1571,11 +1573,10 @@ export function ConversationDetailPage() {
   const showCannedPicker = Boolean(cannedPickerList && cannedPickerList.length > 0);
 
   useEffect(() => {
-    if (!emojiOpen && !templateMenuOpen && !cannedMenuOpen) return;
+    if (!emojiOpen && !cannedMenuOpen) return;
     const onDown = (e: MouseEvent) => {
       const node = e.target as Node;
       if (emojiOpen && emojiWrapRef.current && !emojiWrapRef.current.contains(node)) setEmojiOpen(false);
-      if (templateMenuOpen && templateWrapRef.current && !templateWrapRef.current.contains(node)) setTemplateMenuOpen(false);
       if (
         cannedMenuOpen &&
         !(cannedWrapRef.current?.contains(node) || cannedPanelRef.current?.contains(node))
@@ -1585,7 +1586,7 @@ export function ConversationDetailPage() {
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [emojiOpen, templateMenuOpen, cannedMenuOpen]);
+  }, [emojiOpen, cannedMenuOpen]);
 
   useEffect(() => {
     if (!transferOpen) return;
@@ -1799,6 +1800,29 @@ export function ConversationDetailPage() {
   };
 
   const isWaba = whatsappProvider === "meta" || whatsappProvider === "360dialog";
+
+  const handleComposerTemplateSelect = useCallback(
+    (tp: MessageTemplateRow) => {
+      setTemplatePickerOpen(false);
+      setCannedMenuOpen(false);
+      setEmojiOpen(false);
+      const isEvolutionProvider = whatsappProvider === "evolution" || whatsappProvider === "evolution_go";
+      const mustSendAsTemplate =
+        (isWaba && (isOutsideWindow || contactIsBlocked) && !privateNote) ||
+        (isEvolutionProvider && !privateNote);
+      const templatePayload: MessageTemplateRow = {
+        id: tp.id,
+        name: tp.name,
+        body: tp.body,
+        bodyVariableCount: tp.bodyVariableCount ?? 0,
+        metaCategory: tp.metaCategory,
+      };
+
+      setTemplateModalMode(mustSendAsTemplate ? "send" : "insert");
+      setTemplateModalTemplate(templatePayload);
+    },
+    [contactIsBlocked, isOutsideWindow, isWaba, privateNote, whatsappProvider],
+  );
 
   useEffect(() => {
     return () => {
@@ -4888,7 +4912,7 @@ export function ConversationDetailPage() {
                         disabled={recording || !!voicePreview || ((isOutsideWindow || contactIsBlocked) && !privateNote)}
                         onClick={() => {
                           setCannedMenuOpen((o) => !o);
-                          setTemplateMenuOpen(false);
+                          setTemplatePickerOpen(false);
                           setEmojiOpen(false);
                         }}
                         title={t("conversationDetail.cannedResponses")}
@@ -4906,7 +4930,7 @@ export function ConversationDetailPage() {
                         type="button"
                         disabled={recording || !!voicePreview || (!isWaba && (isOutsideWindow || contactIsBlocked) && !privateNote)}
                         onClick={() => {
-                          setTemplateMenuOpen((o) => !o);
+                          setTemplatePickerOpen(true);
                           setCannedMenuOpen(false);
                           setEmojiOpen(false);
                         }}
@@ -4916,42 +4940,6 @@ export function ConversationDetailPage() {
                       >
                         <FileText className="h-4 w-4" />
                       </motion.button>
-                      {templateMenuOpen ? (
-                        <div className="absolute bottom-full left-0 z-30 mb-2 max-h-52 w-72 overflow-y-auto rounded-xl border border-ink-200 bg-white py-1 shadow-lg dark:border-ink-600 dark:bg-ink-800">
-                          {messageTemplates.map((tp) => (
-                            <button
-                              key={tp.id}
-                              type="button"
-                              className="w-full px-3 py-2 text-left text-xs text-ink-800 hover:bg-ink-50 dark:text-ink-100 dark:hover:bg-ink-700"
-                              title={t("conversationDetail.pickTemplate")}
-                              onClick={() => {
-                                setTemplateMenuOpen(false);
-                                const isEvolutionProvider =
-                                  whatsappProvider === "evolution" || whatsappProvider === "evolution_go";
-                                if (
-                                  (isWaba && (isOutsideWindow || contactIsBlocked) && !privateNote) ||
-                                  (isEvolutionProvider && !privateNote)
-                                ) {
-                                  setTemplateModalTemplate({
-                                    id: tp.id,
-                                    name: tp.name,
-                                    body: tp.body,
-                                    bodyVariableCount: tp.bodyVariableCount ?? 0,
-                                    metaCategory: tp.metaCategory,
-                                  });
-                                  return;
-                                }
-                                setNewMessage(tp.body);
-                              }}
-                            >
-                              <span className="font-semibold">{tp.name}</span>
-                              <span className="mt-0.5 line-clamp-2 block text-[11px] font-normal text-ink-500 dark:text-ink-400">
-                                {tp.body}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
                     </div>
                   ) : null}
                   <div className="relative" ref={emojiWrapRef}>
@@ -4960,7 +4948,7 @@ export function ConversationDetailPage() {
                       disabled={recording || !!voicePreview || ((isOutsideWindow || contactIsBlocked) && !privateNote)}
                       onClick={() => {
                         setEmojiOpen((o) => !o);
-                        setTemplateMenuOpen(false);
+                        setTemplatePickerOpen(false);
                       }}
                       title={t("conversationDetail.emoji")}
                       className="composer-tool-btn"
@@ -5899,13 +5887,24 @@ export function ConversationDetailPage() {
           />
         ) : null}
       </AnimatePresence>
+      <ComposerTemplatePickerModal
+        open={templatePickerOpen}
+        templates={messageTemplates}
+        onClose={() => setTemplatePickerOpen(false)}
+        onSelect={handleComposerTemplateSelect}
+      />
       <TemplateSendModal
         open={templateModalTemplate !== null}
         template={templateModalTemplate}
+        mode={templateModalMode}
         contactId={conversation?.contact.id ?? ""}
         conversationId={conversation?.id}
         inboxId={conversation?.inbox?.id}
         onClose={() => setTemplateModalTemplate(null)}
+        onInsert={(filledBody) => {
+          setNewMessage(filledBody);
+          if (!isEmailLayout) stickToBottomRef.current = true;
+        }}
         onSent={async () => {
           if (!isEmailLayout) stickToBottomRef.current = true;
           await loadConversation();

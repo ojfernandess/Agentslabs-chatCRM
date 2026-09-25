@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
@@ -30,16 +31,30 @@ function categoryLabel(category: string | null | undefined, t: (k: string) => st
   return category;
 }
 
+export type TemplateSendModalMode = "send" | "insert";
+
 export function TemplateSendModal(props: {
   open: boolean;
   template: TemplateSendModalTemplate | null;
   contactId: string;
   conversationId?: string;
   inboxId?: string;
+  mode?: TemplateSendModalMode;
   onClose: () => void;
   onSent: () => void | Promise<void>;
+  onInsert?: (filledBody: string) => void;
 }) {
-  const { open, template, contactId, conversationId, inboxId, onClose, onSent } = props;
+  const {
+    open,
+    template,
+    contactId,
+    conversationId,
+    inboxId,
+    mode = "send",
+    onClose,
+    onSent,
+    onInsert,
+  } = props;
   const { t } = useI18n();
   const [values, setValues] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -54,18 +69,29 @@ export function TemplateSendModal(props: {
     setError("");
   }, [template]);
 
-  if (!open || !template) return null;
+  if (!open || !template || typeof document === "undefined") return null;
 
   const preview = applyVariables(template.body, values);
   const cat = categoryLabel(template.metaCategory, t);
 
-  const send = async () => {
+  const validateVariables = () => {
     for (let i = 0; i < template.bodyVariableCount; i++) {
       if (!values[i]?.trim()) {
         setError(t("templateModal.fillAll"));
-        return;
+        return false;
       }
     }
+    return true;
+  };
+
+  const insertIntoComposer = () => {
+    if (!validateVariables()) return;
+    onInsert?.(preview.trim());
+    onClose();
+  };
+
+  const send = async () => {
+    if (!validateVariables()) return;
     setBusy(true);
     setError("");
     try {
@@ -87,9 +113,9 @@ export function TemplateSendModal(props: {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900">
+  return createPortal(
+    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/50 p-4 sm:p-6" role="dialog" aria-modal="true">
+      <div className="flex max-h-[min(92vh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900">
         <div className="flex shrink-0 items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-ink-800">
           <h2 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("templateModal.title")}</h2>
           <button
@@ -103,9 +129,11 @@ export function TemplateSendModal(props: {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="grid gap-6 p-4 md:grid-cols-2 md:gap-8 md:p-6">
+          <div className="grid min-h-[28rem] gap-6 p-4 md:grid-cols-2 md:gap-8 md:p-6 lg:min-h-[32rem]">
             <div>
-              <p className="text-sm text-ink-600 dark:text-ink-400">{t("templateModal.fillHint")}</p>
+              <p className="text-sm text-ink-600 dark:text-ink-400">
+                {mode === "insert" ? t("templateModal.insertHint") : t("templateModal.fillHint")}
+              </p>
               <p className="mt-1 text-xs font-medium text-ink-800 dark:text-ink-200">{template.name}</p>
               <div className="mt-4 space-y-3">
                 {template.bodyVariableCount === 0 ? (
@@ -135,14 +163,24 @@ export function TemplateSendModal(props: {
                   {error}
                 </p>
               ) : null}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void send()}
-                className="btn-primary mt-6 w-full py-2.5 text-sm font-semibold disabled:opacity-50"
-              >
-                {busy ? t("templateModal.sending") : t("templateModal.send")}
-              </button>
+              {mode === "insert" ? (
+                <button
+                  type="button"
+                  onClick={insertIntoComposer}
+                  className="btn-primary mt-6 w-full py-2.5 text-sm font-semibold"
+                >
+                  {t("templateModal.insert")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void send()}
+                  className="btn-primary mt-6 w-full py-2.5 text-sm font-semibold disabled:opacity-50"
+                >
+                  {busy ? t("templateModal.sending") : t("templateModal.send")}
+                </button>
+              )}
             </div>
 
             <div>
@@ -166,6 +204,7 @@ export function TemplateSendModal(props: {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
