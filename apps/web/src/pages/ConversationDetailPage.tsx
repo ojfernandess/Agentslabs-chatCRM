@@ -75,6 +75,7 @@ import {
   type ContactNoteEntry,
 } from "@/lib/contactNotes";
 import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
+import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 import { useAuth } from "@/hooks/useAuth";
 import {
   isOnlineForTransfer,
@@ -643,6 +644,7 @@ export function ConversationDetailPage() {
 
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const resizeComposerTextarea = useAutoResizeTextarea(composerTextareaRef, newMessage, composerExpanded);
   const templateWrapRef = useRef<HTMLDivElement>(null);
   const cannedWrapRef = useRef<HTMLDivElement>(null);
   const cannedPanelRef = useRef<HTMLDivElement>(null);
@@ -4707,8 +4709,11 @@ export function ConversationDetailPage() {
                       ref={composerTextareaRef}
                       value={newMessage}
                       onChange={(e) => onComposerChange(e.target.value)}
+                      onPaste={() => {
+                        requestAnimationFrame(() => resizeComposerTextarea());
+                      }}
                       onKeyDown={composerKeyDown}
-                      rows={composerExpanded ? 7 : 3}
+                      rows={1}
                       placeholder={
                         privateNote
                           ? t("conversationDetail.privateNotePlaceholder")
@@ -4719,10 +4724,8 @@ export function ConversationDetailPage() {
                               : t("conversationDetail.placeholderNormal")
                       }
                       disabled={((isOutsideWindow || contactIsBlocked) && !privateNote) || recording}
-                      className={clsx(
-                        "w-full resize-y rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500",
-                        composerExpanded ? "min-h-[11rem]" : "min-h-[4.75rem]",
-                      )}
+                      className="w-full resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500"
+                      style={{ minHeight: "4.75rem" }}
                     />
                     <p className="mt-1 text-[11px] leading-relaxed text-ink-400 dark:text-ink-500">
                       {readSendShortcutPref() === "mod_enter"
