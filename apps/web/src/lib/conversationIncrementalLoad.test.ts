@@ -2,6 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { mergeIncrementalConversationSnapshot } from "./conversationIncrementalLoad.js";
 
+test("mergeIncrementalConversationSnapshot ignores prevMessages when prev conversation differs", () => {
+  const merged = mergeIncrementalConversationSnapshot({
+    meta: {
+      id: "conv-b",
+      messages: [],
+    },
+    prev: null,
+    prevMessages: [
+      { id: "stale", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+    ],
+    tailMessages: [],
+    newestCursor: null,
+  });
+
+  assert.deepEqual(merged.messages, []);
+});
+
 test("mergeIncrementalConversationSnapshot appends only unseen tail messages", () => {
   const merged = mergeIncrementalConversationSnapshot({
     meta: {

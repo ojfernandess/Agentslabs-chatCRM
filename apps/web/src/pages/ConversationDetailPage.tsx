@@ -666,6 +666,7 @@ export function ConversationDetailPage() {
   const hasPrependedOlderRef = useRef(false);
   const loadingOlderRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
+  const messagesOwnerConversationIdRef = useRef<string | null>(null);
   const messagesHasMoreRef = useRef(false);
   const messagesOlderCursorRef = useRef<string | null>(null);
   const messagesNewerCursorRef = useRef<string | null>(null);
@@ -686,6 +687,11 @@ export function ConversationDetailPage() {
     conversationLoadEpochRef.current += 1;
     pendingOutboundOptimisticRef.current = null;
     if (id) clearInflightConversation(id);
+    messagesRef.current = [];
+    messagesOwnerConversationIdRef.current = null;
+    messagesHasMoreRef.current = false;
+    messagesOlderCursorRef.current = null;
+    messagesNewerCursorRef.current = null;
     hasPrependedOlderRef.current = false;
     loadingOlderRef.current = false;
     setLoadingOlderMessages(false);
@@ -707,10 +713,12 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     messagesRef.current = conversation?.messages ?? [];
+    messagesOwnerConversationIdRef.current = conversation?.id ?? null;
     messagesHasMoreRef.current = Boolean(conversation?.messagesHasMore);
     messagesOlderCursorRef.current = conversation?.messagesOlderCursor ?? null;
     messagesNewerCursorRef.current = conversation?.messagesNewerCursor ?? null;
   }, [
+    conversation?.id,
     conversation?.messages,
     conversation?.messagesHasMore,
     conversation?.messagesOlderCursor,
@@ -1041,14 +1049,16 @@ export function ConversationDetailPage() {
     const requestId = id;
     const epoch = ++conversationLoadEpochRef.current;
     try {
+      const messagesBelongToRequest =
+        messagesOwnerConversationIdRef.current === requestId && messagesRef.current.length > 0;
       const useIncrementalSilent =
         Boolean(opts?.silent) &&
         (hasPrependedOlderRef.current ||
-          (workspaceWsConnectedRef.current && messagesRef.current.length > 0));
+          (workspaceWsConnectedRef.current && messagesBelongToRequest));
 
       if (useIncrementalSilent) {
-        const prevMessages = messagesRef.current;
-        const newerCursor = messagesNewerCursorRef.current;
+        const prevMessages = messagesBelongToRequest ? messagesRef.current : [];
+        const newerCursor = messagesBelongToRequest ? messagesNewerCursorRef.current : null;
         const [meta, tail] = await Promise.all([
           api.get<ConversationDetail>(`/conversations/${requestId}?messages=0`),
           newerCursor

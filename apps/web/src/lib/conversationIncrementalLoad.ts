@@ -12,12 +12,14 @@ export function mergeIncrementalConversationSnapshot<T extends MergeableConversa
   tailMessages: MergeableMessage[];
   newestCursor: string | null;
 }): T {
-  const existingIds = new Set(input.prevMessages.map((message) => message.id));
+  const safePrevMessages =
+    input.prev && input.prev.id === input.meta.id ? input.prevMessages : [];
+  const existingIds = new Set(safePrevMessages.map((message) => message.id));
   const newMessages = input.tailMessages.filter((message) => !existingIds.has(message.id));
 
   return {
     ...input.meta,
-    messages: newMessages.length ? [...input.prevMessages, ...newMessages] : input.prevMessages,
+    messages: newMessages.length ? [...safePrevMessages, ...newMessages] : safePrevMessages,
     messagesHasMore: input.prev?.messagesHasMore ?? input.meta.messagesHasMore,
     messagesOlderCursor: input.prev?.messagesOlderCursor ?? input.meta.messagesOlderCursor,
     messagesNewerCursor: input.newestCursor ?? input.prev?.messagesNewerCursor ?? input.meta.messagesNewerCursor,
