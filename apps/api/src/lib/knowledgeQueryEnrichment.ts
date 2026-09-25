@@ -212,7 +212,8 @@ export type KnowledgeSearchSkipReason =
   | "data_provision"
   | "cadastro_turn"
   | "active_flow"
-  | "checkin_reservation_turn";
+  | "checkin_reservation_turn"
+  | "operational_quote";
 
 export type KnowledgeSearchSkipContext = {
   lastAssistantMessage?: string;
