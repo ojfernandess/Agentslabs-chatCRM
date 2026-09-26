@@ -47,9 +47,9 @@ export function userMessageLooksLikeKbEscalationCandidate(userMessage?: string |
   if (isOperationalQuoteMessage(msg)) return false;
   if (userMessageLooksLikeAccessBlockedProblem(msg)) return false;
   if (userMessageLooksLikeEstablishmentEntryFaqQuestion(msg)) return false;
+  if (userMessageLooksLikeCheckoutProcedureQuestion(msg)) return false;
 
   if (
-    userMessageLooksLikeCheckoutProcedureQuestion(msg) ||
     userMessageLooksLikeReceiptOrInvoiceRequest(msg) ||
     userMessageLooksLikeAmenityItemQuestion(msg)
   ) {

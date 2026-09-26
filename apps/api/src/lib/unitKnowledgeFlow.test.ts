@@ -33,6 +33,17 @@ test("checkout procedure question is detected", () => {
   assert.equal(userMessageLooksLikeCheckoutProcedureQuestion("fazer check-in na reserva ABC123"), false);
 });
 
+test("checkout procedure question detects checkout typos and abbreviations", () => {
+  assert.equal(
+    userMessageLooksLikeCheckoutProcedureQuestion(
+      "Por gentileza poderia me orientar como faço o check aut?",
+    ),
+    true,
+  );
+  assert.equal(userMessageLooksLikeCheckoutProcedureQuestion("como faço o check"), true);
+  assert.equal(userMessageLooksLikeCheckoutProcedureQuestion("como faço o check-in"), false);
+});
+
 test("checkout without establishment needs collection", () => {
   assert.equal(
     unitKbTurnNeedsEstablishmentCollection({ userMessage: "gostaria de realizar o check-out" }),

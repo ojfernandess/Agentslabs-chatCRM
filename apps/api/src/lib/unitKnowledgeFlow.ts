@@ -54,8 +54,12 @@ export function userMessageLooksLikeCheckoutProcedureQuestion(userMessage?: stri
 
   return (
     /\bcheck[\s-]?out\b/i.test(t) ||
+    /\bcheck\s*aut\b/i.test(t) ||
+    /\bcheck\s+au\b/i.test(t) ||
     /\b(?:realizar|fazer)\s+(?:o\s+)?check[\s-]?out\b/i.test(t) ||
     /\bcomo\s+(?:funciona|fa[cç]o|é)\s+(?:o\s+)?check[\s-]?out\b/i.test(t) ||
+    (/\bcomo\s+fa[cç]o\s+o\s+check\b/i.test(t) && !/\bcheck[\s-]?in\b/i.test(t)) ||
+    (/\borientar\b[\s\S]{0,40}\bcheck\b/i.test(t) && !/\bcheck[\s-]?in\b/i.test(t)) ||
     /\bprocedimento\s+(?:de\s+)?(?:sa[ií]da|check[\s-]?out)\b/i.test(t) ||
     /\bhora\s+(?:de\s+)?(?:sa[ií]da|check[\s-]?out)\b/i.test(t) ||
     /\bcomo\s+(?:funciona|fa[cç]o)\s+(?:a\s+)?sa[ií]da\b/i.test(t) ||
@@ -213,7 +217,7 @@ export function assistantRequestedEstablishmentForUnitKb(
   return (
     showsEstablishmentMenu ||
     /\b(?:nota\s+fiscal|\bnf\b|recibo|comprovante|fatura)\b/i.test(t) ||
-    /\bcheck[\s-]?out\b/i.test(t) ||
+    /\bcheck[\s-]?(?:out|aut|au)\b/i.test(t) ||
     /\b(?:ferro|secador|comodidade)\b/i.test(t) ||
     /\b(?:entrada|acesso|portaria)\b/i.test(t)
   );

@@ -8,6 +8,7 @@ import {
 } from "./knowledgeGapHandoff.js";
 import {
   userMessageLooksLikeAmenityItemQuestion,
+  userMessageLooksLikeCheckoutProcedureQuestion,
   userMessageLooksLikeEstablishmentEntryFaqQuestion,
 } from "./unitKnowledgeFlow.js";
 
@@ -97,6 +98,41 @@ test("shouldEscalateAfterKnowledgeGap false for establishment entry FAQ even whe
   assert.equal(
     shouldEscalateAfterKnowledgeGap({
       userMessage: "Como funciona a entrada no audaar tech?",
+      toolOutcomes: [
+        {
+          name: "buscar_conhecimento",
+          ok: true,
+          preview: "Wi-Fi: rede Audaar · senha no check-in.",
+        },
+      ],
+      callHumanSucceeded: false,
+    }),
+    false,
+  );
+});
+
+test("userMessageLooksLikeCheckoutProcedureQuestion detects checkout typo check aut", () => {
+  assert.equal(
+    userMessageLooksLikeCheckoutProcedureQuestion(
+      "Por gentileza poderia me orientar como faço o check aut?",
+    ),
+    true,
+  );
+});
+
+test("userMessageLooksLikeKbEscalationCandidate excludes checkout procedure question", () => {
+  assert.equal(
+    userMessageLooksLikeKbEscalationCandidate(
+      "Por gentileza poderia me orientar como faço o check aut?",
+    ),
+    false,
+  );
+});
+
+test("shouldEscalateAfterKnowledgeGap false for checkout without establishment even when KB lacks answer", () => {
+  assert.equal(
+    shouldEscalateAfterKnowledgeGap({
+      userMessage: "Por gentileza poderia me orientar como faço o check aut?",
       toolOutcomes: [
         {
           name: "buscar_conhecimento",
