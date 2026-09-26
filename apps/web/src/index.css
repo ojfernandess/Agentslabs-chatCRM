@@ -418,6 +418,22 @@
     @apply dark:text-soft-text-secondary dark:hover:bg-soft-surface-2 dark:hover:text-soft-text;
   }
 
+  @media (max-width: 1023px) {
+    .composer-tool-btn {
+      @apply h-10 w-10 rounded-[10px];
+    }
+
+    .composer-shell-mobile {
+      @apply rounded-2xl;
+    }
+
+    .composer-mobile-send {
+      @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white shadow-sm;
+      @apply hover:bg-brand-600 active:bg-brand-700 disabled:opacity-50;
+      @apply dark:bg-brand-600 dark:hover:bg-brand-500;
+    }
+  }
+
   .nav-link-active {
     @apply bg-brand-50 text-brand-700 font-semibold;
     @apply dark:bg-soft-primary/15 dark:text-soft-primary;

@@ -1,6 +1,8 @@
 export const COMPOSER_TEXTAREA_MIN_HEIGHT_PX = 76;
 export const COMPOSER_TEXTAREA_MAX_HEIGHT_PX = 192;
 export const COMPOSER_TEXTAREA_EXPANDED_MAX_HEIGHT_PX = 320;
+export const COMPOSER_TEXTAREA_MOBILE_MIN_HEIGHT_PX = 40;
+export const COMPOSER_TEXTAREA_MOBILE_MAX_HEIGHT_PX = 120;
 
 export type AutoResizeTextareaOptions = {
   minHeightPx?: number;

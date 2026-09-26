@@ -866,7 +866,12 @@ export function Layout() {
       ) : null}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
-        <div className="flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-soft-border-muted dark:bg-ink-950 lg:hidden">
+        <div
+          className={clsx(
+            "flex h-14 items-center gap-3 border-b border-ink-200 bg-white px-3 dark:border-soft-border-muted dark:bg-ink-950 lg:hidden",
+            conversationThreadActive && "hidden",
+          )}
+        >
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}

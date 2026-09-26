@@ -37,7 +37,9 @@ import {
   Kanban,
   Clock,
   ChevronRight,
+  ChevronDown,
   Tag,
+  Wrench,
   Plus,
   Pencil,
   X,
@@ -137,6 +139,7 @@ import {
 } from "@/components/conversation/MessageAttachmentViews";
 import { ChatAudioPlayer } from "@/components/conversation/ChatAudioPlayer";
 import { ConversationDismissibleBanner } from "@/components/conversation/ConversationDismissibleBanner";
+import { MobileBottomSheet, MobileBottomSheetAction } from "@/components/conversation/MobileBottomSheet";
 import { VoicePreviewPanel, VoiceRecordingPanel } from "@/components/conversation/VoiceMessageComposer";
 import { AudioTranscriptionBlock } from "@/components/conversation/AudioTranscriptionBlock";
 import {
@@ -459,6 +462,12 @@ export function ConversationDetailPage() {
   const [cannedMenuOpen, setCannedMenuOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [webchatModalOpen, setWebchatModalOpen] = useState(false);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const [mobileComposerMoreOpen, setMobileComposerMoreOpen] = useState(false);
+  const [mobileMessageTypeOpen, setMobileMessageTypeOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches,
+  );
   const [messageTemplates, setMessageTemplates] = useState<MessageTemplateRow[]>([]);
   const [cannedResponses, setCannedResponses] = useState<CannedResponseRow[]>([]);
   const [composerExpanded, setComposerExpanded] = useState(false);
@@ -654,7 +663,19 @@ export function ConversationDetailPage() {
 
   const emojiWrapRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const resizeComposerTextarea = useAutoResizeTextarea(composerTextareaRef, newMessage, composerExpanded);
+  const resizeComposerTextarea = useAutoResizeTextarea(
+    composerTextareaRef,
+    newMessage,
+    composerExpanded,
+    isMobileLayout,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const onChange = () => setIsMobileLayout(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   const templateWrapRef = useRef<HTMLDivElement>(null);
   const cannedWrapRef = useRef<HTMLDivElement>(null);
   const cannedPanelRef = useRef<HTMLDivElement>(null);
@@ -2728,6 +2749,13 @@ export function ConversationDetailPage() {
   const websiteSiteName =
     websiteSiteMeta.siteName || conversation.inbox?.name?.trim() || t("conversationDetail.channelLabelWebsite");
   const websiteSiteUrl = websiteSiteMeta.websiteUrl;
+  const mobileChannelLabel = isWhatsappInbox
+    ? t("conversationDetail.channelLabelWhatsapp")
+    : isEmailInbox
+      ? t("conversationDetail.email")
+      : isWebsiteInbox
+        ? t("conversationDetail.channelLabelWebsite")
+        : conversation.inbox?.name?.trim() || "—";
   const contactPhoneDisplay = formatContactPhoneForDisplay(
     {
       phone: conversation.contact.phone,
@@ -3848,8 +3876,88 @@ export function ConversationDetailPage() {
           </div>
         ) : null}
         {!emailWorkspaceMode ? (
+        <div
+          className="shrink-0 border-b border-ink-200/70 bg-white/95 shadow-sm backdrop-blur-md dark:border-soft-border dark:bg-[#151826]/90 lg:hidden"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
+          <div className="flex h-14 items-center gap-1.5 px-2">
+            <Link
+              to={
+                emailInboxId
+                  ? `/inboxes/${emailInboxId}/email`
+                  : `/conversations${location.search}`
+              }
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-800 dark:hover:bg-white/10 dark:hover:text-ink-100"
+              onClick={() => {
+                void emailOutlet?.refreshThreads?.();
+                void conversationsOutlet?.refreshList?.();
+              }}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <ConversationListAvatar
+              contactId={conversation.contact.id}
+              contactName={conversation.contact.name}
+              profilePictureUrl={conversation.contact.profilePictureUrl}
+              hasAvatar={conversation.contact.hasAvatar}
+              thumbnail={conversation.contact.thumbnail}
+              channelType={isWhatsappInbox ? "WHATSAPP" : isEmailInbox ? "EMAIL" : undefined}
+              priority={conversation.priority}
+              size="listCompact"
+              presenceOnline={presenceRecent}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold leading-tight text-ink-900 dark:text-ink-50">
+                {conversation.contact.name}
+              </p>
+              <p className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-xs text-ink-500 dark:text-ink-400">
+                {isWhatsappInbox ? (
+                  <WhatsAppBrandIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                ) : null}
+                <span className="truncate">
+                  {mobileChannelLabel} · {statusLabel(conversation.status)}
+                </span>
+              </p>
+            </div>
+            <button
+              type="button"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-600 transition-colors hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-white/10"
+              onClick={() => setMobileActionsOpen(true)}
+              aria-label={t("conversationDetail.mobileActionsTitle")}
+            >
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+          </div>
+          {(isEmailInbox && !emailWorkspaceMode) || isOutsideWindow || contactIsBlocked ? (
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-ink-100/80 px-2 pb-2 pt-1.5 dark:border-soft-border">
+              {isEmailInbox && !emailWorkspaceMode ? (
+                <div className="flex w-full items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-950 dark:text-amber-100">
+                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                  {t("conversationDetail.emailComposerBanner")}
+                </div>
+              ) : null}
+              {isOutsideWindow ? (
+                <div className="flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t("conversationDetail.outsideWindow")}
+                </div>
+              ) : null}
+              {contactIsBlocked ? (
+                <div
+                  className="flex items-center gap-1 rounded-lg bg-red-100 px-2 py-1 text-[10px] font-medium text-red-900 dark:bg-red-950/50 dark:text-red-200"
+                  title={t("conversationDetail.contactBlockedHint")}
+                >
+                  <ShieldBan className="h-3 w-3" />
+                  {t("conversationDetail.contactBlocked")}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        ) : null}
+        {!emailWorkspaceMode ? (
         <motion.div
-          className="shrink-0 border-b border-ink-200/70 bg-white/85 shadow-sm backdrop-blur-md dark:border-soft-border dark:bg-[#151826]/55"
+          className="hidden shrink-0 border-b border-ink-200/70 bg-white/85 shadow-sm backdrop-blur-md dark:border-soft-border dark:bg-[#151826]/55 lg:block"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
@@ -4049,7 +4157,7 @@ export function ConversationDetailPage() {
 
                   <div
                     className={clsx(
-                      "min-w-0 flex-[0_1_auto] self-start",
+                      "min-w-0 flex-[0_1_auto] self-start max-lg:hidden",
                       isSplitLayout
                         ? "max-w-[min(100%,54%)] overflow-x-auto overscroll-x-contain pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                         : "max-w-[min(100%,42rem)]",
@@ -4460,7 +4568,7 @@ export function ConversationDetailPage() {
                       ? isEmailInbox && msg.type === "TEXT"
                         ? "w-full min-w-0 flex-1 max-w-none"
                         : "max-w-[min(calc(100%-2.5rem),48rem)]"
-                      : "max-w-[min(calc(100%-2.5rem),28rem)]",
+                      : "max-w-[min(calc(100%-2.5rem),28rem)] max-lg:max-w-[min(85%,28rem)]",
                     isNew && "crm-bubble-unread",
                     isHighlighted && "ring-2 ring-amber-400/80 ring-offset-2 ring-offset-white dark:ring-offset-[#151826]",
                     msg.isPrivate
@@ -4686,7 +4794,7 @@ export function ConversationDetailPage() {
             "w-full min-w-0 shrink-0 border-t border-ink-200/80 dark:border-soft-border-muted",
             emailWorkspaceMode
               ? "bg-[#f8fafc] px-4 py-3 dark:bg-[#1B2230]"
-              : "bg-ink-50/80 px-3 py-2.5 dark:bg-[#151826]/80 max-lg:px-2 max-lg:py-2 sm:px-4",
+              : "bg-ink-50/80 px-3 py-2.5 dark:bg-[#151826]/80 max-lg:px-2 max-lg:py-2 max-lg:pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4",
           )}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -4723,11 +4831,26 @@ export function ConversationDetailPage() {
             ) : null}
             <div
               className={clsx(
-                "composer-shell",
+                "composer-shell composer-shell-mobile",
                 emailWorkspaceMode && "dark:border-soft-border",
               )}
             >
-              <div className="composer-header">
+              <div className="border-b border-ink-100/80 px-3 py-2 dark:border-soft-border-muted lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileMessageTypeOpen(true)}
+                  disabled={recording || !!voicePreview}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-xs font-semibold text-ink-700 dark:border-soft-border dark:bg-white/5 dark:text-ink-200"
+                >
+                  {privateNote
+                    ? t("conversationDetail.composerPrivateTab")
+                    : isEmailInbox
+                      ? t("conversationDetail.composerEmailTab")
+                      : t("conversationDetail.composerReplyTab")}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </button>
+              </div>
+              <div className="composer-header hidden lg:flex">
                 <div className="flex min-w-0 flex-1 items-center gap-0">
                   <button
                     type="button"
@@ -4780,7 +4903,7 @@ export function ConversationDetailPage() {
                     type="button"
                     onClick={() => setComposerExpanded((e) => !e)}
                     disabled={!!voicePreview || recording}
-                    className="flex h-8 w-8 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-500 hover:bg-ink-50 disabled:opacity-40 dark:border-soft-border dark:bg-white/5 dark:text-ink-400 dark:hover:bg-white/10"
+                    className="hidden h-8 w-8 items-center justify-center rounded-md border border-ink-200 bg-white text-ink-500 hover:bg-ink-50 disabled:opacity-40 dark:border-soft-border dark:bg-white/5 dark:text-ink-400 dark:hover:bg-white/10 lg:flex"
                     title={composerExpanded ? t("conversationDetail.composerCollapse") : t("conversationDetail.composerExpand")}
                   >
                     {composerExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
@@ -4790,12 +4913,12 @@ export function ConversationDetailPage() {
 
               <div className="min-w-0 px-3 pb-1 pt-2">
                 {privateNote ? (
-                  <p className="mb-2 text-xs text-ink-500 dark:text-ink-400">{t("conversationDetail.privateNoteHint")}</p>
+                  <p className="mb-2 hidden text-xs text-ink-500 dark:text-ink-400 lg:block">{t("conversationDetail.privateNoteHint")}</p>
                 ) : copilotEnabled && pilotFlags?.openAiConfigured === false ? (
-                  <p className="mb-2 text-[11px] text-ink-500 dark:text-ink-400">{t("conversationDetail.composerAiHint")}</p>
+                  <p className="mb-2 hidden text-[11px] text-ink-500 dark:text-ink-400 lg:block">{t("conversationDetail.composerAiHint")}</p>
                 ) : null}
                 {!privateNote && !(user?.messageSignature?.trim()) ? (
-                  <div className="mb-2">
+                  <div className="mb-2 hidden lg:block">
                     <ConversationDismissibleBanner
                       scope="user"
                       bannerKey="composer_signature"
@@ -4853,29 +4976,47 @@ export function ConversationDetailPage() {
                         </label>
                       </div>
                     ) : null}
-                    <textarea
-                      ref={composerTextareaRef}
-                      value={newMessage}
-                      onChange={(e) => onComposerChange(e.target.value)}
-                      onPaste={() => {
-                        requestAnimationFrame(() => resizeComposerTextarea());
-                      }}
-                      onKeyDown={composerKeyDown}
-                      rows={1}
-                      placeholder={
-                        privateNote
-                          ? t("conversationDetail.privateNotePlaceholder")
-                          : isEmailInbox
-                            ? t("conversationDetail.emailBodyPlaceholder")
-                            : isOutsideWindow
-                              ? t("conversationDetail.placeholderTemplate")
-                              : t("conversationDetail.placeholderNormal")
-                      }
-                      disabled={((isOutsideWindow || contactIsBlocked) && !privateNote) || recording}
-                      className="w-full resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500"
-                      style={{ minHeight: "4.75rem" }}
-                    />
-                    <p className="mt-1 text-[11px] leading-relaxed text-ink-400 dark:text-ink-500">
+                    <div className="flex items-end gap-2">
+                      <textarea
+                        ref={composerTextareaRef}
+                        value={newMessage}
+                        onChange={(e) => onComposerChange(e.target.value)}
+                        onPaste={() => {
+                          requestAnimationFrame(() => resizeComposerTextarea());
+                        }}
+                        onKeyDown={composerKeyDown}
+                        rows={1}
+                        placeholder={
+                          privateNote
+                            ? t("conversationDetail.privateNotePlaceholder")
+                            : isEmailInbox
+                              ? t("conversationDetail.emailBodyPlaceholder")
+                              : isOutsideWindow
+                                ? t("conversationDetail.placeholderTemplate")
+                                : t("conversationDetail.placeholderNormal")
+                        }
+                        disabled={((isOutsideWindow || contactIsBlocked) && !privateNote) || recording}
+                        className="min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500 max-lg:min-h-[2.5rem] max-lg:py-1.5"
+                        style={{ minHeight: isMobileLayout ? "2.5rem" : "4.75rem" }}
+                      />
+                      <motion.button
+                        type="submit"
+                        disabled={
+                          sending ||
+                          !newMessage.trim() ||
+                          ((isOutsideWindow || contactIsBlocked) && !privateNote) ||
+                          attachBusy ||
+                          !!voicePreview ||
+                          recording
+                        }
+                        className="composer-mobile-send lg:hidden"
+                        whileTap={{ scale: 0.94 }}
+                        aria-label={t("conversationDetail.composerSend")}
+                      >
+                        <Send className="h-5 w-5" />
+                      </motion.button>
+                    </div>
+                    <p className="mt-1 hidden text-[11px] leading-relaxed text-ink-400 dark:text-ink-500 lg:block">
                       {readSendShortcutPref() === "mod_enter"
                         ? t("conversationDetail.composerShortcutModEnter")
                         : t("conversationDetail.composerShortcutEnter")}
@@ -4906,7 +5047,7 @@ export function ConversationDetailPage() {
               <div className="composer-toolbar justify-between gap-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-0.5">
                   {cannedResponses.length > 0 ? (
-                    <div className="relative" ref={cannedWrapRef}>
+                    <div className="relative hidden lg:block" ref={cannedWrapRef}>
                       <motion.button
                         type="button"
                         disabled={recording || !!voicePreview || ((isOutsideWindow || contactIsBlocked) && !privateNote)}
@@ -4925,7 +5066,7 @@ export function ConversationDetailPage() {
                     </div>
                   ) : null}
                   {messageTemplates.length > 0 ? (
-                    <div className="relative" ref={templateWrapRef}>
+                    <div className="relative hidden lg:block" ref={templateWrapRef}>
                       <motion.button
                         type="button"
                         disabled={recording || !!voicePreview || (!isWaba && (isOutsideWindow || contactIsBlocked) && !privateNote)}
@@ -5006,7 +5147,7 @@ export function ConversationDetailPage() {
                     disabled={((isOutsideWindow || contactIsBlocked) && !privateNote) || voiceBusy || sending || attachBusy}
                     title={recording ? t("conversationDetail.stopRecording") : t("conversationDetail.recordVoice")}
                     className={clsx(
-                      "flex h-9 w-9 items-center justify-center rounded-lg transition-colors disabled:opacity-40",
+                      "flex h-9 w-9 items-center justify-center rounded-lg transition-colors disabled:opacity-40 max-lg:h-10 max-lg:w-10",
                       recording
                         ? "bg-red-500 text-white shadow-md shadow-red-500/30 ring-2 ring-red-300/60 hover:bg-red-600 dark:ring-red-800/50"
                         : "text-ink-600 hover:bg-ink-200/80 dark:text-ink-300 dark:hover:bg-ink-800",
@@ -5017,9 +5158,34 @@ export function ConversationDetailPage() {
                     {recording ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-4 w-4" />}
                   </motion.button>
                   ) : null}
+                  {copilotEnabled ? (
+                    <motion.button
+                      type="button"
+                      disabled={
+                        (isOutsideWindow && !privateNote) ||
+                        (contactIsBlocked && !privateNote) ||
+                        recording ||
+                        sending ||
+                        !!voicePreview ||
+                        suggestReplyBusy ||
+                        privateNote
+                      }
+                      onClick={() => void handleAiSuggestReply()}
+                      title={suggestReplyBusy ? t("conversationDetail.generateReplyBusy") : t("conversationDetail.generateReply")}
+                      className="composer-tool-btn lg:hidden"
+                      whileTap={{ scale: 0.94 }}
+                      aria-label={t("conversationDetail.generateReply")}
+                    >
+                      {suggestReplyBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                    </motion.button>
+                  ) : null}
                   <Link
                     to="/profile"
-                    className="composer-tool-btn"
+                    className="composer-tool-btn hidden lg:flex"
                     title={t("conversationDetail.composerSignatureLink")}
                   >
                     <PenLine className="h-4 w-4" />
@@ -5029,12 +5195,22 @@ export function ConversationDetailPage() {
                       type="button"
                       onClick={() => setWebchatModalOpen(true)}
                       title={t("webchatLink.title")}
-                      className="composer-tool-btn"
+                      className="composer-tool-btn hidden lg:flex"
                       whileTap={{ scale: 0.92 }}
                     >
                       <Globe className="h-4 w-4" />
                     </motion.button>
                   ) : null}
+                  <motion.button
+                    type="button"
+                    onClick={() => setMobileComposerMoreOpen(true)}
+                    title={t("conversationDetail.mobileMoreOptionsTitle")}
+                    className="composer-tool-btn lg:hidden"
+                    whileTap={{ scale: 0.94 }}
+                    aria-label={t("conversationDetail.mobileMoreOptionsTitle")}
+                  >
+                    <Plus className="h-5 w-5" />
+                  </motion.button>
                 </div>
                 <motion.button
                   type="submit"
@@ -5047,7 +5223,7 @@ export function ConversationDetailPage() {
                     recording
                   }
                   className={clsx(
-                    "inline-flex shrink-0 items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500",
+                    "hidden shrink-0 items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-600 disabled:opacity-50 dark:bg-brand-600 dark:hover:bg-brand-500 lg:inline-flex",
                   )}
                   whileTap={{ scale: 0.98 }}
                 >
@@ -5394,6 +5570,306 @@ export function ConversationDetailPage() {
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      <MobileBottomSheet
+        open={mobileActionsOpen}
+        onClose={() => setMobileActionsOpen(false)}
+        title={t("conversationDetail.mobileActionsTitle")}
+      >
+        <div className="py-1">
+          {copilotEnabled ? (
+            <MobileBottomSheetAction
+              icon={<Brain className="h-5 w-5 text-violet-600" />}
+              label={t("conversationDetail.linkAiInsights")}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                navigate(`/ai-insights?conversation=${encodeURIComponent(conversation.id)}`);
+              }}
+            />
+          ) : null}
+          {copilotEnabled ? (
+            <MobileBottomSheetAction
+              icon={<Sparkles className="h-5 w-5 text-violet-600" />}
+              label={t("conversationDetail.copilotToggle")}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                toggleCopilotPanel();
+              }}
+            />
+          ) : null}
+          {!isWebsiteInbox && contactDialPhone ? (
+            <div className="px-4 py-2">
+              <TelephonyCallButton
+                phone={contactDialPhone}
+                inboxId={conversation.inbox?.id}
+                conversationId={conversation.id}
+                contactId={conversation.contact.id}
+                activeVoiceCall={conversation.activeVoiceCall}
+                compact
+              />
+            </div>
+          ) : null}
+          {canStartAttendance ? (
+            <MobileBottomSheetAction
+              icon={<Headset className="h-5 w-5 text-emerald-600" />}
+              label={t("conversationDetail.startAttendance")}
+              disabled={actionLoading}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                if (user?.id) void applyStatus("OPEN", { assignedToId: user.id });
+              }}
+            />
+          ) : null}
+          {canShowTransfer ? (
+            <MobileBottomSheetAction
+              icon={<ArrowRightLeft className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.transferOpen")}
+              disabled={actionLoading}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                openTransferModal();
+              }}
+            />
+          ) : null}
+          <MobileBottomSheetAction
+            icon={<User className="h-5 w-5 text-slate-600" />}
+            label={t("conversationDetail.mobileContactData")}
+            onClick={() => {
+              setMobileActionsOpen(false);
+              setCrmMobileOpen(true);
+            }}
+          />
+          <MobileBottomSheetAction
+            icon={<Tag className="h-5 w-5 text-slate-600" />}
+            label={t("conversationDetail.tagsSection")}
+            onClick={() => {
+              setMobileActionsOpen(false);
+              setTagModalOpen(true);
+            }}
+          />
+          {cannedResponses.length > 0 ? (
+            <MobileBottomSheetAction
+              icon={<MessageSquare className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.cannedResponses")}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                setCannedMenuOpen(true);
+              }}
+            />
+          ) : null}
+          {messageTemplates.length > 0 ? (
+            <MobileBottomSheetAction
+              icon={<Wrench className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.mobileTools")}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                setTemplatePickerOpen(true);
+              }}
+            />
+          ) : null}
+          {!emailWorkspaceMode ? (
+            <MobileBottomSheetAction
+              icon={<Globe className="h-5 w-5 text-slate-600" />}
+              label={t("webchatLink.title")}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                setWebchatModalOpen(true);
+              }}
+            />
+          ) : null}
+          {funnelEnabled ? (
+            <MobileBottomSheetAction
+              icon={<Kanban className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.actionMoveFunnel")}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                navigate("/crm");
+              }}
+            />
+          ) : null}
+          {showTransferToBot ? (
+            <MobileBottomSheetAction
+              icon={<Bot className="h-5 w-5 text-violet-600" />}
+              label={t("conversationDetail.transferToBot")}
+              disabled={actionLoading}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                void applyStatus("PENDING", { assignedToId: null });
+              }}
+            />
+          ) : null}
+          {conversation.status === "OPEN" && !agentBotTriageActive ? (
+            <MobileBottomSheetAction
+              icon={<PauseCircle className="h-5 w-5 text-amber-600" />}
+              label={t("conversationDetail.setPending")}
+              disabled={actionLoading}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                void applyStatus("PENDING");
+              }}
+            />
+          ) : null}
+          <MobileBottomSheetAction
+            icon={<Search className="h-5 w-5 text-slate-600" />}
+            label={t("conversationDetail.messageSearch.open")}
+            onClick={() => {
+              setMobileActionsOpen(false);
+              setMessageSearchOpen(true);
+            }}
+          />
+          {conversation.status === "RESOLVED" ? (
+            <MobileBottomSheetAction
+              icon={<RotateCcw className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.reopen")}
+              disabled={actionLoading}
+              onClick={() => {
+                setMobileActionsOpen(false);
+                void applyStatus("OPEN");
+              }}
+            />
+          ) : null}
+          {canResolve ? (
+            <MobileBottomSheetAction
+              icon={<CheckCircle className="h-5 w-5 text-red-600" />}
+              label={t("conversationDetail.finalize")}
+              disabled={actionLoading}
+              destructive
+              onClick={() => {
+                setMobileActionsOpen(false);
+                openResolveModal(null);
+              }}
+            />
+          ) : null}
+        </div>
+      </MobileBottomSheet>
+
+      <MobileBottomSheet
+        open={mobileComposerMoreOpen}
+        onClose={() => setMobileComposerMoreOpen(false)}
+        title={t("conversationDetail.mobileMoreOptionsTitle")}
+      >
+        <div className="py-1">
+          {cannedResponses.length > 0 ? (
+            <MobileBottomSheetAction
+              icon={<MessageSquare className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.cannedResponses")}
+              onClick={() => {
+                setMobileComposerMoreOpen(false);
+                setCannedMenuOpen(true);
+              }}
+            />
+          ) : null}
+          {!emailWorkspaceMode ? (
+            <MobileBottomSheetAction
+              icon={<Globe className="h-5 w-5 text-slate-600" />}
+              label={t("webchatLink.title")}
+              onClick={() => {
+                setMobileComposerMoreOpen(false);
+                setWebchatModalOpen(true);
+              }}
+            />
+          ) : null}
+          {messageTemplates.length > 0 ? (
+            <MobileBottomSheetAction
+              icon={<Wrench className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.templates")}
+              onClick={() => {
+                setMobileComposerMoreOpen(false);
+                setTemplatePickerOpen(true);
+              }}
+            />
+          ) : null}
+          {(evolutionRichChat || isEmailInbox) ? (
+            <MobileBottomSheetAction
+              icon={<Paperclip className="h-5 w-5 text-slate-600" />}
+              label={t("conversationDetail.attachFile")}
+              disabled={
+                attachBusy ||
+                (!privateNote && (isOutsideWindow || contactIsBlocked) && !isEmailInbox) ||
+                recording ||
+                !!voicePreview
+              }
+              onClick={() => {
+                setMobileComposerMoreOpen(false);
+                fileInputRef.current?.click();
+              }}
+            />
+          ) : null}
+          <MobileBottomSheetAction
+            icon={<PenLine className="h-5 w-5 text-slate-600" />}
+            label={t("conversationDetail.composerSignatureLink")}
+            onClick={() => {
+              setMobileComposerMoreOpen(false);
+              navigate("/profile");
+            }}
+          />
+        </div>
+      </MobileBottomSheet>
+
+      <MobileBottomSheet
+        open={mobileMessageTypeOpen}
+        onClose={() => setMobileMessageTypeOpen(false)}
+        title={t("conversationDetail.mobileMessageTypeTitle")}
+      >
+        <div className="space-y-1 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => {
+              setPrivateNote(false);
+              setMobileMessageTypeOpen(false);
+            }}
+            className={clsx(
+              "flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+              !privateNote ? "bg-brand-50 ring-1 ring-brand-200 dark:bg-brand-500/10 dark:ring-brand-500/30" : "hover:bg-ink-50 dark:hover:bg-white/5",
+            )}
+          >
+            <span
+              className={clsx(
+                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
+                !privateNote ? "border-brand-500 bg-brand-500" : "border-ink-300 dark:border-ink-600",
+              )}
+            >
+              {!privateNote ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-ink-900 dark:text-ink-50">
+                {isEmailInbox ? t("conversationDetail.composerEmailTab") : t("conversationDetail.mobileReplyToClient")}
+              </span>
+              <span className="mt-0.5 block text-xs text-ink-500 dark:text-ink-400">
+                {t("conversationDetail.mobileReplyToClientHint")}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPrivateNote(true);
+              setMobileMessageTypeOpen(false);
+            }}
+            className={clsx(
+              "flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors",
+              privateNote ? "bg-amber-50 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:ring-amber-500/30" : "hover:bg-ink-50 dark:hover:bg-white/5",
+            )}
+          >
+            <span
+              className={clsx(
+                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
+                privateNote ? "border-amber-500 bg-amber-500" : "border-ink-300 dark:border-ink-600",
+              )}
+            >
+              {privateNote ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-ink-900 dark:text-ink-50">
+                {t("conversationDetail.mobilePrivateMessage")}
+              </span>
+              <span className="mt-0.5 block text-xs text-ink-500 dark:text-ink-400">
+                {t("conversationDetail.mobilePrivateMessageHint")}
+              </span>
+            </span>
+          </button>
+        </div>
+      </MobileBottomSheet>
 
       <AnimatePresence>
         {resolveOpen && (
