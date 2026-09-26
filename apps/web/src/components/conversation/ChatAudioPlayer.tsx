@@ -20,6 +20,22 @@ function formatAudioTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+/** OGG/WhatsApp sem byte-range costuma expor duration=Infinity até buffer completo — usa seekable. */
+function resolveAudioDuration(audio: HTMLAudioElement): number {
+  const direct = audio.duration;
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  try {
+    const len = audio.seekable?.length ?? 0;
+    if (len > 0) {
+      const end = audio.seekable.end(len - 1);
+      if (Number.isFinite(end) && end > 0) return end;
+    }
+  } catch {
+    /* seekable indisponível */
+  }
+  return 0;
+}
+
 export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
   const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -47,7 +63,7 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
     const audio = audioRef.current;
     if (!audio) return;
     setCurrentTime(audio.currentTime);
-    setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+    setDuration(resolveAudioDuration(audio));
     setPlaying(!audio.paused && !audio.ended);
     setLoading(audio.readyState < 2);
     setVolume(audio.volume);
@@ -64,8 +80,11 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
       setLoading(false);
     };
     const onPause = () => setPlaying(false);
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const onDurationChange = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      setDuration(resolveAudioDuration(audio));
+    };
+    const onDurationChange = () => setDuration(resolveAudioDuration(audio));
     const onWaiting = () => setLoading(true);
     const onCanPlay = () => setLoading(false);
     const onLoadedData = () => setLoading(false);
@@ -82,6 +101,8 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
     audio.addEventListener("pause", onPause);
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("durationchange", onDurationChange);
+    audio.addEventListener("loadedmetadata", onDurationChange);
+    audio.addEventListener("progress", onDurationChange);
     audio.addEventListener("waiting", onWaiting);
     audio.addEventListener("canplay", onCanPlay);
     audio.addEventListener("loadeddata", onLoadedData);
@@ -95,6 +116,8 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("durationchange", onDurationChange);
+      audio.removeEventListener("loadedmetadata", onDurationChange);
+      audio.removeEventListener("progress", onDurationChange);
       audio.removeEventListener("waiting", onWaiting);
       audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("loadeddata", onLoadedData);
@@ -102,6 +125,21 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
       audio.removeEventListener("volumechange", onVolumeChange);
     };
   }, [src, syncFromAudio]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    let rafId = 0;
+    const tick = () => {
+      setCurrentTime(audio.currentTime);
+      setDuration(resolveAudioDuration(audio));
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [playing, src]);
 
   useEffect(() => {
     if (!speedOpen && !volumeOpen) return;
@@ -132,18 +170,19 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
     }
   };
 
-  const seekToClientX = useCallback(
-    (clientX: number) => {
-      const bar = progressRef.current;
-      const audio = audioRef.current;
-      if (!bar || !audio || duration <= 0) return;
-      const rect = bar.getBoundingClientRect();
-      const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      audio.currentTime = pct * duration;
-      setCurrentTime(audio.currentTime);
-    },
-    [duration],
-  );
+  const seekToClientX = useCallback((clientX: number) => {
+    const bar = progressRef.current;
+    const audio = audioRef.current;
+    if (!bar || !audio) return;
+    const dur = resolveAudioDuration(audio);
+    if (dur <= 0) return;
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    audio.currentTime = pct * dur;
+    setCurrentTime(audio.currentTime);
+    setDuration(dur);
+  }, []);
 
   const onProgressPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     draggingRef.current = true;
@@ -237,33 +276,39 @@ export function ChatAudioPlayer({ src, outbound = false, className }: Props) {
             onPointerCancel={onProgressPointerUp}
             onKeyDown={(event) => {
               const audio = audioRef.current;
-              if (!audio || duration <= 0) return;
+              if (!audio) return;
+              const dur = resolveAudioDuration(audio);
+              if (dur <= 0) return;
               const step = event.shiftKey ? 5 : 1;
               if (event.key === "ArrowRight") {
                 event.preventDefault();
-                audio.currentTime = Math.min(duration, audio.currentTime + step);
+                audio.currentTime = Math.min(dur, audio.currentTime + step);
+                setCurrentTime(audio.currentTime);
               } else if (event.key === "ArrowLeft") {
                 event.preventDefault();
                 audio.currentTime = Math.max(0, audio.currentTime - step);
+                setCurrentTime(audio.currentTime);
               }
             }}
             className={clsx(
-              "chat-audio-player__track group relative h-1 cursor-pointer rounded-full transition-colors duration-150",
+              "group relative flex min-h-[18px] cursor-pointer items-center rounded-full py-1.5",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50",
             )}
           >
-            <div
-              className="chat-audio-player__progress-fill absolute inset-y-0 left-0 rounded-full transition-[width] duration-150"
-              style={{ width: `${progressPct}%` }}
-            />
-            <div
-              className={clsx(
-                "chat-audio-player__progress-thumb absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-150",
-                "group-hover:opacity-100 group-focus-visible:opacity-100",
-              )}
-              style={{ left: `calc(${progressPct}% - 5px)` }}
-              aria-hidden
-            />
+            <div className="chat-audio-player__track relative h-1 w-full rounded-full">
+              <div
+                className="chat-audio-player__progress-fill pointer-events-none absolute inset-y-0 left-0 rounded-full"
+                style={{ width: `${progressPct}%` }}
+              />
+              <div
+                className={clsx(
+                  "chat-audio-player__progress-thumb pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full opacity-0 transition-opacity duration-150",
+                  "group-hover:opacity-100 group-focus-visible:opacity-100",
+                )}
+                style={{ left: `calc(${progressPct}% - 5px)` }}
+                aria-hidden
+              />
+            </div>
           </div>
           <div className="chat-audio-player__control mt-1 flex items-center justify-between tabular-nums opacity-80">
             <span className="text-[10px] leading-none">{formatAudioTime(currentTime)}</span>
