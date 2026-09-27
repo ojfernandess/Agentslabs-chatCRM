@@ -10,6 +10,8 @@ interface Props {
   className?: string;
   /** Renders in a body portal positioned relative to the anchor (escapes overflow-hidden parents). */
   anchorRef?: RefObject<HTMLElement | null>;
+  /** Exposes the panel element for click-outside handlers when portaled. */
+  panelRef?: RefObject<HTMLDivElement | null>;
 }
 
 function computePickerPosition(
@@ -42,9 +44,18 @@ export function EmojiPickerPopover({
   categoryLabel,
   className,
   anchorRef,
+  panelRef: externalPanelRef,
 }: Props) {
   const [category, setCategory] = useState<EmojiCategoryId>("smileys");
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const assignPanelRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      panelRef.current = el;
+      if (externalPanelRef) externalPanelRef.current = el;
+    },
+    [externalPanelRef],
+  );
   const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   const updatePosition = useCallback(() => {
@@ -86,7 +97,7 @@ export function EmojiPickerPopover({
 
   const picker = (
     <div
-      ref={panelRef}
+      ref={assignPanelRef}
       className={clsx(
         portaled
           ? "fixed z-[200] w-72 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-xl dark:border-ink-600 dark:bg-ink-900"

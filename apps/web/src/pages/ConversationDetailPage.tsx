@@ -686,6 +686,7 @@ export function ConversationDetailPage() {
   }, [leadTypeId, resolveOpen, activePlaybook, showRemindersFeature, resolveOfferReminder]);
 
   const emojiWrapRef = useRef<HTMLDivElement>(null);
+  const emojiPickerPanelRef = useRef<HTMLDivElement>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const resizeComposerTextarea = useAutoResizeTextarea(
     composerTextareaRef,
@@ -1697,7 +1698,14 @@ export function ConversationDetailPage() {
     if (!emojiOpen && !cannedMenuOpen) return;
     const onDown = (e: MouseEvent) => {
       const node = e.target as Node;
-      if (emojiOpen && emojiWrapRef.current && !emojiWrapRef.current.contains(node)) setEmojiOpen(false);
+      if (
+        emojiOpen &&
+        emojiWrapRef.current &&
+        !emojiWrapRef.current.contains(node) &&
+        !emojiPickerPanelRef.current?.contains(node)
+      ) {
+        setEmojiOpen(false);
+      }
       if (
         cannedMenuOpen &&
         !(cannedWrapRef.current?.contains(node) || cannedPanelRef.current?.contains(node))
@@ -5273,6 +5281,7 @@ export function ConversationDetailPage() {
                     <EmojiPickerPopover
                       open={emojiOpen}
                       anchorRef={emojiWrapRef}
+                      panelRef={emojiPickerPanelRef}
                       onSelect={(em) => {
                         insertTextAtSelection(composerTextareaRef.current, newMessage, em, setNewMessage);
                         setEmojiOpen(false);
