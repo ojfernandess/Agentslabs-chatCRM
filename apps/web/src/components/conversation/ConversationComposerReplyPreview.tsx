@@ -13,7 +13,7 @@ export function ConversationComposerReplyPreview({ reply, onCancel }: Props) {
     <div className="mb-2 flex items-start gap-2 rounded-xl border border-brand-300/50 bg-brand-50/80 px-3 py-2 dark:border-brand-500/30 dark:bg-brand-950/30">
       <div className="min-w-0 flex-1 border-l-2 border-brand-500 pl-2.5">
         <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">
-          {t("conversationDetail.replyingTo", { name: reply.senderLabel })}
+          {t("conversationDetail.replyingTo").replace("{name}", reply.senderLabel)}
         </p>
         <p className="mt-0.5 line-clamp-2 text-xs text-ink-600 dark:text-ink-300">{reply.preview}</p>
       </div>
