@@ -1,5 +1,6 @@
 import type { MessageDirection, MessageStatus, MessageType } from "@prisma/client";
 import { prisma } from "../db.js";
+import type { MessageReactionApiRow } from "./messageReactions.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
 import {
   encodeConversationMessageCursor,
@@ -110,6 +111,19 @@ export function broadcastConversationMessageUpdated(
     type: "message.updated",
     conversationId,
     message,
+  });
+}
+
+export function broadcastConversationMessageReactionsUpdated(
+  organizationId: string,
+  conversationId: string,
+  messageId: string,
+  reactions: MessageReactionApiRow[],
+): void {
+  broadcastToOrganization(organizationId, {
+    type: "message.reactions_updated",
+    conversationId,
+    message: { id: messageId, reactions },
   });
 }
 

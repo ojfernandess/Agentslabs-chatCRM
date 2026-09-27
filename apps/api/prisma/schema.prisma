@@ -53,6 +53,11 @@ enum MessageStatus {
   FAILED
 }
 
+enum MessageReactionSenderType {
+  CONTACT
+  AGENT
+}
+
 enum BroadcastCampaignStatus {
   DRAFT
   RUNNING
@@ -581,6 +586,7 @@ model User {
   teamMemberships              TeamMember[]
   inboxMemberships             InboxMember[]
   messagesAsActor              Message[]                     @relation("MessageActor")
+  messageReactions             MessageReaction[]             @relation("MessageReactionActor")
   broadcastCampaignsCreated    BroadcastCampaign[]           @relation("BroadcastCampaignCreator")
   broadcastCampaignsApproved   BroadcastCampaign[]           @relation("BroadcastCampaignApprover")
   automationKnowledgeRevisions AutomationKnowledgeRevision[]
@@ -1279,12 +1285,32 @@ model Message {
   wavoipCallLog WavoipCallLog?
   threeCxCallLog ThreeCxCallLog?
   nvoipCallLog   NvoipCallLog?
+  reactions      MessageReaction[]
 
   @@index([conversationId])
   @@index([conversationId, createdAt])
   @@index([providerMsgId])
   @@index([actorUserId])
   @@map("messages")
+}
+
+model MessageReaction {
+  id         String                    @id @default(uuid()) @db.Uuid
+  emoji      String                    @db.VarChar(32)
+  actorKey   String                    @map("actor_key") @db.VarChar(128)
+  senderType MessageReactionSenderType @map("sender_type")
+  createdAt  DateTime                  @default(now()) @map("created_at")
+  updatedAt  DateTime                  @updatedAt @map("updated_at")
+
+  messageId String  @map("message_id") @db.Uuid
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  actorUser   User?   @relation("MessageReactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([messageId, actorKey])
+  @@index([messageId])
+  @@map("message_reactions")
 }
 
 model Reminder {

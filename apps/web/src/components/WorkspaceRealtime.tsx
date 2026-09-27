@@ -22,6 +22,7 @@ import {
 import { publishConversationAgentTyping } from "@/lib/conversationAgentTyping";
 import {
   publishConversationMessageCreated,
+  publishConversationMessageReactionsUpdated,
   publishConversationMessageUpdated,
   type ConversationMessagePushPayload,
 } from "@/lib/conversationMessagePush";
@@ -231,6 +232,17 @@ export function WorkspaceRealtime() {
         publishConversationMessageUpdated({
           conversationId: data.conversationId,
           message: { id: data.message.id, status: data.message.status },
+        });
+      } else if (
+        data.type === "message.reactions_updated" &&
+        typeof data.conversationId === "string" &&
+        data.message &&
+        typeof data.message.id === "string" &&
+        Array.isArray(data.message.reactions)
+      ) {
+        publishConversationMessageReactionsUpdated({
+          conversationId: data.conversationId,
+          message: { id: data.message.id, reactions: data.message.reactions },
         });
       } else if (
         (data.type === "conversation.read" || data.type === "conversation.unread") &&

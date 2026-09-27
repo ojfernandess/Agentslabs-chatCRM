@@ -1,3 +1,5 @@
+import type { ConversationMessageReaction } from "@/lib/conversationMessageReactions";
+
 export type ConversationMessagePushPayload = {
   id: string;
   direction: string;
@@ -11,6 +13,7 @@ export type ConversationMessagePushPayload = {
   createdAt: string;
   channel?: string | null;
   cursor?: string | null;
+  reactions?: ConversationMessageReaction[] | null;
   actorUser?: {
     id: string;
     name: string;
@@ -21,6 +24,7 @@ export type ConversationMessagePushPayload = {
 
 export const CONVERSATION_MESSAGE_CREATED_EVENT = "openconduit:conversation-message-created";
 export const CONVERSATION_MESSAGE_UPDATED_EVENT = "openconduit:conversation-message-updated";
+export const CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT = "openconduit:conversation-message-reactions-updated";
 
 export type ConversationMessageCreatedDetail = {
   conversationId: string;
@@ -32,10 +36,19 @@ export type ConversationMessageUpdatedDetail = {
   message: Pick<ConversationMessagePushPayload, "id" | "status">;
 };
 
+export type ConversationMessageReactionsUpdatedDetail = {
+  conversationId: string;
+  message: { id: string; reactions: ConversationMessageReaction[] };
+};
+
 export function publishConversationMessageCreated(detail: ConversationMessageCreatedDetail): void {
   window.dispatchEvent(new CustomEvent(CONVERSATION_MESSAGE_CREATED_EVENT, { detail }));
 }
 
 export function publishConversationMessageUpdated(detail: ConversationMessageUpdatedDetail): void {
   window.dispatchEvent(new CustomEvent(CONVERSATION_MESSAGE_UPDATED_EVENT, { detail }));
+}
+
+export function publishConversationMessageReactionsUpdated(detail: ConversationMessageReactionsUpdatedDetail): void {
+  window.dispatchEvent(new CustomEvent(CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT, { detail }));
 }

@@ -3,6 +3,7 @@ import {
   WhatsAppProviderInterface,
   SendMessageParams,
   IncomingMessage,
+  ReactionUpdate,
   StatusUpdate,
   WebhookParseResult,
 } from "./types.js";
@@ -121,6 +122,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   ): WebhookParseResult {
     const messages: IncomingMessage[] = [];
     const statusUpdates: StatusUpdate[] = [];
+    const reactionUpdates: ReactionUpdate[] = [];
 
     const payload = body as {
       entry?: {
@@ -142,6 +144,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
               };
               button?: { text?: string; payload?: string };
               sticker?: { id: string; mime_type?: string };
+              reaction?: { message_id: string; emoji?: string };
               location?: { latitude?: number; longitude?: number; name?: string; address?: string };
               image?: { id: string; mime_type: string; caption?: string };
               document?: { id: string; mime_type: string; filename?: string; caption?: string };
@@ -180,6 +183,16 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         }
 
         for (const msg of value.messages ?? []) {
+          if (msg.type === "reaction" && msg.reaction?.message_id) {
+            reactionUpdates.push({
+              from: `+${msg.from}`,
+              targetWaMessageId: msg.reaction.message_id,
+              emoji: msg.reaction.emoji ?? "",
+              timestamp: new Date(parseInt(msg.timestamp, 10) * 1000),
+            });
+            continue;
+          }
+
           const typeMap: Record<string, string> = {
             text: "TEXT",
             image: "IMAGE",
@@ -272,7 +285,37 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       }
     }
 
-    return { messages, statusUpdates };
+    return { messages, statusUpdates, reactionUpdates };
+  }
+
+  /** Send or remove a reaction on a WhatsApp message (empty emoji removes). */
+  async sendReaction(to: string, messageId: string, emoji: string): Promise<string> {
+    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to.replace("+", ""),
+        type: "reaction",
+        reaction: {
+          message_id: messageId,
+          emoji,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Meta API error: ${response.status} ${error}`);
+    }
+
+    const data = (await response.json()) as { messages: { id: string }[] };
+    return data.messages[0].id;
   }
 
   validateWebhookSignature(

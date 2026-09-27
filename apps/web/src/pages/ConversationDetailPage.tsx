@@ -89,10 +89,17 @@ import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversatio
 import { useWorkspaceWebSocketConnected } from "@/lib/workspaceWebSocket";
 import {
   CONVERSATION_MESSAGE_CREATED_EVENT,
+  CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT,
   CONVERSATION_MESSAGE_UPDATED_EVENT,
   type ConversationMessageCreatedDetail,
+  type ConversationMessageReactionsUpdatedDetail,
   type ConversationMessageUpdatedDetail,
 } from "@/lib/conversationMessagePush";
+import {
+  normalizeConversationMessageReactions,
+  type ConversationMessageReaction,
+} from "@/lib/conversationMessageReactions";
+import { ConversationMessageReactions } from "@/components/conversation/ConversationMessageReactions";
 import { useConversationAgentTyping } from "@/hooks/useConversationAgentTyping";
 import { BotTypingIndicator } from "@/components/conversation/BotTypingIndicator";
 import { useOrgAvailabilityRealtime } from "@/hooks/useOrgAvailabilityRealtime";
@@ -211,6 +218,7 @@ interface Message {
   /** Canal de origem quando difere do canal da inbox (ex.: "WEBCHAT"). */
   channel?: string | null;
   actorUser?: { id: string; name: string; displayName: string | null; showAgentNameInChat?: boolean } | null;
+  reactions?: ConversationMessageReaction[] | unknown[];
 }
 
 interface LeadTypeRow {
@@ -1336,6 +1344,42 @@ export function ConversationDetailPage() {
     });
   }, [id]);
 
+  const patchPushedMessageReactions = useCallback(
+    (messageId: string, reactions: ConversationMessageReaction[]) => {
+      if (!id) return;
+      setConversation((prev) => {
+        if (!prev?.messages?.length) return prev;
+        let changed = false;
+        const messages = prev.messages!.map((m) => {
+          if (m.id !== messageId) return m;
+          changed = true;
+          return { ...m, reactions };
+        });
+        if (!changed) return prev;
+        const merged: ConversationDetail = { ...prev, messages };
+        setCachedConversation(id, merged);
+        return merged;
+      });
+    },
+    [id],
+  );
+
+  const toggleMessageReaction = useCallback(
+    async (messageId: string, emoji: string) => {
+      if (!id) return;
+      try {
+        const res = await api.post<{ reactions: ConversationMessageReaction[] }>(
+          `/conversations/${id}/messages/${messageId}/reactions`,
+          { emoji },
+        );
+        patchPushedMessageReactions(messageId, res.reactions);
+      } catch {
+        window.alert(t("conversationDetail.reactionFailed"));
+      }
+    },
+    [id, patchPushedMessageReactions, t],
+  );
+
   useEffect(() => {
     setNewContactNoteDraft("");
     setContactNotesError("");
@@ -1711,13 +1755,20 @@ export function ConversationDetailPage() {
       if (detail?.conversationId !== id || !detail.message?.id) return;
       patchPushedMessageStatus(detail.message.id, detail.message.status);
     };
+    const onMessageReactionsUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<ConversationMessageReactionsUpdatedDetail>).detail;
+      if (detail?.conversationId !== id || !detail.message?.id) return;
+      patchPushedMessageReactions(detail.message.id, detail.message.reactions);
+    };
     window.addEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
     window.addEventListener(CONVERSATION_MESSAGE_UPDATED_EVENT, onMessageUpdated);
+    window.addEventListener(CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT, onMessageReactionsUpdated);
     return () => {
       window.removeEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
       window.removeEventListener(CONVERSATION_MESSAGE_UPDATED_EVENT, onMessageUpdated);
+      window.removeEventListener(CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT, onMessageReactionsUpdated);
     };
-  }, [id, appendPushedMessage, patchPushedMessageStatus]);
+  }, [id, appendPushedMessage, patchPushedMessageStatus, patchPushedMessageReactions]);
 
   useEffect(() => {
     if (!id) return;
@@ -2738,6 +2789,8 @@ export function ConversationDetailPage() {
     (conversation.status === "OPEN" || conversation.status === "PENDING") &&
     hasHumanAssignee;
   const isWhatsappInbox = conversation.inbox?.channelType === "WHATSAPP";
+  const whatsappReactionsEnabled =
+    isWhatsappInbox && (whatsappProvider === "meta" || whatsappProvider === "360dialog");
   const isWebsiteInbox = conversation.inbox?.channelType === "WEBSITE";
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
@@ -4528,6 +4581,9 @@ export function ConversationDetailPage() {
               if (isEmailInbox && msg.type === "TEXT" && !hasRenderableBody) return null;
 
               const outboundActorLabel = outboundMessageActorLabel(msg, conversationBotName);
+              const messageReactions = normalizeConversationMessageReactions(msg.reactions, user?.id);
+              const canReactToMessage = whatsappReactionsEnabled && !msg.isPrivate;
+              const showMessageReactions = messageReactions.length > 0 || canReactToMessage;
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -4715,12 +4771,27 @@ export function ConversationDetailPage() {
                 </div>
               );
 
+              const messageColumn = (
+                <div className="flex min-w-0 flex-col">
+                  {bubble}
+                  {showMessageReactions ? (
+                    <ConversationMessageReactions
+                      messageId={msg.id}
+                      reactions={messageReactions}
+                      inbound={inbound}
+                      canReact={canReactToMessage}
+                      onToggleReaction={toggleMessageReaction}
+                    />
+                  ) : null}
+                </div>
+              );
+
               return (
                 <motion.div
                   key={msg.id}
                   id={`conversation-message-${msg.id}`}
                   className={clsx(
-                    "flex w-full min-w-0 gap-3",
+                    "group flex w-full min-w-0 gap-3",
                     emailWorkspaceMode && msg.type === "TEXT" ? "items-stretch" : "",
                     inbound ? "justify-start" : "justify-end",
                     blockSpacing,
@@ -4736,11 +4807,11 @@ export function ConversationDetailPage() {
                   {inbound ? (
                     <>
                       {!emailWorkspaceMode ? avatarCol : null}
-                      {bubble}
+                      {messageColumn}
                     </>
                   ) : (
                     <>
-                      {bubble}
+                      {messageColumn}
                       {!emailWorkspaceMode ? avatarCol : null}
                     </>
                   )}

@@ -17,6 +17,14 @@ import { isAgentEligibleForTransfer } from "../lib/presenceService.js";
 import type { InboxChannelType, Prisma } from "@prisma/client";
 import { appendTimelineEvent } from "../lib/timeline.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
+import {
+  loadMessageReactionsForApi,
+  messageReactionInclude,
+  toggleAgentMessageReaction,
+} from "../lib/messageReactions.js";
+import { broadcastConversationMessageReactionsUpdated } from "../lib/workspaceMessageBroadcast.js";
+import { getWhatsAppProviderForInbox, getWhatsappProviderKindForInbox } from "../providers/factory.js";
+import { MetaCloudApiProvider } from "../providers/meta.js";
 import { endWebchatSessionForConversation } from "../lib/webchatSession.js";
 import { buildCsatWhatsAppBody, newCsatSurveyToken } from "../lib/csatSurvey.js";
 import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
@@ -177,7 +185,12 @@ const conversationMessageInclude = {
   actorUser: {
     select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
   },
+  reactions: {
+    include: messageReactionInclude,
+  },
 } as const;
+
+const reactionEmojiSchema = z.string().min(1).max(32);
 
 const conversationDetailQuerySchema = z.object({
   messages: z.enum(["0", "false"]).optional(),
@@ -1840,6 +1853,105 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       throw err;
     }
   });
+
+  app.post<{ Params: { id: string; messageId: string } }>(
+    "/:id/messages/:messageId/reactions",
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+
+      const parsed = z.object({ emoji: reactionEmojiSchema }).safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
+      }
+
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: request.params.id, organizationId },
+        select: {
+          id: true,
+          teamId: true,
+          inboxId: true,
+          contact: { select: { phone: true } },
+        },
+      });
+      if (!conversation) {
+        return reply.status(404).send({ error: "Not Found", message: "Conversation not found", statusCode: 404 });
+      }
+
+      if (request.user.role === "AGENT") {
+        const ok = await agentCanAccessConversation(request.user.id, organizationId, conversation);
+        if (!ok) {
+          return reply.status(403).send({ error: "Forbidden", message: "Access denied", statusCode: 403 });
+        }
+      }
+
+      const providerKind = await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId);
+      if (providerKind !== "meta" && providerKind !== "360dialog") {
+        return reply.status(422).send({
+          error: "Unprocessable Entity",
+          message: "Message reactions are only supported for Meta Cloud API inboxes",
+          statusCode: 422,
+        });
+      }
+
+      const message = await prisma.message.findFirst({
+        where: {
+          id: request.params.messageId,
+          conversationId: conversation.id,
+        },
+        select: { id: true, providerMsgId: true, isPrivate: true },
+      });
+      if (!message) {
+        return reply.status(404).send({ error: "Not Found", message: "Message not found", statusCode: 404 });
+      }
+      if (!message.providerMsgId) {
+        return reply.status(422).send({
+          error: "Unprocessable Entity",
+          message: "This message cannot be reacted to on WhatsApp",
+          statusCode: 422,
+        });
+      }
+
+      const emoji = parsed.data.emoji.trim();
+      const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
+      if (!(provider instanceof MetaCloudApiProvider)) {
+        return reply.status(422).send({
+          error: "Unprocessable Entity",
+          message: "WhatsApp provider is not configured for reactions",
+          statusCode: 422,
+        });
+      }
+
+      const existing = await prisma.messageReaction.findUnique({
+        where: {
+          messageId_actorKey: {
+            messageId: message.id,
+            actorKey: `agent:${request.user.id}`,
+          },
+        },
+      });
+      const willRemove = existing?.emoji === emoji;
+      const outboundEmoji = willRemove ? "" : emoji;
+
+      try {
+        await provider.sendReaction(conversation.contact.phone, message.providerMsgId, outboundEmoji);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "WhatsApp reaction failed";
+        return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
+      }
+
+      const toggled = await toggleAgentMessageReaction({
+        messageId: message.id,
+        userId: request.user.id,
+        emoji: outboundEmoji,
+      });
+
+      const reactions = await loadMessageReactionsForApi(message.id, request.user.id);
+      broadcastConversationMessageReactionsUpdated(organizationId, conversation.id, message.id, reactions);
+
+      return { toggled, emoji: outboundEmoji || emoji, reactions };
+    },
+  );
 
   app.get<{ Params: { id: string } }>("/:id/list-row", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);

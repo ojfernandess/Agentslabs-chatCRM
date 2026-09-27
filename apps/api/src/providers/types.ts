@@ -58,6 +58,15 @@ export interface StatusUpdate {
   metaPricing?: MetaWebhookPricing;
 }
 
+/** Meta Cloud API inbound reaction event — one reaction per contact per message. */
+export interface ReactionUpdate {
+  from: string;
+  targetWaMessageId: string;
+  /** Empty string means the contact removed their reaction. */
+  emoji: string;
+  timestamp: Date;
+}
+
 /** Evolution (Baileys) CONTACTS_* webhooks — outros provedores podem devolver vazio. */
 export interface ContactSyncPatch {
   phone: string;
@@ -68,6 +77,7 @@ export interface ContactSyncPatch {
 export type WebhookParseResult = {
   messages: IncomingMessage[];
   statusUpdates: StatusUpdate[];
+  reactionUpdates?: ReactionUpdate[];
   contactSync?: ContactSyncPatch[];
 };
 

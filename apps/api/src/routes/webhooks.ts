@@ -37,6 +37,11 @@ import {
 import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { syncContactProfilePicture } from "../lib/contactProfilePictureResolve.js";
 import {
+  applyContactMessageReaction,
+  loadMessageReactionsForApi,
+} from "../lib/messageReactions.js";
+import {
+  broadcastConversationMessageReactionsUpdated,
   broadcastConversationMessageUpdated,
   notifyConversationNewMessage,
   serializeMessageForWorkspaceWs,
@@ -320,7 +325,7 @@ async function handleWhatsAppPost(
     }
   }
 
-  const { messages, statusUpdates, contactSync } = provider.parseWebhook(
+  const { messages, statusUpdates, reactionUpdates = [], contactSync } = provider.parseWebhook(
     request.headers as Record<string, string | undefined>,
     body,
   );
@@ -328,6 +333,7 @@ async function handleWhatsAppPost(
   if (
     messages.length === 0 &&
     statusUpdates.length === 0 &&
+    reactionUpdates.length === 0 &&
     (!contactSync || contactSync.length === 0) &&
     body &&
     typeof body === "object" &&
@@ -784,6 +790,48 @@ async function handleWhatsAppPost(
     }
   }
 
+  for (const reaction of reactionUpdates) {
+    try {
+      const phone = normalizePhoneE164(reaction.from);
+      if (!phone) {
+        app.log.warn({ from: reaction.from }, "Invalid phone on WhatsApp reaction webhook");
+        continue;
+      }
+
+      const targetMsg = await prisma.message.findFirst({
+        where: {
+          providerMsgId: reaction.targetWaMessageId,
+          conversation: { organizationId },
+        },
+        select: { id: true, conversationId: true },
+      });
+      if (!targetMsg) {
+        app.log.info(
+          { organizationId, targetWaMessageId: reaction.targetWaMessageId },
+          "WhatsApp reaction target message not found",
+        );
+        continue;
+      }
+
+      await applyContactMessageReaction({
+        messageId: targetMsg.id,
+        phoneE164: phone,
+        emoji: reaction.emoji,
+      });
+
+      const reactions = await loadMessageReactionsForApi(targetMsg.id);
+      broadcastConversationMessageReactionsUpdated(
+        organizationId,
+        targetMsg.conversationId,
+        targetMsg.id,
+        reactions,
+      );
+      processedWebhookEvents += 1;
+    } catch (err) {
+      app.log.error(err, "Error processing WhatsApp reaction update");
+    }
+  }
+
   for (const status of statusUpdates) {
     try {
       const targetMsg = await prisma.message.findFirst({
@@ -819,7 +867,13 @@ async function handleWhatsAppPost(
     }
   }
 
-  if (processedWebhookEvents > 0 || statusUpdates.length > 0 || messages.length > 0 || isMetaCloudWebhookPayload(body)) {
+  if (
+    processedWebhookEvents > 0 ||
+    statusUpdates.length > 0 ||
+    reactionUpdates.length > 0 ||
+    messages.length > 0 ||
+    isMetaCloudWebhookPayload(body)
+  ) {
     void recordWhatsappInboundWebhook(target.inboxId).catch((err) =>
       app.log.warn({ err, inboxId: target.inboxId }, "Failed to record WhatsApp webhook activity"),
     );

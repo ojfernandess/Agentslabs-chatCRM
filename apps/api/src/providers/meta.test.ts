@@ -94,3 +94,62 @@ test("MetaCloudApiProvider parses status pricing from delivered webhook", () => 
   assert.equal(parsed.statusUpdates[0]?.metaPricing?.billable, false);
   assert.equal(parsed.statusUpdates[0]?.metaPricing?.type, "free_customer_service");
 });
+
+test("MetaCloudApiProvider parses inbound reaction add", () => {
+  const provider = new MetaCloudApiProvider("token", "123");
+  const parsed = provider.parseWebhook({}, {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              metadata: { phone_number_id: "1" },
+              messages: [
+                {
+                  from: "5511999990001",
+                  id: "wamid.reaction",
+                  type: "reaction",
+                  reaction: { message_id: "wamid.target", emoji: "❤️" },
+                  timestamp: "1710000200",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(parsed.messages.length, 0);
+  assert.equal(parsed.reactionUpdates?.length, 1);
+  assert.equal(parsed.reactionUpdates?.[0]?.targetWaMessageId, "wamid.target");
+  assert.equal(parsed.reactionUpdates?.[0]?.emoji, "❤️");
+  assert.equal(parsed.reactionUpdates?.[0]?.from, "+5511999990001");
+});
+
+test("MetaCloudApiProvider parses inbound reaction removal", () => {
+  const provider = new MetaCloudApiProvider("token", "123");
+  const parsed = provider.parseWebhook({}, {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              metadata: { phone_number_id: "1" },
+              messages: [
+                {
+                  from: "5511999990001",
+                  id: "wamid.reaction.remove",
+                  type: "reaction",
+                  reaction: { message_id: "wamid.target" },
+                  timestamp: "1710000300",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(parsed.reactionUpdates?.length, 1);
+  assert.equal(parsed.reactionUpdates?.[0]?.emoji, "");
+});
