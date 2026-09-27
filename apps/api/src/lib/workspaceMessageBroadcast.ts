@@ -1,6 +1,8 @@
 import type { MessageDirection, MessageStatus, MessageType } from "@prisma/client";
 import { prisma } from "../db.js";
 import type { MessageReactionApiRow } from "./messageReactions.js";
+import type { MessageReplyToApi } from "./messageReply.js";
+import { messageReplyToInclude, resolveMessageReplyForApi } from "./messageReply.js";
 import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
 import {
   encodeConversationMessageCursor,
@@ -26,6 +28,7 @@ export type WorkspaceMessagePayload = {
     displayName: string | null;
     showAgentNameInChat?: boolean;
   } | null;
+  replyTo?: MessageReplyToApi | null;
 };
 
 type MessageLike = {
@@ -56,8 +59,28 @@ const actorUserSelect = {
   showAgentNameInChat: true,
 } as const;
 
-export function serializeMessageForWorkspaceWs(message: MessageLike): WorkspaceMessagePayload {
+type SerializeMessageWsOptions = {
+  contactName?: string;
+  replyTo?: MessageReplyToApi | null;
+};
+
+export function serializeMessageForWorkspaceWs(
+  message: MessageLike,
+  options?: SerializeMessageWsOptions,
+): WorkspaceMessagePayload {
   const sentAt = message.sentAt ?? message.createdAt;
+  const replyTo =
+    options?.replyTo ??
+    (options?.contactName && "replyTo" in message
+      ? resolveMessageReplyForApi(
+          message as {
+            replyToMessageId?: string | null;
+            replyToExternalMsgId?: string | null;
+            replyTo?: Parameters<typeof resolveMessageReplyForApi>[0]["replyTo"];
+          },
+          options.contactName,
+        )
+      : null);
   return {
     id: message.id,
     direction: message.direction,
@@ -79,15 +102,25 @@ export function serializeMessageForWorkspaceWs(message: MessageLike): WorkspaceM
           showAgentNameInChat: message.actorUser.showAgentNameInChat,
         }
       : null,
+    replyTo: replyTo ?? null,
   };
 }
 
 export async function loadMessageForWorkspaceWs(messageId: string): Promise<WorkspaceMessagePayload | null> {
   const row = await prisma.message.findUnique({
     where: { id: messageId },
-    include: { actorUser: { select: actorUserSelect } },
+    include: {
+      actorUser: { select: actorUserSelect },
+      replyTo: messageReplyToInclude,
+      conversation: { select: { contact: { select: { name: true } } } },
+    },
   });
-  return row ? serializeMessageForWorkspaceWs(row) : null;
+  return row
+    ? serializeMessageForWorkspaceWs(row, {
+        contactName: row.conversation.contact.name,
+        replyTo: resolveMessageReplyForApi(row, row.conversation.contact.name),
+      })
+    : null;
 }
 
 export function broadcastConversationMessageCreated(

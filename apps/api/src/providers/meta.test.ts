@@ -126,6 +126,36 @@ test("MetaCloudApiProvider parses inbound reaction add", () => {
   assert.equal(parsed.reactionUpdates?.[0]?.from, "+5511999990001");
 });
 
+test("MetaCloudApiProvider parses inbound quoted reply context", () => {
+  const provider = new MetaCloudApiProvider("token", "123");
+  const parsed = provider.parseWebhook({}, {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              metadata: { phone_number_id: "1" },
+              messages: [
+                {
+                  from: "5511999990001",
+                  id: "wamid.reply.child",
+                  type: "text",
+                  context: { from: "5511888880001", id: "wamid.reply.parent" },
+                  text: { body: "Sim, quero." },
+                  timestamp: "1710000400",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(parsed.messages.length, 1);
+  assert.equal(parsed.messages[0]?.quotedProviderMsgId, "wamid.reply.parent");
+  assert.equal(parsed.messages[0]?.body, "Sim, quero.");
+});
+
 test("MetaCloudApiProvider parses inbound reaction removal", () => {
   const provider = new MetaCloudApiProvider("token", "123");
   const parsed = provider.parseWebhook({}, {

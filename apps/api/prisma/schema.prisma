@@ -1287,10 +1287,17 @@ model Message {
   nvoipCallLog   NvoipCallLog?
   reactions      MessageReaction[]
 
+  replyToMessageId String?  @map("reply_to_message_id") @db.Uuid
+  replyTo          Message? @relation("MessageReplyTo", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          Message[] @relation("MessageReplyTo")
+  /// wamid da mensagem citada quando o alvo interno não foi encontrado (ex.: webhook inbound).
+  replyToExternalMsgId String? @map("reply_to_external_msg_id") @db.VarChar(128)
+
   @@index([conversationId])
   @@index([conversationId, createdAt])
   @@index([providerMsgId])
   @@index([actorUserId])
+  @@index([replyToMessageId])
   @@map("messages")
 }
 
@@ -1658,6 +1665,9 @@ model Settings {
   conversationsQuickContactAddEnabled Boolean @default(false) @map("conversations_quick_contact_add_enabled")
   /// Largura da fila (split view) em Conversas: default | medium | large.
   conversationsSplitViewSize String @default("default") @map("conversations_split_view_size") @db.VarChar(16)
+
+  /// Permite responder mensagens específicas (Meta Cloud API — reply/quote).
+  replyToMessageEnabled Boolean @default(false) @map("reply_to_message_enabled")
 
   /// URL para webhook de alertas de IA (sentimento negativo, frustração, etc.).
   aiAlertWebhookUrl String? @map("ai_alert_webhook_url") @db.VarChar(2048)

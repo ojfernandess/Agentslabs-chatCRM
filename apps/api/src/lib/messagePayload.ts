@@ -26,8 +26,17 @@ export const sendMessageSchema = z
     emailCc: z.string().max(4000).optional(),
     /** Cópia oculta (Cco / Bcc). */
     emailBcc: z.string().max(4000).optional(),
+    /** Responder a uma mensagem específica (UUID interno). */
+    replyToMessageId: z.string().uuid().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.replyToMessageId && data.isPrivate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["replyToMessageId"],
+        message: "private notes cannot reply to messages",
+      });
+    }
     if (data.type === "TEMPLATE") {
       if (data.isPrivate) {
         ctx.addIssue({

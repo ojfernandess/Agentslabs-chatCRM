@@ -28,6 +28,10 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       to: params.to.replace("+", ""),
     };
 
+    if (params.replyToProviderMsgId?.trim()) {
+      payload.context = { message_id: params.replyToProviderMsgId.trim() };
+    }
+
     if (params.type === "TEXT") {
       payload.type = "text";
       payload.text = { body: params.body };
@@ -145,6 +149,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
               button?: { text?: string; payload?: string };
               sticker?: { id: string; mime_type?: string };
               reaction?: { message_id: string; emoji?: string };
+              context?: { from?: string; id?: string };
               location?: { latitude?: number; longitude?: number; name?: string; address?: string };
               image?: { id: string; mime_type: string; caption?: string };
               document?: { id: string; mime_type: string; filename?: string; caption?: string };
@@ -243,6 +248,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             from: fromE164,
             waMessageId: msg.id,
             type: mappedType,
+            quotedProviderMsgId: msg.context?.id ?? undefined,
             body: bodyText,
             mediaType:
               msg.image?.mime_type ??

@@ -145,6 +145,7 @@ const settingsSchema = z.object({
   resolveRequireClosureReason: z.boolean().optional(),
   resolveRequireLeadType: z.boolean().optional(),
   resolveOfferReminder: z.boolean().optional(),
+  replyToMessageEnabled: z.boolean().optional(),
   crmKanbanShowEmailContacts: z.boolean().optional(),
   audioTranscriptionEnabled: z.boolean().optional(),
   imageTranscriptionEnabled: z.boolean().optional(),
@@ -306,16 +307,23 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         resolveRequireClosureReason: true,
         resolveRequireLeadType: true,
         resolveOfferReminder: true,
+        replyToMessageEnabled: true,
       },
     });
     if (!row) {
       await prisma.settings.create({ data: { organizationId } });
-      row = { resolveRequireClosureReason: true, resolveRequireLeadType: true, resolveOfferReminder: true };
+      row = {
+        resolveRequireClosureReason: true,
+        resolveRequireLeadType: true,
+        resolveOfferReminder: true,
+        replyToMessageEnabled: false,
+      };
     }
     return {
       resolveRequireClosureReason: row.resolveRequireClosureReason,
       resolveRequireLeadType: row.resolveRequireLeadType,
       resolveOfferReminder: row.resolveOfferReminder,
+      replyToMessageEnabled: row.replyToMessageEnabled ?? false,
     };
   });
 

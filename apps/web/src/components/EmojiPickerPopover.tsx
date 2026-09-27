@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect, useEffect, useCallback, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { EMOJI_CATEGORIES, type EmojiCategoryId } from "@/lib/emojiPickerData";
 
@@ -7,21 +8,96 @@ interface Props {
   onSelect: (emoji: string) => void;
   categoryLabel: (id: EmojiCategoryId) => string;
   className?: string;
+  /** Renders in a body portal positioned relative to the anchor (escapes overflow-hidden parents). */
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
-export function EmojiPickerPopover({ open, onSelect, categoryLabel, className }: Props) {
+function computePickerPosition(
+  anchor: HTMLElement,
+  panel: HTMLDivElement | null,
+): { top: number; left: number; maxHeight: number } {
+  const rect = anchor.getBoundingClientRect();
+  const viewportPad = 8;
+  const gap = 8;
+  const panelWidth = panel?.offsetWidth ?? 288;
+  const panelHeight = panel?.offsetHeight ?? 260;
+  const spaceAbove = rect.top - viewportPad;
+  const spaceBelow = window.innerHeight - rect.bottom - viewportPad;
+  const openUp = spaceAbove >= panelHeight || spaceAbove >= spaceBelow;
+  const maxHeight = Math.max(120, Math.min(260, openUp ? spaceAbove - gap : spaceBelow - gap));
+  const top = openUp
+    ? Math.max(viewportPad, rect.top - (panel?.offsetHeight ?? panelHeight) - gap)
+    : rect.bottom + gap;
+  let left = rect.left;
+  if (left + panelWidth > window.innerWidth - viewportPad) {
+    left = window.innerWidth - panelWidth - viewportPad;
+  }
+  left = Math.max(viewportPad, left);
+  return { top, left, maxHeight };
+}
+
+export function EmojiPickerPopover({
+  open,
+  onSelect,
+  categoryLabel,
+  className,
+  anchorRef,
+}: Props) {
   const [category, setCategory] = useState<EmojiCategoryId>("smileys");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef?.current;
+    if (!anchor) return;
+    setPos(computePickerPosition(anchor, panelRef.current));
+  }, [anchorRef]);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef) return;
+    updatePosition();
+  }, [open, anchorRef, updatePosition, category]);
+
+  useEffect(() => {
+    if (!open || !anchorRef) return;
+    const onReposition = () => updatePosition();
+    window.addEventListener("scroll", onReposition, true);
+    window.addEventListener("resize", onReposition);
+    return () => {
+      window.removeEventListener("scroll", onReposition, true);
+      window.removeEventListener("resize", onReposition);
+    };
+  }, [open, anchorRef, updatePosition]);
+
+  useEffect(() => {
+    if (!open || !anchorRef || typeof ResizeObserver === "undefined") return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const observer = new ResizeObserver(() => updatePosition());
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [open, anchorRef, updatePosition]);
 
   if (!open) return null;
 
   const active = EMOJI_CATEGORIES.find((c) => c.id === category) ?? EMOJI_CATEGORIES[0];
+  const portaled = Boolean(anchorRef);
+  const gridMaxHeight = portaled && pos ? Math.max(80, pos.maxHeight - 44) : undefined;
 
-  return (
+  const picker = (
     <div
+      ref={panelRef}
       className={clsx(
-        "absolute bottom-full left-0 z-30 mb-2 w-72 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-xl dark:border-ink-600 dark:bg-ink-900",
+        portaled
+          ? "fixed z-[200] w-72 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-xl dark:border-ink-600 dark:bg-ink-900"
+          : "absolute bottom-full left-0 z-30 mb-2 w-72 overflow-hidden rounded-xl border border-ink-200 bg-white shadow-xl dark:border-ink-600 dark:bg-ink-900",
         className,
       )}
+      style={
+        portaled && pos
+          ? { top: pos.top, left: pos.left, maxHeight: pos.maxHeight }
+          : undefined
+      }
     >
       <div className="flex gap-0.5 overflow-x-auto border-b border-ink-100 p-1 dark:border-ink-800">
         {EMOJI_CATEGORIES.map((cat) => (
@@ -40,7 +116,10 @@ export function EmojiPickerPopover({ open, onSelect, categoryLabel, className }:
           </button>
         ))}
       </div>
-      <div className="grid max-h-44 grid-cols-8 gap-0.5 overflow-y-auto p-2">
+      <div
+        className="grid grid-cols-8 gap-0.5 overflow-y-auto p-2"
+        style={gridMaxHeight ? { maxHeight: gridMaxHeight } : { maxHeight: "11rem" }}
+      >
         {active.emojis.map((em) => (
           <button
             key={em}
@@ -54,5 +133,10 @@ export function EmojiPickerPopover({ open, onSelect, categoryLabel, className }:
       </div>
     </div>
   );
-}
 
+  if (portaled) {
+    return createPortal(picker, document.body);
+  }
+
+  return picker;
+}

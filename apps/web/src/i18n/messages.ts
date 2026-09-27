@@ -5133,6 +5133,11 @@ export const messages = {
       reactToMessage: "Reagir à mensagem",
       reactMoreEmojis: "Mais emojis",
       reactionFailed: "Não foi possível salvar a reação.",
+      replyToMessage: "Responder à mensagem",
+      replyAction: "Responder",
+      replyingTo: "Respondendo a {name}",
+      cancelReply: "Cancelar resposta",
+      replyOriginalUnavailable: "↩ Mensagem original indisponível",
       team: "Time",
       noTeam: "Sem time",
       conversationAssignee: "Atendente no atendimento",
@@ -6108,6 +6113,12 @@ export const messages = {
       workflowOfferReminder: "Oferecer criar lembrete ao finalizar atendimento",
       workflowOfferReminderHint:
         "Na finalização manual da conversa, o atendente pode marcar um lembrete para o contacto (como na página Lembretes).",
+      workflowReplyToMessage: "Responder mensagens específicas",
+      workflowReplyToMessageHint:
+        "Permite que atendentes respondam diretamente a uma mensagem específica da conversa. Quando suportado pelo canal, a resposta também será vinculada à mensagem original no aplicativo do cliente.",
+      workflowReplyToMessageTooltip:
+        "Quando ativado, atendentes poderão selecionar uma mensagem da conversa e responder diretamente a ela, mantendo o contexto visual da mensagem original.",
+      workflowReplyToMessageProviderHint: "Disponível inicialmente para Meta Cloud API.",
       workflowAttendanceTab: "Aba «Atendimento» em Conversas",
       workflowAttendanceTabHint:
         "Mostra uma aba dedicada com conversas abertas (OPEN) em atendimento humano — na fila ou já assumidas por um agente.",
@@ -12632,6 +12643,11 @@ export const messages = {
       reactToMessage: "React to message",
       reactMoreEmojis: "More emojis",
       reactionFailed: "Could not save the reaction.",
+      replyToMessage: "Reply to message",
+      replyAction: "Reply",
+      replyingTo: "Replying to {name}",
+      cancelReply: "Cancel reply",
+      replyOriginalUnavailable: "↩ Original message unavailable",
       team: "Team",
       noTeam: "No team",
       conversationAssignee: "Assigned agent",
@@ -13605,6 +13621,12 @@ export const messages = {
       workflowOfferReminder: "Offer to create a reminder when resolving a conversation",
       workflowOfferReminderHint:
         "On manual resolution, agents can schedule a follow-up reminder for the contact (same as the Reminders page).",
+      workflowReplyToMessage: "Reply to specific messages",
+      workflowReplyToMessageHint:
+        "Lets agents reply directly to a specific message in the conversation. When supported by the channel, the reply is also linked to the original message in the customer's app.",
+      workflowReplyToMessageTooltip:
+        "When enabled, agents can select a message and reply to it directly, keeping visual context of the original message.",
+      workflowReplyToMessageProviderHint: "Initially available for Meta Cloud API.",
       workflowAttendanceTab: "«Attendance» tab in Conversations",
       workflowAttendanceTabHint:
         "Shows a dedicated tab with open (OPEN) human-attendance conversations — in the queue or already claimed by an agent.",

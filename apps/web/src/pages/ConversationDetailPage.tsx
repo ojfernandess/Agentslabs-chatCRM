@@ -63,6 +63,7 @@ import {
   ExternalLink,
   Globe,
   Search,
+  Reply,
 } from "lucide-react";
 import { WebchatLinkModal } from "@/components/WebchatLinkModal";
 import clsx from "clsx";
@@ -100,6 +101,13 @@ import {
   type ConversationMessageReaction,
 } from "@/lib/conversationMessageReactions";
 import { ConversationMessageReactions } from "@/components/conversation/ConversationMessageReactions";
+import { ConversationComposerReplyPreview } from "@/components/conversation/ConversationComposerReplyPreview";
+import { ConversationMessageReplyQuote } from "@/components/conversation/ConversationMessageReplyQuote";
+import {
+  buildComposerReplyFromMessage,
+  normalizeConversationMessageReply,
+  type ConversationMessageReply,
+} from "@/lib/conversationMessageReply";
 import { useConversationAgentTyping } from "@/hooks/useConversationAgentTyping";
 import { BotTypingIndicator } from "@/components/conversation/BotTypingIndicator";
 import { useOrgAvailabilityRealtime } from "@/hooks/useOrgAvailabilityRealtime";
@@ -219,6 +227,9 @@ interface Message {
   channel?: string | null;
   actorUser?: { id: string; name: string; displayName: string | null; showAgentNameInChat?: boolean } | null;
   reactions?: ConversationMessageReaction[] | unknown[];
+  replyTo?: ConversationMessageReply | unknown;
+  replyToExternalMsgId?: string | null;
+  replyToMessageId?: string | null;
 }
 
 interface LeadTypeRow {
@@ -428,6 +439,11 @@ export function ConversationDetailPage() {
   const [resolveRequireClosureReason, setResolveRequireClosureReason] = useState(true);
   const [resolveRequireLeadType, setResolveRequireLeadType] = useState(true);
   const [resolveOfferReminder, setResolveOfferReminder] = useState(true);
+  const [replyToMessageEnabled, setReplyToMessageEnabled] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<{
+    messageId: string;
+    preview: ConversationMessageReply;
+  } | null>(null);
   const [createReminderOnResolve, setCreateReminderOnResolve] = useState(false);
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDueDate, setReminderDueDate] = useState("");
@@ -1048,16 +1064,21 @@ export function ConversationDetailPage() {
     window.setTimeout(() => syncMessagesScrollState(), 450);
   }, [syncMessagesScrollState]);
 
-  const scrollToMessage = useCallback((messageId: string) => {
+  const scrollToMessage = useCallback((messageId: string, highlight = false) => {
     stickToBottomRef.current = false;
     setShowScrollToLatest(true);
+    if (highlight) setHighlightedMessageId(messageId);
     const el = document.getElementById(`conversation-message-${messageId}`);
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
     window.setTimeout(() => syncMessagesScrollState(), 450);
+    if (highlight) {
+      window.setTimeout(() => setHighlightedMessageId(null), 1800);
+    }
   }, [syncMessagesScrollState]);
 
   useEffect(() => {
     seenMessageIds.current.clear();
+    setReplyingTo(null);
   }, [id]);
 
   useEffect(() => {
@@ -1364,6 +1385,19 @@ export function ConversationDetailPage() {
     [id],
   );
 
+  const jumpToReplyMessage = useCallback(
+    async (messageId: string) => {
+      if (!id) return;
+      if (messagesRef.current.some((m) => m.id === messageId)) {
+        scrollToMessage(messageId, true);
+        return;
+      }
+      await loadConversation();
+      window.requestAnimationFrame(() => scrollToMessage(messageId, true));
+    },
+    [id, loadConversation, scrollToMessage],
+  );
+
   const toggleMessageReaction = useCallback(
     async (messageId: string, emoji: string) => {
       if (!id) return;
@@ -1378,6 +1412,26 @@ export function ConversationDetailPage() {
       }
     },
     [id, patchPushedMessageReactions, t],
+  );
+
+  const startReplyToMessage = useCallback(
+    (msg: Message) => {
+      const inboxType = conversation?.inbox?.channelType;
+      const canReply =
+        replyToMessageEnabled &&
+        inboxType === "WHATSAPP" &&
+        (whatsappProvider === "meta" || whatsappProvider === "360dialog");
+      if (!canReply || msg.isPrivate) return;
+      setReplyingTo({
+        messageId: msg.id,
+        preview: buildComposerReplyFromMessage(
+          msg,
+          conversation?.contact.name?.trim() || "Cliente",
+        ),
+      });
+      window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+    },
+    [conversation?.contact.name, conversation?.inbox?.channelType, replyToMessageEnabled, whatsappProvider],
   );
 
   useEffect(() => {
@@ -1416,12 +1470,14 @@ export function ConversationDetailPage() {
             resolveRequireClosureReason: boolean;
             resolveRequireLeadType: boolean;
             resolveOfferReminder: boolean;
+            replyToMessageEnabled?: boolean;
           }>("/settings/conversation-workflow"),
         ]);
         setLeadTypes(rows);
         setResolveRequireClosureReason(wf.resolveRequireClosureReason ?? true);
         setResolveRequireLeadType(wf.resolveRequireLeadType ?? true);
         setResolveOfferReminder(wf.resolveOfferReminder ?? true);
+        setReplyToMessageEnabled(wf.replyToMessageEnabled ?? false);
       } catch {
         /* ignore */
       }
@@ -2062,8 +2118,10 @@ export function ConversationDetailPage() {
         mediaType: mimeType,
         ...(caption ? { body: caption } : {}),
         isPrivate: privateNote || undefined,
+        ...(replyingTo && !privateNote ? { replyToMessageId: replyingTo.messageId } : {}),
         ...emailExtra,
       });
+      if (replyingTo) setReplyingTo(null);
       if (kind === "IMAGE") setImageSentNotice(true);
       if (!isEmailLayout) stickToBottomRef.current = true;
       try {
@@ -2134,8 +2192,10 @@ export function ConversationDetailPage() {
         type: "TEXT",
         body: bodyToSend,
         isPrivate: privateNote || undefined,
+        ...(replyingTo && !privateNote ? { replyToMessageId: replyingTo.messageId } : {}),
         ...emailExtra,
       });
+      if (replyingTo) setReplyingTo(null);
       reconcileOptimisticOutboundMessage(optimisticMessage.id, created);
       if (!isEmailLayout) stickToBottomRef.current = true;
       // Refresh após envio bem-sucedido: falha aqui não deve parecer falha de envio.
@@ -2791,6 +2851,11 @@ export function ConversationDetailPage() {
   const isWhatsappInbox = conversation.inbox?.channelType === "WHATSAPP";
   const whatsappReactionsEnabled =
     isWhatsappInbox && (whatsappProvider === "meta" || whatsappProvider === "360dialog");
+  const whatsappReplyEnabled =
+    replyToMessageEnabled &&
+    isWhatsappInbox &&
+    (whatsappProvider === "meta" || whatsappProvider === "360dialog");
+  const contactDisplayName = conversation.contact.name?.trim() || "Cliente";
   const isWebsiteInbox = conversation.inbox?.channelType === "WEBSITE";
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
@@ -4583,7 +4648,10 @@ export function ConversationDetailPage() {
               const outboundActorLabel = outboundMessageActorLabel(msg, conversationBotName);
               const messageReactions = normalizeConversationMessageReactions(msg.reactions, user?.id);
               const canReactToMessage = whatsappReactionsEnabled && !msg.isPrivate;
+              const canReplyToMessage = whatsappReplyEnabled && !msg.isPrivate;
               const showMessageReactions = messageReactions.length > 0 || canReactToMessage;
+              const messageReply = normalizeConversationMessageReply(msg, contactDisplayName);
+              const showMessageActions = canReplyToMessage || showMessageReactions;
 
               const avatarCol = (
                 <div className="flex w-8 shrink-0 flex-col justify-end pb-1">
@@ -4671,6 +4739,13 @@ export function ConversationDetailPage() {
                         </span>
                       ) : null}
                     </div>
+                  ) : null}
+                  {messageReply ? (
+                    <ConversationMessageReplyQuote
+                      reply={messageReply}
+                      inbound={inbound}
+                      onJumpToOriginal={messageReply.available ? jumpToReplyMessage : undefined}
+                    />
                   ) : null}
                   {msg.type === "IMAGE" && msg.mediaUrl ? (
                     <>
@@ -4803,21 +4878,37 @@ export function ConversationDetailPage() {
                       </>
                     )}
                   </motion.div>
-                  {showMessageReactions ? (
+                  {showMessageActions ? (
                     <div
                       className={clsx(
-                        "flex",
+                        "flex items-center gap-1",
                         !emailWorkspaceMode && (inbound ? "ml-11 justify-start" : "mr-11 justify-end"),
                         emailWorkspaceMode && (inbound ? "justify-start" : "justify-end"),
                       )}
                     >
-                      <ConversationMessageReactions
-                        messageId={msg.id}
-                        reactions={messageReactions}
-                        inbound={inbound}
-                        canReact={canReactToMessage}
-                        onToggleReaction={toggleMessageReaction}
-                      />
+                      {canReplyToMessage ? (
+                        <button
+                          type="button"
+                          title={t("conversationDetail.replyToMessage")}
+                          onClick={() => startReplyToMessage(msg)}
+                          className={clsx(
+                            "inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[11px] font-medium text-ink-500 transition hover:bg-ink-100 dark:hover:bg-ink-800",
+                            "opacity-0 group-hover:opacity-100 focus:opacity-100 max-lg:opacity-100",
+                          )}
+                        >
+                          <Reply className="h-3.5 w-3.5" />
+                          {t("conversationDetail.replyAction")}
+                        </button>
+                      ) : null}
+                      {showMessageReactions ? (
+                        <ConversationMessageReactions
+                          messageId={msg.id}
+                          reactions={messageReactions}
+                          inbound={inbound}
+                          canReact={canReactToMessage}
+                          onToggleReaction={toggleMessageReaction}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -4881,6 +4972,12 @@ export function ConversationDetailPage() {
               <p className="mb-2 text-center text-xs text-ink-500 dark:text-ink-400">
                 {t("conversationDetail.imageSentToContact")}
               </p>
+            ) : null}
+            {replyingTo && !privateNote ? (
+              <ConversationComposerReplyPreview
+                reply={replyingTo.preview}
+                onCancel={() => setReplyingTo(null)}
+              />
             ) : null}
             {showCannedPicker ? (
               <div
@@ -5175,6 +5272,7 @@ export function ConversationDetailPage() {
                     </motion.button>
                     <EmojiPickerPopover
                       open={emojiOpen}
+                      anchorRef={emojiWrapRef}
                       onSelect={(em) => {
                         insertTextAtSelection(composerTextareaRef.current, newMessage, em, setNewMessage);
                         setEmojiOpen(false);

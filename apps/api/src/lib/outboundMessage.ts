@@ -26,6 +26,12 @@ import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
 import { recordMessageLedgerEntry } from "./messageBillingLedger.js";
 import { withNetworkRetry } from "./networkRetry.js";
+import {
+  messageReplyToInclude,
+  resolveMessageReplyForApi,
+  resolveOutboundReplyTarget,
+  supportsWhatsAppQuotedReply,
+} from "./messageReply.js";
 
 import type { MessageTemplate } from "@prisma/client";
 import { substituteBodyPlaceholders } from "./templateVariables.js";
@@ -184,6 +190,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     emailTo,
     emailCc,
     emailBcc,
+    replyToMessageId,
   } = data;
 
   if (!isPrivate) {
@@ -441,6 +448,17 @@ export async function deliverOutboundWhatsAppMessage(options: {
 
   let storedBody = messageBody;
 
+  let outboundReply:
+    | { replyToMessageId: string; replyToProviderMsgId: string }
+    | null = null;
+  if (!isPrivate && replyToMessageId) {
+    outboundReply = await resolveOutboundReplyTarget({
+      organizationId,
+      conversationId: conversation.id,
+      replyToMessageId,
+    });
+  }
+
   let message = await prisma.message.create({
     data: {
       conversationId: conversation.id,
@@ -454,18 +472,23 @@ export async function deliverOutboundWhatsAppMessage(options: {
       channel: resolvedDeliveryChannel ?? null,
       status: "SENT",
       actorUserId: actor.kind === "user" ? actor.userId : null,
+      replyToMessageId: outboundReply?.replyToMessageId ?? null,
     },
     include: {
       actorUser: {
         select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
       },
+      replyTo: messageReplyToInclude,
     },
   });
 
   notifyConversationNewMessage(
     organizationId,
     conversation.id,
-    serializeMessageForWorkspaceWs(message),
+    serializeMessageForWorkspaceWs(message, {
+      contactName: contact.name,
+      replyTo: resolveMessageReplyForApi(message, contact.name),
+    }),
   );
 
   let providerMsgId: string | undefined;
@@ -500,6 +523,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
           Boolean(templateRow?.providerTemplateId) &&
           (isMetaProvider || provider instanceof MetaCloudApiProvider);
 
+        const quotedReplyId =
+          outboundReply && supportsWhatsAppQuotedReply(providerKind)
+            ? outboundReply.replyToProviderMsgId
+            : undefined;
         providerMsgId = await withNetworkRetry(() =>
           provider.sendMessage({
             to,
@@ -507,6 +534,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
             body: bodyForExternal,
             mediaUrl,
             mediaType,
+            ...(quotedReplyId ? { replyToProviderMsgId: quotedReplyId } : {}),
             ...(usesMetaTemplateApi
               ? {
                   templateName: templateRow!.providerTemplateId!,

@@ -143,6 +143,7 @@ interface AppSettings {
   resolveRequireClosureReason?: boolean;
   resolveRequireLeadType?: boolean;
   resolveOfferReminder?: boolean;
+  replyToMessageEnabled?: boolean;
   crmKanbanShowEmailContacts?: boolean;
   conversationsAttendanceTabEnabled?: boolean;
   conversationsAttendanceTabAutoOpen?: boolean;
@@ -336,6 +337,7 @@ export function SettingsPage() {
   const [wfRequireClosure, setWfRequireClosure] = useState(true);
   const [wfRequireLeadType, setWfRequireLeadType] = useState(true);
   const [wfOfferReminder, setWfOfferReminder] = useState(true);
+  const [wfReplyToMessageEnabled, setWfReplyToMessageEnabled] = useState(false);
   const [wfAttendanceTabEnabled, setWfAttendanceTabEnabled] = useState(false);
   const [wfAttendanceTabAutoOpen, setWfAttendanceTabAutoOpen] = useState(true);
   const [wfAllScopeHumanOnly, setWfAllScopeHumanOnly] = useState(false);
@@ -498,6 +500,7 @@ export function SettingsPage() {
         setWfRequireClosure(data.resolveRequireClosureReason ?? true);
         setWfRequireLeadType(data.resolveRequireLeadType ?? true);
         setWfOfferReminder(data.resolveOfferReminder ?? true);
+        setWfReplyToMessageEnabled(data.replyToMessageEnabled ?? false);
         setCrmKanbanShowEmailContacts(data.crmKanbanShowEmailContacts ?? true);
         setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
         setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
@@ -781,6 +784,7 @@ export function SettingsPage() {
         resolveRequireClosureReason: wfRequireClosure,
         resolveRequireLeadType: wfRequireLeadType,
         resolveOfferReminder: wfOfferReminder,
+        replyToMessageEnabled: wfReplyToMessageEnabled,
         conversationsAttendanceTabEnabled: wfAttendanceTabEnabled,
         conversationsAttendanceTabAutoOpen: wfAttendanceTabAutoOpen,
         conversationsAllScopeHumanOnly: wfAllScopeHumanOnly,
@@ -802,6 +806,7 @@ export function SettingsPage() {
       setWfRequireClosure(data.resolveRequireClosureReason ?? true);
       setWfRequireLeadType(data.resolveRequireLeadType ?? true);
       setWfOfferReminder(data.resolveOfferReminder ?? true);
+      setWfReplyToMessageEnabled(data.replyToMessageEnabled ?? false);
       setWfAttendanceTabEnabled(data.conversationsAttendanceTabEnabled ?? false);
       setWfAttendanceTabAutoOpen(data.conversationsAttendanceTabAutoOpen !== false);
       setWfAllScopeHumanOnly(data.conversationsAllScopeHumanOnly ?? false);
@@ -2419,6 +2424,31 @@ export function SettingsPage() {
                     {t("settings.workflowTitle")}
                   </h2>
                   <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.workflowIntro")}</p>
+
+                  <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
+                    <div title={t("settings.workflowReplyToMessageTooltip")}>
+                      <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowReplyToMessage")}</p>
+                      <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowReplyToMessageHint")}</p>
+                      <p className="mt-1 text-xs text-ink-400 dark:text-ink-500">{t("settings.workflowReplyToMessageProviderHint")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={wfReplyToMessageEnabled}
+                      onClick={() => setWfReplyToMessageEnabled((v) => !v)}
+                      className={clsx(
+                        "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                        wfReplyToMessageEnabled ? "bg-brand-500" : settingsToggleOff,
+                      )}
+                    >
+                      <span
+                        className={clsx(
+                          settingsToggleThumb,
+                          wfReplyToMessageEnabled ? "translate-x-5" : "translate-x-0",
+                        )}
+                      />
+                    </button>
+                  </div>
 
                   <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div>

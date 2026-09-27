@@ -1,4 +1,5 @@
 import type { ConversationMessageReaction } from "@/lib/conversationMessageReactions";
+import type { ConversationMessageReply } from "@/lib/conversationMessageReply";
 
 export type ConversationMessagePushPayload = {
   id: string;
@@ -14,6 +15,9 @@ export type ConversationMessagePushPayload = {
   channel?: string | null;
   cursor?: string | null;
   reactions?: ConversationMessageReaction[] | null;
+  replyTo?: ConversationMessageReply | null;
+  replyToExternalMsgId?: string | null;
+  replyToMessageId?: string | null;
   actorUser?: {
     id: string;
     name: string;

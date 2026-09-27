@@ -22,6 +22,7 @@ import {
   messageReactionInclude,
   toggleAgentMessageReaction,
 } from "../lib/messageReactions.js";
+import { messageReplyToInclude } from "../lib/messageReply.js";
 import { broadcastConversationMessageReactionsUpdated } from "../lib/workspaceMessageBroadcast.js";
 import { getWhatsAppProviderForInbox, getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { MetaCloudApiProvider } from "../providers/meta.js";
@@ -188,6 +189,7 @@ const conversationMessageInclude = {
   reactions: {
     include: messageReactionInclude,
   },
+  replyTo: messageReplyToInclude,
 } as const;
 
 const reactionEmojiSchema = z.string().min(1).max(32);

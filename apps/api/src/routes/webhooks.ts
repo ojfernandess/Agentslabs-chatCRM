@@ -41,6 +41,11 @@ import {
   loadMessageReactionsForApi,
 } from "../lib/messageReactions.js";
 import {
+  messageReplyToInclude,
+  resolveInboundReplyTarget,
+  resolveMessageReplyForApi,
+} from "../lib/messageReply.js";
+import {
   broadcastConversationMessageReactionsUpdated,
   broadcastConversationMessageUpdated,
   notifyConversationNewMessage,
@@ -674,6 +679,12 @@ async function handleWhatsAppPost(
         }
       }
 
+      const inboundReply = await resolveInboundReplyTarget({
+        organizationId,
+        conversationId: conversation.id,
+        quotedProviderMsgId: msg.quotedProviderMsgId,
+      });
+
       const inbound = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -685,13 +696,21 @@ async function handleWhatsAppPost(
           providerMsgId: msg.waMessageId,
           status: "DELIVERED",
           sentAt: msg.timestamp,
+          replyToMessageId: inboundReply.replyToMessageId,
+          replyToExternalMsgId: inboundReply.replyToExternalMsgId,
+        },
+        include: {
+          replyTo: messageReplyToInclude,
         },
       });
 
       notifyConversationNewMessage(
         organizationId,
         conversation.id,
-        serializeMessageForWorkspaceWs(inbound),
+        serializeMessageForWorkspaceWs(inbound, {
+          contactName: contact.name,
+          replyTo: resolveMessageReplyForApi(inbound, contact.name),
+        }),
       );
 
       let inboundForPipeline = await maybeTranscribeInboundAudioMessage({
