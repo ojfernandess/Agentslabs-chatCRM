@@ -709,6 +709,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         actorUser: {
           select: { id: true, name: true, displayName: true, showAgentNameInChat: true },
         },
+        replyTo: messageReplyToInclude,
       },
     });
     if (outboundStatus === "FAILED") {
