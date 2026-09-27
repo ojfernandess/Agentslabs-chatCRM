@@ -4771,51 +4771,56 @@ export function ConversationDetailPage() {
                 </div>
               );
 
-              const messageColumn = (
-                <div className="flex min-w-0 flex-col">
-                  {bubble}
-                  {showMessageReactions ? (
-                    <ConversationMessageReactions
-                      messageId={msg.id}
-                      reactions={messageReactions}
-                      inbound={inbound}
-                      canReact={canReactToMessage}
-                      onToggleReaction={toggleMessageReaction}
-                    />
-                  ) : null}
-                </div>
-              );
-
               return (
-                <motion.div
+                <div
                   key={msg.id}
                   id={`conversation-message-${msg.id}`}
-                  className={clsx(
-                    "group flex w-full min-w-0 gap-3",
-                    emailWorkspaceMode && msg.type === "TEXT" ? "items-stretch" : "",
-                    inbound ? "justify-start" : "justify-end",
-                    blockSpacing,
-                  )}
-                  initial={isNew ? { opacity: 0, y: 6 } : false}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    duration: 0.22,
-                    delay: isNew ? Math.min(i * 0.02, 0.25) : 0,
-                    ease: "easeOut",
-                  }}
+                  className={clsx("group", blockSpacing)}
                 >
-                  {inbound ? (
-                    <>
-                      {!emailWorkspaceMode ? avatarCol : null}
-                      {messageColumn}
-                    </>
-                  ) : (
-                    <>
-                      {messageColumn}
-                      {!emailWorkspaceMode ? avatarCol : null}
-                    </>
-                  )}
-                </motion.div>
+                  <motion.div
+                    className={clsx(
+                      "flex w-full min-w-0 gap-3",
+                      emailWorkspaceMode && msg.type === "TEXT" ? "items-stretch" : "",
+                      inbound ? "justify-start" : "justify-end",
+                    )}
+                    initial={isNew ? { opacity: 0, y: 6 } : false}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.22,
+                      delay: isNew ? Math.min(i * 0.02, 0.25) : 0,
+                      ease: "easeOut",
+                    }}
+                  >
+                    {inbound ? (
+                      <>
+                        {!emailWorkspaceMode ? avatarCol : null}
+                        {bubble}
+                      </>
+                    ) : (
+                      <>
+                        {bubble}
+                        {!emailWorkspaceMode ? avatarCol : null}
+                      </>
+                    )}
+                  </motion.div>
+                  {showMessageReactions ? (
+                    <div
+                      className={clsx(
+                        "flex",
+                        !emailWorkspaceMode && (inbound ? "ml-11 justify-start" : "mr-11 justify-end"),
+                        emailWorkspaceMode && (inbound ? "justify-start" : "justify-end"),
+                      )}
+                    >
+                      <ConversationMessageReactions
+                        messageId={msg.id}
+                        reactions={messageReactions}
+                        inbound={inbound}
+                        canReact={canReactToMessage}
+                        onToggleReaction={toggleMessageReaction}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
             {agentBotTyping ? (
