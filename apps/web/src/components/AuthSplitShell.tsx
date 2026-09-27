@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { BarChart3, MessageCircle, Sparkles } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
-import { brandAssetUrl, systemLogoOnDarkBgClass } from "@/lib/brandingAssets";
+import { brandAssetUrl } from "@/lib/brandingAssets";
 import { LoginFooter } from "@/components/auth/LoginFooter";
 import { motion } from "@/components/Motion";
 import clsx from "clsx";
@@ -46,13 +46,6 @@ function LoginHeroPanel() {
           boxShadow: "0 24px 60px rgba(0, 0, 0, 0.22)",
         }}
       >
-        <img
-          src={brandAssetUrl("/logo.svg")}
-          alt="OpenNexo"
-          className={clsx("mb-8 h-9 w-auto", systemLogoOnDarkBgClass)}
-          decoding="async"
-        />
-
         <h2 className="text-[28px] font-semibold leading-tight tracking-tight text-white">
           {t("loginFooter.heroTaglineLead")}
           <span className="text-brand-400">{t("loginFooter.heroTaglineAccent")}</span>
