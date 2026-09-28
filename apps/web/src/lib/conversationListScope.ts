@@ -94,31 +94,52 @@ export function mergeConversationScopeHint<T extends ConversationScopeRow>(
   const assignedToId =
     hint.assignedToId !== undefined ? hint.assignedToId : (row.assignedToId ?? row.assignedTo?.id ?? null);
 
+  const resolveAssigneeName = (id: string): string | null => {
+    if (row.assignedTo?.id === id && row.assignedTo.name?.trim()) {
+      return row.assignedTo.name.trim();
+    }
+    if (options?.currentUserId === id && options.currentUserName?.trim()) {
+      return options.currentUserName.trim();
+    }
+    return null;
+  };
+
   let assignedTo = row.assignedTo;
   if (hint.assignedTo !== undefined) {
     if (hint.assignedTo === null) {
       // WS estrutural costuma omitir o nome — só limpar quando a atribuição foi removida.
       if (assignedToId == null) {
         assignedTo = null;
-      } else if (row.assignedTo?.id === assignedToId && row.assignedTo.name) {
-        assignedTo = row.assignedTo;
-      } else if (options?.currentUserId === assignedToId && options.currentUserName) {
-        assignedTo = { id: assignedToId, name: options.currentUserName };
       } else {
-        assignedTo = { id: assignedToId, name: row.assignedTo?.name ?? "" };
+        const resolvedName = resolveAssigneeName(assignedToId);
+        assignedTo = resolvedName
+          ? { id: assignedToId, name: resolvedName }
+          : row.assignedTo?.id === assignedToId
+            ? row.assignedTo
+            : { id: assignedToId, name: "" };
       }
     } else {
-      assignedTo = hint.assignedTo;
+      const hintedName = hint.assignedTo.name?.trim();
+      assignedTo =
+        hintedName || !assignedToId
+          ? hint.assignedTo
+          : (() => {
+              const resolvedName = resolveAssigneeName(assignedToId);
+              return resolvedName ? { id: assignedToId, name: resolvedName } : hint.assignedTo;
+            })();
     }
   } else if (hint.assignedToId !== undefined) {
     if (!assignedToId) {
       assignedTo = null;
-    } else if (row.assignedTo?.id === assignedToId && row.assignedTo.name) {
-      assignedTo = row.assignedTo;
-    } else if (options?.currentUserId === assignedToId && options.currentUserName) {
-      assignedTo = { id: assignedToId, name: options.currentUserName };
     } else {
-      assignedTo = { id: assignedToId, name: "" };
+      const resolvedName = resolveAssigneeName(assignedToId);
+      if (resolvedName) {
+        assignedTo = { id: assignedToId, name: resolvedName };
+      } else if (row.assignedTo?.id === assignedToId) {
+        assignedTo = row.assignedTo;
+      } else {
+        assignedTo = { id: assignedToId, name: "" };
+      }
     }
   }
 

@@ -886,6 +886,9 @@ export async function deliverOutboundWhatsAppMessage(options: {
   const updatedConversation = await prisma.conversation.update({
     where: { id: conversation.id },
     data: convPatch,
+    include: {
+      assignedTo: { select: { id: true, name: true } },
+    },
   });
 
   if (deferWorkspaceMessageNotify) {
@@ -906,6 +909,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         id: updatedConversation.id,
         status: updatedConversation.status,
         assignedToId: updatedConversation.assignedToId,
+        assignedTo: updatedConversation.assignedTo,
         teamId: updatedConversation.teamId,
         inboxId: updatedConversation.inboxId,
         awaitingHumanHandoff: updatedConversation.awaitingHumanHandoff,

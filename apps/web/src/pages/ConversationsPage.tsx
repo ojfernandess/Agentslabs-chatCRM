@@ -291,7 +291,7 @@ export function ConversationsPage({
     hideResolvedInAllScope,
     orgAllScopeHumanOnly,
     userId: user?.id,
-    userName: user?.name,
+    userName: user?.displayName?.trim() || user?.name,
   };
 
   const applyListRowToCache = useCallback((fetchKey: string, rows: Conversation[]) => {
@@ -937,6 +937,7 @@ export function ConversationsPage({
       const fetchKey = listFetchKeyRef.current;
       let fetchRow = false;
       let removed = false;
+      let needsAssigneeName = false;
 
       setConversations((prev) => {
         if (listFetchKeyRef.current !== fetchKey) return prev;
@@ -949,6 +950,9 @@ export function ConversationsPage({
           currentUserId: scope.userId,
           currentUserName: scope.userName,
         });
+        if (merged.assignedToId && !merged.assignedTo?.name?.trim()) {
+          needsAssigneeName = true;
+        }
         if (!conversationMatchesListScope(merged, scope)) {
           removed = true;
           const next = prev.filter((c) => c.id !== conversationId);
@@ -970,6 +974,10 @@ export function ConversationsPage({
       if (fetchRow) {
         void syncConversationListRow(conversationId, { highlight: highlight ?? "enter" });
         return;
+      }
+
+      if (needsAssigneeName) {
+        void syncConversationListRow(conversationId);
       }
 
       if (removed) {
