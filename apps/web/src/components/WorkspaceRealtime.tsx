@@ -231,7 +231,11 @@ export function WorkspaceRealtime() {
       ) {
         publishConversationMessageUpdated({
           conversationId: data.conversationId,
-          message: { id: data.message.id, status: data.message.status },
+          message: {
+            id: data.message.id,
+            status: data.message.status,
+            providerError: data.message.providerError ?? null,
+          },
         });
       } else if (
         data.type === "message.reactions_updated" &&

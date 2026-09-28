@@ -7,6 +7,13 @@ test("isRetryableNetworkError detects fetch failed", () => {
   assert.equal(isRetryableNetworkError(new Error("Meta API error: 400 bad request")), false);
 });
 
+test("isRetryableNetworkError detects nested undici cause", () => {
+  const err = new Error("fetch failed", {
+    cause: new Error("Connect Timeout Error"),
+  });
+  assert.equal(isRetryableNetworkError(err), true);
+});
+
 test("isRetryableNetworkError detects Meta 503", () => {
   assert.equal(isRetryableNetworkError(new Error("Meta API error: 503 upstream")), true);
 });

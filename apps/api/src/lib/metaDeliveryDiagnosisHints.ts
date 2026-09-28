@@ -1,4 +1,5 @@
 import { MessageDirection, MessageStatus, type Message, type MessageBillingLedgerEntry } from "@prisma/client";
+import { isMetaMarketingFrequencyCapError } from "@openconduit/shared";
 import { isMetaCloudWhatsappProvider } from "./whatsappWebhookVerify.js";
 
 type ReplyTarget = {
@@ -81,16 +82,43 @@ export function diagnoseMetaDeliveryMessage(input: {
     return { diagnosis, suggestedActions };
   }
 
+  const marketingFrequencyCap = isMetaMarketingFrequencyCapError(input.message.providerError);
+
+  const syncFetchFailed = /\bfetch failed\b/i.test(input.message.providerError ?? "");
+
   if (!input.message.providerMsgId) {
     diagnosis.push(
       "Falha síncrona na API Meta — a chamada HTTP não devolveu wamid (providerMsgId vazio).",
     );
-    diagnosis.push(
-      "Causas frequentes: erro de rede transitório (fetch failed), timeout, Meta 400 (parâmetro inválido) ou credencial/token inválido.",
-    );
-    suggestedActions.push("Reenvie a mensagem — falhas transitórias costumam resolver no segundo envio.");
+    if (syncFetchFailed) {
+      diagnosis.push(
+        "Erro de rede transitório (fetch failed) — o envio já foi repetido automaticamente até 5 vezes com backoff antes de marcar FAILED.",
+      );
+      suggestedActions.push(
+        "Se persistir, reenvie manualmente após alguns minutos ou verifique conectividade do servidor com graph.facebook.com.",
+      );
+    } else {
+      diagnosis.push(
+        "Causas frequentes: erro de rede transitório (fetch failed), timeout, Meta 400 (parâmetro inválido) ou credencial/token inválido.",
+      );
+      suggestedActions.push("Reenvie a mensagem — falhas transitórias costumam resolver no segundo envio.");
+    }
     suggestedActions.push(
       "Verifique logs da API no horário do envio (Failed to send message via WhatsApp provider) para o texto exacto do erro Meta.",
+    );
+  } else if (marketingFrequencyCap) {
+    diagnosis.push(
+      "Limite de frequência de marketing da Meta (código 131049) — o destinatário já recebeu muitos templates promocionais recentemente (de várias empresas).",
+    );
+    diagnosis.push(
+      "A Meta aceitou o envio (wamid presente) mas recusou a entrega para proteger o ecossistema; não é bloqueio da sua conta nem falha do sistema.",
+    );
+    suggestedActions.push("Não reenvie o mesmo template de imediato — aguarde pelo menos 24 horas.");
+    suggestedActions.push(
+      "Se o conteúdo for transacional, use template Utility ou Authentication (não sujeitos a este limite).",
+    );
+    suggestedActions.push(
+      "Peça ao contacto que envie uma mensagem (click-to-chat) para abrir a janela de 24h e continuar o atendimento.",
     );
   } else {
     diagnosis.push(

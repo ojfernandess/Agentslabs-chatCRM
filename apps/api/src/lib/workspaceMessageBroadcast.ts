@@ -18,6 +18,7 @@ export type WorkspaceMessagePayload = {
   mediaType?: string | null;
   isPrivate?: boolean;
   status: MessageStatus | string;
+  providerError?: string | null;
   sentAt: string;
   createdAt: string;
   channel?: string | null;
@@ -40,6 +41,7 @@ type MessageLike = {
   mediaType?: string | null;
   isPrivate?: boolean;
   status: MessageStatus | string;
+  providerError?: string | null;
   sentAt?: Date;
   createdAt: Date;
   channel?: string | null;
@@ -90,6 +92,7 @@ export function serializeMessageForWorkspaceWs(
     mediaType: message.mediaType ?? null,
     isPrivate: message.isPrivate ?? false,
     status: message.status,
+    providerError: message.providerError ?? null,
     sentAt: sentAt.toISOString(),
     createdAt: message.createdAt.toISOString(),
     channel: message.channel ?? null,
@@ -138,7 +141,7 @@ export function broadcastConversationMessageCreated(
 export function broadcastConversationMessageUpdated(
   organizationId: string,
   conversationId: string,
-  message: Pick<WorkspaceMessagePayload, "id" | "status">,
+  message: Pick<WorkspaceMessagePayload, "id" | "status" | "providerError">,
 ): void {
   broadcastToOrganization(organizationId, {
     type: "message.updated",

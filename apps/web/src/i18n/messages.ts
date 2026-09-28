@@ -5133,6 +5133,27 @@ export const messages = {
       reactToMessage: "Reagir à mensagem",
       reactMoreEmojis: "Mais emojis",
       reactionFailed: "Não foi possível salvar a reação.",
+      deliveryErrorClickHint: "Ver motivo da falha de entrega",
+      deliveryErrorGenericTitle: "Mensagem não entregue",
+      deliveryErrorGenericSummary:
+        "A Meta aceitou o envio mas o webhook reportou falha posteriormente, ou o envio falhou no provedor.",
+      deliveryErrorGenericAction1: "Confirme o número do contacto e se o WhatsApp está activo.",
+      deliveryErrorGenericAction2: "Verifique se o contacto bloqueou o negócio ou se a conta Meta tem restrições.",
+      deliveryError131049Title: "Limite de marketing da Meta (131049)",
+      deliveryError131049Summary:
+        "O destinatário já recebeu muitos templates promocionais recentemente. Não é falha do sistema nem bloqueio da sua conta.",
+      deliveryError131049Action1: "Não reenvie o mesmo template de imediato — aguarde pelo menos 24 horas.",
+      deliveryError131049Action2:
+        "Se o conteúdo for transacional, use template Utility ou Authentication.",
+      deliveryError131049Action3:
+        "Peça ao contacto que envie uma mensagem para abrir a janela de 24h.",
+      deliveryErrorFetchFailedTitle: "Falha de rede com a Meta",
+      deliveryErrorFetchFailedSummary:
+        "Não foi possível contactar a API da Meta (fetch failed). O sistema já tentou reenviar automaticamente várias vezes antes de marcar como falha.",
+      deliveryErrorFetchFailedAction1:
+        "Reenvie a mensagem após alguns minutos — costuma ser instabilidade temporária de rede.",
+      deliveryErrorFetchFailedAction2:
+        "Se repetir, verifique se o servidor consegue acessar graph.facebook.com.",
       replyToMessage: "Responder à mensagem",
       replyAction: "Responder",
       replyingTo: "Respondendo a {name}",
@@ -12680,6 +12701,27 @@ export const messages = {
       reactToMessage: "React to message",
       reactMoreEmojis: "More emojis",
       reactionFailed: "Could not save the reaction.",
+      deliveryErrorClickHint: "View delivery failure reason",
+      deliveryErrorGenericTitle: "Message not delivered",
+      deliveryErrorGenericSummary:
+        "Meta accepted the send but the status webhook later reported failure, or the provider send failed.",
+      deliveryErrorGenericAction1: "Confirm the contact number and that WhatsApp is active.",
+      deliveryErrorGenericAction2: "Check whether the contact blocked the business or the Meta account has restrictions.",
+      deliveryError131049Title: "Meta marketing limit (131049)",
+      deliveryError131049Summary:
+        "This recipient has received too many promotional templates recently. This is not a system failure or account block.",
+      deliveryError131049Action1: "Do not resend the same template immediately — wait at least 24 hours.",
+      deliveryError131049Action2:
+        "If the content is transactional, use a Utility or Authentication template.",
+      deliveryError131049Action3:
+        "Ask the contact to send a message to open the 24-hour session window.",
+      deliveryErrorFetchFailedTitle: "Meta network failure",
+      deliveryErrorFetchFailedSummary:
+        "Could not reach the Meta API (fetch failed). The system already retried automatically several times before marking as failed.",
+      deliveryErrorFetchFailedAction1:
+        "Resend the message after a few minutes — this is usually temporary network instability.",
+      deliveryErrorFetchFailedAction2:
+        "If it keeps happening, verify the server can reach graph.facebook.com.",
       replyToMessage: "Reply to message",
       replyAction: "Reply",
       replyingTo: "Replying to {name}",

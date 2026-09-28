@@ -9,6 +9,8 @@ import {
 } from "./types.js";
 import { formatMetaWebhookStatusError } from "../lib/providerErrorMessage.js";
 
+const META_HTTP_TIMEOUT_MS = 45_000;
+
 export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   private apiKey: string;
   private phoneNumberId: string;
@@ -118,6 +120,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(META_HTTP_TIMEOUT_MS),
     });
 
     if (!response.ok) {

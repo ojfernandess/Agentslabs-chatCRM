@@ -110,6 +110,7 @@ import {
 } from "@/lib/conversationMessageReply";
 import { useConversationAgentTyping } from "@/hooks/useConversationAgentTyping";
 import { BotTypingIndicator } from "@/components/conversation/BotTypingIndicator";
+import { MessageFailedDeliveryHint } from "@/components/conversation/MessageFailedDeliveryHint";
 import { useOrgAvailabilityRealtime } from "@/hooks/useOrgAvailabilityRealtime";
 import { AssigneePickerList, type AssigneePickerRow } from "@/components/AssigneePickerList";
 import { localDueToIso, tomorrowLocalYmd, isoToLocalDateParts } from "@/lib/reminderDue";
@@ -222,6 +223,7 @@ interface Message {
   mediaType?: string | null;
   isPrivate?: boolean;
   status: string;
+  providerError?: string | null;
   sentAt: string;
   createdAt: string;
   /** Canal de origem quando difere do canal da inbox (ex.: "WEBCHAT"). */
@@ -1400,23 +1402,30 @@ export function ConversationDetailPage() {
     window.requestAnimationFrame(() => syncMessagesScrollState());
   }, [id, loadConversation, syncMessagesScrollState]);
 
-  const patchPushedMessageStatus = useCallback((messageId: string, status: string) => {
-    if (!id) return;
-    setConversation((prev) => {
-      if (!prev || prev.id !== id || !prev.messages?.length) return prev;
-      let changed = false;
-      const messages = prev.messages!.map((m) => {
-        if (m.id !== messageId) return m;
-        if (m.status === status) return m;
-        changed = true;
-        return { ...m, status };
+  const patchPushedMessageDelivery = useCallback(
+    (messageId: string, patch: { status: string; providerError?: string | null }) => {
+      if (!id) return;
+      setConversation((prev) => {
+        if (!prev || prev.id !== id || !prev.messages?.length) return prev;
+        let changed = false;
+        const messages = prev.messages!.map((m) => {
+          if (m.id !== messageId) return m;
+          const nextProviderError =
+            patch.providerError !== undefined ? patch.providerError : m.providerError;
+          if (m.status === patch.status && (m.providerError ?? null) === (nextProviderError ?? null)) {
+            return m;
+          }
+          changed = true;
+          return { ...m, status: patch.status, providerError: nextProviderError };
+        });
+        if (!changed) return prev;
+        const merged: ConversationDetail = { ...prev, messages };
+        setCachedConversation(id, merged);
+        return merged;
       });
-      if (!changed) return prev;
-      const merged: ConversationDetail = { ...prev, messages };
-      setCachedConversation(id, merged);
-      return merged;
-    });
-  }, [id]);
+    },
+    [id],
+  );
 
   const patchPushedMessageReactions = useCallback(
     (messageId: string, reactions: ConversationMessageReaction[]) => {
@@ -1864,7 +1873,10 @@ export function ConversationDetailPage() {
     const onMessageUpdated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageUpdatedDetail>).detail;
       if (detail?.conversationId !== id || !detail.message?.id) return;
-      patchPushedMessageStatus(detail.message.id, detail.message.status);
+      patchPushedMessageDelivery(detail.message.id, {
+        status: detail.message.status,
+        providerError: detail.message.providerError,
+      });
     };
     const onMessageReactionsUpdated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageReactionsUpdatedDetail>).detail;
@@ -1879,7 +1891,7 @@ export function ConversationDetailPage() {
       window.removeEventListener(CONVERSATION_MESSAGE_UPDATED_EVENT, onMessageUpdated);
       window.removeEventListener(CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT, onMessageReactionsUpdated);
     };
-  }, [id, appendPushedMessage, patchPushedMessageStatus, patchPushedMessageReactions]);
+  }, [id, appendPushedMessage, patchPushedMessageDelivery, patchPushedMessageReactions]);
 
   useEffect(() => {
     if (!id) return;
@@ -4895,9 +4907,9 @@ export function ConversationDetailPage() {
                     ) : null}
                     <span>{format(new Date(msg.sentAt), "HH:mm")}</span>
                     {msg.direction === "OUTBOUND" && !msg.isPrivate && (
-                      <span className="inline-flex items-center" title={msg.status}>
+                      <span className="inline-flex items-center" title={msg.status === "FAILED" ? undefined : msg.status}>
                         {msg.status === "FAILED" ? (
-                          <AlertTriangle className="crm-bubble-read-status is-failed h-[18px] w-[18px]" aria-hidden />
+                          <MessageFailedDeliveryHint providerError={msg.providerError} />
                         ) : msg.status === "READ" ? (
                           <CheckCheck className="crm-bubble-read-status is-read h-[18px] w-[18px]" aria-hidden />
                         ) : msg.status === "DELIVERED" ? (

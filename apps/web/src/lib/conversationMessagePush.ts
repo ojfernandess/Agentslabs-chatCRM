@@ -10,6 +10,7 @@ export type ConversationMessagePushPayload = {
   mediaType?: string | null;
   isPrivate?: boolean;
   status: string;
+  providerError?: string | null;
   sentAt: string;
   createdAt: string;
   channel?: string | null;
@@ -37,7 +38,7 @@ export type ConversationMessageCreatedDetail = {
 
 export type ConversationMessageUpdatedDetail = {
   conversationId: string;
-  message: Pick<ConversationMessagePushPayload, "id" | "status">;
+  message: Pick<ConversationMessagePushPayload, "id" | "status" | "providerError">;
 };
 
 export type ConversationMessageReactionsUpdatedDetail = {

@@ -28,7 +28,7 @@ import { promoteUserToOnlineIfInactive } from "./userAvailability.js";
 import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
 import { recordMessageLedgerEntry } from "./messageBillingLedger.js";
-import { withNetworkRetry } from "./networkRetry.js";
+import { META_CLOUD_HTTP_RETRY, withNetworkRetry } from "./networkRetry.js";
 import {
   messageReplyToInclude,
   resolveMessageReplyForApi,
@@ -530,7 +530,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
           );
           if (nameOnly) {
             try {
-              await provider.sendMessage({ to, type: "TEXT", body: nameOnly });
+              await withNetworkRetry(
+                () => provider.sendMessage({ to, type: "TEXT", body: nameOnly }),
+                META_CLOUD_HTTP_RETRY,
+              );
             } catch (err) {
               log.warn(err, "Failed to send sender name prefix before WhatsApp message");
             }
@@ -556,24 +559,26 @@ export async function deliverOutboundWhatsAppMessage(options: {
           outboundReply && supportsWhatsAppQuotedReply(providerKind)
             ? outboundReply.replyToProviderMsgId
             : undefined;
-        providerMsgId = await withNetworkRetry(() =>
-          provider.sendMessage({
-            to,
-            type,
-            body: bodyForExternal,
-            mediaUrl,
-            mediaType,
-            ...(quotedReplyId ? { replyToProviderMsgId: quotedReplyId } : {}),
-            ...(usesMetaTemplateApi
-              ? {
-                  templateName: templateRow!.providerTemplateId!,
-                  templateLanguage: templateRow!.templateLanguage,
-                  templateBodyParameters: templateBodyParams,
-                  templateBodyParameterNames: templateBodyParamNames,
-                  templateComponents: templateMetaComponents,
-                }
-              : {}),
-          }),
+        providerMsgId = await withNetworkRetry(
+          () =>
+            provider.sendMessage({
+              to,
+              type,
+              body: bodyForExternal,
+              mediaUrl,
+              mediaType,
+              ...(quotedReplyId ? { replyToProviderMsgId: quotedReplyId } : {}),
+              ...(usesMetaTemplateApi
+                ? {
+                    templateName: templateRow!.providerTemplateId!,
+                    templateLanguage: templateRow!.templateLanguage,
+                    templateBodyParameters: templateBodyParams,
+                    templateBodyParameterNames: templateBodyParamNames,
+                    templateComponents: templateMetaComponents,
+                  }
+                : {}),
+            }),
+          META_CLOUD_HTTP_RETRY,
         );
       }
     } catch (err) {
@@ -755,6 +760,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
       broadcastConversationMessageUpdated(organizationId, conversation.id, {
         id: message.id,
         status: outboundStatus,
+        providerError: message.providerError ?? null,
       });
     }
   }

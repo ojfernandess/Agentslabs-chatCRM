@@ -63,6 +63,23 @@ test("diagnoseMetaDeliveryMessage — inclui providerError persistido", () => {
   assert.ok(diagnosis.some((d) => d.includes("Erro registado: Meta API error: 400")));
 });
 
+test("diagnoseMetaDeliveryMessage — código 131049 marketing cap", () => {
+  const { diagnosis, suggestedActions } = diagnoseMetaDeliveryMessage({
+    message: {
+      ...baseOutbound,
+      providerMsgId: "wamid.HBgNtest",
+      providerError:
+        "131049 — This message was not delivered to maintain healthy ecosystem engagement.",
+    },
+    ledger: null,
+    replyTo: null,
+    inboxProvider: "meta",
+  });
+  assert.ok(diagnosis.some((d) => d.includes("131049")));
+  assert.ok(!diagnosis.some((d) => d.includes("número inválido")));
+  assert.ok(suggestedActions.some((a) => a.includes("24 horas")));
+});
+
 test("diagnoseMetaDeliveryMessage — reply sem providerMsgId no alvo", () => {
   const { diagnosis, suggestedActions } = diagnoseMetaDeliveryMessage({
     message: { ...baseOutbound, replyToMessageId: "msg-1" },

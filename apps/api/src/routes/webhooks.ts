@@ -887,6 +887,7 @@ async function handleWhatsAppPost(
         broadcastConversationMessageUpdated(organizationId, targetMsg.conversationId, {
           id: targetMsg.id,
           status: status.status,
+          providerError: statusPatch.providerError ?? null,
         });
       }
       processedWebhookEvents += 1;
