@@ -158,6 +158,29 @@ export async function resolveMessageTemplateForExternalSend(
   });
 }
 
+/**
+ * Reutiliza a thread mais recente do contacto na caixa (inclui RESOLVED).
+ * Sem isto, `ensureConversationForChannelInbox` com lockSingleConversation=false cria
+ * conversa nova quando só existe thread encerrada — comum em envios de template.
+ */
+export async function findLatestConversationForExternalTemplateSend(
+  organizationId: string,
+  contactId: string,
+  inboxId: string,
+): Promise<string | null> {
+  const row = await prisma.conversation.findFirst({
+    where: {
+      organizationId,
+      contactId,
+      inboxId,
+      deletedAt: null,
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
 export async function findOrCreateContactByPhoneForExternalSend(
   organizationId: string,
   phoneRaw: string,
@@ -240,6 +263,12 @@ export async function executeExternalSendTemplate(options: {
     phoneRaw,
   );
 
+  const existingConversationId = await findLatestConversationForExternalTemplateSend(
+    organizationId,
+    contact.id,
+    inbox.id,
+  );
+
   const bodyParams = extractTemplateBodyParametersFromMetaComponents(payload.components);
   const metaComponents = payload.components?.length
     ? sanitizeMetaTemplateComponentsForSend(payload.components as Array<Record<string, unknown>>)
@@ -265,6 +294,7 @@ export async function executeExternalSendTemplate(options: {
       type: "TEMPLATE",
       templateId: templateRow.id,
       templateBodyParameters: bodyParams.length > 0 ? bodyParams : undefined,
+      ...(existingConversationId ? { conversationId: existingConversationId } : {}),
     },
     actor: { kind: "user", userId },
     log,
