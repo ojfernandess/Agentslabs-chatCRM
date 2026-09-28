@@ -23,7 +23,8 @@ export function ConversationMessageReplyQuote({ reply, inbound, onJumpToOriginal
     <button
       type="button"
       disabled={!clickable}
-      onClick={() => {
+      onClick={(event) => {
+        event.stopPropagation();
         if (clickable && reply.id) onJumpToOriginal?.(reply.id);
       }}
       className={clsx(

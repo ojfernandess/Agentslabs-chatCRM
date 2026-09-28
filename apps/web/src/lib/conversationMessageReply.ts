@@ -114,5 +114,16 @@ export function normalizeConversationMessageReply(
       senderLabel: "",
     };
   }
+  const replyToMessageId = message.replyToMessageId?.trim();
+  if (replyToMessageId) {
+    return {
+      id: replyToMessageId,
+      available: true,
+      direction: "INBOUND",
+      type: "TEXT",
+      preview: "Mensagem",
+      senderLabel: "",
+    };
+  }
   return null;
 }

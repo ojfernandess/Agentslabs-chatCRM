@@ -224,14 +224,26 @@ async function resolveConversationMessageAnchorFromCursor(
   rawCursor: string,
 ): Promise<MessageAnchor | null | "invalid"> {
   const decoded = decodeConversationMessageCursor(rawCursor);
-  if (!decoded) return "invalid";
-  const row = await prisma.message.findFirst({
-    where: { id: decoded.id, conversationId },
-    select: { id: true, createdAt: true },
-  });
-  if (!row) return null;
-  if (row.createdAt.toISOString() !== decoded.createdAt) return "invalid";
-  return row;
+  if (decoded) {
+    const row = await prisma.message.findFirst({
+      where: { id: decoded.id, conversationId },
+      select: { id: true, createdAt: true },
+    });
+    if (!row) return null;
+    if (row.createdAt.toISOString() !== decoded.createdAt) return "invalid";
+    return row;
+  }
+
+  const trimmed = rawCursor.trim();
+  if (z.string().uuid().safeParse(trimmed).success) {
+    const row = await prisma.message.findFirst({
+      where: { id: trimmed, conversationId },
+      select: { id: true, createdAt: true },
+    });
+    return row ?? null;
+  }
+
+  return "invalid";
 }
 
 async function resolveConversationMessageAnchor(

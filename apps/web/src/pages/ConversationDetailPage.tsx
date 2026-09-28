@@ -1168,15 +1168,15 @@ export function ConversationDetailPage() {
     }
   }, [id]);
 
-  const jumpToSearchResult = useCallback(
-    async (result: ConversationMessageSearchResult, _index: number, _total: number, query: string) => {
+  const jumpToConversationMessage = useCallback(
+    async (messageId: string, aroundToken: string, highlight = false) => {
       if (!id) return;
-      setHighlightedMessageId(result.message.id);
-      setMessageSearchQuery(query);
 
-      const existing = messagesRef.current.some((m) => m.id === result.message.id);
+      if (highlight) setHighlightedMessageId(messageId);
+
+      const existing = messagesRef.current.some((m) => m.id === messageId);
       if (existing) {
-        scrollToMessage(result.message.id);
+        scrollToMessage(messageId, highlight);
         return;
       }
 
@@ -1189,7 +1189,7 @@ export function ConversationDetailPage() {
             messagesOlderCursor: string | null;
             messagesNewerCursor: string | null;
             focusMessageId: string;
-          }>(`/conversations/${id}/messages?around=${encodeURIComponent(result.cursor)}`);
+          }>(`/conversations/${id}/messages?around=${encodeURIComponent(aroundToken)}`);
           if (id !== activeConversationIdRef.current) return;
           hasPrependedOlderRef.current = true;
           for (const m of data.messages) seenMessageIds.current.add(m.id);
@@ -1205,7 +1205,9 @@ export function ConversationDetailPage() {
             setCachedConversation(id, merged);
             return merged;
           });
-          window.requestAnimationFrame(() => scrollToMessage(result.message.id));
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => scrollToMessage(messageId, highlight));
+          });
           return;
         } catch {
           /* fall through to full reload */
@@ -1213,9 +1215,19 @@ export function ConversationDetailPage() {
       }
 
       await loadConversation();
-      window.requestAnimationFrame(() => scrollToMessage(result.message.id));
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => scrollToMessage(messageId, highlight));
+      });
     },
     [conversation?.messagesPaginationEnabled, id, loadConversation, scrollToMessage],
+  );
+
+  const jumpToSearchResult = useCallback(
+    async (result: ConversationMessageSearchResult, _index: number, _total: number, query: string) => {
+      setMessageSearchQuery(query);
+      await jumpToConversationMessage(result.message.id, result.cursor);
+    },
+    [jumpToConversationMessage],
   );
 
   const loadConversationMeta = useCallback(async () => {
@@ -1388,15 +1400,9 @@ export function ConversationDetailPage() {
 
   const jumpToReplyMessage = useCallback(
     async (messageId: string) => {
-      if (!id) return;
-      if (messagesRef.current.some((m) => m.id === messageId)) {
-        scrollToMessage(messageId, true);
-        return;
-      }
-      await loadConversation();
-      window.requestAnimationFrame(() => scrollToMessage(messageId, true));
+      await jumpToConversationMessage(messageId, messageId, true);
     },
-    [id, loadConversation, scrollToMessage],
+    [jumpToConversationMessage],
   );
 
   const toggleMessageReaction = useCallback(
@@ -4752,7 +4758,9 @@ export function ConversationDetailPage() {
                     <ConversationMessageReplyQuote
                       reply={messageReply}
                       inbound={inbound}
-                      onJumpToOriginal={messageReply.available ? jumpToReplyMessage : undefined}
+                      onJumpToOriginal={
+                        messageReply.available && messageReply.id ? jumpToReplyMessage : undefined
+                      }
                     />
                   ) : null}
                   {msg.type === "IMAGE" && msg.mediaUrl ? (
