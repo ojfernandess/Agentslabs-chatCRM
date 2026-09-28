@@ -13,7 +13,6 @@ test("mergeConversationScopeHint — ignora assignedTo null espúrio do WS", () 
   const merged = mergeConversationScopeHint(baseRow, {
     assignedToId: "user-1",
     assignedTo: null,
-    updatedAt: "2026-09-28T18:00:00.000Z",
   });
   assert.equal(merged.assignedTo?.id, "user-1");
   assert.equal(merged.assignedTo?.name, "Maria");
