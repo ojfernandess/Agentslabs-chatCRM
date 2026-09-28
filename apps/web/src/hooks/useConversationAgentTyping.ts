@@ -16,6 +16,10 @@ export function useConversationAgentTyping(conversationId?: string) {
   const [typing, setTyping] = useState<ConversationAgentTypingState | null>(null);
 
   useEffect(() => {
+    setTyping(null);
+  }, [conversationId]);
+
+  useEffect(() => {
     const onTyping = (e: Event) => {
       const detail = (e as CustomEvent<ConversationAgentTypingDetail>).detail;
       if (!detail?.conversationId) return;
