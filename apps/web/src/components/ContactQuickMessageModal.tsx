@@ -89,15 +89,20 @@ export function ContactQuickMessageModal({
     setTemplatePickerOpen(false);
     setTemplateModal(null);
     void loadInboxes();
+  }, [open, loadInboxes, contact?.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    const q = inboxId ? `?inboxId=${encodeURIComponent(inboxId)}` : "";
     void (async () => {
       try {
-        const rows = await api.get<TemplateSendModalTemplate[]>("/templates");
+        const rows = await api.get<TemplateSendModalTemplate[]>(`/templates${q}`);
         setMessageTemplates(rows ?? []);
       } catch {
         setMessageTemplates([]);
       }
     })();
-  }, [open, loadInboxes, contact?.id]);
+  }, [open, inboxId]);
 
   const selectedInbox = inboxes.find((i) => i.id === inboxId);
   const selectedWaProvider = selectedInbox

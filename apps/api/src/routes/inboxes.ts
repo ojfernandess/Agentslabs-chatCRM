@@ -217,12 +217,15 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
           agentBotId: true,
           autoAssignEnabled: true,
           autoAssignLimit: true,
+          channelConfig: true,
           agentBot: { select: inboxAgentBotSelect },
           _count: { select: { members: true, conversations: true } },
         },
         orderBy: [{ isDefault: "desc" }, { name: "asc" }],
       });
-      return { data: rows };
+      return {
+        data: rows.map((row) => enrichWhatsappInboxResponse(organizationId, row)),
+      };
     }
 
     await migrateWhatsappSettingsToDefaultInbox(organizationId).catch(() => undefined);
@@ -1095,9 +1098,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (request.user.role === "AGENT") {
-      // Agente: omitir segredos e lista de membros.
-      const { members: _m, ingestToken: _t, channelConfig: _cfg, ...rest } = inbox;
-      return rest;
+      // Agente: omitir segredos, token de ingestão e lista de membros.
+      const { members: _m, ingestToken: _t, ...rest } = inbox;
+      return enrichWhatsappInboxResponse(organizationId, rest);
     }
 
     return enrichWhatsappInboxResponse(organizationId, inbox);
