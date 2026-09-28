@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createOptimisticOutboundMessage } from "./optimisticOutboundMessage.js";
 import {
   isRemoteMessagesSnapshotStale,
   localMessagesMissingFromRemote,
@@ -66,6 +67,26 @@ test("isRemoteMessagesSnapshotStale detects older HTTP windows", () => {
     ],
   );
   assert.equal(stale, true);
+});
+
+test("mergeConversationWithRemote drops optimistic rows when HTTP returns the persisted message", () => {
+  const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
+  const local = {
+    id: "conv-1",
+    messages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      { ...optimistic, sentAt: optimistic.sentAt, createdAt: optimistic.createdAt },
+    ],
+  };
+  const remote = {
+    id: "conv-1",
+    messages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      { id: "real-2", sentAt: "2026-01-01T10:02:00.000Z", createdAt: "2026-01-01T10:02:00.000Z", status: "SENT" },
+    ],
+  };
+  const merged = mergeConversationWithRemote(local, remote);
+  assert.deepEqual(merged.messages?.map((m) => m.id), ["1", "real-2"]);
 });
 
 test("localMessagesMissingFromRemote detects ws-only rows", () => {

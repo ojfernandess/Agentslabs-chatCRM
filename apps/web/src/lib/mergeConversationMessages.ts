@@ -1,3 +1,5 @@
+import { stripOptimisticOutboundMessages } from "./optimisticOutboundMessage.js";
+
 export type MergeableMessage = {
   id: string;
   sentAt: string;
@@ -68,8 +70,13 @@ export function mergeConversationWithRemote<T extends MergeableConversation>(loc
 
   const localMessages = local.messages ?? [];
   const remoteMessages = remote.messages ?? [];
-  const mergedMessages = mergeMessagesById(localMessages, remoteMessages);
-  const preservedLocalOnly = localMessagesMissingFromRemote(localMessages, remoteMessages).length > 0;
+  const localPersisted = stripOptimisticOutboundMessages(localMessages);
+  const remoteAddsPersistedRows = remoteMessages.some(
+    (message) => !localPersisted.some((localMessage) => localMessage.id === message.id),
+  );
+  const mergeLocal = remoteAddsPersistedRows ? localPersisted : localMessages;
+  const mergedMessages = mergeMessagesById(mergeLocal, remoteMessages);
+  const preservedLocalOnly = localMessagesMissingFromRemote(mergeLocal, remoteMessages).length > 0;
 
   return {
     ...remote,

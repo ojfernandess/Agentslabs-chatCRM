@@ -188,6 +188,7 @@ import { mergeIncrementalConversationSnapshot } from "@/lib/conversationIncremen
 import { mergeConversationWithRemote } from "@/lib/mergeConversationMessages";
 import {
   createOptimisticOutboundMessage,
+  isOptimisticOutboundMessageId,
   stripOptimisticOutboundMessages,
 } from "@/lib/optimisticOutboundMessage";
 import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
@@ -1255,9 +1256,9 @@ export function ConversationDetailPage() {
     }
   }, [id]);
 
-  const refreshConversationAfterSuccessfulSend = useCallback(async () => {
+  const refreshConversationAfterSuccessfulSend = useCallback(async (opts?: { skipMessageReload?: boolean }) => {
     try {
-      if (workspaceWsConnected) {
+      if (opts?.skipMessageReload || workspaceWsConnected) {
         await loadConversationMeta();
       } else {
         await loadConversation({ silent: true });
@@ -1295,6 +1296,8 @@ export function ConversationDetailPage() {
       }
       const merged = apply(prev);
       setCachedConversationMerged(conversationId, merged, prev);
+      messagesRef.current = merged.messages ?? [];
+      messagesOwnerConversationIdRef.current = conversationId;
       return merged;
     });
     if (conversationId === activeConversationIdRef.current && !isEmailLayout) {
@@ -1357,6 +1360,8 @@ export function ConversationDetailPage() {
         }
         const merged = apply(prev);
         setCachedConversationMerged(conversationId, merged, prev);
+        messagesRef.current = merged.messages ?? [];
+        messagesOwnerConversationIdRef.current = conversationId;
         return merged;
       });
     },
@@ -2253,7 +2258,7 @@ export function ConversationDetailPage() {
       }
       // Refresh após envio bem-sucedido: falha aqui não deve parecer falha de envio.
       if (conversationId === activeConversationIdRef.current) {
-        await refreshConversationAfterSuccessfulSend();
+        await refreshConversationAfterSuccessfulSend({ skipMessageReload: true });
       }
     } catch (err) {
       clearOptimisticOutboundMessage(optimisticMessage.id, conversationId);
@@ -2911,6 +2916,9 @@ export function ConversationDetailPage() {
     isWhatsappInbox &&
     (whatsappProvider === "meta" || whatsappProvider === "360dialog");
   const contactDisplayName = conversation.contact.name?.trim() || "Cliente";
+  const hasPendingOptimisticOutbound = (conversation.messages ?? []).some((message) =>
+    isOptimisticOutboundMessageId(message.id),
+  );
   const isWebsiteInbox = conversation.inbox?.channelType === "WEBSITE";
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
@@ -4981,7 +4989,7 @@ export function ConversationDetailPage() {
                 {!emailWorkspaceMode ? <span className="block h-8 w-8 shrink-0" aria-hidden /> : null}
               </motion.div>
             ) : null}
-            {sending || (attachBusy && attachKind === "IMAGE") ? (
+            {(sending && !hasPendingOptimisticOutbound) || (attachBusy && attachKind === "IMAGE") ? (
               <motion.div
                 className="mb-2 mt-2 flex w-full justify-end gap-2"
                 initial={{ opacity: 0 }}
