@@ -16,6 +16,7 @@ import {
   maskPhoneNumberId,
   validateMetaSendConfig,
 } from "../lib/metaSendErrors.js";
+import { recordMetaSendOutcome } from "../lib/message-processing-monitor/service.js";
 
 export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   private apiKey: string;
@@ -53,7 +54,12 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         body: JSON.stringify(payload),
       });
     } catch (err) {
-      throw MetaSendError.network(err, extractFetchErrorDiagnostics(err));
+      const networkErr = MetaSendError.network(err, extractFetchErrorDiagnostics(err));
+      recordMetaSendOutcome({
+        durationMs: Date.now() - started,
+        error: networkErr.message,
+      });
+      throw networkErr;
     }
 
     if (!response.ok) {
@@ -73,7 +79,13 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         metaCode,
         durationMs: Date.now() - started,
       });
-      throw MetaSendError.api(response.status, metaCode, metaMessage, errorText);
+      const apiErr = MetaSendError.api(response.status, metaCode, metaMessage, errorText);
+      recordMetaSendOutcome({
+        durationMs: Date.now() - started,
+        httpStatus: response.status,
+        error: apiErr.message,
+      });
+      throw apiErr;
     }
 
     const data = (await response.json()) as { messages?: { id?: string }[] };
@@ -84,8 +96,20 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         httpStatus: response.status,
         durationMs: Date.now() - started,
       });
-      throw MetaSendError.missingMessageId();
+      const missingErr = MetaSendError.missingMessageId();
+      recordMetaSendOutcome({
+        durationMs: Date.now() - started,
+        httpStatus: response.status,
+        error: missingErr.message,
+      });
+      throw missingErr;
     }
+
+    recordMetaSendOutcome({
+      durationMs: Date.now() - started,
+      httpStatus: response.status,
+      wamid,
+    });
 
     console.info("[META][SEND][SUCCESS]", {
       phoneNumberId: maskPhoneNumberId(this.phoneNumberId),

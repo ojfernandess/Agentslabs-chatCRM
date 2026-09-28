@@ -39,6 +39,7 @@ import { SuperAdminBillingSection } from "@/components/super-admin/SuperAdminBil
 import { SuperAdminHelpCenterPanel } from "@/components/super-admin/SuperAdminHelpCenterPanel";
 import { SuperAdminHelpdeskPanel } from "@/components/super-admin/SuperAdminHelpdeskPanel";
 import { SuperAdminMetaDeliveryPanel } from "@/components/super-admin/SuperAdminMetaDeliveryPanel";
+import { SuperAdminMessageProcessingPanel } from "@/components/super-admin/SuperAdminMessageProcessingPanel";
 import { SuperAdminWhatsappPricingPanel } from "@/components/super-admin/SuperAdminWhatsappPricingPanel";
 import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
@@ -2965,6 +2966,8 @@ export function SuperAdminPage() {
           {section === "conversationMedia" && <SuperAdminConversationMediaSection />}
 
           {section === "metaDelivery" && <SuperAdminMetaDeliveryPanel />}
+
+          {section === "messageProcessing" && <SuperAdminMessageProcessingPanel />}
 
           {section === "billing" && <SuperAdminBillingSection />}
 

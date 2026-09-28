@@ -53,6 +53,12 @@ import {
   serializeMessageForWorkspaceWs,
 } from "../lib/workspaceMessageBroadcast.js";
 import { scheduleIntelligentTaggingDuringConversation } from "../lib/intelligent-tagging/service.js";
+import {
+  finishMessageTrace,
+  maybeStartMessageTrace,
+  runWithTraceHandle,
+} from "../lib/message-processing-monitor/service.js";
+import type { ActiveTraceHandle } from "../lib/message-processing-monitor/traceContext.js";
 import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWebhookHandler.js";
 import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
 import { handleNvoipDtmfWebhook } from "../lib/nvoipDtmfWebhook.js";
@@ -443,6 +449,7 @@ async function handleWhatsAppPost(
   let processedWebhookEvents = 0;
 
   for (const msg of messages) {
+    let msgMonitor: ActiveTraceHandle | null = null;
     try {
       if (msg.waMessageId) {
         const duplicate = await prisma.message.findFirst({
@@ -475,6 +482,17 @@ async function handleWhatsAppPost(
         continue;
       }
 
+      msgMonitor = maybeStartMessageTrace({
+        direction: "INBOUND",
+        organizationId,
+        inboxId: target.inboxId,
+        provider: target.whatsappProvider,
+        providerMessageId: msg.waMessageId,
+        messageType: msg.type,
+        bodyLength: msg.body?.length ?? 0,
+      });
+
+      const processInboundMessage = async (): Promise<void> => {
       let inboundBody = msg.body;
       if (msg.isGroup && (msg.participantPushName || msg.participantE164)) {
         const who = (msg.participantPushName || msg.participantE164 || "").trim();
@@ -544,6 +562,8 @@ async function handleWhatsAppPost(
         }).catch(() => {});
       }
 
+      msgMonitor?.stage("contact", "Contato localizado/criado");
+
       if (channelSettings.autoOptInOnFirstMessage && !contact.optedIn) {
         await prisma.contact.update({
           where: { id: contact.id },
@@ -569,9 +589,10 @@ async function handleWhatsAppPost(
           { organizationId, contactId: contact.id, phone },
           "Ignoring inbound WhatsApp message from blocked contact",
         );
-        continue;
+        return;
       }
 
+      msgMonitor?.stage("conversation", "Conversa localizada/criada");
       let conversation = await ensureConversationForChannelInbox({
         organizationId,
         contactId: contact.id,
@@ -686,6 +707,7 @@ async function handleWhatsAppPost(
         quotedProviderMsgId: msg.quotedProviderMsgId,
       });
 
+      msgMonitor?.stage("persist", "Mensagem persistida");
       const inbound = await prisma.message.create({
         data: {
           conversationId: conversation.id,
@@ -704,7 +726,9 @@ async function handleWhatsAppPost(
           replyTo: messageReplyToInclude,
         },
       });
+      msgMonitor?.setIds({ conversationId: conversation.id, messageId: inbound.id });
 
+      msgMonitor?.stage("realtime", "Realtime emitido");
       notifyConversationNewMessage(
         organizationId,
         conversation.id,
@@ -714,6 +738,7 @@ async function handleWhatsAppPost(
         }),
       );
 
+      msgMonitor?.stage("transcription", "Transcrição áudio/imagem");
       let inboundForPipeline = await maybeTranscribeInboundAudioMessage({
         message: inbound,
         enabled: channelSettings.audioTranscriptionEnabled,
@@ -726,6 +751,7 @@ async function handleWhatsAppPost(
       });
       const inboundBodyForRules = inboundForPipeline.body?.trim() ?? "";
 
+      msgMonitor?.stage("timeline", "Timeline CRM");
       await appendTimelineEvent({
         organizationId,
         subjectType: "CONTACT",
@@ -751,6 +777,7 @@ async function handleWhatsAppPost(
         data: { updatedAt: new Date() },
       });
 
+      msgMonitor?.stage("auto_tags", "Auto-tags");
       if (inboundBodyForRules) {
         const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
         for (const rule of rules) {
@@ -773,7 +800,9 @@ async function handleWhatsAppPost(
         organizationId,
         conversation.inboxId,
       );
+      msgMonitor?.stage("bot_dispatch", "Dispatch bot/agente");
       if (conversationAgentCtx) {
+        msgMonitor?.setBot({ triggered: true });
         const fresh = await prisma.conversation.findFirst({ where: { id: conversation.id } });
         if (fresh) {
           void dispatchAgentBotWebhook({
@@ -803,9 +832,15 @@ async function handleWhatsAppPost(
         { organizationId, conversationId: conversation.id, triggerMessageId: inboundForPipeline.id },
         app.log,
       );
+      };
+
+      if (msgMonitor) await runWithTraceHandle(msgMonitor, processInboundMessage);
+      else await processInboundMessage();
+      finishMessageTrace(msgMonitor, "completed");
 
       processedWebhookEvents += 1;
     } catch (err) {
+      finishMessageTrace(msgMonitor, "error", err instanceof Error ? err.message : String(err));
       app.log.error(err, "Error processing incoming webhook message");
     }
   }

@@ -12,6 +12,7 @@ import {
   LogOut,
   MessageCircle,
   Plug,
+  HeartPulse,
   QrCode,
   ScrollText,
   Settings2,
@@ -40,6 +41,7 @@ export type SuperSection =
   | "auditLog"
   | "conversationMedia"
   | "metaDelivery"
+  | "messageProcessing"
   | "featureFlags"
   | "mcpServer"
   | "billing"
@@ -78,6 +80,7 @@ const NAV_GROUPS: { labelKey: string; items: NavItem[] }[] = [
       { id: "monitoring", labelKey: "superAdmin.monitoring", icon: Activity },
       { id: "conversationMedia", labelKey: "superAdmin.conversationMedia.nav", icon: HardDrive },
       { id: "metaDelivery", labelKey: "superAdmin.metaDelivery.nav", icon: AlertTriangle },
+      { id: "messageProcessing", labelKey: "superAdmin.messageProcessing.nav", icon: HeartPulse },
       { id: "platformApps", labelKey: "superAdmin.platformApps", icon: Box },
       { id: "mcpServer", labelKey: "superAdmin.mcp.nav", icon: Plug },
       { id: "auditLog", labelKey: "superAdmin.auditLog", icon: ScrollText },
@@ -108,6 +111,7 @@ const SECTION_TITLE_KEYS: Record<SuperSection, string> = {
   auditLog: "superAdmin.auditLog",
   conversationMedia: "superAdmin.conversationMedia.nav",
   metaDelivery: "superAdmin.metaDelivery.nav",
+  messageProcessing: "superAdmin.messageProcessing.nav",
   featureFlags: "superAdmin.featureFlags",
   mcpServer: "superAdmin.mcp.title",
   billing: "superAdmin.billingNav",
@@ -125,6 +129,7 @@ const SECTION_SUBTITLE_KEYS: Partial<Record<SuperSection, string>> = {
   auditLog: "superAdmin.auditSubtitle",
   conversationMedia: "superAdmin.conversationMedia.subtitle",
   metaDelivery: "superAdmin.metaDelivery.subtitle",
+  messageProcessing: "superAdmin.messageProcessing.subtitle",
   featureFlags: "superAdmin.flagsSubtitle",
   mcpServer: "superAdmin.mcp.subtitle",
   billing: "superAdmin.billingSectionSubtitle",

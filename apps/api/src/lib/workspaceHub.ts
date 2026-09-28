@@ -1,4 +1,5 @@
 import type { WebSocket } from "ws";
+import { recordWorkspaceRealtimeEmit } from "./message-processing-monitor/service.js";
 
 const OPEN = 1;
 const orgSockets = new Map<string, Set<WebSocket>>();
@@ -24,19 +25,39 @@ export function registerWorkspaceSocket(organizationId: string, socket: WebSocke
   socket.on("error", cleanup);
 }
 
+function countOpenSockets(set: Set<WebSocket>): number {
+  let n = 0;
+  for (const s of set) {
+    if (s.readyState === OPEN) n += 1;
+  }
+  return n;
+}
+
 export function broadcastToOrganization(organizationId: string, payload: unknown): void {
   const set = orgSockets.get(organizationId);
   if (!set?.size) return;
   const raw = JSON.stringify(payload);
+  const eventType =
+    typeof payload === "object" && payload !== null && "type" in payload
+      ? String((payload as { type: unknown }).type)
+      : "unknown";
+  let recipients = 0;
   for (const s of set) {
     if (s.readyState === OPEN) {
       try {
         s.send(raw);
+        recipients += 1;
       } catch {
         /* ignore */
       }
     }
   }
+  recordWorkspaceRealtimeEmit(organizationId, eventType, payload, recipients);
+}
+
+export function getOrganizationSocketCount(organizationId: string): number {
+  const set = orgSockets.get(organizationId);
+  return set ? countOpenSockets(set) : 0;
 }
 
 /** Indica que o bot está a processar / a gerar resposta (CRM chat + split-view). */

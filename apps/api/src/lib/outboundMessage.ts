@@ -23,6 +23,11 @@ import {
   notifyConversationNewMessage,
   serializeMessageForWorkspaceWs,
 } from "./workspaceMessageBroadcast.js";
+import {
+  finishMessageTrace,
+  maybeStartMessageTrace,
+  runWithTraceHandle,
+} from "./message-processing-monitor/service.js";
 import { broadcastConversationUpdated } from "./workspaceHub.js";
 import { promoteUserToOnlineIfInactive } from "./userAvailability.js";
 import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
@@ -182,6 +187,15 @@ export async function deliverOutboundWhatsAppMessage(options: {
     skipWhatsappProviderDelivery = false,
   } = options;
 
+  const monitorHandle = maybeStartMessageTrace({
+    direction: "OUTBOUND",
+    organizationId,
+    inboxId: data.inboxId ?? undefined,
+    messageType: data.type,
+    bodyLength: data.body?.length ?? 0,
+  });
+
+  const executeDelivery = async (): Promise<{ message: Message; conversation: Conversation }> => {
   let resolvedDeliveryChannel = deliveryChannelOverride;
 
   const {
@@ -949,4 +963,16 @@ export async function deliverOutboundWhatsAppMessage(options: {
   }
 
   return { message, conversation: updatedConversation };
+  };
+
+  try {
+    const result = monitorHandle
+      ? await runWithTraceHandle(monitorHandle, executeDelivery)
+      : await executeDelivery();
+    finishMessageTrace(monitorHandle, "completed");
+    return result;
+  } catch (err) {
+    finishMessageTrace(monitorHandle, "error", err instanceof Error ? err.message : String(err));
+    throw err;
+  }
 }
