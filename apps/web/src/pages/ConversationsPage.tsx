@@ -10,6 +10,8 @@ import {
   useDebouncedConversationUpdated,
   type ConversationUpdatedDetail,
 } from "@/hooks/useDebouncedConversationUpdated";
+import { conversationUpdateHasStructuralChange } from "@/lib/conversationUpdatedStructuralChange";
+import { createDebouncedCallback } from "@/lib/debouncedCallback";
 import {
   CONVERSATION_MESSAGE_CREATED_EVENT,
   type ConversationMessageCreatedDetail,
@@ -865,6 +867,18 @@ export function ConversationsPage({
     hideResolvedInAllScope,
   ]);
 
+  const scheduleCountsRefreshRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    scheduleCountsRefreshRef.current = createDebouncedCallback(() => {
+      void loadScopeCounts();
+      void loadStatusCounts();
+    }, 500);
+  }, [loadScopeCounts, loadStatusCounts]);
+
+  const scheduleCountsRefresh = useCallback(() => {
+    scheduleCountsRefreshRef.current();
+  }, []);
+
   const syncConversationListRow = useCallback(
     async (conversationId: string, options?: { highlight?: "enter" | "transfer" | "exit" }) => {
       const existing = listSyncInflightRef.current.get(conversationId);
@@ -901,9 +915,6 @@ export function ConversationsPage({
             persistConversationListIds(next);
             return next;
           });
-
-          void loadScopeCounts();
-          void loadStatusCounts();
         } catch {
           setConversations((prev) => {
             if (listFetchKeyRef.current !== fetchKey) return prev;
@@ -915,8 +926,6 @@ export function ConversationsPage({
           if (options?.highlight === "exit" && listFetchKeyRef.current === fetchKey) {
             markListMotion(conversationId, "exit");
           }
-          void loadScopeCounts();
-          void loadStatusCounts();
         }
       })().finally(() => {
         listSyncInflightRef.current.delete(conversationId);
@@ -925,7 +934,7 @@ export function ConversationsPage({
       listSyncInflightRef.current.set(conversationId, promise);
       return promise;
     },
-    [applyListRowToCache, loadScopeCounts, loadStatusCounts, markListMotion, persistConversationListIds],
+    [applyListRowToCache, markListMotion, persistConversationListIds],
   );
 
   const syncConversationFromHint = useCallback(
@@ -985,10 +994,9 @@ export function ConversationsPage({
       } else if (highlight) {
         markListMotion(conversationId, highlight);
       }
-      void loadScopeCounts();
-      void loadStatusCounts();
+      scheduleCountsRefresh();
     },
-    [applyListRowToCache, loadScopeCounts, loadStatusCounts, markListMotion, syncConversationListRow],
+    [applyListRowToCache, markListMotion, scheduleCountsRefresh, syncConversationListRow],
   );
 
   useEffect(() => {
@@ -1019,30 +1027,15 @@ export function ConversationsPage({
   }, [loadStatusCounts]);
 
   useDebouncedConversationUpdated((detail) => {
-    const hasStructuralChange =
-      Boolean(detail?.status) ||
-      detail?.assignedToId !== undefined ||
-      detail?.teamId !== undefined ||
-      Boolean(detail?.inboxId) ||
-      detail?.awaitingHumanHandoff !== undefined ||
-      detail?.agentBotTriageActive !== undefined;
-    if (!hasStructuralChange) return;
-    void loadScopeCounts();
-    void loadStatusCounts();
+    if (!conversationUpdateHasStructuralChange(detail)) return;
+    scheduleCountsRefresh();
   });
 
   useEffect(() => {
     const onUpdated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationUpdatedDetail>).detail;
       if (!detail?.conversationId) return;
-      const hasStructuralChange =
-        detail.status ||
-        detail.assignedToId !== undefined ||
-        detail.teamId !== undefined ||
-        detail.inboxId ||
-        detail.awaitingHumanHandoff !== undefined ||
-        detail.agentBotTriageActive !== undefined;
-      if (hasStructuralChange) {
+      if (conversationUpdateHasStructuralChange(detail)) {
         syncConversationFromHint(detail);
         return;
       }

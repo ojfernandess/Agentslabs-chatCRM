@@ -19,13 +19,19 @@ import {
 import { playAudioAlert } from "@/lib/audioAlerts";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
 import type { ConversationUpdatedDetail } from "@/hooks/useDebouncedConversationUpdated";
-import { CONVERSATION_MESSAGE_CREATED_EVENT } from "@/lib/conversationMessagePush";
+import { conversationUpdateHasStructuralChange } from "@/lib/conversationUpdatedStructuralChange";
+import {
+  CONVERSATION_MESSAGE_CREATED_EVENT,
+  type ConversationMessageCreatedDetail,
+} from "@/lib/conversationMessagePush";
 
 const BELL_CLEARED_KEY = "openconduit_bell_cleared_at";
 const POLL_MS = 22_000;
 const SHOWN_CAP = 400;
 const AUDIO_REPEAT_MS = 30_000;
 const REALTIME_POLL_DEBOUNCE_MS = 350;
+/** Inbound messages: reconcile bell state later — avoids pageSize=100 storm per message. */
+const MESSAGE_POLL_DEBOUNCE_MS = 2_000;
 
 export interface ConversationNotificationPrefs {
   notifyConversationOpen: boolean;
@@ -170,6 +176,7 @@ export function useConversationAlerts() {
   const badgeCountRef = useRef(0);
   const audioRepeatIdRef = useRef<number | null>(null);
   const pollDebounceRef = useRef<number | null>(null);
+  const messagePollDebounceRef = useRef<number | null>(null);
 
   const clearAudioRepeat = useCallback(() => {
     if (audioRepeatIdRef.current != null) window.clearInterval(audioRepeatIdRef.current);
@@ -287,6 +294,50 @@ export function useConversationAlerts() {
     }, REALTIME_POLL_DEBOUNCE_MS);
   }, [poll]);
 
+  const scheduleMessagePoll = useCallback(() => {
+    if (messagePollDebounceRef.current != null) window.clearTimeout(messagePollDebounceRef.current);
+    messagePollDebounceRef.current = window.setTimeout(() => {
+      messagePollDebounceRef.current = null;
+      void poll();
+    }, MESSAGE_POLL_DEBOUNCE_MS);
+  }, [poll]);
+
+  const bumpBadgeForInboundMessage = useCallback(
+    (detail: ConversationMessageCreatedDetail) => {
+      if (detail.message.direction !== "INBOUND") return;
+      const openConversationId = getOpenConversationId();
+      if (openConversationId && detail.conversationId === openConversationId) return;
+
+      setBadgeCount((count) => {
+        const next = count + 1;
+        badgeCountRef.current = next;
+        return next;
+      });
+
+      const sound = readAudioAlertSoundPref();
+      const onlyWhenHidden = readAudioAlertOnlyWhenHiddenPref();
+      const repeat = readAudioAlertRepeatPref();
+      const canPlayNow = !onlyWhenHidden || document.visibilityState !== "visible";
+      if (sound !== "none" && canPlayNow) {
+        void playAudioAlert(sound, 0.9);
+        if (repeat && audioRepeatIdRef.current == null) {
+          audioRepeatIdRef.current = window.setInterval(() => {
+            const s = readAudioAlertSoundPref();
+            const ow = readAudioAlertOnlyWhenHiddenPref();
+            const ok = !ow || document.visibilityState !== "visible";
+            if (!ok || s === "none") return;
+            if (badgeCountRef.current <= 0) {
+              clearAudioRepeat();
+              return;
+            }
+            void playAudioAlert(s, 0.9);
+          }, AUDIO_REPEAT_MS);
+        }
+      }
+    },
+    [clearAudioRepeat],
+  );
+
   useEffect(() => {
     if (authLoading || !user) return;
     poll();
@@ -308,18 +359,13 @@ export function useConversationAlerts() {
     };
     const onUpdated = (event: Event) => {
       const detail = (event as CustomEvent<ConversationUpdatedDetail>).detail;
-      const hasStructuralChange =
-        Boolean(detail?.status) ||
-        detail?.assignedToId !== undefined ||
-        detail?.teamId !== undefined ||
-        Boolean(detail?.inboxId) ||
-        detail?.awaitingHumanHandoff !== undefined ||
-        detail?.agentBotTriageActive !== undefined;
-      if (hasStructuralChange) schedulePoll();
+      if (conversationUpdateHasStructuralChange(detail)) schedulePoll();
     };
     const onMessageCreated = (event: Event) => {
-      const detail = (event as CustomEvent<{ message?: { direction?: string } }>).detail;
-      if (detail?.message?.direction === "INBOUND") schedulePoll();
+      const detail = (event as CustomEvent<ConversationMessageCreatedDetail>).detail;
+      if (!detail?.message || detail.message.direction !== "INBOUND") return;
+      bumpBadgeForInboundMessage(detail);
+      scheduleMessagePoll();
     };
     window.addEventListener("openconduit:conversation-read", onRead);
     window.addEventListener("openconduit:conversation-unread", onUnread);
@@ -331,8 +377,9 @@ export function useConversationAlerts() {
       window.removeEventListener("openconduit:conversation-updated", onUpdated);
       window.removeEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
       if (pollDebounceRef.current != null) window.clearTimeout(pollDebounceRef.current);
+      if (messagePollDebounceRef.current != null) window.clearTimeout(messagePollDebounceRef.current);
     };
-  }, [schedulePoll, clearAudioRepeat]);
+  }, [schedulePoll, scheduleMessagePoll, bumpBadgeForInboundMessage, clearAudioRepeat]);
 
   useEffect(() => {
     const on = () => {

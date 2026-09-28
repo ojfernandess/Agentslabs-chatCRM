@@ -87,6 +87,7 @@ import {
   type UserAvailability,
 } from "@/lib/userAvailability";
 import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversationUpdated";
+import { conversationUpdateHasStructuralChange } from "@/lib/conversationUpdatedStructuralChange";
 import { useWorkspaceWebSocketConnected } from "@/lib/workspaceWebSocket";
 import {
   CONVERSATION_MESSAGE_CREATED_EVENT,
@@ -1860,7 +1861,8 @@ export function ConversationDetailPage() {
     prevWorkspaceWsConnectedRef.current = workspaceWsConnected;
   }, [id, workspaceWsConnected, loadConversation]);
 
-  useDebouncedConversationUpdated(() => {
+  useDebouncedConversationUpdated((detail) => {
+    if (!conversationUpdateHasStructuralChange(detail)) return;
     if (workspaceWsConnected) {
       void loadConversationMeta();
     } else {
