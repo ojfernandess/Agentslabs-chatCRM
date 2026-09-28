@@ -1048,7 +1048,13 @@ export function ConversationsPage({
     const onMessageCreated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
       if (!detail?.conversationId || !detail.message) return;
+      // Outbound (ex.: sendTemplate → fila do bot) pode mudar escopo — GET list-row evita preview na aba errada.
+      if (detail.message.direction === "OUTBOUND") {
+        void syncConversationListRow(detail.conversationId, { highlight: "enter" });
+        return;
+      }
       setConversations((prev) => {
+        const fetchKey = listFetchKeyRef.current;
         const idx = prev.findIndex((c) => c.id === detail.conversationId);
         if (idx < 0) {
           void syncConversationListRow(detail.conversationId, { highlight: "enter" });
@@ -1064,15 +1070,17 @@ export function ConversationsPage({
         const updated: Conversation = {
           ...conv,
           updatedAt: detail.message.createdAt,
-          isUnread: detail.message.direction === "INBOUND" ? true : conv.isUnread,
+          isUnread: true,
           messages: [preview, ...(conv.messages?.slice(1) ?? [])],
         };
-        return [updated, ...prev.filter((_, i) => i !== idx)];
+        const next = [updated, ...prev.filter((_, i) => i !== idx)];
+        applyListRowToCache(fetchKey, next);
+        return next;
       });
     };
     window.addEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
     return () => window.removeEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
-  }, []);
+  }, [applyListRowToCache, syncConversationListRow]);
 
   useEffect(() => {
     const onRead = (e: Event) => {

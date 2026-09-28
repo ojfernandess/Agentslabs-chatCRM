@@ -1,9 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
+import {
+  bodyVariableCount,
+  effectiveBodyVariableCount,
+  extractBodyPlaceholdersInOrder,
+  substituteBodyPlaceholderValues,
+} from "@/lib/templatePreview";
 
 export interface TemplateSendModalTemplate {
   id: string;
@@ -13,15 +19,6 @@ export interface TemplateSendModalTemplate {
   metaCategory?: string | null;
 }
 
-function applyVariables(body: string, values: string[]): string {
-  let out = body;
-  for (let i = 0; i < values.length; i++) {
-    const re = new RegExp(`\\{\\{\\s*${i + 1}\\s*\\}\\}`, "g");
-    out = out.replace(re, values[i] ?? "");
-  }
-  return out;
-}
-
 function categoryLabel(category: string | null | undefined, t: (k: string) => string): string | null {
   if (!category) return null;
   const u = category.toUpperCase();
@@ -29,6 +26,13 @@ function categoryLabel(category: string | null | undefined, t: (k: string) => st
   if (u === "MARKETING") return t("templateModal.categoryMarketing");
   if (u === "AUTHENTICATION") return t("templateModal.categoryAuthentication");
   return category;
+}
+
+function variableFieldLabel(token: string, t: (k: string) => string): string {
+  if (/^\d+$/.test(token)) {
+    return t("templateModal.bodyVar").replace("{n}", token);
+  }
+  return token;
 }
 
 export type TemplateSendModalMode = "send" | "insert";
@@ -60,22 +64,39 @@ export function TemplateSendModal(props: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const variableTokens = useMemo(
+    () => (template ? extractBodyPlaceholdersInOrder(template.body) : []),
+    [template],
+  );
+  const variableCount = useMemo(
+    () =>
+      template
+        ? effectiveBodyVariableCount(template.body, template.bodyVariableCount || bodyVariableCount(template.body))
+        : 0,
+    [template],
+  );
+
   useEffect(() => {
     if (!template) {
       setValues([]);
       return;
     }
-    setValues(Array.from({ length: Math.max(0, template.bodyVariableCount) }, () => ""));
+    const count = effectiveBodyVariableCount(template.body, template.bodyVariableCount);
+    setValues(Array.from({ length: Math.max(0, count) }, () => ""));
     setError("");
   }, [template]);
 
   if (!open || !template || typeof document === "undefined") return null;
 
-  const preview = applyVariables(template.body, values);
+  const preview = substituteBodyPlaceholderValues(template.body, values);
   const cat = categoryLabel(template.metaCategory, t);
+  const fields =
+    variableTokens.length > 0
+      ? variableTokens
+      : Array.from({ length: variableCount }, (_, i) => String(i + 1));
 
   const validateVariables = () => {
-    for (let i = 0; i < template.bodyVariableCount; i++) {
+    for (let i = 0; i < variableCount; i++) {
       if (!values[i]?.trim()) {
         setError(t("templateModal.fillAll"));
         return false;
@@ -101,7 +122,7 @@ export function TemplateSendModal(props: {
         ...(inboxId && !conversationId ? { inboxId } : {}),
         type: "TEMPLATE",
         templateId: template.id,
-        ...(template.bodyVariableCount > 0 ? { templateBodyParameters: values.map((v) => v.trim()) } : {}),
+        ...(variableCount > 0 ? { templateBodyParameters: values.map((v) => v.trim()) } : {}),
       });
       await onSent();
       onClose();
@@ -136,13 +157,13 @@ export function TemplateSendModal(props: {
               </p>
               <p className="mt-1 text-xs font-medium text-ink-800 dark:text-ink-200">{template.name}</p>
               <div className="mt-4 space-y-3">
-                {template.bodyVariableCount === 0 ? (
+                {variableCount === 0 ? (
                   <p className="text-sm text-ink-500 dark:text-ink-500">{t("templateModal.noVariables")}</p>
                 ) : (
-                  Array.from({ length: template.bodyVariableCount }, (_, i) => (
-                    <div key={i}>
+                  fields.map((token, i) => (
+                    <div key={`${token}-${i}`}>
                       <label className="block text-xs font-medium text-ink-600 dark:text-ink-400">
-                        {t("templateModal.bodyVar").replace("{n}", String(i + 1))}
+                        {variableFieldLabel(token, t)}
                       </label>
                       <input
                         value={values[i] ?? ""}

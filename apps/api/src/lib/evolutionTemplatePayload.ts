@@ -1,4 +1,4 @@
-import { maxBodyPlaceholderIndex } from "./templateVariables.js";
+import { bodyVariableCount } from "./templateVariables.js";
 
 /** Componentes no formato Meta / Evolution API v2 (`POST /template/create/{instance}`). */
 export function buildEvolutionTemplateCreateComponents(
@@ -12,7 +12,7 @@ export function buildEvolutionTemplateCreateComponents(
     text: body,
   };
 
-  const maxIdx = maxBodyPlaceholderIndex(body);
+  const maxIdx = bodyVariableCount(body);
   if (maxIdx > 0) {
     const row: string[] = [];
     for (let i = 1; i <= maxIdx; i++) {

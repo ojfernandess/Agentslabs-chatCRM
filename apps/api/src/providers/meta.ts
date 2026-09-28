@@ -46,13 +46,21 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       } else {
         const comps = params.templateBodyParameters?.filter((x) => x.length > 0);
         if (comps && comps.length > 0) {
+          const names = params.templateBodyParameterNames;
           tpl.components = [
             {
               type: "body",
-              parameters: comps.map((text) => ({
-                type: "text",
-                text: text.length > 1024 ? text.slice(0, 1024) : text,
-              })),
+              parameters: comps.map((text, i) => {
+                const param: Record<string, unknown> = {
+                  type: "text",
+                  text: text.length > 1024 ? text.slice(0, 1024) : text,
+                };
+                const name = names?.[i]?.trim();
+                if (name && !/^\d+$/.test(name)) {
+                  param.parameter_name = name;
+                }
+                return param;
+              }),
             },
           ];
         }

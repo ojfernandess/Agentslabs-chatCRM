@@ -9,8 +9,10 @@ export interface SendMessageParams {
   templateName?: string;
   /** Código de idioma do modelo (ex. pt_BR). */
   templateLanguage?: string;
-  /** Valores {{1}}, {{2}}, … para o componente BODY (Cloud API). */
+  /** Valores {{1}}, {{2}}, … ou valores na ordem de {{nome}}, … para o componente BODY (Cloud API). */
   templateBodyParameters?: string[];
+  /** Nomes dos placeholders nomeados (ex. nome, pedido) — obrigatório para modelos Meta com {{nome}}. */
+  templateBodyParameterNames?: string[];
   /** Componentes completos da Meta Cloud API (header/body/buttons). Tem prioridade sobre templateBodyParameters. */
   templateComponents?: Array<Record<string, unknown>>;
   /** Botões de resposta rápida (Meta interactive, máx. 3). */

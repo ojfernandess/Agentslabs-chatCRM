@@ -106,7 +106,12 @@ export function sanitizeMetaTemplateComponentsForSend(
       const param = p as Record<string, unknown>;
       const pType = String(param.type ?? "text").toLowerCase();
       if (pType === "text") {
-        return { type: "text", text: String(param.text ?? "") };
+        const out: Record<string, unknown> = { type: "text", text: String(param.text ?? "") };
+        const parameterName = typeof param.parameter_name === "string" ? param.parameter_name.trim() : "";
+        if (parameterName && !/^\d+$/.test(parameterName)) {
+          out.parameter_name = parameterName;
+        }
+        return out;
       }
       return param;
     });

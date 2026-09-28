@@ -4,6 +4,7 @@ import {
   computeAgentBotTriageActive,
   getAgentBotDispatchContextForInbox,
 } from "./agentBotTriage.js";
+import { broadcastToOrganization } from "./workspaceHub.js";
 import {
   buildWebsiteVisitorIndexMap,
   enrichWebsiteContact,
@@ -148,4 +149,35 @@ export function buildConversationListSyncPayload(input: {
     agentBotTriageActive: input.agentBotTriageActive,
     updatedAt: input.updatedAt.toISOString(),
   };
+}
+
+/** WS com campos de escopo da lista lateral (status, fila do bot, atribuição, etc.). */
+export function broadcastConversationListSync(
+  organizationId: string,
+  conversation: {
+    id: string;
+    status: string;
+    assignedToId: string | null;
+    assignedTo?: { id: string; name: string } | null;
+    teamId: string | null;
+    inboxId: string;
+    awaitingHumanHandoff: boolean;
+    updatedAt: Date;
+  },
+  agentBotTriageActive: boolean,
+): void {
+  broadcastToOrganization(organizationId, {
+    type: "conversation.updated",
+    ...buildConversationListSyncPayload({
+      id: conversation.id,
+      status: conversation.status,
+      assignedToId: conversation.assignedToId,
+      assignedTo: conversation.assignedTo ?? null,
+      teamId: conversation.teamId,
+      inboxId: conversation.inboxId,
+      awaitingHumanHandoff: conversation.awaitingHumanHandoff,
+      updatedAt: conversation.updatedAt,
+      agentBotTriageActive,
+    }),
+  });
 }

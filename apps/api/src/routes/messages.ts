@@ -11,6 +11,7 @@ import {
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import { enforceApiEndpointRateLimit } from "../lib/apiEndpointRateLimit.js";
+import { effectiveBodyVariableCount } from "../lib/templateVariables.js";
 
 export async function messageRoutes(app: FastifyInstance): Promise<void> {
   /** Upload de áudio (reconhecimento de voz / microfone) — WebM, OGG, MP4, … */
@@ -79,7 +80,7 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       if (!tmpl) {
         return reply.status(404).send({ error: "Not Found", message: "Template not found", statusCode: 404 });
       }
-      const n = tmpl.bodyVariableCount;
+      const n = effectiveBodyVariableCount(tmpl.body, tmpl.bodyVariableCount);
       const p = parsed.data.templateBodyParameters ?? [];
       if (n > 0 && p.length !== n) {
         return reply.status(400).send({

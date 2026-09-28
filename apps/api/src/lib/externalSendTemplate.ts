@@ -19,6 +19,7 @@ import {
   sanitizeMetaTemplateComponentsForSend,
   type ExternalSendTemplateBody,
 } from "./externalSendTemplateHelpers.js";
+import { effectiveBodyVariableCount } from "./templateVariables.js";
 
 export {
   externalSendTemplateBodySchema,
@@ -274,9 +275,10 @@ export async function executeExternalSendTemplate(options: {
     ? sanitizeMetaTemplateComponentsForSend(payload.components as Array<Record<string, unknown>>)
     : undefined;
 
-  if (!metaComponents?.length && templateRow.bodyVariableCount > 0 && bodyParams.length !== templateRow.bodyVariableCount) {
+  const templateVarCount = effectiveBodyVariableCount(templateRow.body, templateRow.bodyVariableCount);
+  if (!metaComponents?.length && templateVarCount > 0 && bodyParams.length !== templateVarCount) {
     throw new Error(
-      `Template requires exactly ${templateRow.bodyVariableCount} body variable(s); got ${bodyParams.length} in components`,
+      `Template requires exactly ${templateVarCount} body variable(s); got ${bodyParams.length} in components`,
     );
   }
 

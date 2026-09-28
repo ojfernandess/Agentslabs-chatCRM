@@ -1,4 +1,4 @@
-import { maxBodyPlaceholderIndex } from "./templateVariables.js";
+import { bodyVariableCount } from "./templateVariables.js";
 
 const GRAPH_VERSION = "v21.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -95,7 +95,7 @@ export function metaTemplateToLocalFields(row: MetaListedTemplate): {
     body: body || `(${row.name})`,
     providerTemplateId: row.name,
     templateLanguage: row.language || "en",
-    bodyVariableCount: maxBodyPlaceholderIndex(body),
+    bodyVariableCount: bodyVariableCount(body),
     metaCategory: row.category ?? null,
     isApproved: true,
   };

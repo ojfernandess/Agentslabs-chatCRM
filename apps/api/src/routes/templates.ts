@@ -6,7 +6,7 @@ import {
   requireAdminSessionOrUserApiTokenForApplicationApis,
 } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
-import { maxBodyPlaceholderIndex } from "../lib/templateVariables.js";
+import { bodyVariableCount, effectiveBodyVariableCount } from "../lib/templateVariables.js";
 import { syncWabaTemplatesForOrganization } from "../lib/syncWabaTemplates.js";
 import {
   findEvolutionTemplateInboxes,
@@ -79,10 +79,14 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
       where.providerTemplateId = null;
     }
 
-    return prisma.messageTemplate.findMany({
+    const rows = await prisma.messageTemplate.findMany({
       where,
       orderBy: { name: "asc" },
     });
+    return rows.map((row) => ({
+      ...row,
+      bodyVariableCount: effectiveBodyVariableCount(row.body, row.bodyVariableCount),
+    }));
   });
 
   app.post("/meta/sync", { preHandler: [requireAdminSessionOrUserApiTokenForApplicationApis] }, async (request, reply) => {
@@ -142,7 +146,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const maxIdx = maxBodyPlaceholderIndex(parsed.data.body);
+    const maxIdx = bodyVariableCount(parsed.data.body);
     const sampleRow =
       parsed.data.variableSamples?.length && maxIdx > 0
         ? Array.from({ length: maxIdx }, (_, i) => parsed.data.variableSamples?.[i] ?? `exemplo_${i + 1}`)
@@ -176,7 +180,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
       );
     }
 
-    const bodyVariableCount = maxBodyPlaceholderIndex(parsed.data.body);
+    const varCount = bodyVariableCount(parsed.data.body);
     const row = await prisma.messageTemplate.create({
       data: {
         organizationId,
@@ -184,7 +188,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
         body: parsed.data.body,
         providerTemplateId: null,
         templateLanguage: parsed.data.language,
-        bodyVariableCount,
+        bodyVariableCount: varCount,
         metaCategory: parsed.data.category,
         /** Modelos locais Evolution ficam disponíveis de imediato (não passam por aprovação Meta). */
         isApproved: true,
@@ -202,13 +206,13 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const bodyVariableCount = maxBodyPlaceholderIndex(parsed.data.body);
+    const varCount = bodyVariableCount(parsed.data.body);
     const { templateLanguage: tl, ...rest } = parsed.data;
     const template = await prisma.messageTemplate.create({
       data: {
         ...rest,
         templateLanguage: tl ?? "en",
-        bodyVariableCount,
+        bodyVariableCount: varCount,
         organizationId,
       },
     });
@@ -224,7 +228,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const bodyVariableCount = maxBodyPlaceholderIndex(parsed.data.body);
+    const varCount = bodyVariableCount(parsed.data.body);
     const tl = parsed.data.templateLanguage;
 
     const existing = await prisma.messageTemplate.findFirst({
@@ -248,7 +252,7 @@ export async function templateRoutes(app: FastifyInstance): Promise<void> {
         body: parsed.data.body,
         providerTemplateId: parsed.data.providerTemplateId,
         isApproved: parsed.data.isApproved,
-        bodyVariableCount,
+        bodyVariableCount: varCount,
         ...(tl != null ? { templateLanguage: tl } : {}),
       },
     });

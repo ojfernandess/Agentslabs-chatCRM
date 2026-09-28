@@ -78,7 +78,7 @@ test("extractTemplateBodyParametersFromMetaComponents reads body texts in order"
   assert.deepEqual(params, ["Maria", "#4521"]);
 });
 
-test("sanitizeMetaTemplateComponentsForSend strips parameter_name for Meta API", () => {
+test("sanitizeMetaTemplateComponentsForSend keeps parameter_name for named Meta templates", () => {
   const out = sanitizeMetaTemplateComponentsForSend([
     {
       type: "body",
@@ -88,7 +88,7 @@ test("sanitizeMetaTemplateComponentsForSend strips parameter_name for Meta API",
   assert.deepEqual(out, [
     {
       type: "body",
-      parameters: [{ type: "text", text: "Ana" }],
+      parameters: [{ type: "text", parameter_name: "nome", text: "Ana" }],
     },
   ]);
 });

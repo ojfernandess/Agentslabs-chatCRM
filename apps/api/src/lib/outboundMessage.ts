@@ -12,10 +12,12 @@ import {
   ensureConversationForWhatsAppContact,
   reopenResolvedConversationData,
 } from "./conversationRouting.js";
-import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
+import { computeAgentBotTriageActive, getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
+import { broadcastConversationListSync } from "./conversationListRow.js";
 import { isWebchatOutboundActive } from "./webchatSession.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 import {
+  broadcastConversationMessageCreated,
   broadcastConversationMessageUpdated,
   notifyConversationNewMessage,
   serializeMessageForWorkspaceWs,
@@ -34,7 +36,11 @@ import {
 } from "./messageReply.js";
 
 import type { MessageTemplate } from "@prisma/client";
-import { substituteBodyPlaceholders } from "./templateVariables.js";
+import {
+  effectiveBodyVariableCount,
+  extractBodyPlaceholdersInOrder,
+  substituteBodyPlaceholders,
+} from "./templateVariables.js";
 import { sendTelegramNativeMessage } from "./telegramNativeSend.js";
 import type { ChannelNativeConfig } from "./channelNativeTypes.js";
 import { telegramChatIdFromContactPhone } from "./channelNativeTypes.js";
@@ -386,9 +392,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
       throw new Error("Template not found");
     }
     const params = data.templateBodyParameters ?? [];
-    if (templateRow.bodyVariableCount > 0 && params.length !== templateRow.bodyVariableCount) {
+    const templateVarCount = effectiveBodyVariableCount(templateRow.body, templateRow.bodyVariableCount);
+    if (templateVarCount > 0 && params.length !== templateVarCount) {
       throw new Error(
-        `Template requires exactly ${templateRow.bodyVariableCount} variable(s) for the message body`,
+        `Template requires exactly ${templateVarCount} variable(s) for the message body`,
       );
     }
     messageBody = substituteBodyPlaceholders(templateRow.body, params);
@@ -482,14 +489,25 @@ export async function deliverOutboundWhatsAppMessage(options: {
     },
   });
 
-  notifyConversationNewMessage(
-    organizationId,
-    conversation.id,
-    serializeMessageForWorkspaceWs(message, {
+  const deferWorkspaceMessageNotify =
+    !isPrivate &&
+    (postSendConversationPolicy === "bot_queue" || postSendConversationPolicy === "human_handoff");
+
+  const publishWorkspaceMessageCreated = () => {
+    const payload = serializeMessageForWorkspaceWs(message, {
       contactName: contact.name,
       replyTo: resolveMessageReplyForApi(message, contact.name),
-    }),
-  );
+    });
+    if (deferWorkspaceMessageNotify) {
+      broadcastConversationMessageCreated(organizationId, conversation.id, payload);
+      return;
+    }
+    notifyConversationNewMessage(organizationId, conversation.id, payload);
+  };
+
+  if (!deferWorkspaceMessageNotify) {
+    publishWorkspaceMessageCreated();
+  }
 
   let providerMsgId: string | undefined;
   /** Assunto resolvido no canal EMAIL — persistido no body para listagens/títulos. */
@@ -523,6 +541,16 @@ export async function deliverOutboundWhatsAppMessage(options: {
           Boolean(templateRow?.providerTemplateId) &&
           (isMetaProvider || provider instanceof MetaCloudApiProvider);
 
+        const templateVarCount = templateRow
+          ? effectiveBodyVariableCount(templateRow.body, templateRow.bodyVariableCount)
+          : 0;
+        const templateBodyParams =
+          templateVarCount > 0 ? (data.templateBodyParameters ?? []) : undefined;
+        const templateBodyParamNames =
+          templateBodyParams?.length && templateRow
+            ? extractBodyPlaceholdersInOrder(templateRow.body)
+            : undefined;
+
         const quotedReplyId =
           outboundReply && supportsWhatsAppQuotedReply(providerKind)
             ? outboundReply.replyToProviderMsgId
@@ -539,8 +567,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
               ? {
                   templateName: templateRow!.providerTemplateId!,
                   templateLanguage: templateRow!.templateLanguage,
-                  templateBodyParameters:
-                    templateRow!.bodyVariableCount > 0 ? (data.templateBodyParameters ?? []) : undefined,
+                  templateBodyParameters: templateBodyParams,
+                  templateBodyParameterNames: templateBodyParamNames,
                   templateComponents: templateMetaComponents,
                 }
               : {}),
@@ -849,13 +877,36 @@ export async function deliverOutboundWhatsAppMessage(options: {
     data: convPatch,
   });
 
-  broadcastConversationUpdated(
-    organizationId,
-    conversation.id,
-    typeof convPatch.awaitingHumanHandoff === "boolean"
-      ? { awaitingHumanHandoff: convPatch.awaitingHumanHandoff }
-      : undefined,
-  );
+  if (deferWorkspaceMessageNotify) {
+    publishWorkspaceMessageCreated();
+  }
+
+  const hasStructuralConvPatch =
+    convPatch.status !== undefined ||
+    convPatch.assignedToId !== undefined ||
+    typeof convPatch.awaitingHumanHandoff === "boolean";
+
+  if (hasStructuralConvPatch) {
+    const agentCtx = await getAgentBotDispatchContextForInbox(organizationId, updatedConversation.inboxId);
+    const agentBotTriageActive = computeAgentBotTriageActive(agentCtx, inboxChannelType);
+    broadcastConversationListSync(
+      organizationId,
+      {
+        id: updatedConversation.id,
+        status: updatedConversation.status,
+        assignedToId: updatedConversation.assignedToId,
+        teamId: updatedConversation.teamId,
+        inboxId: updatedConversation.inboxId,
+        awaitingHumanHandoff: updatedConversation.awaitingHumanHandoff,
+        updatedAt: updatedConversation.updatedAt,
+      },
+      agentBotTriageActive,
+    );
+  } else {
+    broadcastConversationUpdated(organizationId, conversation.id, {
+      updatedAt: updatedConversation.updatedAt.toISOString(),
+    });
+  }
 
   if (!skipCrmFlowTrigger && !isPrivate && outboundStatus === "SENT") {
     const { fireCrmFlowTriggers } = await import("./crmFlowHooks.js");
