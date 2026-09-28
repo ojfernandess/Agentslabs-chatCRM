@@ -1275,58 +1275,93 @@ export function ConversationDetailPage() {
     conversationsOutlet,
   ]);
 
-  const appendOptimisticOutboundMessage = useCallback((message: Message) => {
-    if (!id) return;
+  const appendOptimisticOutboundMessage = useCallback((message: Message, conversationId: string) => {
+    if (!conversationId) return;
     pendingOutboundOptimisticRef.current = message.id;
-    setConversation((prev) => {
-      if (!prev) return prev;
-      const merged: ConversationDetail = {
-        ...prev,
-        messages: [...(prev.messages ?? []), message],
-      };
-      setCachedConversationMerged(id, merged, prev);
-      return merged;
-    });
-    if (!isEmailLayout) stickToBottomRef.current = true;
-  }, [id, isEmailLayout]);
 
-  const clearOptimisticOutboundMessage = useCallback((optimisticId: string) => {
-    if (!id) return;
-    if (pendingOutboundOptimisticRef.current === optimisticId) {
-      pendingOutboundOptimisticRef.current = null;
-    }
-    setConversation((prev) => {
-      if (!prev?.messages?.length) return prev;
-      const messages = prev.messages.filter((m) => m.id !== optimisticId);
-      if (messages.length === prev.messages.length) return prev;
-      const merged: ConversationDetail = { ...prev, messages };
-      setCachedConversation(id, merged);
-      return merged;
+    const apply = (base: ConversationDetail): ConversationDetail => ({
+      ...base,
+      messages: [...(base.messages ?? []), message],
     });
-  }, [id]);
 
-  const reconcileOptimisticOutboundMessage = useCallback((optimisticId: string, persisted: Message) => {
-    if (!id) return;
-    if (pendingOutboundOptimisticRef.current === optimisticId) {
-      pendingOutboundOptimisticRef.current = null;
-    }
-    seenMessageIds.current.add(persisted.id);
     setConversation((prev) => {
-      if (!prev) return prev;
-      const withoutOptimistic = (prev.messages ?? []).filter((m) => m.id !== optimisticId);
-      if (withoutOptimistic.some((m) => m.id === persisted.id)) {
-        const merged: ConversationDetail = { ...prev, messages: withoutOptimistic };
-        setCachedConversation(id, merged);
-        return merged;
+      if (!prev || prev.id !== conversationId) {
+        const cached = getCachedConversation<ConversationDetail>(conversationId);
+        if (cached?.id === conversationId) {
+          const merged = apply(cached);
+          setCachedConversationMerged(conversationId, merged, cached);
+        }
+        return prev;
       }
-      const merged: ConversationDetail = {
-        ...prev,
-        messages: [...withoutOptimistic, persisted],
-      };
-      setCachedConversationMerged(id, merged, prev);
+      const merged = apply(prev);
+      setCachedConversationMerged(conversationId, merged, prev);
       return merged;
     });
-  }, [id]);
+    if (conversationId === activeConversationIdRef.current && !isEmailLayout) {
+      stickToBottomRef.current = true;
+    }
+  }, [isEmailLayout]);
+
+  const clearOptimisticOutboundMessage = useCallback((optimisticId: string, conversationId: string) => {
+    if (!conversationId) return;
+    if (pendingOutboundOptimisticRef.current === optimisticId) {
+      pendingOutboundOptimisticRef.current = null;
+    }
+
+    const apply = (base: ConversationDetail): ConversationDetail | null => {
+      const messages = (base.messages ?? []).filter((m) => m.id !== optimisticId);
+      if (messages.length === (base.messages ?? []).length) return null;
+      return { ...base, messages };
+    };
+
+    setConversation((prev) => {
+      if (!prev || prev.id !== conversationId) {
+        const cached = getCachedConversation<ConversationDetail>(conversationId);
+        if (cached?.id === conversationId) {
+          const merged = apply(cached);
+          if (merged) setCachedConversation(conversationId, merged);
+        }
+        return prev;
+      }
+      const merged = apply(prev);
+      if (!merged) return prev;
+      setCachedConversation(conversationId, merged);
+      return merged;
+    });
+  }, []);
+
+  const reconcileOptimisticOutboundMessage = useCallback(
+    (optimisticId: string, persisted: Message, conversationId: string) => {
+      if (!conversationId) return;
+      if (pendingOutboundOptimisticRef.current === optimisticId) {
+        pendingOutboundOptimisticRef.current = null;
+      }
+      seenMessageIds.current.add(persisted.id);
+
+      const apply = (base: ConversationDetail): ConversationDetail => {
+        const withoutOptimistic = (base.messages ?? []).filter((m) => m.id !== optimisticId);
+        if (withoutOptimistic.some((m) => m.id === persisted.id)) {
+          return { ...base, messages: withoutOptimistic };
+        }
+        return { ...base, messages: [...withoutOptimistic, persisted] };
+      };
+
+      setConversation((prev) => {
+        if (!prev || prev.id !== conversationId) {
+          const cached = getCachedConversation<ConversationDetail>(conversationId);
+          if (cached?.id === conversationId) {
+            const merged = apply(cached);
+            setCachedConversationMerged(conversationId, merged, cached);
+          }
+          return prev;
+        }
+        const merged = apply(prev);
+        setCachedConversationMerged(conversationId, merged, prev);
+        return merged;
+      });
+    },
+    [],
+  );
 
   const appendPushedMessage = useCallback((message: Message, newerCursor?: string | null) => {
     if (!id) return;
@@ -1334,7 +1369,7 @@ export function ConversationDetailPage() {
     seenMessageIds.current.add(message.id);
     let applied = false;
     setConversation((prev) => {
-      if (!prev) return prev;
+      if (!prev || prev.id !== id) return prev;
       let existing = prev.messages ?? [];
       if (message.direction === "OUTBOUND") {
         existing = stripOptimisticOutboundMessages(existing);
@@ -1363,7 +1398,7 @@ export function ConversationDetailPage() {
   const patchPushedMessageStatus = useCallback((messageId: string, status: string) => {
     if (!id) return;
     setConversation((prev) => {
-      if (!prev?.messages?.length) return prev;
+      if (!prev || prev.id !== id || !prev.messages?.length) return prev;
       let changed = false;
       const messages = prev.messages!.map((m) => {
         if (m.id !== messageId) return m;
@@ -1382,7 +1417,7 @@ export function ConversationDetailPage() {
     (messageId: string, reactions: ConversationMessageReaction[]) => {
       if (!id) return;
       setConversation((prev) => {
-        if (!prev?.messages?.length) return prev;
+        if (!prev || prev.id !== id || !prev.messages?.length) return prev;
         let changed = false;
         const messages = prev.messages!.map((m) => {
           if (m.id !== messageId) return m;
@@ -1755,8 +1790,9 @@ export function ConversationDetailPage() {
     if (cached) {
       setConversation(cached);
       setLoading(false);
+    } else {
+      setConversation(null);
     }
-    // Sem cache: mantém o thread anterior até o fetch; o render usa skeleton se id ≠ conversation.id
   }, [id]);
 
   useEffect(() => {
@@ -2173,6 +2209,7 @@ export function ConversationDetailPage() {
     if (!newMessage.trim() || !conversation) return;
     if (contactIsBlocked && !privateNote) return;
 
+    const conversationId = conversation.id;
     const bodyToSend = outboundBodyWithSignature(newMessage, privateNote);
     const savedMessage = newMessage;
     setNewMessage("");
@@ -2191,7 +2228,7 @@ export function ConversationDetailPage() {
           }
         : null,
     });
-    appendOptimisticOutboundMessage(optimisticMessage as Message);
+    appendOptimisticOutboundMessage(optimisticMessage as Message, conversationId);
     try {
       const emailExtra =
         !privateNote && (conversation.inbox?.channelType === "EMAIL" || isEmailLayout)
@@ -2202,7 +2239,7 @@ export function ConversationDetailPage() {
           : {};
       const created = await api.post<Message>("/messages", {
         contactId: conversation.contact.id,
-        conversationId: conversation.id,
+        conversationId,
         type: "TEXT",
         body: bodyToSend,
         isPrivate: privateNote || undefined,
@@ -2210,12 +2247,16 @@ export function ConversationDetailPage() {
         ...emailExtra,
       });
       if (replyingTo) setReplyingTo(null);
-      reconcileOptimisticOutboundMessage(optimisticMessage.id, created);
-      if (!isEmailLayout) stickToBottomRef.current = true;
+      reconcileOptimisticOutboundMessage(optimisticMessage.id, created, conversationId);
+      if (conversationId === activeConversationIdRef.current && !isEmailLayout) {
+        stickToBottomRef.current = true;
+      }
       // Refresh após envio bem-sucedido: falha aqui não deve parecer falha de envio.
-      await refreshConversationAfterSuccessfulSend();
+      if (conversationId === activeConversationIdRef.current) {
+        await refreshConversationAfterSuccessfulSend();
+      }
     } catch (err) {
-      clearOptimisticOutboundMessage(optimisticMessage.id);
+      clearOptimisticOutboundMessage(optimisticMessage.id, conversationId);
       setNewMessage(savedMessage);
       setFlowError(
         err instanceof ApiError
