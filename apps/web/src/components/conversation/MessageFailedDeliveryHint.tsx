@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 import clsx from "clsx";
 import { isMetaFetchFailedError, isMetaMarketingFrequencyCapError } from "@openconduit/shared";
-import { useI18n } from "@/i18n";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type Props = {
   providerError?: string | null;

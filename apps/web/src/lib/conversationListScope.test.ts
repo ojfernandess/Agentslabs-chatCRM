@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeConversationScopeHint } from "./conversationListScope.js";
+import { mergeConversationScopeHint, type ConversationScopeRow } from "./conversationListScope.js";
 
 const baseRow = {
   id: "conv-1",
@@ -28,8 +28,14 @@ test("mergeConversationScopeHint — limpa assignee quando assignedToId é null"
 });
 
 test("mergeConversationScopeHint — assignedToId sem nome usa utilizador actual", () => {
+  const unassignedRow: ConversationScopeRow = {
+    id: "conv-1",
+    status: "OPEN",
+    assignedToId: null,
+    assignedTo: null,
+  };
   const merged = mergeConversationScopeHint(
-    { id: "conv-1", status: "OPEN", assignedToId: null, assignedTo: null },
+    unassignedRow,
     { assignedToId: "user-2" },
     { currentUserId: "user-2", currentUserName: "João" },
   );
