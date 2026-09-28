@@ -1376,23 +1376,28 @@ export function ConversationDetailPage() {
     seenMessageIds.current.add(message.id);
     let applied = false;
     setConversation((prev) => {
-      if (!prev || prev.id !== id) return prev;
-      let existing = prev.messages ?? [];
+      const base =
+        prev?.id === id ? prev : getCachedConversation<ConversationDetail>(id);
+      if (!base || base.id !== id) return prev;
+      let existing = base.messages ?? [];
       if (message.direction === "OUTBOUND") {
         existing = stripOptimisticOutboundMessages(existing);
         pendingOutboundOptimisticRef.current = null;
       }
       if (existing.some((m) => m.id === message.id)) {
         applied = true;
-        return { ...prev, messages: existing };
+        const merged = { ...base, messages: existing };
+        if (prev?.id === id) return merged;
+        setCachedConversationMerged(id, merged, base);
+        return merged;
       }
       applied = true;
       const merged: ConversationDetail = {
-        ...prev,
+        ...base,
         messages: [...existing, message],
         ...(newerCursor ? { messagesNewerCursor: newerCursor } : {}),
       };
-      setCachedConversationMerged(id, merged, prev);
+      setCachedConversationMerged(id, merged, base);
       return merged;
     });
     if (!applied) {

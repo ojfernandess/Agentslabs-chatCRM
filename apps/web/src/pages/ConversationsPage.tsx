@@ -1057,11 +1057,7 @@ export function ConversationsPage({
     const onMessageCreated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
       if (!detail?.conversationId || !detail.message) return;
-      // Outbound (ex.: sendTemplate → fila do bot) pode mudar escopo — GET list-row evita preview na aba errada.
-      if (detail.message.direction === "OUTBOUND") {
-        void syncConversationListRow(detail.conversationId, { highlight: "enter" });
-        return;
-      }
+      const isOutbound = detail.message.direction === "OUTBOUND";
       setConversations((prev) => {
         const fetchKey = listFetchKeyRef.current;
         const idx = prev.findIndex((c) => c.id === detail.conversationId);
@@ -1079,13 +1075,17 @@ export function ConversationsPage({
         const updated: Conversation = {
           ...conv,
           updatedAt: detail.message.createdAt,
-          isUnread: true,
+          isUnread: isOutbound ? conv.isUnread : true,
           assignedTo: conv.assignedTo,
           assignedToId: conv.assignedToId ?? conv.assignedTo?.id ?? null,
           messages: [preview, ...(conv.messages?.slice(1) ?? [])],
         };
         const next = [updated, ...prev.filter((_, i) => i !== idx)];
         applyListRowToCache(fetchKey, next);
+        // Outbound pode mudar escopo (ex.: template → fila do bot) — reconcilia em background.
+        if (isOutbound) {
+          void syncConversationListRow(detail.conversationId, { highlight: "enter" });
+        }
         return next;
       });
     };
