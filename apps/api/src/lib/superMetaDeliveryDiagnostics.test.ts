@@ -14,15 +14,30 @@ const baseOutbound = {
   channel: null,
 };
 
-test("diagnoseMetaDeliveryMessage — falha síncrona sem wamid", () => {
+test("diagnoseMetaDeliveryMessage — falha de rede sem wamid", () => {
+  const { diagnosis, suggestedActions } = diagnoseMetaDeliveryMessage({
+    message: {
+      ...baseOutbound,
+      providerError: "META_NETWORK_ERROR: UND_ERR_CONNECT_TIMEOUT",
+    },
+    ledger: null,
+    replyTo: null,
+    inboxProvider: "meta",
+  });
+  assert.ok(diagnosis.some((d) => d.includes("META_NETWORK_ERROR")));
+  assert.ok(diagnosis.some((d) => d.includes("UND_ERR_CONNECT_TIMEOUT")));
+  assert.ok(suggestedActions.some((a) => a.includes("graph.facebook.com")));
+});
+
+test("diagnoseMetaDeliveryMessage — falha genérica sem wamid", () => {
   const { diagnosis, suggestedActions } = diagnoseMetaDeliveryMessage({
     message: baseOutbound,
     ledger: null,
     replyTo: null,
     inboxProvider: "meta",
   });
-  assert.ok(diagnosis.some((d) => d.includes("Falha síncrona")));
-  assert.ok(suggestedActions.some((a) => a.includes("Reenvie")));
+  assert.ok(diagnosis.some((d) => d.includes("wamid")));
+  assert.ok(suggestedActions.some((a) => a.includes("Reenvie") || a.includes("logs")));
 });
 
 test("diagnoseMetaDeliveryMessage — falha assíncrona com wamid", () => {

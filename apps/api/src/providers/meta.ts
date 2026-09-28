@@ -8,8 +8,14 @@ import {
   WebhookParseResult,
 } from "./types.js";
 import { formatMetaWebhookStatusError } from "../lib/providerErrorMessage.js";
-
-const META_HTTP_TIMEOUT_MS = 45_000;
+import { metaGraphFetch } from "../lib/metaGraphHttp.js";
+import {
+  MetaSendError,
+  buildMetaMessagesUrl,
+  extractFetchErrorDiagnostics,
+  maskPhoneNumberId,
+  validateMetaSendConfig,
+} from "../lib/metaSendErrors.js";
 
 export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   private apiKey: string;
@@ -23,9 +29,74 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
     this.webhookVerifyToken = webhookVerifyToken;
   }
 
-  async sendMessage(params: SendMessageParams): Promise<string> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`;
+  private async postMessages(
+    payload: Record<string, unknown>,
+    logContext: { messageType: string },
+  ): Promise<string> {
+    validateMetaSendConfig(this.phoneNumberId, this.apiKey);
+    const url = buildMetaMessagesUrl(this.baseUrl, this.phoneNumberId);
+    const started = Date.now();
+    console.info("[META][SEND][START]", {
+      phoneNumberId: maskPhoneNumberId(this.phoneNumberId),
+      messageType: logContext.messageType,
+      graphApiVersion: this.baseUrl.replace("https://graph.facebook.com/", ""),
+    });
 
+    let response: Response;
+    try {
+      response = await metaGraphFetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      throw MetaSendError.network(err, extractFetchErrorDiagnostics(err));
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let metaCode: number | undefined;
+      let metaMessage: string | undefined;
+      try {
+        const parsed = JSON.parse(errorText) as { error?: { code?: number; message?: string } };
+        metaCode = parsed.error?.code;
+        metaMessage = parsed.error?.message;
+      } catch {
+        // resposta não-JSON da Meta
+      }
+      console.error("[META][SEND][API_ERROR]", {
+        phoneNumberId: maskPhoneNumberId(this.phoneNumberId),
+        httpStatus: response.status,
+        metaCode,
+        durationMs: Date.now() - started,
+      });
+      throw MetaSendError.api(response.status, metaCode, metaMessage, errorText);
+    }
+
+    const data = (await response.json()) as { messages?: { id?: string }[] };
+    const wamid = data.messages?.[0]?.id?.trim();
+    if (!wamid) {
+      console.error("[META][SEND][MISSING_MESSAGE_ID]", {
+        phoneNumberId: maskPhoneNumberId(this.phoneNumberId),
+        httpStatus: response.status,
+        durationMs: Date.now() - started,
+      });
+      throw MetaSendError.missingMessageId();
+    }
+
+    console.info("[META][SEND][SUCCESS]", {
+      phoneNumberId: maskPhoneNumberId(this.phoneNumberId),
+      httpStatus: response.status,
+      hasWamid: true,
+      durationMs: Date.now() - started,
+    });
+    return wamid;
+  }
+
+  async sendMessage(params: SendMessageParams): Promise<string> {
     const payload: Record<string, unknown> = {
       messaging_product: "whatsapp",
       to: params.to.replace("+", ""),
@@ -113,23 +184,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
       );
     }
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(META_HTTP_TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Meta API error: ${response.status} ${error}`);
-    }
-
-    const data = (await response.json()) as { messages: { id: string }[] };
-    return data.messages[0].id;
+    return await this.postMessages(payload, { messageType: params.type });
   }
 
   parseWebhook(
@@ -313,14 +368,8 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
 
   /** Send or remove a reaction on a WhatsApp message (empty emoji removes). */
   async sendReaction(to: string, messageId: string, emoji: string): Promise<string> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}/messages`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    return await this.postMessages(
+      {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to: to.replace("+", ""),
@@ -329,16 +378,9 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
           message_id: messageId,
           emoji,
         },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Meta API error: ${response.status} ${error}`);
-    }
-
-    const data = (await response.json()) as { messages: { id: string }[] };
-    return data.messages[0].id;
+      },
+      { messageType: "reaction" },
+    );
   }
 
   validateWebhookSignature(
@@ -377,10 +419,15 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   }
 
   async healthCheck(): Promise<boolean> {
-    const url = `${this.baseUrl}/${this.phoneNumberId}`;
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-    });
-    return response.ok;
+    try {
+      validateMetaSendConfig(this.phoneNumberId, this.apiKey);
+      const url = `${this.baseUrl.replace(/\/+$/, "")}/${this.phoneNumberId.trim()}`;
+      const response = await metaGraphFetch(url, {
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 }

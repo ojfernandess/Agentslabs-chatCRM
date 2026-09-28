@@ -84,28 +84,49 @@ export function diagnoseMetaDeliveryMessage(input: {
 
   const marketingFrequencyCap = isMetaMarketingFrequencyCapError(input.message.providerError);
 
-  const syncFetchFailed = /\bfetch failed\b/i.test(input.message.providerError ?? "");
+  const providerError = input.message.providerError?.trim() ?? "";
+  const isNetworkError =
+    /^META_NETWORK_ERROR:/i.test(providerError) || /\bfetch failed\b/i.test(providerError);
+  const isConfigError = /^META_CONFIGURATION_ERROR:/i.test(providerError);
+  const isApiError = /^META_API_ERROR:/i.test(providerError) || /^Meta API error:/i.test(providerError);
+  const isMissingWamid = /^META_MISSING_MESSAGE_ID:/i.test(providerError);
 
   if (!input.message.providerMsgId) {
-    diagnosis.push(
-      "Falha síncrona na API Meta — a chamada HTTP não devolveu wamid (providerMsgId vazio).",
-    );
-    if (syncFetchFailed) {
+    if (isConfigError) {
+      diagnosis.push("Erro de configuração do canal Meta — credenciais ou Phone Number ID inválidos/ausentes.");
+      suggestedActions.push("Peça ao administrador para rever a integração WhatsApp Meta Cloud desta caixa.");
+    } else if (isNetworkError) {
       diagnosis.push(
-        "Erro de rede transitório (fetch failed) — o envio já foi repetido automaticamente até 5 vezes com backoff antes de marcar FAILED.",
+        "Erro de transporte (META_NETWORK_ERROR) — o servidor não conseguiu completar a chamada HTTPS à Meta.",
+      );
+      const causeMatch = providerError.match(/^META_NETWORK_ERROR:\s*(.+)$/i);
+      if (causeMatch?.[1]) {
+        diagnosis.push(`Causa registada: ${causeMatch[1]}`);
+      }
+      suggestedActions.push(
+        "Reenvie a mensagem após alguns minutos — pode ser instabilidade temporária de rede ou DNS.",
       );
       suggestedActions.push(
-        "Se persistir, reenvie manualmente após alguns minutos ou verifique conectividade do servidor com graph.facebook.com.",
+        "Se persistir, verifique conectividade do servidor com graph.facebook.com (logs [META][SEND][NETWORK_ERROR]).",
+      );
+    } else if (isApiError) {
+      diagnosis.push("A Meta respondeu com erro HTTP — a requisição chegou à API mas foi rejeitada.");
+      suggestedActions.push("Revise token, permissões do app e parâmetros do envio no Business Manager.");
+    } else if (isMissingWamid) {
+      diagnosis.push(
+        "A Meta respondeu HTTP 200 mas sem messages[0].id — resposta inesperada (META_MISSING_MESSAGE_ID).",
       );
     } else {
       diagnosis.push(
-        "Causas frequentes: erro de rede transitório (fetch failed), timeout, Meta 400 (parâmetro inválido) ou credencial/token inválido.",
+        "Envio falhou antes de obter wamid — consulte providerError e logs [META][SEND] no horário do envio.",
       );
       suggestedActions.push("Reenvie a mensagem — falhas transitórias costumam resolver no segundo envio.");
     }
-    suggestedActions.push(
-      "Verifique logs da API no horário do envio (Failed to send message via WhatsApp provider) para o texto exacto do erro Meta.",
-    );
+    if (!isConfigError) {
+      suggestedActions.push(
+        "Verifique logs da API (Failed to send message via WhatsApp provider / [META][SEND]) para o detalhe técnico.",
+      );
+    }
   } else if (marketingFrequencyCap) {
     diagnosis.push(
       "Limite de frequência de marketing da Meta (código 131049) — o destinatário já recebeu muitos templates promocionais recentemente (de várias empresas).",

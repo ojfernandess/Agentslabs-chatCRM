@@ -20,5 +20,10 @@ export function isMetaMarketingFrequencyCapError(providerError: string | null | 
 }
 
 export function isMetaFetchFailedError(providerError: string | null | undefined): boolean {
-  return /\bfetch failed\b/i.test(providerError?.trim() ?? "");
+  const t = providerError?.trim() ?? "";
+  return /^META_NETWORK_ERROR:/i.test(t) || /\bfetch failed\b/i.test(t);
+}
+
+export function isMetaConfigurationError(providerError: string | null | undefined): boolean {
+  return /^META_CONFIGURATION_ERROR:/i.test(providerError?.trim() ?? "");
 }

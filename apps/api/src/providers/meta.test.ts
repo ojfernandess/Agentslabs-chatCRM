@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MetaSendError } from "../lib/metaSendErrors.js";
 import { MetaCloudApiProvider } from "./meta.js";
 
 const META_INTERACTIVE = {
@@ -182,4 +183,28 @@ test("MetaCloudApiProvider parses inbound reaction removal", () => {
   });
   assert.equal(parsed.reactionUpdates?.length, 1);
   assert.equal(parsed.reactionUpdates?.[0]?.emoji, "");
+});
+
+test("MetaCloudApiProvider rejects missing phoneNumberId before fetch", async () => {
+  const provider = new MetaCloudApiProvider("token", "");
+  await assert.rejects(
+    () => provider.sendMessage({ to: "+5511999999999", type: "TEXT", body: "Olá" }),
+    (err: unknown) => {
+      assert.ok(err instanceof MetaSendError);
+      assert.equal(err.kind, "META_CONFIGURATION_ERROR");
+      return true;
+    },
+  );
+});
+
+test("MetaCloudApiProvider rejects missing accessToken before fetch", async () => {
+  const provider = new MetaCloudApiProvider("", "123456789");
+  await assert.rejects(
+    () => provider.sendMessage({ to: "+5511999999999", type: "TEXT", body: "Olá" }),
+    (err: unknown) => {
+      assert.ok(err instanceof MetaSendError);
+      assert.match((err as MetaSendError).message, /accessToken missing/);
+      return true;
+    },
+  );
 });

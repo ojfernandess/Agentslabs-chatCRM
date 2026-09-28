@@ -456,7 +456,7 @@ export function SuperAdminMetaDeliveryPanel() {
                     ) : null}
                     {msg.providerMsgId ? (
                       <p className="mt-1 font-mono text-xs text-slate-500">wamid: {msg.providerMsgId}</p>
-                    ) : (
+                    ) : msg.providerError ? null : (
                       <p className="mt-1 text-xs text-rose-600">{t("superAdmin.metaDelivery.noWamid")}</p>
                     )}
                     {msg.providerError ? (

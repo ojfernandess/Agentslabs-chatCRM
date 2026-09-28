@@ -21,6 +21,7 @@ test("extractMetaErrorCode — ausente", () => {
 
 test("isMetaFetchFailedError", () => {
   assert.equal(isMetaFetchFailedError("fetch failed"), true);
+  assert.equal(isMetaFetchFailedError("META_NETWORK_ERROR: ETIMEDOUT"), true);
   assert.equal(isMetaFetchFailedError("Meta API error: 400"), false);
 });
 

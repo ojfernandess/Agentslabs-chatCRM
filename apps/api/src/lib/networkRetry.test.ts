@@ -29,6 +29,10 @@ test("withNetworkRetry succeeds after transient failure", async () => {
   assert.equal(calls, 2);
 });
 
+test("isRetryableNetworkError detects classified META_NETWORK_ERROR", () => {
+  assert.equal(isRetryableNetworkError(new Error("META_NETWORK_ERROR: ETIMEDOUT")), true);
+});
+
 test("withNetworkRetry does not retry non-retryable errors", async () => {
   let calls = 0;
   await assert.rejects(

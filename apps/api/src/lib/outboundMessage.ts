@@ -29,6 +29,7 @@ import { assertCanSendOutboundMessage } from "./billing/planEnforcement.js";
 import { evaluateWhatsappOutboundPolicy } from "./messagePolicyEngine.js";
 import { recordMessageLedgerEntry } from "./messageBillingLedger.js";
 import { META_CLOUD_HTTP_RETRY, withNetworkRetry } from "./networkRetry.js";
+import { formatMetaSendErrorForStorage } from "./metaSendErrors.js";
 import {
   messageReplyToInclude,
   resolveMessageReplyForApi,
@@ -532,7 +533,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
             try {
               await withNetworkRetry(
                 () => provider.sendMessage({ to, type: "TEXT", body: nameOnly }),
-                META_CLOUD_HTTP_RETRY,
+                isMetaProvider ? META_CLOUD_HTTP_RETRY : undefined,
               );
             } catch (err) {
               log.warn(err, "Failed to send sender name prefix before WhatsApp message");
@@ -578,12 +579,13 @@ export async function deliverOutboundWhatsAppMessage(options: {
                   }
                 : {}),
             }),
-          META_CLOUD_HTTP_RETRY,
+          isMetaProvider ? META_CLOUD_HTTP_RETRY : undefined,
         );
       }
     } catch (err) {
       log.error(err, "Failed to send message via WhatsApp provider");
-      providerDeliveryError = err instanceof Error ? err : new Error(String(err));
+      const rawErr = err instanceof Error ? err : new Error(String(err));
+      providerDeliveryError = new Error(formatMetaSendErrorForStorage(rawErr), { cause: rawErr });
     }
   } else if (!isPrivate && !resolvedDeliveryChannel && inboxChannelType === "TELEGRAM") {
     const cfg = inboxChannelConfig as ChannelNativeConfig | null;
@@ -690,7 +692,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
         providerMsgId = sent.messageId ?? undefined;
       } catch (err) {
         log.error(err, "Failed to send message via inbox SMTP");
-        providerDeliveryError = err instanceof Error ? err : new Error(String(err));
+        const rawErr = err instanceof Error ? err : new Error(String(err));
+        providerDeliveryError = new Error(formatMetaSendErrorForStorage(rawErr), { cause: rawErr });
       }
     }
   }

@@ -29,6 +29,7 @@ function collectErrorText(err: unknown, depth = 0): string {
 export function isRetryableNetworkError(err: unknown): boolean {
   const combined = collectErrorText(err).trim();
   return (
+    /^META_NETWORK_ERROR:/i.test(combined) ||
     /\bfetch failed\b/i.test(combined) ||
     /\b(ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|EAI_AGAIN)\b/i.test(combined) ||
     /\bUND_ERR_(CONNECT|HEADERS|BODY|SOCKET)_TIMEOUT\b/i.test(combined) ||

@@ -5149,7 +5149,7 @@ export const messages = {
         "Peça ao contacto que envie uma mensagem para abrir a janela de 24h.",
       deliveryErrorFetchFailedTitle: "Falha de rede com a Meta",
       deliveryErrorFetchFailedSummary:
-        "Não foi possível contactar a API da Meta (fetch failed). O sistema já tentou reenviar automaticamente várias vezes antes de marcar como falha.",
+        "Não foi possível enviar a mensagem pelo WhatsApp. Tente novamente em alguns instantes.",
       deliveryErrorFetchFailedAction1:
         "Reenvie a mensagem após alguns minutos — costuma ser instabilidade temporária de rede.",
       deliveryErrorFetchFailedAction2:
@@ -12717,7 +12717,7 @@ export const messages = {
         "Ask the contact to send a message to open the 24-hour session window.",
       deliveryErrorFetchFailedTitle: "Meta network failure",
       deliveryErrorFetchFailedSummary:
-        "Could not reach the Meta API (fetch failed). The system already retried automatically several times before marking as failed.",
+        "Could not send the message via WhatsApp. Please try again in a few moments.",
       deliveryErrorFetchFailedAction1:
         "Resend the message after a few minutes — this is usually temporary network instability.",
       deliveryErrorFetchFailedAction2:
