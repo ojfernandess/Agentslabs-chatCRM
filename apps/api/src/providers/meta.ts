@@ -7,6 +7,7 @@ import {
   StatusUpdate,
   WebhookParseResult,
 } from "./types.js";
+import { formatMetaWebhookStatusError } from "../lib/providerErrorMessage.js";
 
 export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   private apiKey: string;
@@ -169,7 +170,12 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
               id: string;
               status: string;
               timestamp: string;
-              errors?: { title: string }[];
+              errors?: {
+                code?: number;
+                title?: string;
+                message?: string;
+                error_data?: { details?: string };
+              }[];
               pricing?: {
                 billable?: boolean;
                 pricing_model?: string;
@@ -283,7 +289,7 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             waMessageId: status.id,
             status: statusMap[status.status] ?? "SENT",
             timestamp: new Date(parseInt(status.timestamp, 10) * 1000),
-            errorMessage: status.errors?.[0]?.title,
+            errorMessage: formatMetaWebhookStatusError(status.errors),
             ...(status.pricing && typeof status.pricing.billable === "boolean"
               ? {
                   metaPricing: {

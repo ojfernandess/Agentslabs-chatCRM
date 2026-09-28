@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import clsx from "clsx";
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
   Box,
   Building2,
@@ -38,6 +39,7 @@ export type SuperSection =
   | "platformApps"
   | "auditLog"
   | "conversationMedia"
+  | "metaDelivery"
   | "featureFlags"
   | "mcpServer"
   | "billing"
@@ -75,6 +77,7 @@ const NAV_GROUPS: { labelKey: string; items: NavItem[] }[] = [
     items: [
       { id: "monitoring", labelKey: "superAdmin.monitoring", icon: Activity },
       { id: "conversationMedia", labelKey: "superAdmin.conversationMedia.nav", icon: HardDrive },
+      { id: "metaDelivery", labelKey: "superAdmin.metaDelivery.nav", icon: AlertTriangle },
       { id: "platformApps", labelKey: "superAdmin.platformApps", icon: Box },
       { id: "mcpServer", labelKey: "superAdmin.mcp.nav", icon: Plug },
       { id: "auditLog", labelKey: "superAdmin.auditLog", icon: ScrollText },
@@ -104,6 +107,7 @@ const SECTION_TITLE_KEYS: Record<SuperSection, string> = {
   platformApps: "superAdmin.platformApps",
   auditLog: "superAdmin.auditLog",
   conversationMedia: "superAdmin.conversationMedia.nav",
+  metaDelivery: "superAdmin.metaDelivery.nav",
   featureFlags: "superAdmin.featureFlags",
   mcpServer: "superAdmin.mcp.title",
   billing: "superAdmin.billingNav",
@@ -120,6 +124,7 @@ const SECTION_SUBTITLE_KEYS: Partial<Record<SuperSection, string>> = {
   monitoring: "superAdmin.monitoringSubtitle",
   auditLog: "superAdmin.auditSubtitle",
   conversationMedia: "superAdmin.conversationMedia.subtitle",
+  metaDelivery: "superAdmin.metaDelivery.subtitle",
   featureFlags: "superAdmin.flagsSubtitle",
   mcpServer: "superAdmin.mcp.subtitle",
   billing: "superAdmin.billingSectionSubtitle",

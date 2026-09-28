@@ -33,6 +33,7 @@ export type ConversationListRow = {
     thumbnail?: string | null;
     tags?: { tag: { id: string; name: string; color: string } }[];
   };
+  assignedToId?: string | null;
   assignedTo: { id: string; name: string } | null;
   inbox?: { id: string; name: string; isDefault: boolean; channelType?: string } | null;
   leadType: { id: string; name: string; color: string } | null;
@@ -106,8 +107,9 @@ export function ConversationListItem({
   const showAgentTypingPreview = Boolean(agentTyping);
   const channelLabel = channelBadgeLabel(conv.inbox, t);
   const displayTags = showContactTags ? filterTagsForDisplay(conv.contact.tags ?? []) : [];
-  const hasHumanAssignee =
-    typeof conv.assignedTo?.id === "string" && conv.assignedTo.id.length > 0;
+  const assigneeId = conv.assignedTo?.id ?? conv.assignedToId ?? null;
+  const assigneeName = conv.assignedTo?.name?.trim() || null;
+  const hasHumanAssignee = typeof assigneeId === "string" && assigneeId.length > 0;
   const showBotBadge =
     conv.agentBotTriageActive &&
     !conv.awaitingHumanHandoff &&
@@ -240,11 +242,11 @@ export function ConversationListItem({
                     className="inline-flex h-5 max-w-[42%] shrink-0 items-center truncate rounded-full bg-brand-600 px-2.5 text-[11px] font-semibold leading-none text-white shadow-sm dark:bg-brand-500"
                     title={
                       conv.status === "OPEN" || conv.status === "PENDING"
-                        ? `${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`
-                        : `${t("conversations.listAssignee")}: ${conv.assignedTo!.name}`
+                        ? `${assigneeName ?? assigneeId} · ${t("conversations.inAttendance")}`
+                        : `${t("conversations.listAssignee")}: ${assigneeName ?? assigneeId}`
                     }
                   >
-                    {conv.assignedTo!.name}
+                    {assigneeName ?? assigneeId}
                   </span>
                 ) : null}
               </div>
@@ -277,7 +279,7 @@ export function ConversationListItem({
               (conv.status === "OPEN" || conv.status === "PENDING") ? (
                 <span
                   className="shrink-0 truncate rounded bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100"
-                  title={`${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`}
+                  title={`${assigneeName ?? assigneeId} · ${t("conversations.inAttendance")}`}
                 >
                   {t("conversations.inAttendance")}
                 </span>
@@ -287,12 +289,12 @@ export function ConversationListItem({
                   className="inline-flex min-w-0 max-w-[45%] items-center gap-1 truncate"
                   title={
                     conv.status === "OPEN" || conv.status === "PENDING"
-                      ? `${conv.assignedTo!.name} · ${t("conversations.inAttendance")}`
-                      : `${t("conversations.listAssignee")}: ${conv.assignedTo!.name}`
+                      ? `${assigneeName ?? assigneeId} · ${t("conversations.inAttendance")}`
+                      : `${t("conversations.listAssignee")}: ${assigneeName ?? assigneeId}`
                   }
                 >
                   <UserCircle className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-                  <span className="truncate">{conv.assignedTo!.name}</span>
+                  <span className="truncate">{assigneeName ?? assigneeId}</span>
                 </span>
               ) : null}
               {isConversationPriority(conv.priority) ? (

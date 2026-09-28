@@ -138,17 +138,20 @@ export function buildConversationListSyncPayload(input: {
   updatedAt: Date;
   agentBotTriageActive: boolean;
 }): ConversationListSyncPayload {
-  return {
+  const payload: ConversationListSyncPayload = {
     conversationId: input.id,
     status: input.status,
     assignedToId: input.assignedToId,
-    assignedTo: input.assignedTo ?? null,
     teamId: input.teamId,
     inboxId: input.inboxId,
     awaitingHumanHandoff: input.awaitingHumanHandoff,
     agentBotTriageActive: input.agentBotTriageActive,
     updatedAt: input.updatedAt.toISOString(),
   };
+  if (input.assignedTo !== undefined) {
+    payload.assignedTo = input.assignedTo;
+  }
+  return payload;
 }
 
 /** WS com campos de escopo da lista lateral (status, fila do bot, atribuição, etc.). */
@@ -172,7 +175,7 @@ export function broadcastConversationListSync(
       id: conversation.id,
       status: conversation.status,
       assignedToId: conversation.assignedToId,
-      assignedTo: conversation.assignedTo ?? null,
+      assignedTo: conversation.assignedTo,
       teamId: conversation.teamId,
       inboxId: conversation.inboxId,
       awaitingHumanHandoff: conversation.awaitingHumanHandoff,

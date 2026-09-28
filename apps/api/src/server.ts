@@ -70,6 +70,7 @@ import { publicPlatformTypographyRoutes } from "./routes/publicPlatformTypograph
 import { helpCenterRoutes } from "./routes/helpCenter.js";
 import { helpdeskRoutes } from "./routes/helpdesk.js";
 import { superHelpdeskRoutes } from "./routes/superHelpdesk.js";
+import { superMetaDeliveryRoutes } from "./routes/superMetaDelivery.js";
 import { webchatPublicRoutes } from "./routes/webchatPublic.js";
 import { webchatLinkRoutes } from "./routes/webchatLinks.js";
 import { whatsappOrgPolicyRoutes } from "./routes/whatsappOrgPolicy.js";
@@ -251,6 +252,7 @@ await app.register(userInvitationRoutes, { prefix: "/api/v1/users/invites" });
 await app.register(inboxRoutes, { prefix: "/api/v1/inboxes" });
 await app.register(superRoutes, { prefix: "/api/v1/super" });
 await app.register(superHelpdeskRoutes, { prefix: "/api/v1/super" });
+await app.register(superMetaDeliveryRoutes, { prefix: "/api/v1/super" });
 await app.register(superBillingRoutes, { prefix: "/api/v1/super/billing" });
 await app.register(platformRoutes, { prefix: "/api/v1/platform" });
 await app.register(workspaceRoutes, { prefix: "/api/v1" });

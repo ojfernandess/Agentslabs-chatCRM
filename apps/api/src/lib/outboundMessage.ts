@@ -5,6 +5,7 @@ import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { getWhatsAppProviderForInbox, getWhatsappProviderKindForInbox } from "../providers/factory.js";
 import { MetaCloudApiProvider } from "../providers/meta.js";
 import { isMetaCloudWhatsappProvider } from "./inboxWhatsappConfig.js";
+import { sanitizeProviderErrorMessage } from "./providerErrorMessage.js";
 import { appendTimelineEvent } from "./timeline.js";
 import type { SendMessageInput } from "./messagePayload.js";
 import {
@@ -720,10 +721,19 @@ export async function deliverOutboundWhatsAppMessage(options: {
             : "FAILED"
           : "SENT";
 
+  const nextProviderError =
+    providerDeliveryError != null
+      ? sanitizeProviderErrorMessage(providerDeliveryError.message)
+      : outboundStatus !== "FAILED"
+        ? null
+        : undefined;
+
   const needsMessagePatch =
     (providerMsgId ?? null) !== message.providerMsgId ||
     outboundStatus !== message.status ||
-    storedBody !== message.body;
+    storedBody !== message.body ||
+    (nextProviderError !== undefined &&
+      (nextProviderError ?? null) !== (message.providerError ?? null));
 
   if (needsMessagePatch) {
     message = await prisma.message.update({
@@ -732,6 +742,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
         providerMsgId: providerMsgId ?? null,
         status: outboundStatus,
         body: storedBody,
+        ...(nextProviderError !== undefined ? { providerError: nextProviderError } : {}),
       },
       include: {
         actorUser: {

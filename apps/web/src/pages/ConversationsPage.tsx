@@ -54,6 +54,7 @@ interface Conversation {
   agentBotTriageActive?: boolean;
   awaitingHumanHandoff?: boolean;
   closureValue?: number | null;
+  assignedToId: string | null;
   contact: {
     id: string;
     name: string;
@@ -1071,6 +1072,8 @@ export function ConversationsPage({
           ...conv,
           updatedAt: detail.message.createdAt,
           isUnread: true,
+          assignedTo: conv.assignedTo,
+          assignedToId: conv.assignedToId ?? conv.assignedTo?.id ?? null,
           messages: [preview, ...(conv.messages?.slice(1) ?? [])],
         };
         const next = [updated, ...prev.filter((_, i) => i !== idx)];

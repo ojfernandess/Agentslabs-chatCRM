@@ -96,7 +96,20 @@ export function mergeConversationScopeHint<T extends ConversationScopeRow>(
 
   let assignedTo = row.assignedTo;
   if (hint.assignedTo !== undefined) {
-    assignedTo = hint.assignedTo;
+    if (hint.assignedTo === null) {
+      // WS estrutural costuma omitir o nome — só limpar quando a atribuição foi removida.
+      if (assignedToId == null) {
+        assignedTo = null;
+      } else if (row.assignedTo?.id === assignedToId && row.assignedTo.name) {
+        assignedTo = row.assignedTo;
+      } else if (options?.currentUserId === assignedToId && options.currentUserName) {
+        assignedTo = { id: assignedToId, name: options.currentUserName };
+      } else {
+        assignedTo = { id: assignedToId, name: row.assignedTo?.name ?? "" };
+      }
+    } else {
+      assignedTo = hint.assignedTo;
+    }
   } else if (hint.assignedToId !== undefined) {
     if (!assignedToId) {
       assignedTo = null;

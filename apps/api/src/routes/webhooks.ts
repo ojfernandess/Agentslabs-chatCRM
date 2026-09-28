@@ -18,6 +18,7 @@ import { dispatchAgentBotWebhook } from "../lib/agentBotWebhook.js";
 import { getAgentBotDispatchContextForInbox } from "../lib/agentBotTriage.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { updateLedgerDeliveryStatus } from "../lib/messageBillingLedger.js";
+import { sanitizeProviderErrorMessage } from "../lib/providerErrorMessage.js";
 import { ensureConversationForChannelInbox } from "../lib/conversationRouting.js";
 import { persistEvolutionInboundMediaAsLocalUrl } from "../lib/evolutionInboundMedia.js";
 import { persistEvolutionGoInboundMediaAsLocalUrl } from "../lib/evolutionGoInboundMedia.js";
@@ -860,12 +861,20 @@ async function handleWhatsAppPost(
         },
         select: { id: true, conversationId: true, status: true },
       });
+      const statusPatch: { status: typeof status.status; providerError?: string | null } = {
+        status: status.status,
+      };
+      if (status.status === "FAILED" && status.errorMessage) {
+        statusPatch.providerError = sanitizeProviderErrorMessage(status.errorMessage);
+      } else if (status.status === "DELIVERED" || status.status === "READ" || status.status === "SENT") {
+        statusPatch.providerError = null;
+      }
       await prisma.message.updateMany({
         where: {
           providerMsgId: status.waMessageId,
           conversation: { organizationId },
         },
-        data: { status: status.status },
+        data: statusPatch,
       });
       /** Cost Policy: cobrança da Meta baseia-se em ENTREGA — atualizar o ledger com o status real. */
       void updateLedgerDeliveryStatus({

@@ -1271,6 +1271,8 @@ model Message {
   /// Nota interna da equipa: não é enviada ao WhatsApp.
   isPrivate     Boolean          @default(false) @map("is_private")
   providerMsgId String?          @map("provider_msg_id")
+  /// Erro do provider ao enviar/entregar (Meta API síncrona ou webhook failed). Observabilidade — não altera envio.
+  providerError String?          @map("provider_error") @db.VarChar(500)
   /// Canal de origem/destino quando difere do canal da inbox (ex.: "WEBCHAT"). Null = canal da inbox.
   channel       String?          @db.VarChar(24)
   status        MessageStatus    @default(SENT)
