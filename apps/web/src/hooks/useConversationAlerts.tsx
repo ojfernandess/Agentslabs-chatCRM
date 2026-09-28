@@ -18,6 +18,8 @@ import {
 } from "@/lib/profilePrefs";
 import { playAudioAlert } from "@/lib/audioAlerts";
 import { formatMessageBodyForPreview } from "@/lib/messagePreviewText";
+import type { ConversationUpdatedDetail } from "@/hooks/useDebouncedConversationUpdated";
+import { CONVERSATION_MESSAGE_CREATED_EVENT } from "@/lib/conversationMessagePush";
 
 const BELL_CLEARED_KEY = "openconduit_bell_cleared_at";
 const POLL_MS = 22_000;
@@ -304,16 +306,30 @@ export function useConversationAlerts() {
     const onUnread = () => {
       schedulePoll();
     };
-    const onUpdated = () => {
-      schedulePoll();
+    const onUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<ConversationUpdatedDetail>).detail;
+      const hasStructuralChange =
+        Boolean(detail?.status) ||
+        detail?.assignedToId !== undefined ||
+        detail?.teamId !== undefined ||
+        Boolean(detail?.inboxId) ||
+        detail?.awaitingHumanHandoff !== undefined ||
+        detail?.agentBotTriageActive !== undefined;
+      if (hasStructuralChange) schedulePoll();
+    };
+    const onMessageCreated = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: { direction?: string } }>).detail;
+      if (detail?.message?.direction === "INBOUND") schedulePoll();
     };
     window.addEventListener("openconduit:conversation-read", onRead);
     window.addEventListener("openconduit:conversation-unread", onUnread);
     window.addEventListener("openconduit:conversation-updated", onUpdated);
+    window.addEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
     return () => {
       window.removeEventListener("openconduit:conversation-read", onRead);
       window.removeEventListener("openconduit:conversation-unread", onUnread);
       window.removeEventListener("openconduit:conversation-updated", onUpdated);
+      window.removeEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
       if (pollDebounceRef.current != null) window.clearTimeout(pollDebounceRef.current);
     };
   }, [schedulePoll, clearAudioRepeat]);

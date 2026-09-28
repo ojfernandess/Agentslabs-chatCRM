@@ -1018,7 +1018,15 @@ export function ConversationsPage({
     void loadStatusCounts();
   }, [loadStatusCounts]);
 
-  useDebouncedConversationUpdated(() => {
+  useDebouncedConversationUpdated((detail) => {
+    const hasStructuralChange =
+      Boolean(detail?.status) ||
+      detail?.assignedToId !== undefined ||
+      detail?.teamId !== undefined ||
+      Boolean(detail?.inboxId) ||
+      detail?.awaitingHumanHandoff !== undefined ||
+      detail?.agentBotTriageActive !== undefined;
+    if (!hasStructuralChange) return;
     void loadScopeCounts();
     void loadStatusCounts();
   });
