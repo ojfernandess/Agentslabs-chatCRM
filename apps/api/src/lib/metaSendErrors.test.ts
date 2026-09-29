@@ -5,6 +5,7 @@ import {
   extractFetchErrorDiagnostics,
   formatMetaSendErrorForStorage,
   isMetaNetworkProviderError,
+  isOutboundWhatsappDeliveryError,
   validateMetaSendConfig,
 } from "./metaSendErrors.js";
 
@@ -41,4 +42,15 @@ test("isMetaNetworkProviderError matches classified errors", () => {
   assert.equal(isMetaNetworkProviderError("META_NETWORK_ERROR: ETIMEDOUT"), true);
   assert.equal(isMetaNetworkProviderError("fetch failed"), true);
   assert.equal(isMetaNetworkProviderError("META_API_ERROR: HTTP 401"), false);
+});
+
+test("isOutboundWhatsappDeliveryError matches META_API_ERROR and legacy strings", () => {
+  assert.equal(
+    isOutboundWhatsappDeliveryError(
+      "META_API_ERROR: HTTP 404 — code 132001 — (#132001) Template name does not exist in the translation",
+    ),
+    true,
+  );
+  assert.equal(isOutboundWhatsappDeliveryError("Meta API error: HTTP 404"), true);
+  assert.equal(isOutboundWhatsappDeliveryError("Contact not found"), false);
 });

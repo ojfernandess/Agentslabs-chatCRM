@@ -12,6 +12,7 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import { enforceApiEndpointRateLimit } from "../lib/apiEndpointRateLimit.js";
 import { effectiveBodyVariableCount } from "../lib/templateVariables.js";
+import { isOutboundWhatsappDeliveryError } from "../lib/metaSendErrors.js";
 
 export async function messageRoutes(app: FastifyInstance): Promise<void> {
   /** Upload de áudio (reconhecimento de voz / microfone) — WebM, OGG, MP4, … */
@@ -119,13 +120,7 @@ export async function messageRoutes(app: FastifyInstance): Promise<void> {
       if (msg === "Template not found") {
         return reply.status(404).send({ error: "Not Found", message: msg, statusCode: 404 });
       }
-      if (msg.includes("session window")) {
-        return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
-      }
-      if (msg.includes("Meta API error") || msg.includes("WhatsApp delivery")) {
-        return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
-      }
-      if (msg.includes("templates are only supported")) {
+      if (isOutboundWhatsappDeliveryError(msg)) {
         return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
       }
       app.log.error(err, "deliverOutboundWhatsAppMessage failed");

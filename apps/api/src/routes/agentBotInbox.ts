@@ -14,6 +14,7 @@ import {
   callHumanForConversationForOrg,
 } from "../lib/conversationNativeToolActions.js";
 import { resetInteractionBudgetForConversation } from "../lib/interactionBudget.js";
+import { isOutboundWhatsappDeliveryError } from "../lib/metaSendErrors.js";
 
 const patchConversationSchema = z.object({
   status: z.enum(["OPEN", "PENDING"]),
@@ -121,7 +122,7 @@ export async function agentBotInboxRoutes(app: FastifyInstance): Promise<void> {
       if (msg.includes("not found") || msg.includes("Contact")) {
         return reply.status(404).send({ error: "Not Found", message: msg, statusCode: 404 });
       }
-      if (msg.includes("24-hour") || msg.includes("session")) {
+      if (msg.includes("24-hour") || msg.includes("session") || isOutboundWhatsappDeliveryError(msg)) {
         return reply.status(422).send({ error: "Unprocessable Entity", message: msg, statusCode: 422 });
       }
       app.log.error(err, "agent-bot message failed");

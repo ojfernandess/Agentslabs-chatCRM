@@ -168,3 +168,15 @@ export function isMetaNetworkProviderError(providerError: string | null | undefi
 export function isMetaConfigurationProviderError(providerError: string | null | undefined): boolean {
   return /^META_CONFIGURATION_ERROR:/i.test(providerError?.trim() ?? "");
 }
+
+/** Erros de entrega WhatsApp/Meta que devem ser 422 (regra de negócio), não 500. */
+export function isOutboundWhatsappDeliveryError(message: string): boolean {
+  const msg = message.trim();
+  if (!msg) return false;
+  if (/^META_(API|NETWORK|CONFIGURATION)_ERROR:/i.test(msg)) return true;
+  if (/Meta API error/i.test(msg)) return true;
+  if (/WhatsApp delivery/i.test(msg)) return true;
+  if (/session window/i.test(msg)) return true;
+  if (/templates are only supported/i.test(msg)) return true;
+  return false;
+}

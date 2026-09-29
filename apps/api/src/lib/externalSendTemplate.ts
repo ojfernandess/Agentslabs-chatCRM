@@ -20,6 +20,7 @@ import {
   type ExternalSendTemplateBody,
 } from "./externalSendTemplateHelpers.js";
 import { effectiveBodyVariableCount } from "./templateVariables.js";
+import { isOutboundWhatsappDeliveryError } from "./metaSendErrors.js";
 
 export {
   externalSendTemplateBodySchema,
@@ -332,7 +333,7 @@ export function mapExternalSendTemplateError(err: unknown): { statusCode: number
   if (msg === "Contact is blocked") return { statusCode: 403, message: msg };
   if (msg.includes("Template requires exactly")) return { statusCode: 400, message: msg };
   if (msg.includes("providerTemplateId") || msg.includes("WhatsApp Business")) return { statusCode: 422, message: msg };
-  if (msg.includes("session window") || msg.includes("Meta API")) return { statusCode: 422, message: msg };
+  if (isOutboundWhatsappDeliveryError(msg)) return { statusCode: 422, message: msg };
   if (msg === "WhatsApp template delivery failed") return { statusCode: 422, message: msg };
   return { statusCode: 500, message: msg };
 }
