@@ -11,6 +11,7 @@ import {
   isOperationalReservationLookupMessage,
   messageContainsReservationLocator,
   userMessageLooksLikeKnowledgeSeekingQuery,
+  userMessageLooksLikeSocialGreeting,
   userMessageLooksLikeOperationalCheckinIntent,
   userMessageLooksLikeReservationVerificationIntent,
   isKnowledgeOverviewChunk,
@@ -256,6 +257,14 @@ test("qual o link after check-in context skips KB", () => {
 
 test("dirty room complaint is not a knowledge-seeking query", () => {
   assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("meu quarto está sujo"), false);
+});
+
+test("social greetings are not knowledge-seeking queries (C1)", () => {
+  assert.equal(userMessageLooksLikeSocialGreeting("Boa tarde, tudo bem?"), true);
+  assert.equal(userMessageLooksLikeSocialGreeting("tudo bem?"), true);
+  assert.equal(userMessageLooksLikeSocialGreeting("Good evening, how are you?"), true);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("Boa tarde, tudo bem?"), false);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("boa tarde, como funciona o check-in?"), true);
 });
 
 test("checkout procedure is not generic knowledge-seeking before unit gate", () => {

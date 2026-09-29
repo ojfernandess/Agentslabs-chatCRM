@@ -149,3 +149,15 @@ test("shouldEscalateAfterKnowledgeGap false for checkout without establishment e
 test("userMessageLooksLikeKbEscalationCandidate excludes access blocked problem", () => {
   assert.equal(userMessageLooksLikeKbEscalationCandidate("não consigo entrar no quarto"), false);
 });
+
+test("shouldEscalateAfterKnowledgeGap false for social greeting even when KB lacks answer", () => {
+  assert.equal(userMessageLooksLikeKbEscalationCandidate("Boa tarde, tudo bem?"), false);
+  assert.equal(
+    shouldEscalateAfterKnowledgeGap({
+      userMessage: "Boa tarde, tudo bem?",
+      toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "" }],
+      callHumanSucceeded: false,
+    }),
+    false,
+  );
+});

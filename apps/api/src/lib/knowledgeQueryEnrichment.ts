@@ -126,6 +126,23 @@ const ASSISTANT_DATA_COLLECTION_RE =
 
 const IMAGE_TRANSCRIPTION_PREFIX = "[Transcrição de imagem]";
 
+const SOCIAL_GREETING_PREFIX_RE =
+  /^(?:bom\s+dia|boa\s+tarde|boa\s+noite|ol[aá]|oi|hey|hi|hello|hola|buenas?\s+(?:tardes?|noches?|d[ií]as?)|good\s+(?:morning|afternoon|evening))\b/i;
+
+const SOCIAL_GREETING_TAIL_RE =
+  /^(?:tudo\s+bem|tudo\s+bom|como\s+vai|e\s+a[ií]|how\s+are\s+you|what'?s\s+up|que\s+tal)\s*\??$/i;
+
+/** Saudação social (C1) — não é pergunta factual de KB, mesmo com `?`. */
+export function userMessageLooksLikeSocialGreeting(userMessage: string): boolean {
+  const t = userMessage.trim();
+  if (!t) return false;
+  if (SOCIAL_GREETING_TAIL_RE.test(t)) return true;
+  if (!SOCIAL_GREETING_PREFIX_RE.test(t)) return false;
+  const rest = t.replace(SOCIAL_GREETING_PREFIX_RE, "").replace(/^[,!\s]+/, "").trim();
+  if (!rest) return true;
+  return SOCIAL_GREETING_TAIL_RE.test(rest);
+}
+
 /** Respostas curtas de menu / confirmação / fluxo — não disparam KB. */
 export function isShortConfirmationOrFlowReply(userMessage: string): boolean {
   const t = userMessage.trim();
@@ -178,6 +195,7 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
   const t = userMessage.trim();
   if (!t) return false;
   if (isUserDataProvisionMessage(t)) return false;
+  if (userMessageLooksLikeSocialGreeting(t)) return false;
   if (isShortConfirmationOrFlowReply(t)) return false;
   if (isOperationalQuoteMessage(t)) return false;
   // C2/C3 — verificar/consultar/confirmar reserva ou check-in → API HTTP, nunca KB.
