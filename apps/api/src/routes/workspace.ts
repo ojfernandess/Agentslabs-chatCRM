@@ -1,6 +1,7 @@
 import websocket from "@fastify/websocket";
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
+import { prisma } from "../db.js";
 import {
   registerWorkspaceSocket,
   subscribeWorkspaceSocketConversations,
@@ -17,6 +18,24 @@ import {
 import type { JwtPayload } from "../middleware/auth.js";
 
 type WsQuery = { token?: string; sessionKey?: string };
+
+async function isActiveWorkspaceOrganization(organizationId: string): Promise<boolean> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { isActive: true },
+  });
+  return Boolean(org?.isActive);
+}
+
+function runPresenceTask(
+  log: FastifyInstance["log"],
+  label: string,
+  task: () => Promise<void>,
+): void {
+  void task().catch((err) => {
+    log.warn({ err }, `workspace presence ${label} failed`);
+  });
+}
 
 async function handlePresenceConnect(
   userId: string,
@@ -78,50 +97,65 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
       const userId = payload.id;
-      registerWorkspaceSocket(organizationId, socket);
-      void handlePresenceConnect(userId, organizationId, sessionKey);
-      socket.send(JSON.stringify({ type: "workspace.connected", organizationId }));
 
-      socket.on("message", (raw) => {
-        try {
-          const msg = JSON.parse(String(raw)) as {
-            type?: string;
-            sessionKey?: string;
-            conversationIds?: unknown;
-          };
-          const key = (msg.sessionKey ?? sessionKey).trim();
-          if (!isValidPresenceSessionKey(key)) return;
-
-          if (msg.type === "presence.heartbeat") {
-            void handlePresenceHeartbeat(userId, organizationId, key);
-          } else if (msg.type === "workspace.subscribe") {
-            const ids = Array.isArray(msg.conversationIds)
-              ? msg.conversationIds.filter((id): id is string => typeof id === "string")
-              : [];
-            subscribeWorkspaceSocketConversations(organizationId, socket, ids);
-          } else if (msg.type === "workspace.unsubscribe") {
-            const ids = Array.isArray(msg.conversationIds)
-              ? msg.conversationIds.filter((id): id is string => typeof id === "string")
-              : undefined;
-            unsubscribeWorkspaceSocketConversations(organizationId, socket, ids);
-          } else if (msg.type === "presence.session_end") {
-            void endPresenceSession(userId, key).then(({ becameOffline, organizationId: orgId }) => {
-              if (orgId && becameOffline) {
-                void notifyPresenceChangedIfNeeded(userId, orgId, true);
-              }
-            });
-          }
-        } catch {
-          /* ignore malformed messages */
+      void (async () => {
+        if (!(await isActiveWorkspaceOrganization(organizationId))) {
+          socket.close(1008, "organization not found or suspended");
+          return;
         }
-      });
 
-      socket.on("close", () => {
-        void endPresenceSession(userId, sessionKey).then(({ becameOffline, organizationId: orgId }) => {
-          if (orgId && becameOffline) {
-            void notifyPresenceChangedIfNeeded(userId, orgId, true);
+        registerWorkspaceSocket(organizationId, socket);
+        runPresenceTask(app.log, "connect", () =>
+          handlePresenceConnect(userId, organizationId, sessionKey),
+        );
+        socket.send(JSON.stringify({ type: "workspace.connected", organizationId }));
+
+        socket.on("message", (raw) => {
+          try {
+            const msg = JSON.parse(String(raw)) as {
+              type?: string;
+              sessionKey?: string;
+              conversationIds?: unknown;
+            };
+            const key = (msg.sessionKey ?? sessionKey).trim();
+            if (!isValidPresenceSessionKey(key)) return;
+
+            if (msg.type === "presence.heartbeat") {
+              runPresenceTask(app.log, "heartbeat", () =>
+                handlePresenceHeartbeat(userId, organizationId, key),
+              );
+            } else if (msg.type === "workspace.subscribe") {
+              const ids = Array.isArray(msg.conversationIds)
+                ? msg.conversationIds.filter((id): id is string => typeof id === "string")
+                : [];
+              subscribeWorkspaceSocketConversations(organizationId, socket, ids);
+            } else if (msg.type === "workspace.unsubscribe") {
+              const ids = Array.isArray(msg.conversationIds)
+                ? msg.conversationIds.filter((id): id is string => typeof id === "string")
+                : undefined;
+              unsubscribeWorkspaceSocketConversations(organizationId, socket, ids);
+            } else if (msg.type === "presence.session_end") {
+              void endPresenceSession(userId, key).then(({ becameOffline, organizationId: orgId }) => {
+                if (orgId && becameOffline) {
+                  void notifyPresenceChangedIfNeeded(userId, orgId, true);
+                }
+              });
+            }
+          } catch {
+            /* ignore malformed messages */
           }
         });
+
+        socket.on("close", () => {
+          void endPresenceSession(userId, sessionKey).then(({ becameOffline, organizationId: orgId }) => {
+            if (orgId && becameOffline) {
+              void notifyPresenceChangedIfNeeded(userId, orgId, true);
+            }
+          });
+        });
+      })().catch((err) => {
+        app.log.warn({ err, organizationId, userId }, "workspace websocket setup failed");
+        socket.close(1011, "workspace setup failed");
       });
     } catch {
       socket.close(1008, "invalid token");
