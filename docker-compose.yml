@@ -198,7 +198,7 @@ services:
       redis:
         condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - api_message_media:/app/data/message-media
     healthcheck:
@@ -237,7 +237,7 @@ services:
       redis:
         condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - api_message_media:/app/data/message-media
     healthcheck:

@@ -5,56 +5,59 @@
 # - 20260518140000_inbox_ingest (ex.: gen_random_bytes sem pgcrypto; SQL corrigido + IF NOT EXISTS)
 set -e
 SCHEMA=apps/api/prisma/schema.prisma
+ROLE="${PROCESS_ROLE:-all}"
 
-set +e
-npx prisma migrate deploy --schema="$SCHEMA" > /tmp/prisma_migrate.out 2>&1
-code=$?
-set -e
-cat /tmp/prisma_migrate.out
+# Só api/all corre migrações — worker em paralelo causava CREATE TYPE duplicado nos logs do Postgres.
+if [ "$ROLE" = "api" ] || [ "$ROLE" = "all" ]; then
+  set +e
+  npx prisma migrate deploy --schema="$SCHEMA" > /tmp/prisma_migrate.out 2>&1
+  code=$?
+  set -e
+  cat /tmp/prisma_migrate.out
 
-if [ "$code" -ne 0 ]; then
-  if grep -q P3009 /tmp/prisma_migrate.out; then
-    recovered=0
-    for STUCK in 20260202120000_add_evolution_api_base_url 20260518140000_inbox_ingest; do
-      if grep -q "$STUCK" /tmp/prisma_migrate.out; then
-        echo "[docker-entrypoint] Recovering failed migration record (rolled-back): $STUCK"
-        npx prisma migrate resolve --rolled-back "$STUCK" --schema="$SCHEMA"
+  if [ "$code" -ne 0 ]; then
+    if grep -q P3009 /tmp/prisma_migrate.out; then
+      recovered=0
+      for STUCK in 20260202120000_add_evolution_api_base_url 20260518140000_inbox_ingest; do
+        if grep -q "$STUCK" /tmp/prisma_migrate.out; then
+          echo "[docker-entrypoint] Recovering failed migration record (rolled-back): $STUCK"
+          npx prisma migrate resolve --rolled-back "$STUCK" --schema="$SCHEMA"
+          recovered=1
+        fi
+      done
+
+      STUCK_REMINDERS=20260513193000_reminders_hub_fields
+      if grep -q "$STUCK_REMINDERS" /tmp/prisma_migrate.out; then
+        echo "[docker-entrypoint] Recovering reminders hub migration record (applied): $STUCK_REMINDERS"
+        npx prisma migrate resolve --applied "$STUCK_REMINDERS" --schema="$SCHEMA"
         recovered=1
       fi
-    done
 
-    STUCK_REMINDERS=20260513193000_reminders_hub_fields
-    if grep -q "$STUCK_REMINDERS" /tmp/prisma_migrate.out; then
-      echo "[docker-entrypoint] Recovering reminders hub migration record (applied): $STUCK_REMINDERS"
-      npx prisma migrate resolve --applied "$STUCK_REMINDERS" --schema="$SCHEMA"
-      recovered=1
-    fi
+      STUCK_REMINDERS_FIX=20260513193100_reminders_hub_fields_fix
+      if grep -q "$STUCK_REMINDERS_FIX" /tmp/prisma_migrate.out; then
+        echo "[docker-entrypoint] Recovering reminders hub fix migration record (rolled-back): $STUCK_REMINDERS_FIX"
+        npx prisma migrate resolve --rolled-back "$STUCK_REMINDERS_FIX" --schema="$SCHEMA"
+        recovered=1
+      fi
 
-    STUCK_REMINDERS_FIX=20260513193100_reminders_hub_fields_fix
-    if grep -q "$STUCK_REMINDERS_FIX" /tmp/prisma_migrate.out; then
-      echo "[docker-entrypoint] Recovering reminders hub fix migration record (rolled-back): $STUCK_REMINDERS_FIX"
-      npx prisma migrate resolve --rolled-back "$STUCK_REMINDERS_FIX" --schema="$SCHEMA"
-      recovered=1
-    fi
-
-    if [ "$recovered" -eq 1 ]; then
-      npx prisma migrate deploy --schema="$SCHEMA"
+      if [ "$recovered" -eq 1 ]; then
+        npx prisma migrate deploy --schema="$SCHEMA"
+      else
+        exit "$code"
+      fi
     else
       exit "$code"
     fi
-  else
-    exit "$code"
   fi
-fi
 
-if [ "${RUN_DB_SEED:-false}" = "true" ]; then
-  npx tsx apps/api/prisma/seed.ts
+  if [ "${RUN_DB_SEED:-false}" = "true" ]; then
+    npx tsx apps/api/prisma/seed.ts
+  fi
 fi
 
 UPLOAD_DIR="${MEDIA_UPLOAD_DIR:-/app/uploads/message-media}"
 mkdir -p "$UPLOAD_DIR"
 
-ROLE="${PROCESS_ROLE:-all}"
 if [ "$ROLE" = "worker" ] || [ "$ROLE" = "agent-worker" ]; then
   exec node apps/api/dist/worker.js
 fi
