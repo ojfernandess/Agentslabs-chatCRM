@@ -7,6 +7,8 @@ import { reindexAllKnowledgeArticlesForOrg } from "./knowledgeReindex.js";
 import { generateChatbotPublicId } from "./chatbotFlowExecutor.js";
 
 export const AUTOMATION_CONFIG_EXPORT_VERSION = 1;
+/** Fastify default bodyLimit é 1MB — bundles com KB/prompts excedem facilmente. */
+export const AUTOMATION_CONFIG_IMPORT_BODY_LIMIT_BYTES = 32 * 1024 * 1024;
 const MAX_HISTORY_ROWS = 10_000;
 
 function asJson(v: unknown): Prisma.InputJsonValue {

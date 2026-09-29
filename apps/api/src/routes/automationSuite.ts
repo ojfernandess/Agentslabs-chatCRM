@@ -92,6 +92,7 @@ import {
   AUTOMATION_CONFIG_EXPORT_VERSION,
   exportAutomationConfig,
   importAutomationConfig,
+  AUTOMATION_CONFIG_IMPORT_BODY_LIMIT_BYTES,
 } from "../lib/automationConfigImportExport.js";
 
 function isTenantAdminLike(user: { role: string; actingOrganizationId?: string | null }): boolean {
@@ -3309,7 +3310,13 @@ export async function automationSuiteRoutes(app: FastifyInstance): Promise<void>
     return bundle;
   });
 
-  app.post("/config/import", { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post(
+    "/config/import",
+    {
+      preHandler: [requireAdmin],
+      bodyLimit: AUTOMATION_CONFIG_IMPORT_BODY_LIMIT_BYTES,
+    },
+    async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!isTenantAdminLike(request.user)) {
