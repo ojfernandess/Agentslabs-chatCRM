@@ -9,6 +9,9 @@ import { generateChatbotPublicId } from "./chatbotFlowExecutor.js";
 export const AUTOMATION_CONFIG_EXPORT_VERSION = 1;
 /** Fastify default bodyLimit é 1MB — bundles com KB/prompts excedem facilmente. */
 export const AUTOMATION_CONFIG_IMPORT_BODY_LIMIT_BYTES = 32 * 1024 * 1024;
+/** Prisma default interactive tx timeout é 5s — import pode incluir milhares de linhas. */
+const AUTOMATION_CONFIG_IMPORT_TX_TIMEOUT_MS = 180_000;
+const AUTOMATION_CONFIG_IMPORT_BATCH_SIZE = 500;
 const MAX_HISTORY_ROWS = 10_000;
 
 function asJson(v: unknown): Prisma.InputJsonValue {
@@ -781,6 +784,7 @@ export async function importAutomationConfig(
       }
     }
 
+    const interactionRows: Prisma.AutomationInteractionCreateManyInput[] = [];
     for (const rawIx of cfg.interactions) {
       const botId = botMap.get(String(rawIx.botExportKey ?? ""));
       if (!botId) {
@@ -800,21 +804,23 @@ export async function importAutomationConfig(
       if (rawIx.conversationExportKey) {
         meta.importedConversationId = String(rawIx.conversationExportKey);
       }
-      await tx.automationInteraction.create({
-        data: {
-          organizationId,
-          botId,
-          conversationId: null,
-          userMessage: String(rawIx.userMessage ?? ""),
-          assistantMessage: String(rawIx.assistantMessage ?? ""),
-          metadata: asJson(meta),
-          knowledgeArticleIds: knowledgeArticleIds.length ? asJson(knowledgeArticleIds) : undefined,
-          escalatedToHuman: rawIx.escalatedToHuman === true,
-          responseType: rawIx.responseType ? String(rawIx.responseType) : null,
-          createdAt: rawIx.createdAt ? new Date(String(rawIx.createdAt)) : undefined,
-        },
+      interactionRows.push({
+        organizationId,
+        botId,
+        conversationId: null,
+        userMessage: String(rawIx.userMessage ?? ""),
+        assistantMessage: String(rawIx.assistantMessage ?? ""),
+        metadata: asJson(meta),
+        knowledgeArticleIds: knowledgeArticleIds.length ? asJson(knowledgeArticleIds) : undefined,
+        escalatedToHuman: rawIx.escalatedToHuman === true,
+        responseType: rawIx.responseType ? String(rawIx.responseType) : null,
+        createdAt: rawIx.createdAt ? new Date(String(rawIx.createdAt)) : undefined,
       });
-      bump(created, "interactions");
+    }
+    for (let i = 0; i < interactionRows.length; i += AUTOMATION_CONFIG_IMPORT_BATCH_SIZE) {
+      const chunk = interactionRows.slice(i, i + AUTOMATION_CONFIG_IMPORT_BATCH_SIZE);
+      await tx.automationInteraction.createMany({ data: chunk });
+      bump(created, "interactions", chunk.length);
     }
 
     for (const rawEx of cfg.executions) {
@@ -838,9 +844,9 @@ export async function importAutomationConfig(
           finishedAt: rawEx.finishedAt ? new Date(String(rawEx.finishedAt)) : null,
         },
       });
-      for (const le of logEntries) {
-        await tx.automationExecutionLogEntry.create({
-          data: {
+      if (logEntries.length > 0) {
+        await tx.automationExecutionLogEntry.createMany({
+          data: logEntries.map((le) => ({
             executionId: execution.id,
             sequence: Number(le.sequence) || 0,
             level: (String(le.level ?? "INFO") as AutomationLogLevel) || "INFO",
@@ -852,12 +858,13 @@ export async function importAutomationConfig(
             outputContext: le.outputContext == null ? undefined : asJson(le.outputContext),
             stackTrace: le.stackTrace ? String(le.stackTrace) : null,
             createdAt: le.createdAt ? new Date(String(le.createdAt)) : undefined,
-          },
+          })),
         });
       }
       bump(created, "executions");
     }
 
+    const toolExecutionRows: Prisma.AutomationToolExecutionCreateManyInput[] = [];
     for (const rawTe of cfg.toolExecutions) {
       const toolId = toolMap.get(String(rawTe.toolExportKey ?? ""));
       if (!toolId) {
@@ -865,25 +872,27 @@ export async function importAutomationConfig(
         continue;
       }
       const botExportKey = rawTe.botExportKey ? String(rawTe.botExportKey) : null;
-      await tx.automationToolExecution.create({
-        data: {
-          organizationId,
-          toolId,
-          botId: botExportKey ? botMap.get(botExportKey) ?? null : null,
-          source: String(rawTe.source ?? "import"),
-          ok: rawTe.ok === true,
-          statusCode: rawTe.statusCode != null ? Number(rawTe.statusCode) : null,
-          durationMs: rawTe.durationMs != null ? Number(rawTe.durationMs) : null,
-          requestSummary:
-            rawTe.requestSummary == null ? undefined : asJson(rawTe.requestSummary),
-          responseSummary:
-            rawTe.responseSummary == null ? undefined : asJson(rawTe.responseSummary),
-          errorMessage: rawTe.errorMessage ? String(rawTe.errorMessage) : null,
-          tokensUsed: rawTe.tokensUsed != null ? Number(rawTe.tokensUsed) : null,
-          createdAt: rawTe.createdAt ? new Date(String(rawTe.createdAt)) : undefined,
-        },
+      toolExecutionRows.push({
+        organizationId,
+        toolId,
+        botId: botExportKey ? botMap.get(botExportKey) ?? null : null,
+        source: String(rawTe.source ?? "import"),
+        ok: rawTe.ok === true,
+        statusCode: rawTe.statusCode != null ? Number(rawTe.statusCode) : null,
+        durationMs: rawTe.durationMs != null ? Number(rawTe.durationMs) : null,
+        requestSummary:
+          rawTe.requestSummary == null ? undefined : asJson(rawTe.requestSummary),
+        responseSummary:
+          rawTe.responseSummary == null ? undefined : asJson(rawTe.responseSummary),
+        errorMessage: rawTe.errorMessage ? String(rawTe.errorMessage) : null,
+        tokensUsed: rawTe.tokensUsed != null ? Number(rawTe.tokensUsed) : null,
+        createdAt: rawTe.createdAt ? new Date(String(rawTe.createdAt)) : undefined,
       });
-      bump(created, "toolExecutions");
+    }
+    for (let i = 0; i < toolExecutionRows.length; i += AUTOMATION_CONFIG_IMPORT_BATCH_SIZE) {
+      const chunk = toolExecutionRows.slice(i, i + AUTOMATION_CONFIG_IMPORT_BATCH_SIZE);
+      await tx.automationToolExecution.createMany({ data: chunk });
+      bump(created, "toolExecutions", chunk.length);
     }
 
     if (cfg.executionLogSettings) {
@@ -908,7 +917,7 @@ export async function importAutomationConfig(
       });
       bump(updated, "executionLogSettings");
     }
-  });
+  }, { maxWait: 30_000, timeout: AUTOMATION_CONFIG_IMPORT_TX_TIMEOUT_MS });
 
   if ((created.knowledgeArticles ?? 0) + (updated.knowledgeArticles ?? 0) > 0) {
     try {
