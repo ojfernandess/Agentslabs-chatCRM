@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { getCachedAutomationAgentProfile } from "./cachedAutomationAgentProfile.js";
 
 const TOOL_SECRET_KEYS = [
   "apiKey",
@@ -55,16 +56,14 @@ export async function loadAutomationWebhookBundle(
   organizationId: string,
   botId: string,
 ): Promise<Record<string, unknown> | null> {
-  const profile = await prisma.automationAgentProfile.findFirst({
-    where: { botId, organizationId },
-    select: {
-      id: true,
-      llmConfig: true,
-      behaviorConfig: true,
-      promptModuleIds: true,
-    },
-  });
-  if (!profile) return null;
+  const profileRow = await getCachedAutomationAgentProfile(botId, organizationId);
+  if (!profileRow) return null;
+  const profile = {
+    id: profileRow.id,
+    llmConfig: profileRow.llmConfig,
+    behaviorConfig: profileRow.behaviorConfig,
+    promptModuleIds: profileRow.promptModuleIds,
+  };
 
   const behavior =
     profile.behaviorConfig && typeof profile.behaviorConfig === "object"

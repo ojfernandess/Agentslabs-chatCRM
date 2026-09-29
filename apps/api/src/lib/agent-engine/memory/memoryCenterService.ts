@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db.js";
+import { getCachedAutomationAgentProfile } from "../../cachedAutomationAgentProfile.js";
 import type { AutomationContextState } from "../../automationConversationContextLib.js";
 import { parseAgentEngineConfig } from "../config/parseAgentEngineConfig.js";
 import {
@@ -99,10 +100,7 @@ async function resolveConversationMemoryContext(
 
   let providerKind: AgentMemoryKind = "openconduit";
   if (botId) {
-    const profile = await prisma.automationAgentProfile.findFirst({
-      where: { botId, organizationId },
-      select: { behaviorConfig: true },
-    });
+    const profile = await getCachedAutomationAgentProfile(botId, organizationId);
     providerKind = parseAgentEngineConfig(profile?.behaviorConfig).memory;
   }
 
@@ -281,10 +279,7 @@ export async function buildMemoryCenterView(input: {
 
   let memoryProvider: "openconduit" | "mem0" = "openconduit";
   if (ctx?.botId) {
-    const profile = await prisma.automationAgentProfile.findFirst({
-      where: { botId: ctx.botId, organizationId: input.organizationId },
-      select: { behaviorConfig: true },
-    });
+    const profile = await getCachedAutomationAgentProfile(ctx.botId, input.organizationId);
     memoryProvider = parseAgentEngineConfig(profile?.behaviorConfig).memory;
   }
 

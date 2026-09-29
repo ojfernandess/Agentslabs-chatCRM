@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db.js";
+import { getCachedAutomationAgentProfile } from "../../cachedAutomationAgentProfile.js";
 import {
   orgMemoryStoreKey,
   parseOrgMemoryStore,
@@ -84,10 +85,7 @@ async function writeContactState(ref: ScopeRef, state: Record<string, unknown>):
 
 async function readAgentStore(ref: ScopeRef): Promise<MemoryRecord[]> {
   if (!ref.botId) return [];
-  const profile = await prisma.automationAgentProfile.findFirst({
-    where: { botId: ref.botId, organizationId: ref.organizationId },
-    select: { behaviorConfig: true },
-  });
+  const profile = await getCachedAutomationAgentProfile(ref.botId, ref.organizationId);
   const beh =
     profile?.behaviorConfig && typeof profile.behaviorConfig === "object"
       ? (profile.behaviorConfig as Record<string, unknown>)
@@ -99,10 +97,7 @@ async function readAgentStore(ref: ScopeRef): Promise<MemoryRecord[]> {
 
 async function writeAgentStore(ref: ScopeRef, records: MemoryRecord[]): Promise<void> {
   if (!ref.botId) return;
-  const profile = await prisma.automationAgentProfile.findFirst({
-    where: { botId: ref.botId, organizationId: ref.organizationId },
-    select: { id: true, behaviorConfig: true },
-  });
+  const profile = await getCachedAutomationAgentProfile(ref.botId, ref.organizationId);
   if (!profile) return;
   const beh =
     profile.behaviorConfig && typeof profile.behaviorConfig === "object"

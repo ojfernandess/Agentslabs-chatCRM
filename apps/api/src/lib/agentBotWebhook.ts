@@ -35,6 +35,10 @@ import {
   loadAutomationConversationContext,
 } from "./automationConversationContextLib.js";
 import { broadcastConversationAgentTyping } from "./workspaceHub.js";
+import {
+  getCachedAutomationAgentProfile,
+  runWithAgentTurnLookupCache,
+} from "./cachedAutomationAgentProfile.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -232,10 +236,7 @@ async function executeNativeAgentTurn(input: ExecuteNativeAgentTurnInput): Promi
     },
   );
 
-  const profile = await prisma.automationAgentProfile.findUnique({
-    where: { botId: bot.id },
-    select: { behaviorConfig: true },
-  });
+  const profile = await getCachedAutomationAgentProfile(bot.id, organizationId);
   const engineConfig = parseAgentEngineConfig(profile?.behaviorConfig);
 
   if (engineConfig.executionQueueEnabled && isAgentEngineQueueAvailable()) {
@@ -293,10 +294,8 @@ async function dispatchAgentBotNativeFallback(input: {
 }): Promise<void> {
   const { organizationId, bot, conversation, contact, message, log } = input;
 
-  const profile = await prisma.automationAgentProfile.findUnique({
-    where: { botId: bot.id },
-    select: { behaviorConfig: true },
-  });
+  return await runWithAgentTurnLookupCache(bot.id, async () => {
+  const profile = await getCachedAutomationAgentProfile(bot.id, organizationId);
   const engineConfig = parseAgentEngineConfig(profile?.behaviorConfig);
 
   if (engineConfig.inboundMessageBatchEnabled) {
@@ -323,6 +322,7 @@ async function dispatchAgentBotNativeFallback(input: {
     contact,
     message,
     log,
+  });
   });
 }
 

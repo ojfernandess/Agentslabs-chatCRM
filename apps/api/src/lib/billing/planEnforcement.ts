@@ -420,8 +420,19 @@ export async function assertCanSendOutboundMessage(
   organizationId: string,
   options?: { idempotencyKey?: string; actorUserId?: string | null },
 ): Promise<void> {
-  await assertOrganizationBillingAccess(organizationId);
   const snap = await requireSnapshot(organizationId);
+  if (!snap.hasAccess) {
+    throw new PlanEnforcementError(
+      "Subscription inactive or payment overdue. Update billing to continue.",
+      "billing_access_suspended",
+      403,
+      {
+        subscriptionStatus: snap.subscriptionStatus,
+        inGracePeriod: snap.inGracePeriod,
+        pendingPlanName: snap.pendingPlanName,
+      },
+    );
+  }
   if (!isEnforcedLimit(snap, "messages")) return;
   const limit = await resolveMessageLimit(organizationId, snap);
   const { used } = await countMonthlyMessages(organizationId);

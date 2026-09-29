@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { getCachedAutomationAgentProfile } from "./cachedAutomationAgentProfile.js";
 import {
   buildPublicConversationTranscript,
   formatBotTransferHandoffNote,
@@ -40,10 +41,7 @@ export async function resolveCallHumanRegistrationOptions(
       where: { id: resolvedBotId, organizationId },
       select: { name: true },
     }),
-    prisma.automationAgentProfile.findUnique({
-      where: { botId: resolvedBotId },
-      select: { behaviorConfig: true },
-    }),
+    getCachedAutomationAgentProfile(resolvedBotId, organizationId),
   ]);
   return {
     registerInConversation: parseRegisterHandoffInConversationFromBehavior(profile?.behaviorConfig),

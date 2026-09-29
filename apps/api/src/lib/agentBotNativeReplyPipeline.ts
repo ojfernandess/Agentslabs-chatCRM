@@ -1,6 +1,7 @@
 import type { Bot, Contact, Conversation, Message } from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
+import { getCachedAutomationAgentProfile } from "./cachedAutomationAgentProfile.js";
 import { generateNativeAgentReplyWithResult } from "./agentNativeLlm.js";
 import { deliverAgentReplyMessage } from "./agentVoiceReply.js";
 import { deliverEscalationTransferMessage } from "./escalationTransferDelivery.js";
@@ -120,10 +121,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
     let budgetState: InteractionBudgetState | null = null;
     let profilePre: { behaviorConfig: unknown } | null = null;
     try {
-      profilePre = await prisma.automationAgentProfile.findUnique({
-        where: { botId: bot.id },
-        select: { behaviorConfig: true },
-      });
+      profilePre = await getCachedAutomationAgentProfile(bot.id, organizationId);
       budgetState = await getInteractionBudgetState({
         organizationId,
         conversationId: conversation.id,
@@ -323,10 +321,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
       select: { awaitingHumanHandoff: true },
     });
     if (handoffAfter?.awaitingHumanHandoff) {
-      const profileEsc = await prisma.automationAgentProfile.findUnique({
-        where: { botId: bot.id },
-        select: { behaviorConfig: true },
-      });
+      const profileEsc = await getCachedAutomationAgentProfile(bot.id, organizationId);
       const transferConfigured = parseEscalationTransferMessage(profileEsc?.behaviorConfig);
       const callHumanOk = toolOutcomes.some(
         (t) => t.ok !== false && /^call_human$/i.test(t.name),
@@ -497,10 +492,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
       return;
     }
 
-    const profileForVoice = await prisma.automationAgentProfile.findUnique({
-      where: { botId: bot.id },
-      select: { behaviorConfig: true },
-    });
+    const profileForVoice = await getCachedAutomationAgentProfile(bot.id, organizationId);
     const behaviorConfig = profileForVoice?.behaviorConfig;
 
     if (clientStreamDelivered) {

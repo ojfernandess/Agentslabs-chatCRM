@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db.js";
+import { getCachedAutomationAgentProfile } from "../../cachedAutomationAgentProfile.js";
 import type { AgentMemoryKind } from "../types.js";
 import {
   buildMemoryContextAppendix,
@@ -372,12 +373,11 @@ export class OpenNexoMemoryProvider implements MemoryProvider {
     });
     if (!row) return;
 
-    const behaviorConfig = await prisma.automationAgentProfile.findFirst({
-      where: { botId: row.botId ?? "", organizationId },
-      select: { behaviorConfig: true },
-    });
+    const behaviorConfig = row.botId
+      ? await getCachedAutomationAgentProfile(row.botId, organizationId)
+      : null;
     const { parseMemoryEngineConfig } = await import("./parseMemoryEngineConfig.js");
-    const memCfg = parseMemoryEngineConfig(behaviorConfig?.behaviorConfig);
+    const memCfg = parseMemoryEngineConfig(behaviorConfig?.behaviorConfig ?? null);
 
     const userMessage =
       typeof patch.userMessage === "string"

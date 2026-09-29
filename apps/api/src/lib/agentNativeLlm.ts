@@ -15,6 +15,7 @@ import {
 import { mapPreviewUsageToDetails, type LlmUsageDetails } from "./ai-billing/llmUsageDetails.js";
 import type { PreviewLlmUsage } from "./promptModulePreviewLlm.js";
 import { prisma } from "../db.js";
+import { getCachedAutomationAgentProfile } from "./cachedAutomationAgentProfile.js";
 import {
   callAnthropicMessagesWithTools,
   callOpenAiCompatibleChatWithTools,
@@ -1752,10 +1753,10 @@ async function generateNativeAgentReplyCore(input: {
         ? "[Documento enviado pelo cliente]"
         : "[Ficheiro enviado pelo cliente]");
 
-  const profile = await prisma.automationAgentProfile.findUnique({
-    where: { botId: bot.id },
-    select: { llmConfig: true, behaviorConfig: true },
-  });
+  const profileRow = await getCachedAutomationAgentProfile(bot.id, organizationId);
+  const profile = profileRow
+    ? { llmConfig: profileRow.llmConfig, behaviorConfig: profileRow.behaviorConfig }
+    : null;
   if (!profile?.llmConfig || typeof profile.llmConfig !== "object") {
     log.warn({ botId: bot.id }, "Agent bot native fallback skipped: missing automation profile");
     ex?.warn({ id: "profile", name: "Perfil de automação" }, "Perfil em falta — geração abortada");

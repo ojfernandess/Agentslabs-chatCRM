@@ -5,6 +5,7 @@ import type { ConversationPriority } from "@prisma/client";
 import { prisma } from "../../../db.js";
 import { attachAutomationExecutionLog } from "../../automationExecutionLog.js";
 import { runNativeAgentReplyAndDeliver } from "../../agentBotNativeReplyPipeline.js";
+import { runWithAgentTurnLookupCache } from "../../cachedAutomationAgentProfile.js";
 import { broadcastConversationAgentTyping } from "../../workspaceHub.js";
 
 const QUEUE_NAME = "agent-engine-replies";
@@ -141,17 +142,19 @@ async function processAgentEngineJob(
   }
 
   try {
-  await runNativeAgentReplyAndDeliver({
-    organizationId: data.organizationId,
-    bot,
-    conversation,
-    contact,
-    message,
-    log,
-    exLog,
-    userMessageOverride: data.userMessageOverride,
-    batchedMessageIds: data.batchedMessageIds,
-  });
+  await runWithAgentTurnLookupCache(data.botId, () =>
+    runNativeAgentReplyAndDeliver({
+      organizationId: data.organizationId,
+      bot,
+      conversation,
+      contact,
+      message,
+      log,
+      exLog,
+      userMessageOverride: data.userMessageOverride,
+      batchedMessageIds: data.batchedMessageIds,
+    }),
+  );
   } catch (err) {
     broadcastConversationAgentTyping(data.organizationId, data.conversationId, {
       typing: false,
