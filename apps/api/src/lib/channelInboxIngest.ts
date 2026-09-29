@@ -6,8 +6,12 @@ import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
 import { notifyConversationNewMessage, serializeMessageForWorkspaceWs } from "./workspaceMessageBroadcast.js";
 import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
-import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
-import { maybeTranscribeInboundImageMessage } from "./imageTranscription.js";
+import { config } from "../config.js";
+import {
+  awaitInboundTranscriptionGate,
+  resolveWaitForInboundTranscription,
+  startInboundMediaTranscription,
+} from "./inboundTranscriptionPipeline.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 import { getCachedAutoTagRules } from "./requestLookupCache.js";
 import { findConversationByEmailThreadHeaders } from "./emailThreadRouting.js";
@@ -300,44 +304,54 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     serializeMessageForWorkspaceWs(inbound),
   );
 
-  let inboundForPipeline = await maybeTranscribeInboundAudioMessage({
+  const waitForTranscription = await resolveWaitForInboundTranscription(organizationId, agentCtx);
+  const transcription = startInboundMediaTranscription({
     message: inbound,
-    enabled: audioTranscriptionEnabled,
-    log,
-  });
-  inboundForPipeline = await maybeTranscribeInboundImageMessage({
-    message: inboundForPipeline,
-    enabled: imageTranscriptionEnabled,
+    audioTranscriptionEnabled,
+    imageTranscriptionEnabled,
     log,
   });
 
   const channelTag = channelType.toLowerCase();
 
-  await appendTimelineEvent({
-    organizationId,
-    subjectType: "CONTACT",
-    subjectId: contact.id,
-    eventType: "message.inbound",
-    channel: channelTag,
-    payload: {
-      messageId: inbound.id,
+  const [, transcriptionResult] = await Promise.all([
+    Promise.all([
+      appendTimelineEvent({
+        organizationId,
+        subjectType: "CONTACT",
+        subjectId: contact.id,
+        eventType: "message.inbound",
+        channel: channelTag,
+        payload: {
+          messageId: inbound.id,
+          conversationId: conversation.id,
+          type,
+          body: body ?? inbound.body ?? null,
+          mediaUrl: mediaUrl ?? null,
+          providerMsgId: externalMessageId ?? null,
+          inboxId,
+        } as Prisma.InputJsonValue,
+        sourceId: externalMessageId ?? inbound.id,
+        occurredAt: new Date(),
+      }).catch((err) => {
+        log.warn({ err }, "channel inbox: timeline append failed");
+      }),
+      prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { updatedAt: new Date() },
+      }),
+    ]),
+    awaitInboundTranscriptionGate({
+      organizationId,
       conversationId: conversation.id,
-      type,
-      body: inboundForPipeline.body ?? null,
-      mediaUrl: mediaUrl ?? null,
-      providerMsgId: externalMessageId ?? null,
-      inboxId,
-    } as Prisma.InputJsonValue,
-    sourceId: externalMessageId ?? inbound.id,
-    occurredAt: new Date(),
-  }).catch((err) => {
-    log.warn({ err }, "channel inbox: timeline append failed");
-  });
-
-  await prisma.conversation.update({
-    where: { id: conversation.id },
-    data: { updatedAt: new Date() },
-  });
+      message: inbound,
+      transcription,
+      waitForTranscription,
+      transcriptionTimeoutMs: config.inboundTranscriptionTimeoutMs,
+      log,
+    }),
+  ]);
+  const inboundForPipeline = transcriptionResult.message;
 
   const inboundBody = inboundForPipeline.body?.trim() ?? "";
   if (inboundBody) {

@@ -79,7 +79,7 @@ export async function enqueueBroadcastRecipientJob(
   }
 }
 
-function registerWorker(app: FastifyInstance): void {
+function registerWorkerFn(app: FastifyInstance): void {
   if (worker || !connection) return;
 
   worker = new Worker(
@@ -98,7 +98,15 @@ function registerWorker(app: FastifyInstance): void {
 /**
  * Probes Redis and registers the BullMQ worker. On failure, campaigns still send in-process.
  */
-export async function initBroadcastQueue(app: FastifyInstance): Promise<void> {
+export type BroadcastQueueInitOptions = {
+  registerWorker?: boolean;
+};
+
+export async function initBroadcastQueue(
+  app: FastifyInstance,
+  options: BroadcastQueueInitOptions = {},
+): Promise<void> {
+  const registerWorker = options.registerWorker ?? true;
   const url = getRedisUrl();
   if (!url) {
     app.log.info("broadcast queue skipped (no REDIS_URL)");
@@ -125,12 +133,16 @@ export async function initBroadcastQueue(app: FastifyInstance): Promise<void> {
       app.log.warn({ err: err.message }, "broadcast queue redis error");
     });
 
-    registerWorker(app);
+    if (registerWorker) {
+      registerWorkerFn(app);
+      app.log.info("broadcast queue worker ready (redis)");
+      void resumeRunningBroadcastCampaigns(app).catch((resumeErr) => {
+        app.log.warn({ err: resumeErr }, "resume running broadcast campaigns failed");
+      });
+    } else {
+      app.log.info("broadcast queue ready (producer only)");
+    }
     redisQueueOperational = true;
-    app.log.info("broadcast queue worker ready (redis)");
-    void resumeRunningBroadcastCampaigns(app).catch((resumeErr) => {
-      app.log.warn({ err: resumeErr }, "resume running broadcast campaigns failed");
-    });
   } catch (err) {
     markRedisDown();
     await connection?.quit().catch(() => {});

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseAgentEngineConfig } from "./config/parseAgentEngineConfig.js";
+import {
+  parseAgentEngineConfig,
+  resolveExecutionQueueEnabled,
+} from "./config/parseAgentEngineConfig.js";
 import { DEFAULT_AGENT_ENGINE_CONFIG } from "./types.js";
 import { AgentRuntimeFactory } from "./runtime/AgentRuntimeFactory.js";
 import { validateAgentPrompt } from "./validators/PromptValidator.js";
@@ -21,6 +24,13 @@ import {
   buildMem0AgentId,
 } from "./memory/mem0Client.js";
 import { formatMem0PromptAppendix } from "./memory/mem0MemoryBridge.js";
+
+test("resolveExecutionQueueEnabled respects explicit bot opt-in/out", () => {
+  assert.equal(resolveExecutionQueueEnabled(true, false), true);
+  assert.equal(resolveExecutionQueueEnabled(false, true), false);
+  assert.equal(resolveExecutionQueueEnabled(undefined, true), true);
+  assert.equal(resolveExecutionQueueEnabled(undefined, false), false);
+});
 
 test("parseAgentEngineConfig defaults for legacy agents", () => {
   const cfg = parseAgentEngineConfig({ nativeTools: { knowledge_search: true } });
@@ -109,6 +119,28 @@ test("parseAgentEngineConfig reads workflowEngineEnabled", () => {
   });
   assert.equal(cfg.workflowEngineEnabled, true);
   assert.equal(DEFAULT_AGENT_ENGINE_CONFIG.workflowEngineEnabled, false);
+});
+
+test("parseAgentEngineConfig streamingEnabled enables client outbound streaming", () => {
+  const cfg = parseAgentEngineConfig({ agentEngine: { streamingEnabled: true } });
+  assert.equal(cfg.streamingEnabled, true);
+  assert.equal(cfg.clientOutboundStreamingEnabled, true);
+});
+
+test("parseAgentEngineConfig clientOutboundStreamingEnabled false opts out of streamingEnabled", () => {
+  const cfg = parseAgentEngineConfig({
+    agentEngine: { streamingEnabled: true, clientOutboundStreamingEnabled: false },
+  });
+  assert.equal(cfg.clientOutboundStreamingEnabled, false);
+});
+
+test("parseAgentEngineConfig defaults waitForInboundTranscription to true", () => {
+  assert.equal(parseAgentEngineConfig({}).waitForInboundTranscription, true);
+  assert.equal(
+    parseAgentEngineConfig({ agentEngine: { waitForInboundTranscription: false } })
+      .waitForInboundTranscription,
+    false,
+  );
 });
 
 test("parseAgentEngineConfig supervisorMode structural skips llm in native path", () => {

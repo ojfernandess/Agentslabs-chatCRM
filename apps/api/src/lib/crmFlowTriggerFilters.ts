@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import type { CrmFlowContext } from "./crmFlowContext.js";
 
 export type CrmFlowTriggerConfig = {
@@ -34,4 +35,37 @@ export function crmFlowTriggerMatches(
   }
 
   return true;
+}
+
+/**
+ * Filtro no DB para `dispatchCrmFlowTrigger` — evita carregar todos os fluxos ACTIVE.
+ * `lead_created` mantém OR legado (type ausente ou explícito).
+ */
+export function buildCrmFlowDispatchWhere(
+  organizationId: string,
+  triggerType: string,
+): Prisma.CrmFlowWhereInput {
+  const base: Prisma.CrmFlowWhereInput = {
+    organizationId,
+    status: "ACTIVE",
+    isPublished: true,
+  };
+
+  if (triggerType === "lead_created") {
+    return {
+      ...base,
+      OR: [
+        { triggerConfig: { path: ["type"], equals: "lead_created" } },
+        { triggerConfig: { equals: {} } },
+      ],
+    };
+  }
+
+  return {
+    ...base,
+    triggerConfig: {
+      path: ["type"],
+      equals: triggerType,
+    },
+  };
 }

@@ -54,4 +54,9 @@ fi
 UPLOAD_DIR="${MEDIA_UPLOAD_DIR:-/app/uploads/message-media}"
 mkdir -p "$UPLOAD_DIR"
 
+ROLE="${PROCESS_ROLE:-all}"
+if [ "$ROLE" = "worker" ] || [ "$ROLE" = "agent-worker" ]; then
+  exec node apps/api/dist/worker.js
+fi
+
 exec node apps/api/dist/server.js

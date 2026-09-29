@@ -1,3 +1,4 @@
+import { config } from "../../../config.js";
 import {
   DEFAULT_AGENT_ENGINE_CONFIG,
   DEFAULT_INBOUND_MESSAGE_BATCH_DEBOUNCE_MS,
@@ -22,6 +23,16 @@ const RUNTIME_KINDS = new Set<AgentRuntimeKind>([
 const MEMORY_KINDS = new Set<AgentMemoryKind>(["openconduit", "mem0"]);
 
 const OBS_LEVELS = new Set<AgentObservabilityLevel>(["basic", "full"]);
+
+/** Opt-in/out por bot; quando indefinido, usa flag de plataforma. */
+export function resolveExecutionQueueEnabled(
+  explicit: unknown,
+  platformEnabled = config.agentEngineExecutionQueueEnabled,
+): boolean {
+  if (explicit === true) return true;
+  if (explicit === false) return false;
+  return platformEnabled;
+}
 
 function asRuntimeKind(v: unknown): AgentRuntimeKind {
   return typeof v === "string" && RUNTIME_KINDS.has(v as AgentRuntimeKind)
@@ -56,7 +67,10 @@ function asSupervisorMode(v: unknown): AgentSupervisorMode {
  */
 export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConfig {
   if (!behaviorConfig || typeof behaviorConfig !== "object") {
-    return { ...DEFAULT_AGENT_ENGINE_CONFIG };
+    return {
+      ...DEFAULT_AGENT_ENGINE_CONFIG,
+      executionQueueEnabled: config.agentEngineExecutionQueueEnabled,
+    };
   }
   const beh = behaviorConfig as Record<string, unknown>;
   const raw = beh.agentEngine;
@@ -75,6 +89,7 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
       resilienceEnabled: true,
       supervisorEnabled: legacySupervisor,
       supervisorMode: legacySupervisor ? "structural" : "both",
+      executionQueueEnabled: config.agentEngineExecutionQueueEnabled,
     };
   }
   const o = raw as Record<string, unknown>;
@@ -96,6 +111,12 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
       : runtime === "openconduit"
         ? "runtime_owned"
         : "hybrid";
+  const streamingEnabled = o.streamingEnabled === true;
+  /** Fase A3 — `streamingEnabled` também activa outbound WhatsApp salvo opt-out explícito. */
+  const clientOutboundStreamingEnabled =
+    o.clientOutboundStreamingEnabled === true ||
+    (streamingEnabled && o.clientOutboundStreamingEnabled !== false);
+
   return {
     runtime,
     memory: asMemoryKind(o.memory),
@@ -106,12 +127,12 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
     strictMode: o.strictMode === true,
     observability: asObsLevel(o.observability),
     checkpointStore: asCheckpointStore(o.checkpointStore),
-    streamingEnabled: o.streamingEnabled === true,
+    streamingEnabled,
     humanInTheLoopEnabled: o.humanInTheLoopEnabled === true,
     humanInTheLoopNativeEnabled: o.humanInTheLoopNativeEnabled === true,
-    executionQueueEnabled: o.executionQueueEnabled === true,
+    executionQueueEnabled: resolveExecutionQueueEnabled(o.executionQueueEnabled),
     clientTokenStreamingEnabled: o.clientTokenStreamingEnabled === true,
-    clientOutboundStreamingEnabled: o.clientOutboundStreamingEnabled === true,
+    clientOutboundStreamingEnabled,
     parallelKbPrefetchEnabled: o.parallelKbPrefetchEnabled === true,
     schedulerEnabled,
     toolExecutionMode,
@@ -160,6 +181,7 @@ export function parseAgentEngineConfig(behaviorConfig: unknown): AgentEngineConf
       Number.isFinite(o.inboundMessageBatchMaxMessages)
         ? Math.min(20, Math.max(2, Math.round(o.inboundMessageBatchMaxMessages)))
         : DEFAULT_INBOUND_MESSAGE_BATCH_MAX_MESSAGES,
+    waitForInboundTranscription: o.waitForInboundTranscription !== false,
   };
 }
 
@@ -208,6 +230,7 @@ export function mergeAgentEngineIntoBehavior(
         engine.inboundMessageBatchMaxWaitMs ?? DEFAULT_INBOUND_MESSAGE_BATCH_MAX_WAIT_MS,
       inboundMessageBatchMaxMessages:
         engine.inboundMessageBatchMaxMessages ?? DEFAULT_INBOUND_MESSAGE_BATCH_MAX_MESSAGES,
+      waitForInboundTranscription: engine.waitForInboundTranscription !== false,
     },
     agentSupervisor: {
       ...(behaviorConfig.agentSupervisor &&

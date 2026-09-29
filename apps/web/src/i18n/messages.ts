@@ -731,8 +731,9 @@ export const messages = {
       agentEngineObservability_basic: "Básica",
       agentEngineObservability_full: "Completa",
       agentEngineLangGraphAdvanced: "LangGraph — opções avançadas",
-      agentEngineStreaming: "Streaming do grafo",
-      agentEngineStreamingHelp: "Emite eventos parciais por nó no log de execução (graph.stream).",
+      agentEngineStreaming: "Streaming do grafo + WhatsApp",
+      agentEngineStreamingHelp:
+        "Emite eventos parciais no log (graph.stream) e envia a resposta em partes ao contacto no WhatsApp (várias bolhas).",
       agentEngineHitl: "Human-in-the-Loop",
       agentEngineHitlHelp: "Respostas reprovadas pelo supervisor ficam na fila de aprovação via API.",
       agentEngineCheckpointStore: "Checkpoint",
@@ -754,7 +755,8 @@ export const messages = {
       agentEngineTokenStreaming: "Streaming de tokens LLM (SSE)",
       agentEngineTokenStreamingHelp: "Publica tokens no event bus — visível no Inspector durante execuções RUNNING.",
       agentEngineOutboundStreaming: "Streaming outbound (WhatsApp)",
-      agentEngineOutboundStreamingHelp: "Envia chunks de texto ao contacto durante a geração LLM (opt-in; múltiplas mensagens).",
+      agentEngineOutboundStreamingHelp:
+        "Envia blocos de texto ao contacto durante a geração LLM (~180 caracteres; várias mensagens). Também activado por «Streaming do grafo».",
       agentEngineParallelKbPrefetch: "Prefetch KB paralelo (Send API)",
       agentEngineParallelKbPrefetchHelp: "Pré-carrega artigos pinned em paralelo antes do executor nativo (runtime langgraph).",
       agentEngineUnifiedSpineTitle: "Unified Execution Spine",
@@ -8390,8 +8392,9 @@ export const messages = {
       agentEngineObservability_basic: "Basic",
       agentEngineObservability_full: "Full",
       agentEngineLangGraphAdvanced: "LangGraph — advanced options",
-      agentEngineStreaming: "Graph streaming",
-      agentEngineStreamingHelp: "Emits partial per-node events in the execution log (graph.stream).",
+      agentEngineStreaming: "Graph + WhatsApp streaming",
+      agentEngineStreamingHelp:
+        "Emits partial events in the execution log (graph.stream) and sends the reply in parts to the contact on WhatsApp (multiple bubbles).",
       agentEngineHitl: "Human-in-the-Loop",
       agentEngineHitlHelp: "Supervisor-rejected replies are queued for human approval via API.",
       agentEngineCheckpointStore: "Checkpoint",
@@ -8413,7 +8416,8 @@ export const messages = {
       agentEngineTokenStreaming: "LLM token streaming (SSE)",
       agentEngineTokenStreamingHelp: "Publishes tokens to the event bus — visible in the Inspector during RUNNING executions.",
       agentEngineOutboundStreaming: "Outbound streaming (WhatsApp)",
-      agentEngineOutboundStreamingHelp: "Sends text chunks to the contact during LLM generation (opt-in; multiple messages).",
+      agentEngineOutboundStreamingHelp:
+        "Sends text blocks to the contact during LLM generation (~180 chars; multiple messages). Also enabled by «Graph streaming».",
       agentEngineParallelKbPrefetch: "Parallel KB prefetch (Send API)",
       agentEngineParallelKbPrefetchHelp: "Preloads pinned articles in parallel before the native executor (langgraph runtime).",
       agentEngineUnifiedSpineTitle: "Unified Execution Spine",

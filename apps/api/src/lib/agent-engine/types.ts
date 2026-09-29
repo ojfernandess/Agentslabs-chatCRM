@@ -110,6 +110,11 @@ export type AgentEngineConfig = {
   inboundMessageBatchMaxWaitMs?: number;
   /** Máximo de mensagens por batch. Default 8. */
   inboundMessageBatchMaxMessages?: number;
+  /**
+   * Quando false, o bot dispara antes da transcrição de áudio/imagem (opt-in).
+   * Default true — comportamento conservador.
+   */
+  waitForInboundTranscription?: boolean;
 };
 
 export const DEFAULT_INBOUND_MESSAGE_BATCH_DEBOUNCE_MS = 2500;
@@ -145,6 +150,7 @@ export const DEFAULT_AGENT_ENGINE_CONFIG: AgentEngineConfig = {
   simulatorEnabled: false,
   postCompletionFollowUpEnabled: false,
   postCompletionFollowUpSyntheticText: "envie os detalhes da estadia",
+  waitForInboundTranscription: true,
 };
 
 export type AgentRuntimeExecuteInput = {
@@ -165,6 +171,10 @@ export type AgentRuntimeExecuteInput = {
    * Hints de execução do Agent Engine (retry reply-only, reuso de tools).
    * Genérico — não específico de segmento/agente.
    */
+  /** Callback de tokens LLM — partilhado com streaming outbound WhatsApp (Fase A3). */
+  onTokenDelta?: (delta: string) => void;
+  /** Parent finaliza o outbound stream após `execute()` (evita duplo flush). */
+  deferOutboundStreamFinish?: boolean;
   executionHints?: {
     /** Regenerar só a resposta — não reexecutar tools HTTP já bem-sucedidas. */
     replyOnlyRetry?: boolean;

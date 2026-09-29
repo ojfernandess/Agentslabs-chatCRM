@@ -1,7 +1,11 @@
 import websocket from "@fastify/websocket";
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import { registerWorkspaceSocket } from "../lib/workspaceHub.js";
+import {
+  registerWorkspaceSocket,
+  subscribeWorkspaceSocketConversations,
+  unsubscribeWorkspaceSocketConversations,
+} from "../lib/workspaceHub.js";
 import {
   endPresenceSession,
   hasActivePresence,
@@ -83,12 +87,23 @@ export async function workspaceRoutes(app: FastifyInstance): Promise<void> {
           const msg = JSON.parse(String(raw)) as {
             type?: string;
             sessionKey?: string;
+            conversationIds?: unknown;
           };
           const key = (msg.sessionKey ?? sessionKey).trim();
           if (!isValidPresenceSessionKey(key)) return;
 
           if (msg.type === "presence.heartbeat") {
             void handlePresenceHeartbeat(userId, organizationId, key);
+          } else if (msg.type === "workspace.subscribe") {
+            const ids = Array.isArray(msg.conversationIds)
+              ? msg.conversationIds.filter((id): id is string => typeof id === "string")
+              : [];
+            subscribeWorkspaceSocketConversations(organizationId, socket, ids);
+          } else if (msg.type === "workspace.unsubscribe") {
+            const ids = Array.isArray(msg.conversationIds)
+              ? msg.conversationIds.filter((id): id is string => typeof id === "string")
+              : undefined;
+            unsubscribeWorkspaceSocketConversations(organizationId, socket, ids);
           } else if (msg.type === "presence.session_end") {
             void endPresenceSession(userId, key).then(({ becameOffline, organizationId: orgId }) => {
               if (orgId && becameOffline) {

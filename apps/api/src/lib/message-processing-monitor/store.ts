@@ -1,4 +1,5 @@
 import type { MessageProcessingTrace, MonitorSession, TraceAnomaly } from "./types.js";
+import { recordLatencySample } from "../platform-observability/latencySampler.js";
 import {
   ANOMALY_RETENTION_MS,
   DEFAULT_MONITOR_SESSION,
@@ -63,6 +64,12 @@ export function saveTrace(trace: MessageProcessingTrace): void {
   if (trace.status === "error") errorCount += 1;
   for (const a of trace.anomalies) {
     anomalies.push({ ...a, meta: { ...a.meta, traceId: trace.traceId } });
+  }
+  if (trace.totalDurationMs != null) {
+    recordLatencySample(
+      trace.direction === "OUTBOUND" ? "outbound_message" : "inbound_message",
+      trace.totalDurationMs,
+    );
   }
   pruneTraces();
   pruneAnomalies();

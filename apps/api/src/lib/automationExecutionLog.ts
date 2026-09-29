@@ -337,7 +337,10 @@ export async function purgeOldAutomationExecutionLogs(log?: FastifyBaseLogger): 
 
 let workerRegistered = false;
 
-export function registerAutomationExecutionLogWorker(log: FastifyBaseLogger): void {
+export function registerAutomationExecutionLogWorker(
+  log: FastifyBaseLogger,
+  options: { purge?: boolean } = {},
+): void {
   if (workerRegistered) return;
   workerRegistered = true;
   setInterval(() => {
@@ -345,11 +348,15 @@ export function registerAutomationExecutionLogWorker(log: FastifyBaseLogger): vo
       flushAutomationLogBuffer().catch((err) => log.warn({ err }, "automation log flush failed")),
     );
   }, 1_000);
-  const sixHours = 6 * 60 * 60 * 1000;
-  setInterval(() => {
-    void purgeOldAutomationExecutionLogs(log).catch((err) => log.warn({ err }, "automation log purge failed"));
-  }, sixHours);
-  void purgeOldAutomationExecutionLogs(log).catch(() => {});
+  if (options.purge) {
+    const sixHours = 6 * 60 * 60 * 1000;
+    setInterval(() => {
+      void purgeOldAutomationExecutionLogs(log).catch((err) =>
+        log.warn({ err }, "automation log purge failed"),
+      );
+    }, sixHours);
+    void purgeOldAutomationExecutionLogs(log).catch(() => {});
+  }
 }
 
 export function formatStack(err: unknown): string | undefined {

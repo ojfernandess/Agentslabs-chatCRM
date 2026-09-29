@@ -7,6 +7,12 @@ import { attachAutomationExecutionLog } from "../../automationExecutionLog.js";
 import { runNativeAgentReplyAndDeliver } from "../../agentBotNativeReplyPipeline.js";
 import { runWithAgentTurnLookupCache } from "../../cachedAutomationAgentProfile.js";
 import { broadcastConversationAgentTyping } from "../../workspaceHub.js";
+import { config } from "../../../config.js";
+import { acquireAgentEngineOrgSlot } from "./agentEngineOrgRateLimit.js";
+import {
+  getAgentEngineQueueMetrics,
+  recordAgentEngineOrgRateLimitDelayed,
+} from "./agentEngineQueueMetrics.js";
 
 const QUEUE_NAME = "agent-engine-replies";
 
@@ -37,13 +43,23 @@ export function isAgentEngineQueueAvailable(): boolean {
 
 export function getAgentEngineQueueDiagnostics() {
   const redisUrlConfigured = Boolean(getRedisUrl());
+  const platformExecutionQueueEnabled = config.agentEngineExecutionQueueEnabled;
+  const metrics = getAgentEngineQueueMetrics();
   return {
     redisUrlConfigured,
     queueOperational: redisQueueOperational,
-    defaultExecutionQueueEnabled: false,
+    platformExecutionQueueEnabled,
+    defaultExecutionQueueEnabled: platformExecutionQueueEnabled,
+    concurrency: config.agentEngineConcurrency,
+    orgRateLimitMax: config.agentEngineOrgRateLimitMax,
+    orgRateLimitWindowMs: config.agentEngineOrgRateLimitWindowMs,
+    dedicatedWorkerEnv: config.agentEngineDedicatedWorker,
+    metrics,
     activationHint:
       redisUrlConfigured && redisQueueOperational
-        ? "Set behaviorConfig.agentEngine.executionQueueEnabled=true on the bot profile to enqueue replies."
+        ? platformExecutionQueueEnabled
+          ? "Agent replies enqueue by default (AGENT_ENGINE_EXECUTION_QUEUE_ENABLED). Opt out per bot with behaviorConfig.agentEngine.executionQueueEnabled=false."
+          : "Set AGENT_ENGINE_EXECUTION_QUEUE_ENABLED=true or behaviorConfig.agentEngine.executionQueueEnabled=true on the bot profile to enqueue replies."
         : redisUrlConfigured
           ? "REDIS_URL is set but the queue is not operational — check Redis connectivity at API startup."
           : "Set REDIS_URL and restart the API to enable the agent engine BullMQ queue.",
@@ -180,15 +196,29 @@ async function processAgentEngineJob(
   }
 }
 
-function registerWorker(app: FastifyInstance): void {
+function registerWorkerFn(app: FastifyInstance): void {
   if (worker || !connection) return;
 
   worker = new Worker(
     QUEUE_NAME,
     async (job: Job<AgentEngineQueueJobData>) => {
+      const slot = await acquireAgentEngineOrgSlot(
+        connection!,
+        job.data.organizationId,
+        config.agentEngineOrgRateLimitMax,
+        config.agentEngineOrgRateLimitWindowMs,
+      );
+      if (!slot.acquired) {
+        recordAgentEngineOrgRateLimitDelayed();
+        const token = job.token;
+        if (token) {
+          await job.moveToDelayed(Date.now() + slot.retryAfterMs, token);
+        }
+        return;
+      }
       await processAgentEngineJob(job.data, app.log);
     },
-    { connection, concurrency: 2 },
+    { connection, concurrency: config.agentEngineConcurrency },
   );
 
   worker.on("failed", (job, err) => {
@@ -196,7 +226,15 @@ function registerWorker(app: FastifyInstance): void {
   });
 }
 
-export async function initAgentEngineQueue(app: FastifyInstance): Promise<void> {
+export type QueueWorkerInitOptions = {
+  registerWorker?: boolean;
+};
+
+export async function initAgentEngineQueue(
+  app: FastifyInstance,
+  options: QueueWorkerInitOptions = {},
+): Promise<void> {
+  const registerWorker = options.registerWorker ?? true;
   const url = getRedisUrl();
   if (!url) {
     app.log.info("agent engine queue skipped (no REDIS_URL)");
@@ -223,9 +261,20 @@ export async function initAgentEngineQueue(app: FastifyInstance): Promise<void> 
       app.log.warn({ err: err.message }, "agent engine queue redis error");
     });
 
-    registerWorker(app);
+    if (registerWorker) {
+      registerWorkerFn(app);
+      app.log.info(
+        {
+          concurrency: config.agentEngineConcurrency,
+          orgRateLimitMax: config.agentEngineOrgRateLimitMax,
+          orgRateLimitWindowMs: config.agentEngineOrgRateLimitWindowMs,
+        },
+        "agent engine queue ready (worker registered)",
+      );
+    } else {
+      app.log.info("agent engine queue ready (producer only)");
+    }
     redisQueueOperational = true;
-    app.log.info("agent engine queue ready");
   } catch (err) {
     markRedisDown();
     app.log.warn(

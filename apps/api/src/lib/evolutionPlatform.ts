@@ -10,6 +10,7 @@ import {
   findWhatsappInboxByProvider,
   parseInboxWhatsappFromChannelConfig,
   resolveInboxWhatsappCredentials,
+  withInboxWhatsappPhoneNumberIdColumn,
 } from "./inboxWhatsappConfig.js";
 import { syncWhatsappInboxCredentialsToSettings } from "./whatsappOrgSync.js";
 
@@ -194,7 +195,9 @@ export async function patchEvolutionInboxAfterQrFlow(
 
   await prisma.inbox.update({
     where: { id: evolutionInbox.id },
-    data: { channelConfig: base as Prisma.InputJsonValue },
+    data: withInboxWhatsappPhoneNumberIdColumn({
+      channelConfig: base as Prisma.InputJsonValue,
+    }),
   });
   await syncWhatsappInboxCredentialsToSettings(organizationId, evolutionInbox.id);
   return evolutionInbox.id;

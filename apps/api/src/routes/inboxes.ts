@@ -12,6 +12,8 @@ import {
   maskInboxRowChannelConfig,
   prepareWhatsappChannelConfigForSave,
   parseInboxWhatsappFromChannelConfig,
+  inboxWhatsappPhoneNumberIdForColumn,
+  withInboxWhatsappPhoneNumberIdColumn,
   whatsappWebhookMetaFromConfig,
 } from "../lib/inboxWhatsappConfig.js";
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
@@ -342,6 +344,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             isDefault: true,
             ingestToken: newIngestToken(),
             channelConfig,
+            ...(channelType === InboxChannelType.WHATSAPP && channelConfig != null
+              ? { whatsappPhoneNumberId: inboxWhatsappPhoneNumberIdForColumn(channelConfig) }
+              : {}),
             agentBotId: body.agentBotId,
           },
         });
@@ -365,6 +370,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             isDefault: false,
             ingestToken: newIngestToken(),
             channelConfig,
+            ...(channelType === InboxChannelType.WHATSAPP && channelConfig != null
+              ? { whatsappPhoneNumberId: inboxWhatsappPhoneNumberIdForColumn(channelConfig) }
+              : {}),
             agentBotId: body.agentBotId,
           },
         });
@@ -540,7 +548,9 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
               base.whatsappConnectedAt = new Date().toISOString();
               await prisma.inbox.update({
                 where: { id: inbox.id },
-                data: { channelConfig: base as Prisma.InputJsonValue },
+                data: withInboxWhatsappPhoneNumberIdColumn({
+                  channelConfig: base as Prisma.InputJsonValue,
+                }),
               });
             }
             const sub = await ensureMetaCloudWabaSubscribed({
@@ -1201,7 +1211,10 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     if (p.isDefault === true) {
       const updated = await prisma.$transaction(async (tx) => {
         await tx.inbox.updateMany({ where: { organizationId }, data: { isDefault: false } });
-        const next = await tx.inbox.update({ where: { id: inbox.id }, data: { ...data, isDefault: true } });
+        const next = await tx.inbox.update({
+          where: { id: inbox.id },
+          data: withInboxWhatsappPhoneNumberIdColumn({ ...data, isDefault: true }),
+        });
         if (p.agentBotId && p.agentBotId !== null) {
           await tx.settings.upsert({
             where: { organizationId },
@@ -1227,7 +1240,10 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const next = await tx.inbox.update({ where: { id: inbox.id }, data });
+      const next = await tx.inbox.update({
+        where: { id: inbox.id },
+        data: withInboxWhatsappPhoneNumberIdColumn(data),
+      });
       if (p.agentBotId && p.agentBotId !== null) {
         await tx.settings.upsert({
           where: { organizationId },

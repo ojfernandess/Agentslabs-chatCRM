@@ -3,7 +3,11 @@ import { prisma } from "../db.js";
 import type { MessageReactionApiRow } from "./messageReactions.js";
 import type { MessageReplyToApi } from "./messageReply.js";
 import { messageReplyToInclude, resolveMessageReplyForApi } from "./messageReply.js";
-import { broadcastConversationUpdated, broadcastToOrganization } from "./workspaceHub.js";
+import {
+  broadcastConversationUpdated,
+  broadcastToConversation,
+  broadcastToOrganization,
+} from "./workspaceHub.js";
 import {
   encodeConversationMessageCursor,
   messageRowToCursor,
@@ -131,7 +135,7 @@ export function broadcastConversationMessageCreated(
   conversationId: string,
   message: WorkspaceMessagePayload,
 ): void {
-  broadcastToOrganization(organizationId, {
+  broadcastToConversation(organizationId, conversationId, {
     type: "message.created",
     conversationId,
     message,
@@ -141,9 +145,13 @@ export function broadcastConversationMessageCreated(
 export function broadcastConversationMessageUpdated(
   organizationId: string,
   conversationId: string,
-  message: Pick<WorkspaceMessagePayload, "id" | "status" | "providerError">,
+  message: Pick<WorkspaceMessagePayload, "id" | "status" | "providerError"> & {
+    body?: string | null;
+    mediaUrl?: string | null;
+    mediaType?: string | null;
+  },
 ): void {
-  broadcastToOrganization(organizationId, {
+  broadcastToConversation(organizationId, conversationId, {
     type: "message.updated",
     conversationId,
     message,
@@ -156,11 +164,32 @@ export function broadcastConversationMessageReactionsUpdated(
   messageId: string,
   reactions: MessageReactionApiRow[],
 ): void {
-  broadcastToOrganization(organizationId, {
+  broadcastToConversation(organizationId, conversationId, {
     type: "message.reactions_updated",
     conversationId,
     message: { id: messageId, reactions },
   });
+}
+
+function conversationUpdatedBroadcastHasStructuralFields(
+  extra?: {
+    awaitingHumanHandoff?: boolean;
+    status?: string;
+    assignedToId?: string | null;
+    teamId?: string | null;
+    inboxId?: string;
+    agentBotTriageActive?: boolean;
+  },
+): boolean {
+  if (!extra) return false;
+  return (
+    extra.awaitingHumanHandoff !== undefined ||
+    Boolean(extra.status) ||
+    extra.assignedToId !== undefined ||
+    extra.teamId !== undefined ||
+    Boolean(extra.inboxId) ||
+    extra.agentBotTriageActive !== undefined
+  );
 }
 
 /** Push da mensagem nova + sinal de conversa actualizada (lista lateral / metadados). */
@@ -171,7 +200,10 @@ export function notifyConversationNewMessage(
   extra?: { awaitingHumanHandoff?: boolean },
 ): void {
   broadcastConversationMessageCreated(organizationId, conversationId, message);
-  broadcastConversationUpdated(organizationId, conversationId, extra);
+  // Fase 4 — evita `conversation.updated` só por nova mensagem (clientes usam message.created).
+  if (conversationUpdatedBroadcastHasStructuralFields(extra)) {
+    broadcastConversationUpdated(organizationId, conversationId, extra);
+  }
 }
 
 export async function notifyConversationNewMessageById(

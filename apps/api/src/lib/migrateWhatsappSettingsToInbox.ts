@@ -5,6 +5,7 @@ import { getDefaultInboxId } from "./defaultInbox.js";
 import {
   parseInboxWhatsappFromChannelConfig,
   prepareWhatsappChannelConfigForSave,
+  withInboxWhatsappPhoneNumberIdColumn,
 } from "./inboxWhatsappConfig.js";
 
 /**
@@ -50,10 +51,10 @@ export async function migrateWhatsappSettingsToDefaultInbox(organizationId: stri
 
   await prisma.inbox.update({
     where: { id: inbox.id },
-    data: {
+    data: withInboxWhatsappPhoneNumberIdColumn({
       channelType: InboxChannelType.WHATSAPP,
       channelConfig: channelConfig as Prisma.InputJsonValue,
-    },
+    }),
   });
   return true;
 }

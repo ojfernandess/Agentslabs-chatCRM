@@ -25,6 +25,10 @@ import {
   isAgentEngineQueueAvailable,
   resolveAgentEngineQueuePriority,
 } from "./agent-engine/queue/agentEngineQueue.js";
+import {
+  recordAgentEngineEnqueueSuccess,
+  recordAgentEngineSyncFallback,
+} from "./agent-engine/queue/agentEngineQueueMetrics.js";
 import { runNativeAgentReplyAndDeliver } from "./agentBotNativeReplyPipeline.js";
 import { botVisualChatbotFlowId } from "./chatbotFlowTypes.js";
 import { assertHttpUrlAllowed } from "./httpToolTest.js";
@@ -262,6 +266,7 @@ async function executeNativeAgentTurn(
       resolveAgentEngineQueuePriority(conversation.priority),
     );
     if (enqueued) {
+      recordAgentEngineEnqueueSuccess();
       broadcastConversationAgentTyping(organizationId, conversation.id, {
         typing: true,
         botId: bot.id,
@@ -274,6 +279,7 @@ async function executeNativeAgentTurn(
       completeDeferredMessageTrace(input.messageTraceHandle, "completed");
       return;
     }
+    recordAgentEngineSyncFallback();
     exLog.warn(
       { id: "agent_engine_queue", name: "Agent Engine Queue" },
       "Falha ao enfileirar — fallback síncrono",

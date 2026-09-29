@@ -8,7 +8,11 @@ import {
   evolutionGoLookupInstanceByRef,
   type EvolutionGoInstanceInfo,
 } from "./evolutionGoApi.js";
-import { findWhatsappInboxByProvider, parseInboxWhatsappFromChannelConfig } from "./inboxWhatsappConfig.js";
+import {
+  findWhatsappInboxByProvider,
+  parseInboxWhatsappFromChannelConfig,
+  withInboxWhatsappPhoneNumberIdColumn,
+} from "./inboxWhatsappConfig.js";
 import { getDefaultInboxId } from "./defaultInbox.js";
 
 const EVOLUTION_GO_PROVIDER = "evolution_go" as const;
@@ -177,7 +181,9 @@ export async function clearEvolutionGoInstanceFromSettings(organizationId: strin
   delete base.whatsappApiKey;
   await prisma.inbox.update({
     where: { id: inboxId },
-    data: { channelConfig: base as Prisma.InputJsonValue },
+    data: withInboxWhatsappPhoneNumberIdColumn({
+      channelConfig: base as Prisma.InputJsonValue,
+    }),
   });
 }
 

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { join } from "node:path";
 import { JWT_EXPIRY, BCRYPT_COST_FACTOR, publicOriginOnly } from "@openconduit/shared";
+import { parseProcessRole, type ProcessRole } from "./lib/processRole.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -31,6 +32,19 @@ function optionalIntEnv(name: string, defaultValue: number, min: number, max: nu
   const n = Number(raw);
   if (!Number.isFinite(n)) return defaultValue;
   return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+/** Default true; só false com 0/false/no/off explícito. */
+function parseOptOutEnv(name: string): boolean {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return true;
+  const inner = raw
+    .replace(/^\ufeff/, "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim()
+    .toLowerCase();
+  return !["0", "false", "no", "off"].includes(inner);
 }
 
 /** Aceita true/1/yes/on, trim, aspas opcionais e BOM UTF-8 (ficheiros .env no Windows). */
@@ -176,6 +190,81 @@ export const config = {
   bcryptCostFactor: BCRYPT_COST_FACTOR,
   publicUrl: getPublicOrigin(),
   redisUrl: optionalEnv("REDIS_URL", "redis://localhost:6379"),
+  /**
+   * Quando true, turnos do agente enfileiram via BullMQ por omissão (exceto bots com
+   * `behaviorConfig.agentEngine.executionQueueEnabled: false` explícito).
+   * Requer REDIS_URL e fila operacional na API.
+   */
+  agentEngineExecutionQueueEnabled: parseTruthyEnv("AGENT_ENGINE_EXECUTION_QUEUE_ENABLED"),
+  /** Fase B2 — worker BullMQ só para agent-engine (`PROCESS_ROLE=agent-worker`). */
+  agentEngineDedicatedWorker: parseTruthyEnv("AGENT_ENGINE_DEDICATED_WORKER"),
+  /** Concorrência do worker agent-engine (default 2). */
+  agentEngineConcurrency: optionalIntEnv("AGENT_ENGINE_CONCURRENCY", 2, 1, 32),
+  /** Máx. turnos agente por org na janela (0 = sem limite). */
+  agentEngineOrgRateLimitMax: optionalIntEnv("AGENT_ENGINE_ORG_RATE_LIMIT_MAX", 0, 0, 500),
+  /** Janela do rate limit por org (ms). Default 60s. */
+  agentEngineOrgRateLimitWindowMs: optionalIntEnv(
+    "AGENT_ENGINE_ORG_RATE_LIMIT_WINDOW_MS",
+    60_000,
+    1_000,
+    300_000,
+  ),
+  /** Fase A1 — webhook Meta: HTTP 200 cedo + processamento em fila BullMQ. */
+  metaInboundQueueEnabled: parseTruthyEnv("META_INBOUND_QUEUE_ENABLED"),
+  /** Fase A2 — timeout (ms) para aguardar transcrição inbound antes do bot. 0 = sem limite. */
+  inboundTranscriptionTimeoutMs: optionalIntEnv("INBOUND_TRANSCRIPTION_TIMEOUT_MS", 15_000, 0, 120_000),
+  /** Fase B4 — debounce server-side de conversation.updated (ms). 0 = desligado. */
+  workspaceConversationUpdatedDebounceMs: optionalIntEnv(
+    "WORKSPACE_CONVERSATION_UPDATED_DEBOUNCE_MS",
+    350,
+    0,
+    5_000,
+  ),
+  /** Fase B4 — rooms WS por conversationId (opt-out: WORKSPACE_CONVERSATION_ROOMS_ENABLED=false). */
+  workspaceConversationRoomsEnabled: parseOptOutEnv("WORKSPACE_CONVERSATION_ROOMS_ENABLED"),
+  /** Fase B5 — alertas operacionais (health / super dashboard). */
+  platformAlertCpuPercent: optionalIntEnv("PLATFORM_ALERT_CPU_PERCENT", 400, 50, 5000),
+  platformAlertEventLoopLagMs: optionalIntEnv("PLATFORM_ALERT_EVENT_LOOP_LAG_MS", 500, 50, 30_000),
+  platformAlertAgentSyncFallbackPercent: optionalIntEnv(
+    "PLATFORM_ALERT_AGENT_SYNC_FALLBACK_PERCENT",
+    5,
+    0,
+    100,
+  ),
+  platformAlertInboundP95Ms: optionalIntEnv("PLATFORM_ALERT_INBOUND_P95_MS", 15_000, 1000, 300_000),
+  platformAlertProcessingNow: optionalIntEnv("PLATFORM_ALERT_PROCESSING_NOW", 50, 1, 500),
+  platformAlertMetaInboundLagMs: optionalIntEnv("PLATFORM_ALERT_META_INBOUND_LAG_MS", 30_000, 1000, 600_000),
+  platformAlertMetaWebhookHttpP95Ms: optionalIntEnv(
+    "PLATFORM_ALERT_META_WEBHOOK_HTTP_P95_MS",
+    500,
+    50,
+    30_000,
+  ),
+  /** Fase A3 — kill switch global; bots ainda precisam opt-in em agentEngine. */
+  clientOutboundStreamingAllowed: parseOptOutEnv("CLIENT_OUTBOUND_STREAMING_ALLOWED"),
+  clientOutboundStreamMinChunkChars: optionalIntEnv(
+    "CLIENT_OUTBOUND_STREAM_MIN_CHUNK_CHARS",
+    180,
+    80,
+    500,
+  ),
+  clientOutboundStreamChunkDelayMs: optionalIntEnv(
+    "CLIENT_OUTBOUND_STREAM_CHUNK_DELAY_MS",
+    300,
+    0,
+    5000,
+  ),
+  /** Fase 4 — cache TTL de getAgentBotDispatchContextForInbox (ms). 0 = desligado. */
+  agentBotDispatchContextCacheTtlMs: optionalIntEnv(
+    "AGENT_BOT_DISPATCH_CONTEXT_CACHE_TTL_MS",
+    60_000,
+    0,
+    600_000,
+  ),
+  /** Fase 4 — WS cedo + download de mídia inbound em background. */
+  inboundMediaDeferDownloadEnabled: parseTruthyEnv("INBOUND_MEDIA_DEFER_DOWNLOAD_ENABLED"),
+  /** `all` (monolito), `api` (HTTP/WS), `worker` (filas + schedulers). Ver PROCESS_ROLE no .env.example. */
+  processRole: parseProcessRole() as ProcessRole,
   nodeEnv: optionalEnv("NODE_ENV", "development"),
   isProduction: optionalEnv("NODE_ENV", "development") === "production",
   corsOrigin: optionalEnv("CORS_ORIGIN", "http://localhost:5173"),

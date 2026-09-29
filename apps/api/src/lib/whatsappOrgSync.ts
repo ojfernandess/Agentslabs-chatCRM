@@ -7,6 +7,8 @@ import {
   findWhatsappInboxByProvider,
   parseInboxWhatsappFromChannelConfig,
   prepareWhatsappChannelConfigForSave,
+  withInboxWhatsappPhoneNumberIdColumn,
+  inboxWhatsappPhoneNumberIdForColumn,
 } from "./inboxWhatsappConfig.js";
 import type { WhatsappInboxChannelPatch } from "./syncWhatsappToDefaultInbox.js";
 
@@ -90,10 +92,10 @@ export async function syncWhatsappCredentialsToInbox(
     });
     await prisma.inbox.update({
       where: { id: inbox.id },
-      data: {
+      data: withInboxWhatsappPhoneNumberIdColumn({
         channelType: InboxChannelType.WHATSAPP,
         channelConfig: channelConfig as Prisma.InputJsonValue,
-      },
+      }),
     });
     return { inboxId: inbox.id, created: false };
   }
@@ -113,10 +115,10 @@ export async function syncWhatsappCredentialsToInbox(
     });
     await prisma.inbox.update({
       where: { id: defaultInbox.id },
-      data: {
+      data: withInboxWhatsappPhoneNumberIdColumn({
         channelType: InboxChannelType.WHATSAPP,
         channelConfig: channelConfig as Prisma.InputJsonValue,
-      },
+      }),
     });
     return { inboxId: defaultInbox.id, created: false };
   }
@@ -134,6 +136,7 @@ export async function syncWhatsappCredentialsToInbox(
       isDefault: false,
       ingestToken: newIngestToken(),
       channelConfig: channelConfig as Prisma.InputJsonValue,
+      whatsappPhoneNumberId: inboxWhatsappPhoneNumberIdForColumn(channelConfig),
     },
     select: { id: true },
   });

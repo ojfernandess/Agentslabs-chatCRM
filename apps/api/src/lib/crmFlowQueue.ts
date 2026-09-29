@@ -76,7 +76,7 @@ export async function enqueueCrmFlowTriggerJob(
   }
 }
 
-function registerWorker(app: FastifyInstance): void {
+function registerWorkerFn(app: FastifyInstance): void {
   if (worker || !connection) return;
 
   worker = new Worker(
@@ -97,7 +97,15 @@ function registerWorker(app: FastifyInstance): void {
   });
 }
 
-export async function initCrmFlowQueue(app: FastifyInstance): Promise<void> {
+export type CrmFlowQueueInitOptions = {
+  registerWorker?: boolean;
+};
+
+export async function initCrmFlowQueue(
+  app: FastifyInstance,
+  options: CrmFlowQueueInitOptions = {},
+): Promise<void> {
+  const registerWorker = options.registerWorker ?? true;
   const url = getRedisUrl();
   if (!url) {
     app.log.info("crm flow queue skipped (no REDIS_URL)");
@@ -124,9 +132,13 @@ export async function initCrmFlowQueue(app: FastifyInstance): Promise<void> {
       app.log.warn({ err: err.message }, "crm flow queue redis error");
     });
 
-    registerWorker(app);
+    if (registerWorker) {
+      registerWorkerFn(app);
+      app.log.info("crm flow queue worker ready (redis)");
+    } else {
+      app.log.info("crm flow queue ready (producer only)");
+    }
     redisQueueOperational = true;
-    app.log.info("crm flow queue worker ready (redis)");
   } catch (err) {
     markRedisDown();
     await connection?.quit().catch(() => {});

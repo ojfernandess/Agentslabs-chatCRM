@@ -1,63 +1,168 @@
 import type { WebSocket } from "ws";
+import { config } from "../config.js";
 import { recordWorkspaceRealtimeEmit } from "./message-processing-monitor/service.js";
+import { scheduleConversationUpdatedBroadcast } from "./workspaceConversationUpdatedDebounce.js";
 
 const OPEN = 1;
-const orgSockets = new Map<string, Set<WebSocket>>();
 
-function getSet(organizationId: string): Set<WebSocket> {
-  let s = orgSockets.get(organizationId);
-  if (!s) {
-    s = new Set();
-    orgSockets.set(organizationId, s);
+type SocketMeta = {
+  socket: WebSocket;
+  conversationIds: Set<string>;
+};
+
+const orgSockets = new Map<string, Map<WebSocket, SocketMeta>>();
+
+function getOrgSocketMap(organizationId: string): Map<WebSocket, SocketMeta> {
+  let map = orgSockets.get(organizationId);
+  if (!map) {
+    map = new Map();
+    orgSockets.set(organizationId, map);
   }
-  return s;
+  return map;
 }
 
-/** Regista um socket por organização (tenant atual no JWT). */
-export function registerWorkspaceSocket(organizationId: string, socket: WebSocket): void {
-  const set = getSet(organizationId);
-  set.add(socket);
-  const cleanup = () => {
-    set.delete(socket);
-    if (set.size === 0) orgSockets.delete(organizationId);
-  };
-  socket.on("close", cleanup);
-  socket.on("error", cleanup);
+function getOrCreateMeta(organizationId: string, socket: WebSocket): SocketMeta {
+  const map = getOrgSocketMap(organizationId);
+  let meta = map.get(socket);
+  if (!meta) {
+    meta = { socket, conversationIds: new Set() };
+    map.set(socket, meta);
+  }
+  return meta;
 }
 
-function countOpenSockets(set: Set<WebSocket>): number {
+function removeSocket(organizationId: string, socket: WebSocket): void {
+  const map = orgSockets.get(organizationId);
+  if (!map) return;
+  map.delete(socket);
+  if (map.size === 0) orgSockets.delete(organizationId);
+}
+
+function countOpenSockets(map: Map<WebSocket, SocketMeta>): number {
   let n = 0;
-  for (const s of set) {
-    if (s.readyState === OPEN) n += 1;
+  for (const meta of map.values()) {
+    if (meta.socket.readyState === OPEN) n += 1;
   }
   return n;
 }
 
-export function broadcastToOrganization(organizationId: string, payload: unknown): void {
-  const set = orgSockets.get(organizationId);
-  if (!set?.size) return;
+function sendRawToSockets(sockets: Iterable<WebSocket>, payload: unknown, organizationId: string): number {
   const raw = JSON.stringify(payload);
   const eventType =
     typeof payload === "object" && payload !== null && "type" in payload
       ? String((payload as { type: unknown }).type)
       : "unknown";
   let recipients = 0;
-  for (const s of set) {
-    if (s.readyState === OPEN) {
-      try {
-        s.send(raw);
-        recipients += 1;
-      } catch {
-        /* ignore */
-      }
+  for (const socket of sockets) {
+    if (socket.readyState !== OPEN) continue;
+    try {
+      socket.send(raw);
+      recipients += 1;
+    } catch {
+      /* ignore */
     }
   }
-  recordWorkspaceRealtimeEmit(organizationId, eventType, payload, recipients);
+  if (recipients > 0) {
+    recordWorkspaceRealtimeEmit(organizationId, eventType, payload, recipients);
+  }
+  return recipients;
+}
+
+function conversationRoomSubscribers(
+  organizationId: string,
+  conversationId: string,
+): WebSocket[] {
+  const map = orgSockets.get(organizationId);
+  if (!map?.size) return [];
+  const targets: WebSocket[] = [];
+  for (const meta of map.values()) {
+    if (meta.conversationIds.has(conversationId)) {
+      targets.push(meta.socket);
+    }
+  }
+  return targets;
+}
+
+/** Regista um socket por organização (tenant atual no JWT). */
+export function registerWorkspaceSocket(organizationId: string, socket: WebSocket): void {
+  getOrCreateMeta(organizationId, socket);
+  const cleanup = () => {
+    removeSocket(organizationId, socket);
+  };
+  socket.on("close", cleanup);
+  socket.on("error", cleanup);
+}
+
+export function subscribeWorkspaceSocketConversations(
+  organizationId: string,
+  socket: WebSocket,
+  conversationIds: string[],
+): void {
+  if (!conversationIds.length) return;
+  const meta = getOrCreateMeta(organizationId, socket);
+  for (const id of conversationIds) {
+    const trimmed = id.trim();
+    if (trimmed) meta.conversationIds.add(trimmed);
+  }
+}
+
+export function unsubscribeWorkspaceSocketConversations(
+  organizationId: string,
+  socket: WebSocket,
+  conversationIds?: string[],
+): void {
+  const meta = orgSockets.get(organizationId)?.get(socket);
+  if (!meta) return;
+  if (!conversationIds?.length) {
+    meta.conversationIds.clear();
+    return;
+  }
+  for (const id of conversationIds) {
+    meta.conversationIds.delete(id.trim());
+  }
+}
+
+export function broadcastToOrganization(organizationId: string, payload: unknown): void {
+  const map = orgSockets.get(organizationId);
+  if (!map?.size) return;
+  const sockets = [...map.values()].map((m) => m.socket);
+  sendRawToSockets(sockets, payload, organizationId);
+}
+
+/**
+ * Fase B4 — eventos de conversa só para sockets subscritos à room.
+ * Sem subscritores: fallback org-wide (retrocompat até o cliente subscrever).
+ */
+export function broadcastToConversation(
+  organizationId: string,
+  conversationId: string,
+  payload: unknown,
+): void {
+  if (!config.workspaceConversationRoomsEnabled) {
+    broadcastToOrganization(organizationId, payload);
+    return;
+  }
+
+  const subscribers = conversationRoomSubscribers(organizationId, conversationId);
+  if (subscribers.length === 0) {
+    broadcastToOrganization(organizationId, payload);
+    return;
+  }
+  sendRawToSockets(subscribers, payload, organizationId);
 }
 
 export function getOrganizationSocketCount(organizationId: string): number {
-  const set = orgSockets.get(organizationId);
-  return set ? countOpenSockets(set) : 0;
+  const map = orgSockets.get(organizationId);
+  return map ? countOpenSockets(map) : 0;
+}
+
+export function getConversationSubscriberCount(
+  organizationId: string,
+  conversationId: string,
+): number {
+  return conversationRoomSubscribers(organizationId, conversationId).filter(
+    (s) => s.readyState === OPEN,
+  ).length;
 }
 
 /** Indica que o bot está a processar / a gerar resposta (CRM chat + split-view). */
@@ -66,7 +171,7 @@ export function broadcastConversationAgentTyping(
   conversationId: string,
   payload: { typing: boolean; botId: string; botName: string },
 ): void {
-  broadcastToOrganization(organizationId, {
+  broadcastToConversation(organizationId, conversationId, {
     type: "conversation.agent_typing",
     conversationId,
     typing: payload.typing,
@@ -86,8 +191,7 @@ export type ConversationUpdatedBroadcast = {
   updatedAt?: string;
 };
 
-/** Notifica clientes conectados para recarregar lista/detalhe da conversa (novas mensagens, status, etc.). */
-export function broadcastConversationUpdated(
+function emitConversationUpdatedNow(
   organizationId: string,
   conversationId: string,
   extra?: ConversationUpdatedBroadcast,
@@ -97,6 +201,21 @@ export function broadcastConversationUpdated(
     conversationId,
     ...extra,
   });
+}
+
+/** Notifica clientes conectados para recarregar lista/detalhe da conversa (novas mensagens, status, etc.). */
+export function broadcastConversationUpdated(
+  organizationId: string,
+  conversationId: string,
+  extra?: ConversationUpdatedBroadcast,
+): void {
+  scheduleConversationUpdatedBroadcast(
+    organizationId,
+    conversationId,
+    extra,
+    config.workspaceConversationUpdatedDebounceMs,
+    emitConversationUpdatedNow,
+  );
 }
 
 /** Sincroniza estado lido/não lido entre abas do mesmo utilizador (badges + sino). */
@@ -150,4 +269,29 @@ export function broadcastUserPresenceChanged(
     presenceConnected,
     effectiveAvailabilityStatus,
   });
+}
+
+/** Testes — limpa registo de sockets. */
+export function getWorkspaceHubStats(): {
+  organizations: number;
+  sockets: number;
+  conversationSubscriptions: number;
+} {
+  let sockets = 0;
+  let conversationSubscriptions = 0;
+  for (const map of orgSockets.values()) {
+    sockets += map.size;
+    for (const meta of map.values()) {
+      conversationSubscriptions += meta.conversationIds.size;
+    }
+  }
+  return {
+    organizations: orgSockets.size,
+    sockets,
+    conversationSubscriptions,
+  };
+}
+
+export function resetWorkspaceHubForTests(): void {
+  orgSockets.clear();
 }

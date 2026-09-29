@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getCachedOrganizationSettings } from "./requestLookupCache.js";
 import { InboxChannelType } from "@prisma/client";
@@ -46,6 +47,23 @@ function str(v: unknown): string | undefined {
 
 export function isMetaCloudWhatsappProvider(provider: string | null | undefined): boolean {
   return provider === "meta" || provider === "360dialog";
+}
+
+/** Valor indexado em `Inbox.whatsappPhoneNumberId` (derivado de `channelConfig`). */
+export function inboxWhatsappPhoneNumberIdForColumn(channelConfig: unknown): string | null {
+  const id = parseInboxWhatsappFromChannelConfig(channelConfig).whatsappPhoneNumberId?.trim();
+  return id || null;
+}
+
+/** Mantém coluna indexada sincronizada quando `channelConfig` é gravado. */
+export function withInboxWhatsappPhoneNumberIdColumn<T extends Prisma.InboxUpdateInput>(
+  data: T,
+): T {
+  if (data.channelConfig === undefined) return data;
+  const channelConfig = data.channelConfig;
+  const phoneId =
+    channelConfig == null ? null : inboxWhatsappPhoneNumberIdForColumn(channelConfig);
+  return { ...data, whatsappPhoneNumberId: phoneId };
 }
 
 export function parseInboxWhatsappFromChannelConfig(cfg: unknown): InboxWhatsappConfigFields {
@@ -169,6 +187,36 @@ export async function findWhatsappInboxByProvider(
   return null;
 }
 
+async function findWhatsappInboxByPhoneNumberIdFromJson(
+  organizationId: string | null,
+  phoneNumberId: string,
+): Promise<{ id: string; organizationId: string; channelConfig: unknown } | null> {
+  const needle = phoneNumberId.trim();
+  if (!needle) return null;
+
+  const rows = await prisma.inbox.findMany({
+    where: {
+      channelType: InboxChannelType.WHATSAPP,
+      ...(organizationId ? { organizationId } : {}),
+      whatsappPhoneNumberId: null,
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      channelConfig: true,
+      isDefault: true,
+      createdAt: true,
+    },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
+
+  for (const row of rows) {
+    const id = parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappPhoneNumberId?.trim();
+    if (id === needle) return row;
+  }
+  return null;
+}
+
 /** Localiza organização (e caixa) pelo phone_number_id Meta em qualquer caixa ou Settings legado. */
 export async function findOrganizationByMetaPhoneNumberId(
   phoneNumberId: string,
@@ -176,13 +224,20 @@ export async function findOrganizationByMetaPhoneNumberId(
   const needle = phoneNumberId.trim();
   if (!needle) return null;
 
-  const rows = await prisma.inbox.findMany({
-    where: { channelType: InboxChannelType.WHATSAPP },
-    select: { id: true, organizationId: true, channelConfig: true },
+  const indexed = await prisma.inbox.findFirst({
+    where: {
+      channelType: InboxChannelType.WHATSAPP,
+      whatsappPhoneNumberId: needle,
+    },
+    select: { id: true, organizationId: true },
   });
-  for (const row of rows) {
-    const id = parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappPhoneNumberId?.trim();
-    if (id === needle) return { organizationId: row.organizationId, inboxId: row.id };
+  if (indexed) {
+    return { organizationId: indexed.organizationId, inboxId: indexed.id };
+  }
+
+  const legacy = await findWhatsappInboxByPhoneNumberIdFromJson(null, needle);
+  if (legacy) {
+    return { organizationId: legacy.organizationId, inboxId: legacy.id };
   }
 
   const settings = await prisma.settings.findFirst({
@@ -203,16 +258,25 @@ export async function findWhatsappInboxByPhoneNumberId(
   const needle = phoneNumberId.trim();
   if (!needle) return null;
 
+  const indexed = await prisma.inbox.findFirst({
+    where: {
+      organizationId,
+      channelType: InboxChannelType.WHATSAPP,
+      whatsappPhoneNumberId: needle,
+    },
+    select: { id: true, channelConfig: true },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+  });
+  if (indexed) return indexed;
+
+  const legacy = await findWhatsappInboxByPhoneNumberIdFromJson(organizationId, needle);
+  if (legacy) return legacy;
+
   const rows = await prisma.inbox.findMany({
     where: { organizationId, channelType: InboxChannelType.WHATSAPP },
     select: { id: true, channelConfig: true, isDefault: true, createdAt: true },
     orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
   });
-
-  for (const row of rows) {
-    const id = parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappPhoneNumberId?.trim();
-    if (id === needle) return row;
-  }
 
   const settings = await prisma.settings.findFirst({
     where: { organizationId, whatsappPhoneNumberId: needle },

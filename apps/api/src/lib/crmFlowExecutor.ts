@@ -4,7 +4,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { parseCrmFlowDefinition, type CrmFlowDefinition } from "./crmFlowTypes.js";
 import { hydrateCrmFlowContext, type CrmFlowContext } from "./crmFlowContext.js";
-import { crmFlowTriggerMatches, type CrmFlowTriggerConfig } from "./crmFlowTriggerFilters.js";
+import {
+  buildCrmFlowDispatchWhere,
+  crmFlowTriggerMatches,
+  type CrmFlowTriggerConfig,
+} from "./crmFlowTriggerFilters.js";
 import { broadcastCrmFlowExecutionUpdated } from "./crmFlowHooks.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { runCrmAiClassifyBlock } from "./crmFlowAiBlock.js";
@@ -526,11 +530,7 @@ export async function dispatchCrmFlowTrigger(params: {
   log?: FastifyBaseLogger;
 }): Promise<void> {
   const flows = await prisma.crmFlow.findMany({
-    where: {
-      organizationId: params.organizationId,
-      status: "ACTIVE",
-      isPublished: true,
-    },
+    where: buildCrmFlowDispatchWhere(params.organizationId, params.triggerType),
   });
 
   const hydrated = await hydrateCrmFlowContext(params.organizationId, params.payload ?? {});

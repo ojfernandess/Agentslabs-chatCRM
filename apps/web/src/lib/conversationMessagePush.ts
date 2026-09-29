@@ -38,7 +38,10 @@ export type ConversationMessageCreatedDetail = {
 
 export type ConversationMessageUpdatedDetail = {
   conversationId: string;
-  message: Pick<ConversationMessagePushPayload, "id" | "status" | "providerError">;
+  message: Pick<
+    ConversationMessagePushPayload,
+    "id" | "status" | "providerError" | "body" | "mediaUrl" | "mediaType"
+  >;
 };
 
 export type ConversationMessageReactionsUpdatedDetail = {

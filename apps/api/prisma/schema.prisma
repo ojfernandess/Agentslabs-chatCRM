@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 enum UserRole {
@@ -320,6 +321,8 @@ model Inbox {
   /// Token secreto (URL) para webhooks e widget. Só mostrar a administradores.
   ingestToken   String?          @unique @map("ingest_token") @db.VarChar(64)
   channelConfig Json?            @map("channel_config")
+  /// Índice para lookup webhook Meta (`phone_number_id`); espelha `channelConfig.whatsappPhoneNumberId`.
+  whatsappPhoneNumberId String?  @map("whatsapp_phone_number_id") @db.VarChar(100)
   isDefault     Boolean          @default(false) @map("is_default")
   /// Bot de triagem (primeira linha) só para esta caixa; se vazio, usa `Settings.agentBotId` da organização.
   agentBotId    String?          @map("agent_bot_id") @db.Uuid
@@ -344,6 +347,7 @@ model Inbox {
 
   @@index([organizationId])
   @@index([agentBotId])
+  @@index([whatsappPhoneNumberId])
   @@map("inboxes")
 }
 
@@ -2552,6 +2556,7 @@ model CrmFlow {
 
   @@index([organizationId])
   @@index([organizationId, status])
+  @@index([organizationId, status, isPublished])
   @@map("crm_flows")
 }
 

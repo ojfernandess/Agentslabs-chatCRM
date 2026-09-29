@@ -11,6 +11,7 @@ import {
   startInvestigationSession,
   stopInvestigationSession,
 } from "../lib/message-processing-monitor/index.js";
+import { getPlatformObservabilityDashboard } from "../lib/platform-observability/platformDashboard.js";
 import { getMonitorSession, setMonitorSession } from "../lib/message-processing-monitor/store.js";
 import { isMessageProcessingMonitorEnabled } from "../lib/message-processing-monitor/config.js";
 import type { MessageProcessingTrace } from "../lib/message-processing-monitor/types.js";
@@ -97,6 +98,11 @@ export async function superMessageProcessingMonitorRoutes(app: FastifyInstance):
     enabled: isMessageProcessingMonitorEnabled(),
     overview: getMonitorOverview(),
   }));
+
+  app.get("/message-processing/dashboard", async (request) => {
+    const windowMinutes = Number((request.query as { windowMinutes?: string }).windowMinutes ?? 60);
+    return await getPlatformObservabilityDashboard(Math.min(Math.max(windowMinutes, 5), 10_080));
+  });
 
   app.get("/message-processing/traces", async (request) => {
     const parsed = tracesQuerySchema.safeParse(request.query);

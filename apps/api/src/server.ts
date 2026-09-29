@@ -73,35 +73,21 @@ import { superHelpdeskRoutes } from "./routes/superHelpdesk.js";
 import { superMetaDeliveryRoutes } from "./routes/superMetaDelivery.js";
 import { superMessageProcessingMonitorRoutes } from "./routes/superMessageProcessingMonitor.js";
 import { initMessageProcessingMonitor } from "./lib/message-processing-monitor/index.js";
+import { initPlatformObservability } from "./lib/platform-observability/init.js";
+import { getPlatformHealthExtension } from "./lib/platform-observability/platformDashboard.js";
 import { webchatPublicRoutes } from "./routes/webchatPublic.js";
 import { webchatLinkRoutes } from "./routes/webchatLinks.js";
 import { whatsappOrgPolicyRoutes } from "./routes/whatsappOrgPolicy.js";
-import { runAutoResolveInactiveConversationsTick } from "./lib/autoResolveInactiveConversations.js";
-import {
-  flushAutomationLogBuffer,
-  registerAutomationExecutionLogWorker,
-} from "./lib/automationExecutionLog.js";
-import { initBroadcastQueue, closeBroadcastQueue } from "./lib/broadcastQueue.js";
-import { initCrmFlowQueue, closeCrmFlowQueue } from "./lib/crmFlowQueue.js";
-import { closeAgentEngineQueue, initAgentEngineQueue } from "./lib/agent-engine/queue/agentEngineQueue.js";
 import { closeAllMcpSessions } from "./lib/mcp/index.js";
-import {
-  initRedisLangGraphCheckpointer,
-  closeRedisLangGraphCheckpointer,
-} from "./lib/agent-engine/checkpoint/RedisLangGraphCheckpointer.js";
-import { runCrmFlowNoReplyScannerTick } from "./lib/crmFlowNoReplyScanner.js";
-import { runBroadcastSchedulerTick } from "./lib/broadcastScheduler.js";
-import { runLeadFinderSchedulerTick } from "./lib/leadFinderScheduler.js";
-import { runChatbotFlowSchedulerTick } from "./lib/chatbotFlowScheduler.js";
-import { sweepStalePresenceSessions } from "./lib/presenceService.js";
-import { runCrmFlowSchedulerTick } from "./lib/crmFlowScheduler.js";
-import { runConversationMediaRetentionTick } from "./lib/conversationMediaRetentionJob.js";
-import { runWavoipStatusSyncTick } from "./lib/wavoipStatusSyncJob.js";
-import { runNvoipHistorySyncTick } from "./lib/nvoipHistorySyncJob.js";
-import { runInboxEmailSyncTick } from "./lib/inboxEmailSyncJob.js";
-import { runNvoipTokenRefreshTick } from "./lib/nvoipTokenRefreshJob.js";
-import { ensureWavoipVoiceEnabledForOrgsWithDevices } from "./lib/featureFlags.js";
 import { isLangfuseConfigured, readLangfuseConfig } from "./lib/agent-engine/observability/LangfuseBridge.js";
+import {
+  initQueueInfrastructure,
+  shutdownQueueInfrastructure,
+  startBackgroundSchedulers,
+  startPresenceSweep,
+} from "./lib/backgroundWorkers.js";
+import { runsHttpApi, runsPresenceSweep } from "./lib/processRole.js";
+import { getAgentEngineQueueDiagnostics } from "./lib/agent-engine/queue/agentEngineQueue.js";
 
 const app = Fastify({
   logger: {
@@ -109,8 +95,17 @@ const app = Fastify({
   },
 });
 
+if (!runsHttpApi(config.processRole)) {
+  app.log.error(
+    { processRole: config.processRole },
+    "server.ts requires PROCESS_ROLE=all or api — use worker.ts for worker role",
+  );
+  process.exit(1);
+}
+
 app.log.warn(
   {
+    processRole: config.processRole,
     agentKbDebug: config.agentKbDebug,
     /** Se false em Docker, confirme que o serviço `api` recebe `AGENT_KB_DEBUG` (env_file / environment). */
     agentKbDebugEnvPresent: Boolean(process.env.AGENT_KB_DEBUG?.trim()),
@@ -256,6 +251,7 @@ await app.register(superRoutes, { prefix: "/api/v1/super" });
 await app.register(superHelpdeskRoutes, { prefix: "/api/v1/super" });
 await app.register(superMetaDeliveryRoutes, { prefix: "/api/v1/super" });
 await app.register(superMessageProcessingMonitorRoutes, { prefix: "/api/v1/super" });
+initPlatformObservability();
 initMessageProcessingMonitor();
 await app.register(superBillingRoutes, { prefix: "/api/v1/super/billing" });
 await app.register(platformRoutes, { prefix: "/api/v1/platform" });
@@ -271,20 +267,22 @@ await app.register(mcpRoutes, { prefix: "/api/v1/super/mcp" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 
 // Health check
-app.get("/health", async () => ({
-  status: "ok",
-  version: process.env.APP_VERSION ?? "0.1.0",
-}));
+app.get("/health", async () => {
+  const observability = getPlatformHealthExtension();
+  return {
+    status: observability.status === "degraded" ? "degraded" : "ok",
+    role: config.processRole,
+    version: process.env.APP_VERSION ?? "0.1.0",
+    agentEngineQueue: getAgentEngineQueueDiagnostics(),
+    observability,
+  };
+});
 
 // Graceful shutdown
 const shutdown = async () => {
   app.log.info("Shutting down...");
-  await flushAutomationLogBuffer().catch(() => {});
-  await closeBroadcastQueue().catch(() => {});
-  await closeCrmFlowQueue().catch(() => {});
-  await closeAgentEngineQueue().catch(() => {});
+  await shutdownQueueInfrastructure();
   await closeAllMcpSessions().catch(() => {});
-  await closeRedisLangGraphCheckpointer().catch(() => {});
   await app.close();
   await disconnectDb();
   process.exit(0);
@@ -297,78 +295,23 @@ process.on("SIGTERM", shutdown);
 try {
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`Server running at http://${config.host}:${config.port}`);
-  registerAutomationExecutionLogWorker(app.log);
-  await initBroadcastQueue(app);
-  await initCrmFlowQueue(app);
-  await initAgentEngineQueue(app);
-  await initRedisLangGraphCheckpointer(app.log);
-  const autoResolveMs = 120_000;
-  setInterval(() => {
-    void runAutoResolveInactiveConversationsTick({ log: app.log });
-  }, autoResolveMs);
-  void runAutoResolveInactiveConversationsTick({ log: app.log });
-  const broadcastSchedulerMs = 60_000;
-  setInterval(() => {
-    void runBroadcastSchedulerTick(app);
-  }, broadcastSchedulerMs);
-  void runBroadcastSchedulerTick(app);
-  setInterval(() => {
-    void runLeadFinderSchedulerTick(app);
-  }, broadcastSchedulerMs);
-  void runLeadFinderSchedulerTick(app);
-  const chatbotSchedulerMs = 30_000;
-  setInterval(() => {
-    void runChatbotFlowSchedulerTick(app);
-  }, chatbotSchedulerMs);
-  void runChatbotFlowSchedulerTick(app);
-  setInterval(() => {
-    void runCrmFlowSchedulerTick(app);
-  }, chatbotSchedulerMs);
-  void runCrmFlowSchedulerTick(app);
-  const crmNoReplyMs = 5 * 60 * 1000;
-  setInterval(() => {
-    void runCrmFlowNoReplyScannerTick(app);
-  }, crmNoReplyMs);
-  void runCrmFlowNoReplyScannerTick(app);
-  const mediaRetentionMs = 60 * 60 * 1000;
-  setInterval(() => {
-    void runConversationMediaRetentionTick({ log: app.log });
-  }, mediaRetentionMs);
-  void runConversationMediaRetentionTick({ log: app.log });
-  const presenceSweepMs = 30_000;
-  setInterval(() => {
-    void sweepStalePresenceSessions().catch((err) => {
-      app.log.error({ err }, "presence sweep failed");
-    });
-  }, presenceSweepMs);
-  void sweepStalePresenceSessions().catch((err) => {
-    app.log.error({ err }, "presence sweep failed");
-  });
-  const wavoipStatusSyncMs = 5 * 60 * 1000;
-  setInterval(() => {
-    void runWavoipStatusSyncTick(app.log);
-  }, wavoipStatusSyncMs);
-  void runWavoipStatusSyncTick(app.log);
-  const nvoipHistorySyncMs = 90_000;
-  setInterval(() => {
-    void runNvoipHistorySyncTick(app.log);
-  }, nvoipHistorySyncMs);
-  void runNvoipHistorySyncTick(app.log);
-  const emailImapSyncMs = 60_000;
-  setInterval(() => {
-    void runInboxEmailSyncTick(app.log);
-  }, emailImapSyncMs);
-  void runInboxEmailSyncTick(app.log);
-  const nvoipTokenRefreshMs = 10 * 60 * 1000;
-  setInterval(() => {
-    void runNvoipTokenRefreshTick(app.log);
-  }, nvoipTokenRefreshMs);
-  void runNvoipTokenRefreshTick(app.log);
-  void ensureWavoipVoiceEnabledForOrgsWithDevices().then((count) => {
-    if (count > 0) {
-      app.log.info({ count }, "Enabled wavoip_voice for organizations with existing Wavoip devices");
+
+  if (config.processRole === "all") {
+    await initQueueInfrastructure(app, { processRole: config.processRole });
+    startBackgroundSchedulers(app);
+    if (runsPresenceSweep(config.processRole)) {
+      startPresenceSweep(app);
     }
-  });
+  } else if (config.processRole === "api") {
+    await initQueueInfrastructure(app, {
+      processRole: config.processRole,
+      registerWorkers: false,
+      registerAgentEngineWorker: false,
+      registerGeneralWorkers: false,
+      purgeAutomationLogs: false,
+    });
+    startPresenceSweep(app);
+  }
 } catch (err) {
   app.log.error(err);
   process.exit(1);

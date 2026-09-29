@@ -90,6 +90,10 @@ import { useDebouncedConversationUpdated } from "@/hooks/useDebouncedConversatio
 import { conversationUpdateHasStructuralChange } from "@/lib/conversationUpdatedStructuralChange";
 import { useWorkspaceWebSocketConnected } from "@/lib/workspaceWebSocket";
 import {
+  subscribeWorkspaceConversations,
+  unsubscribeWorkspaceConversations,
+} from "@/lib/workspaceSocketSubscribe";
+import {
   CONVERSATION_MESSAGE_CREATED_EVENT,
   CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT,
   CONVERSATION_MESSAGE_UPDATED_EVENT,
@@ -1396,6 +1400,7 @@ export function ConversationDetailPage() {
       const merged: ConversationDetail = {
         ...base,
         messages: [...existing, message],
+        updatedAt: message.createdAt ?? message.sentAt ?? base.updatedAt,
         ...(newerCursor ? { messagesNewerCursor: newerCursor } : {}),
       };
       setCachedConversationMerged(id, merged, base);
@@ -1409,7 +1414,16 @@ export function ConversationDetailPage() {
   }, [id, loadConversation, syncMessagesScrollState]);
 
   const patchPushedMessageDelivery = useCallback(
-    (messageId: string, patch: { status: string; providerError?: string | null }) => {
+    (
+      messageId: string,
+      patch: {
+        status: string;
+        providerError?: string | null;
+        body?: string | null;
+        mediaUrl?: string | null;
+        mediaType?: string | null;
+      },
+    ) => {
       if (!id) return;
       setConversation((prev) => {
         if (!prev || prev.id !== id || !prev.messages?.length) return prev;
@@ -1418,11 +1432,27 @@ export function ConversationDetailPage() {
           if (m.id !== messageId) return m;
           const nextProviderError =
             patch.providerError !== undefined ? patch.providerError : m.providerError;
-          if (m.status === patch.status && (m.providerError ?? null) === (nextProviderError ?? null)) {
+          const nextBody = patch.body !== undefined ? patch.body : m.body;
+          const nextMediaUrl = patch.mediaUrl !== undefined ? patch.mediaUrl : m.mediaUrl;
+          const nextMediaType = patch.mediaType !== undefined ? patch.mediaType : m.mediaType;
+          if (
+            m.status === patch.status &&
+            (m.providerError ?? null) === (nextProviderError ?? null) &&
+            (m.body ?? null) === (nextBody ?? null) &&
+            (m.mediaUrl ?? null) === (nextMediaUrl ?? null) &&
+            (m.mediaType ?? null) === (nextMediaType ?? null)
+          ) {
             return m;
           }
           changed = true;
-          return { ...m, status: patch.status, providerError: nextProviderError };
+          return {
+            ...m,
+            status: patch.status,
+            providerError: nextProviderError,
+            body: nextBody,
+            mediaUrl: nextMediaUrl,
+            mediaType: nextMediaType,
+          };
         });
         if (!changed) return prev;
         const merged: ConversationDetail = { ...prev, messages };
@@ -1872,6 +1902,14 @@ export function ConversationDetailPage() {
 
   useEffect(() => {
     if (!id) return;
+    subscribeWorkspaceConversations([id]);
+    return () => {
+      unsubscribeWorkspaceConversations([id]);
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
     const onMessageCreated = (e: Event) => {
       const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
       if (detail?.conversationId !== id || !detail.message) return;
@@ -1883,6 +1921,9 @@ export function ConversationDetailPage() {
       patchPushedMessageDelivery(detail.message.id, {
         status: detail.message.status,
         providerError: detail.message.providerError,
+        body: detail.message.body,
+        mediaUrl: detail.message.mediaUrl,
+        mediaType: detail.message.mediaType,
       });
     };
     const onMessageReactionsUpdated = (e: Event) => {

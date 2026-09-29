@@ -1714,6 +1714,10 @@ async function generateNativeAgentReplyCore(input: {
   userMessageOverride?: string;
   /** IDs das mensagens agrupadas — excluídas do histórico (já no userMessage). */
   batchedMessageIds?: string[];
+  /** Tokens LLM partilhados com o caller (LangGraph / outbound stream). */
+  onTokenDelta?: (delta: string) => void;
+  /** Caller finaliza o stream outbound após o runtime. */
+  deferOutboundStreamFinish?: boolean;
 }): Promise<NativeAgentCoreResult> {
   const {
     organizationId,
@@ -1787,18 +1791,23 @@ async function generateNativeAgentReplyCore(input: {
 
   const engineConfig = parseAgentEngineConfig(profile.behaviorConfig);
   const graphThreadId = `${conversation.id}:${message.id}`;
-  const outboundStream =
-    engineConfig.clientOutboundStreamingEnabled && input.contactId
-      ? createClientOutboundTokenStream({
-          organizationId,
-          botId: bot.id,
-          conversationId: conversation.id,
-          contactId: input.contactId,
-          log,
-        })
-      : null;
+  const outboundStreamingActive =
+    config.clientOutboundStreamingAllowed &&
+    engineConfig.clientOutboundStreamingEnabled &&
+    Boolean(input.contactId);
+  const ownsOutboundStream = outboundStreamingActive && !input.onTokenDelta;
+  const outboundStream = ownsOutboundStream
+    ? createClientOutboundTokenStream({
+        organizationId,
+        botId: bot.id,
+        conversationId: conversation.id,
+        contactId: input.contactId!,
+        log,
+      })
+    : null;
   const onTokenDelta =
-    engineConfig.clientTokenStreamingEnabled || outboundStream
+    input.onTokenDelta ??
+    (engineConfig.clientTokenStreamingEnabled || outboundStream
       ? (delta: string) => {
           if (engineConfig.clientTokenStreamingEnabled) {
             publishGraphEvent(graphThreadId, {
@@ -1809,7 +1818,7 @@ async function generateNativeAgentReplyCore(input: {
           }
           outboundStream?.onTokenDelta(delta);
         }
-      : undefined;
+      : undefined);
 
   // Motor Padrão (openconduit): loop sandbox + Unified Spine opcional (Fase 2).
   // Outros runtimes (langgraph, crewai, autogen, mastra) passam pela Factory.
@@ -1830,7 +1839,14 @@ async function generateNativeAgentReplyCore(input: {
         profile.behaviorConfig && typeof profile.behaviorConfig === "object"
           ? (profile.behaviorConfig as Record<string, unknown>)
           : {},
+      onTokenDelta,
+      deferOutboundStreamFinish: Boolean(outboundStream),
     });
+    let clientStreamDelivered = false;
+    if (outboundStream && engineResult.reply.trim()) {
+      const finished = await outboundStream.finish();
+      clientStreamDelivered = finished.chunkCount > 0;
+    }
     return {
       ...EMPTY_NATIVE_CORE_RESULT,
       reply: engineResult.reply,
@@ -1840,6 +1856,7 @@ async function generateNativeAgentReplyCore(input: {
         preview: t.preview,
         structuredPayload: t.structuredPayload,
       })),
+      clientStreamDelivered,
     };
   }
 
@@ -4027,7 +4044,7 @@ async function generateNativeAgentReplyCore(input: {
     proactiveCoversQuery || knowledgeToolFoundUsefulExcerpts(toolRoundOutcomes, kbSearchQuery);
 
   let clientStreamDelivered = false;
-  if (outboundStream && replyText.trim()) {
+  if (outboundStream && !input.deferOutboundStreamFinish && replyText.trim()) {
     const finished = await outboundStream.finish();
     clientStreamDelivered = finished.chunkCount > 0;
   }
@@ -4071,6 +4088,8 @@ function ensureAgentEngineExecutorRegistered(): void {
       skipEngineRoute: true,
       kbPrefetchAppendix: runtimeInput.kbPrefetchAppendix,
       executionHints: runtimeInput.executionHints,
+      onTokenDelta: runtimeInput.onTokenDelta,
+      deferOutboundStreamFinish: runtimeInput.deferOutboundStreamFinish,
     });
     return {
       reply: result.reply,

@@ -7,6 +7,7 @@ import {
   isMetaCloudWhatsappProvider,
   parseInboxWhatsappFromChannelConfig,
   resolveInboxWhatsappCredentials,
+  withInboxWhatsappPhoneNumberIdColumn,
 } from "./inboxWhatsappConfig.js";
 import {
   findEvolutionGoWhatsappInboxId,
@@ -140,7 +141,9 @@ export async function recordWhatsappWebhookAttempt(
   }
   await prisma.inbox.update({
     where: { id: inboxId },
-    data: { channelConfig: base as Prisma.InputJsonValue },
+    data: withInboxWhatsappPhoneNumberIdColumn({
+      channelConfig: base as Prisma.InputJsonValue,
+    }),
   });
 }
 
@@ -165,7 +168,9 @@ export async function syncInboxPhoneNumberIdFromWebhook(
   base.whatsappPhoneNumberId = needle;
   await prisma.inbox.update({
     where: { id: inboxId },
-    data: { channelConfig: base as Prisma.InputJsonValue },
+    data: withInboxWhatsappPhoneNumberIdColumn({
+      channelConfig: base as Prisma.InputJsonValue,
+    }),
   });
 }
 

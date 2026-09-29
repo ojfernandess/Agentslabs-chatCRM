@@ -27,6 +27,10 @@ import {
   type ConversationMessagePushPayload,
 } from "@/lib/conversationMessagePush";
 import { publishWorkspaceWebSocketConnected } from "@/lib/workspaceWebSocket";
+import {
+  WORKSPACE_SUBSCRIBE_CONVERSATIONS_EVENT,
+  WORKSPACE_UNSUBSCRIBE_CONVERSATIONS_EVENT,
+} from "@/lib/workspaceSocketSubscribe";
 import { api } from "@/lib/api";
 import {
   resolveTransferNotificationFromWs,
@@ -84,6 +88,7 @@ export function WorkspaceRealtime() {
   const { locale } = useI18n();
   const [toasts, setToasts] = useState<WorkspaceToast[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  const subscribedConversationIdsRef = useRef<Set<string>>(new Set());
   const localeRef = useRef(locale);
   localeRef.current = locale;
 
@@ -227,14 +232,21 @@ export function WorkspaceRealtime() {
         typeof data.conversationId === "string" &&
         data.message &&
         typeof data.message.id === "string" &&
-        typeof data.message.status === "string"
+        (typeof data.message.status === "string" ||
+          typeof data.message.body === "string" ||
+          typeof data.message.mediaUrl === "string")
       ) {
         publishConversationMessageUpdated({
           conversationId: data.conversationId,
           message: {
             id: data.message.id,
-            status: data.message.status,
+            status: typeof data.message.status === "string" ? data.message.status : "DELIVERED",
             providerError: data.message.providerError ?? null,
+            body: typeof data.message.body === "string" ? data.message.body : undefined,
+            mediaUrl:
+              typeof data.message.mediaUrl === "string" ? data.message.mediaUrl : undefined,
+            mediaType:
+              typeof data.message.mediaType === "string" ? data.message.mediaType : undefined,
           },
         });
       } else if (
@@ -361,6 +373,21 @@ export function WorkspaceRealtime() {
       }
     };
 
+    const sendWorkspaceSubscription = (type: "workspace.subscribe" | "workspace.unsubscribe", ids: string[]) => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN || ids.length === 0) return;
+      try {
+        ws.send(JSON.stringify({ type, conversationIds: ids }));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const syncWorkspaceSubscriptions = () => {
+      const ids = [...subscribedConversationIdsRef.current];
+      if (ids.length > 0) sendWorkspaceSubscription("workspace.subscribe", ids);
+    };
+
     const connect = () => {
       if (cancelled || isPresenceClientShutdown()) return;
       publishWorkspaceWebSocketConnected(false);
@@ -371,6 +398,7 @@ export function WorkspaceRealtime() {
         retryAttempt = 0;
         publishWorkspaceWebSocketConnected(true);
         sendHeartbeat();
+        syncWorkspaceSubscriptions();
       };
 
       ws.onmessage = (ev) => {
@@ -419,10 +447,36 @@ export function WorkspaceRealtime() {
       stopPresenceTransport(typeof shutdownToken === "string" ? shutdownToken : token);
     };
 
+    const onSubscribeConversations = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationIds?: string[] }>).detail;
+      const ids = Array.isArray(detail?.conversationIds)
+        ? detail.conversationIds.filter((id) => typeof id === "string" && id.trim())
+        : [];
+      for (const id of ids) subscribedConversationIdsRef.current.add(id);
+      sendWorkspaceSubscription("workspace.subscribe", ids);
+    };
+    const onUnsubscribeConversations = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationIds?: string[] }>).detail;
+      const ids = Array.isArray(detail?.conversationIds)
+        ? detail.conversationIds.filter((id) => typeof id === "string" && id.trim())
+        : undefined;
+      if (!ids?.length) {
+        const previous = [...subscribedConversationIdsRef.current];
+        subscribedConversationIdsRef.current.clear();
+        sendWorkspaceSubscription("workspace.unsubscribe", previous);
+        return;
+      }
+      for (const id of ids) subscribedConversationIdsRef.current.delete(id);
+      sendWorkspaceSubscription("workspace.unsubscribe", ids);
+    };
+
     connect();
 
     heartbeatTimer = setInterval(sendHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
     sendHeartbeat();
+
+    window.addEventListener(WORKSPACE_SUBSCRIBE_CONVERSATIONS_EVENT, onSubscribeConversations);
+    window.addEventListener(WORKSPACE_UNSUBSCRIBE_CONVERSATIONS_EVENT, onUnsubscribeConversations);
 
     const onPageHide = () => {
       sendPresenceSessionEndKeepalive(token);
@@ -431,6 +485,8 @@ export function WorkspaceRealtime() {
     window.addEventListener(PRESENCE_SHUTDOWN_EVENT, onShutdown);
 
     return () => {
+      window.removeEventListener(WORKSPACE_SUBSCRIBE_CONVERSATIONS_EVENT, onSubscribeConversations);
+      window.removeEventListener(WORKSPACE_UNSUBSCRIBE_CONVERSATIONS_EVENT, onUnsubscribeConversations);
       window.removeEventListener(PRESENCE_SHUTDOWN_EVENT, onShutdown);
       window.removeEventListener("pagehide", onPageHide);
       if (!isPresenceClientShutdown()) {

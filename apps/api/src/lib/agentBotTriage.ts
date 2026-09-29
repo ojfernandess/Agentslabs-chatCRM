@@ -5,6 +5,11 @@ import {
   getCachedInboxWithAgentBot,
   getCachedOrganizationSettings,
 } from "./requestLookupCache.js";
+import {
+  getCachedAgentBotDispatchContext,
+  setCachedAgentBotDispatchContext,
+} from "./agentBotDispatchContextCache.js";
+import { config } from "../config.js";
 
 export type AgentBotDispatchContext = {
   agentBotId: string;
@@ -61,23 +66,37 @@ export async function getAgentBotDispatchContextForInbox(
   organizationId: string,
   inboxId: string,
 ): Promise<AgentBotDispatchContext | null> {
-  const inbox = await getCachedInboxWithAgentBot(organizationId, inboxId);
-  if (!inbox) return null;
-
-  if (inbox.agentBotId) {
-    const ctx = await resolveAgentBotFromOrgSettingsRow(organizationId, {
-      agentBotId: inbox.agentBotId,
-      agentBot: inbox.agentBot,
-    });
-    if (ctx) return ctx;
+  if (config.agentBotDispatchContextCacheTtlMs > 0) {
+    const cached = getCachedAgentBotDispatchContext(organizationId, inboxId);
+    if (cached !== undefined) return cached;
   }
 
-  if (inbox.channelType === "EMAIL") {
+  const inbox = await getCachedInboxWithAgentBot(organizationId, inboxId);
+  if (!inbox) {
+    if (config.agentBotDispatchContextCacheTtlMs > 0) {
+      setCachedAgentBotDispatchContext(organizationId, inboxId, null);
+    }
     return null;
   }
 
-  const settings = await getCachedOrganizationSettings(organizationId);
-  return resolveAgentBotFromOrgSettingsRow(organizationId, settings);
+  let resolved: AgentBotDispatchContext | null = null;
+
+  if (inbox.agentBotId) {
+    resolved = await resolveAgentBotFromOrgSettingsRow(organizationId, {
+      agentBotId: inbox.agentBotId,
+      agentBot: inbox.agentBot,
+    });
+  }
+
+  if (!resolved && inbox.channelType !== "EMAIL") {
+    const settings = await getCachedOrganizationSettings(organizationId);
+    resolved = await resolveAgentBotFromOrgSettingsRow(organizationId, settings);
+  }
+
+  if (config.agentBotDispatchContextCacheTtlMs > 0) {
+    setCachedAgentBotDispatchContext(organizationId, inboxId, resolved);
+  }
+  return resolved;
 }
 
 /** Compat: usa a caixa preferida da org (defeito ou primeira) e aplica a mesma regra caixa → settings. */
