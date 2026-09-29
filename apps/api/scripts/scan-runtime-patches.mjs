@@ -24,8 +24,8 @@ const BASELINE_COUNTS = {
   "tool-name-regex": 47,
   embratur: 97,
   "modelo-s": 24,
-  audaar: 19,
-  "check-in-regex": 422,
+  audaar: 22,
+  "check-in-regex": 424,
 };
 
 const PATTERNS = [
