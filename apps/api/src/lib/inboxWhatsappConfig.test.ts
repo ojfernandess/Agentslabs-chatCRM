@@ -6,6 +6,7 @@ import {
   withInboxWhatsappPhoneNumberIdColumn,
   parseInboxWhatsappFromChannelConfig,
   shouldFallbackWhatsappCredentialsToSettings,
+  allowWhatsappSettingsPhoneInboxFallback,
 } from "./inboxWhatsappConfig.js";
 
 test("inboxWhatsappPhoneNumberIdForColumn reads channelConfig", () => {
@@ -80,6 +81,12 @@ test("shouldFallbackWhatsappCredentialsToSettings blocks when provider set on in
     ),
     false,
   );
+});
+
+test("allowWhatsappSettingsPhoneInboxFallback only for single WhatsApp inbox orgs", () => {
+  assert.equal(allowWhatsappSettingsPhoneInboxFallback(1), true);
+  assert.equal(allowWhatsappSettingsPhoneInboxFallback(2), false);
+  assert.equal(allowWhatsappSettingsPhoneInboxFallback(0), false);
 });
 
 test("shouldFallbackWhatsappCredentialsToSettings blocks dedicated phone without provider", () => {

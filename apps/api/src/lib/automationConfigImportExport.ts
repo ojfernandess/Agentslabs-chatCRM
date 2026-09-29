@@ -1,6 +1,7 @@
-import { Prisma, type AutomationLogLevel } from "@prisma/client";
+import { InboxChannelType, Prisma, type AutomationLogLevel } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { invalidateAgentBotDispatchContextCache } from "./agentBotDispatchContextCache.js";
 import { redactAutomationToolConfig } from "./automationWebhookBundle.js";
 import { newWebhookToken } from "./knowledgeSourceService.js";
 import { reindexAllKnowledgeArticlesForOrg } from "./knowledgeReindex.js";
@@ -16,6 +17,28 @@ const MAX_HISTORY_ROWS = 10_000;
 
 function asJson(v: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
+}
+
+/** Avisos pós-import: WhatsApp/canais não vêm no bundle de automação. */
+async function collectPostImportChannelWarnings(organizationId: string): Promise<string[]> {
+  const out: string[] = [
+    "whatsapp_not_imported: configure credenciais WhatsApp na caixa correta e vincule o agente importado a essa caixa (Inbox.agentBotId)",
+  ];
+  const waInboxCount = await prisma.inbox.count({
+    where: { organizationId, channelType: InboxChannelType.WHATSAPP },
+  });
+  if (waInboxCount > 1) {
+    const settings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { whatsappProvider: true, whatsappPhoneNumberId: true },
+    });
+    if (settings?.whatsappProvider?.trim() && settings?.whatsappPhoneNumberId?.trim()) {
+      out.push(
+        "whatsapp_settings_legacy_conflict: múltiplas caixas WhatsApp com credenciais legadas em Settings — outbound pode usar o número errado na caixa default até limpar Settings ou gravar provider na caixa dedicada",
+      );
+    }
+  }
+  return out;
 }
 
 function redactLlmConfig(config: unknown): Record<string, unknown> {
@@ -928,6 +951,9 @@ export async function importAutomationConfig(
       );
     }
   }
+
+  invalidateAgentBotDispatchContextCache(organizationId);
+  warnings.push(...(await collectPostImportChannelWarnings(organizationId)));
 
   return { ok: true, mode, created, updated, skipped, warnings };
 }

@@ -46,6 +46,11 @@ export type ResolveInboxWhatsappCredentialsInput = {
   isDefault?: boolean;
 };
 
+/** Fallback Settings→inbox por phone_number_id só em org com uma única caixa WhatsApp. */
+export function allowWhatsappSettingsPhoneInboxFallback(whatsappInboxCount: number): boolean {
+  return whatsappInboxCount === 1;
+}
+
 /** Caixas WhatsApp dedicadas não devem herdar credenciais legadas de Settings (multi-inbox). */
 export function shouldFallbackWhatsappCredentialsToSettings(
   inbox: ResolveInboxWhatsappCredentialsInput,
@@ -259,14 +264,16 @@ export async function findOrganizationByMetaPhoneNumberId(
   const needle = phoneNumberId.trim();
   if (!needle) return null;
 
-  const indexed = await prisma.inbox.findFirst({
+  const indexedMatches = await prisma.inbox.findMany({
     where: {
       channelType: InboxChannelType.WHATSAPP,
       whatsappPhoneNumberId: needle,
     },
-    select: { id: true, organizationId: true },
+    select: { id: true, organizationId: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
   });
-  if (indexed) {
+  if (indexedMatches.length > 0) {
+    const indexed = indexedMatches[0];
     return { organizationId: indexed.organizationId, inboxId: indexed.id };
   }
 
@@ -307,11 +314,14 @@ export async function findWhatsappInboxByPhoneNumberId(
   const legacy = await findWhatsappInboxByPhoneNumberIdFromJson(organizationId, needle);
   if (legacy) return legacy;
 
+  // Settings legado: só quando existe uma única caixa WhatsApp na org (embedded signup).
+  // Multi-inbox: não mapear phone_number_id via Settings — evita rotear para a caixa default
+  // com credenciais antigas enquanto outra caixa Meta tem o número correto indexado.
   const rows = await prisma.inbox.findMany({
     where: { organizationId, channelType: InboxChannelType.WHATSAPP },
-    select: { id: true, channelConfig: true, isDefault: true, createdAt: true },
-    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    select: { id: true, channelConfig: true },
   });
+  if (!allowWhatsappSettingsPhoneInboxFallback(rows.length)) return null;
 
   const settings = await prisma.settings.findFirst({
     where: { organizationId, whatsappPhoneNumberId: needle },
@@ -320,20 +330,7 @@ export async function findWhatsappInboxByPhoneNumberId(
   if (!settings || !isMetaCloudWhatsappProvider(settings.whatsappProvider)) {
     return null;
   }
-
-  for (const row of rows) {
-    const parsed = parseInboxWhatsappFromChannelConfig(row.channelConfig);
-    if (!parsed.whatsappProvider) {
-      return row;
-    }
-    if (isMetaCloudWhatsappProvider(parsed.whatsappProvider)) {
-      // Settings legado (embedded signup) pode ter o phone_number_id correto enquanto a caixa
-      // ainda tem um ID desatualizado — confiar no Settings e usar a caixa Meta da org.
-      return row;
-    }
-  }
-
-  return null;
+  return rows[0];
 }
 
 export async function assertUniqueWhatsappProviderInOrg(
