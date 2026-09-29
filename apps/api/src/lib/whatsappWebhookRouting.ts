@@ -53,7 +53,13 @@ export async function resolveWhatsappWebhookTarget(
     } else if (options.inboxId) {
       const urlInbox = await prisma.inbox.findFirst({
         where: { id: options.inboxId, organizationId },
-        select: { id: true, channelConfig: true },
+        select: {
+          id: true,
+          channelConfig: true,
+          channelType: true,
+          whatsappPhoneNumberId: true,
+          isDefault: true,
+        },
       });
       const urlCreds = urlInbox ? await resolveInboxWhatsappCredentials(organizationId, urlInbox) : null;
       if (urlCreds && isMetaCloudWhatsappProvider(urlCreds.whatsappProvider)) {
@@ -91,7 +97,13 @@ export async function resolveWhatsappWebhookTarget(
   if (inboxId) {
     const inbox = await prisma.inbox.findFirst({
       where: { id: inboxId, organizationId },
-      select: { id: true, channelConfig: true },
+      select: {
+        id: true,
+        channelConfig: true,
+        channelType: true,
+        whatsappPhoneNumberId: true,
+        isDefault: true,
+      },
     });
     if (!inbox) return null;
     const creds = await resolveInboxWhatsappCredentials(organizationId, inbox);
@@ -102,7 +114,13 @@ export async function resolveWhatsappWebhookTarget(
   const defaultInboxId = await getDefaultInboxId(organizationId);
   const defaultInbox = await prisma.inbox.findFirst({
     where: { id: defaultInboxId, organizationId },
-    select: { id: true, channelConfig: true },
+    select: {
+      id: true,
+      channelConfig: true,
+      channelType: true,
+      whatsappPhoneNumberId: true,
+      isDefault: true,
+    },
   });
   if (!defaultInbox) return null;
   const creds = await resolveInboxWhatsappCredentials(organizationId, defaultInbox);

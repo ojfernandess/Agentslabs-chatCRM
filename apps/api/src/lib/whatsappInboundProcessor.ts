@@ -384,14 +384,18 @@ export async function processWhatsAppWebhookEvents(
           msg.type === "DOCUMENT" ||
           msg.type === "AUDIO")
       ) {
-        const inboxCreds = await resolveInboxWhatsappCredentials(organizationId, {
-          channelConfig: (
-            await prisma.inbox.findFirst({
-              where: { id: target.inboxId, organizationId },
-              select: { channelConfig: true },
-            })
-          )?.channelConfig,
+        const inboxRow = await prisma.inbox.findFirst({
+          where: { id: target.inboxId, organizationId },
+          select: {
+            channelConfig: true,
+            channelType: true,
+            whatsappPhoneNumberId: true,
+            isDefault: true,
+          },
         });
+        const inboxCreds = inboxRow
+          ? await resolveInboxWhatsappCredentials(organizationId, inboxRow)
+          : null;
         const accessToken = decrypt(inboxCreds?.whatsappApiKey) ?? "";
         if (accessToken) {
           const tryPersist = () =>

@@ -151,12 +151,15 @@ export async function syncWhatsappInboxCredentialsToSettings(
 ): Promise<void> {
   const inbox = await prisma.inbox.findFirst({
     where: { id: inboxId, organizationId, channelType: InboxChannelType.WHATSAPP },
-    select: { channelConfig: true },
+    select: { channelConfig: true, isDefault: true },
   });
   if (!inbox) return;
 
   const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
   if (!parsed.whatsappProvider) return;
+
+  // Multi-inbox: só a caixa default espelha em Settings (UI legada «Provedores WhatsApp»).
+  if (!inbox.isDefault) return;
 
   const data: Prisma.SettingsUpdateInput = {
     whatsappProvider: parsed.whatsappProvider,

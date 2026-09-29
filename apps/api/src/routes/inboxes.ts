@@ -22,6 +22,7 @@ import {
   cleanupWhatsappOrgSettingsAfterInboxDeleted,
   syncWhatsappInboxCredentialsToSettings,
 } from "../lib/whatsappOrgSync.js";
+import { invalidateAgentBotDispatchContextCache } from "../lib/agentBotDispatchContextCache.js";
 import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
 import { fetchMetaWhatsappAccountHealth } from "../lib/metaWhatsappAccountHealth.js";
 import { ensureMetaCloudWabaSubscribed } from "../lib/metaWebhookSetup.js";
@@ -391,6 +392,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       await syncWhatsappInboxCredentialsToSettings(organizationId, inbox.id);
       await syncEvolutionApiWebhookForInbox(organizationId, inbox.id, request.log);
     }
+    invalidateAgentBotDispatchContextCache(organizationId, inbox.id);
 
     return reply.status(201).send(enrichWhatsappInboxResponse(organizationId, inbox));
   });
@@ -1229,6 +1231,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
         await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
         await syncEvolutionApiWebhookForInbox(organizationId, updated.id, request.log);
       }
+      invalidateAgentBotDispatchContextCache(organizationId, updated.id);
       return enrichWhatsappInboxResponse(organizationId, updated);
     }
     if (p.isDefault === false && inbox.isDefault) {
@@ -1258,6 +1261,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
       await syncEvolutionApiWebhookForInbox(organizationId, updated.id, request.log);
     }
+    invalidateAgentBotDispatchContextCache(organizationId, updated.id);
     return enrichWhatsappInboxResponse(organizationId, updated);
   });
 

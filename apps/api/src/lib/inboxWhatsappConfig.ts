@@ -37,6 +37,34 @@ export type InboxWhatsappCredentialSource = {
   evolutionApiBaseUrl: string | null;
 };
 
+export type ResolveInboxWhatsappCredentialsInput = {
+  channelConfig: unknown;
+  channelType?: string | null;
+  /** Coluna indexada `Inbox.whatsappPhoneNumberId` (pode existir sem JSON completo). */
+  whatsappPhoneNumberId?: string | null;
+  /** Caixa default pode herdar Settings legado; demais caixas WhatsApp não. */
+  isDefault?: boolean;
+};
+
+/** Caixas WhatsApp dedicadas não devem herdar credenciais legadas de Settings (multi-inbox). */
+export function shouldFallbackWhatsappCredentialsToSettings(
+  inbox: ResolveInboxWhatsappCredentialsInput,
+  parsed: InboxWhatsappConfigFields,
+): boolean {
+  if (parsed.whatsappProvider) return false;
+  if (inbox.channelType !== InboxChannelType.WHATSAPP) return true;
+  const hasDedicatedConfig =
+    Boolean(inbox.whatsappPhoneNumberId?.trim()) ||
+    Boolean(parsed.whatsappPhoneNumberId?.trim()) ||
+    Boolean(parsed.whatsappApiKey?.trim()) ||
+    Boolean(parsed.whatsappWebhookSecret?.trim()) ||
+    Boolean(parsed.evolutionApiBaseUrl?.trim());
+  if (hasDedicatedConfig) return false;
+  // Multi-inbox: só a caixa default sem config própria pode usar Settings da org.
+  if (inbox.isDefault === false) return false;
+  return true;
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
@@ -141,21 +169,28 @@ export function maskInboxRowChannelConfig<T extends { channelConfig?: unknown }>
   return { ...row, channelConfig: maskTelegramChannelConfigForClient(maskedEmail) };
 }
 
-/** Credenciais da caixa; se a caixa não tiver provider, usa Settings (legado). */
+/** Credenciais da caixa; fallback a Settings só para caixas legado sem config dedicada. */
 export async function resolveInboxWhatsappCredentials(
   organizationId: string,
-  inbox: { channelConfig: unknown },
+  inbox: ResolveInboxWhatsappCredentialsInput,
 ): Promise<InboxWhatsappCredentialSource | null> {
   const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
+  const phoneNumberId =
+    parsed.whatsappPhoneNumberId?.trim() || inbox.whatsappPhoneNumberId?.trim() || null;
+
   if (parsed.whatsappProvider) {
     return {
       whatsappProvider: parsed.whatsappProvider,
-      whatsappPhoneNumberId: parsed.whatsappPhoneNumberId ?? null,
+      whatsappPhoneNumberId: phoneNumberId,
       whatsappApiKey: parsed.whatsappApiKey ?? null,
       whatsappWebhookSecret: parsed.whatsappWebhookSecret ?? null,
       whatsappWebhookVerifyToken: parsed.whatsappWebhookVerifyToken ?? null,
       evolutionApiBaseUrl: parsed.evolutionApiBaseUrl ?? null,
     };
+  }
+
+  if (!shouldFallbackWhatsappCredentialsToSettings(inbox, parsed)) {
+    return null;
   }
 
   const settings = await getCachedOrganizationSettings(organizationId);

@@ -24,7 +24,12 @@ export type WhatsAppProviderBundle = {
 
 async function resolveWhatsAppProviderBundleFromInbox(
   organizationId: string,
-  inbox: { channelConfig: unknown },
+  inbox: {
+    channelConfig: unknown;
+    channelType?: string | null;
+    whatsappPhoneNumberId?: string | null;
+    isDefault?: boolean;
+  },
 ): Promise<WhatsAppProviderBundle> {
   const creds = await resolveInboxWhatsappCredentials(organizationId, inbox);
   if (!creds) return { provider: null, kind: null };
@@ -144,7 +149,12 @@ export async function getWebhookSecretForInbox(
 ): Promise<string | null> {
   const inbox = await prisma.inbox.findFirst({
     where: { id: inboxId, organizationId },
-    select: { channelConfig: true },
+    select: {
+      channelConfig: true,
+      channelType: true,
+      whatsappPhoneNumberId: true,
+      isDefault: true,
+    },
   });
   if (!inbox) return getWebhookSecret(organizationId);
 

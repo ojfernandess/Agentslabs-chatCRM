@@ -176,14 +176,18 @@ async function handleWhatsAppPost(
   }
 
   if (target.whatsappProvider === "evolution_go" || isEvolutionGoWebhookPayload(body)) {
-    const inboxCreds = await resolveInboxWhatsappCredentials(organizationId, {
-      channelConfig: (
-        await prisma.inbox.findFirst({
-          where: { id: target.inboxId, organizationId },
-          select: { channelConfig: true },
-        })
-      )?.channelConfig,
+    const inboxRow = await prisma.inbox.findFirst({
+      where: { id: target.inboxId, organizationId },
+      select: {
+        channelConfig: true,
+        channelType: true,
+        whatsappPhoneNumberId: true,
+        isDefault: true,
+      },
     });
+    const inboxCreds = inboxRow
+      ? await resolveInboxWhatsappCredentials(organizationId, inboxRow)
+      : null;
     const orgSettings = await prisma.settings.findUnique({
       where: { organizationId },
       select: { whatsappPhoneNumberId: true, whatsappApiKey: true, whatsappProvider: true },

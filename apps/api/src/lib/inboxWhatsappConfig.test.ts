@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { InboxChannelType } from "@prisma/client";
 import {
   inboxWhatsappPhoneNumberIdForColumn,
   withInboxWhatsappPhoneNumberIdColumn,
   parseInboxWhatsappFromChannelConfig,
+  shouldFallbackWhatsappCredentialsToSettings,
 } from "./inboxWhatsappConfig.js";
 
 test("inboxWhatsappPhoneNumberIdForColumn reads channelConfig", () => {
@@ -45,4 +47,53 @@ test("parseInboxWhatsappFromChannelConfig unchanged for indexed helper source", 
   const cfg = { whatsappProvider: "360dialog", whatsappPhoneNumberId: "abc" };
   assert.deepEqual(parseInboxWhatsappFromChannelConfig(cfg).whatsappPhoneNumberId, "abc");
   assert.equal(inboxWhatsappPhoneNumberIdForColumn(cfg), "abc");
+});
+
+test("shouldFallbackWhatsappCredentialsToSettings blocks non-default WhatsApp inboxes", () => {
+  const parsed = parseInboxWhatsappFromChannelConfig({});
+  assert.equal(
+    shouldFallbackWhatsappCredentialsToSettings(
+      { channelConfig: {}, channelType: InboxChannelType.WHATSAPP, isDefault: false },
+      parsed,
+    ),
+    false,
+  );
+});
+
+test("shouldFallbackWhatsappCredentialsToSettings allows default legacy inbox", () => {
+  const parsed = parseInboxWhatsappFromChannelConfig({});
+  assert.equal(
+    shouldFallbackWhatsappCredentialsToSettings(
+      { channelConfig: {}, channelType: InboxChannelType.WHATSAPP, isDefault: true },
+      parsed,
+    ),
+    true,
+  );
+});
+
+test("shouldFallbackWhatsappCredentialsToSettings blocks when provider set on inbox", () => {
+  const parsed = parseInboxWhatsappFromChannelConfig({ whatsappProvider: "meta" });
+  assert.equal(
+    shouldFallbackWhatsappCredentialsToSettings(
+      { channelConfig: {}, channelType: InboxChannelType.WHATSAPP, isDefault: true },
+      parsed,
+    ),
+    false,
+  );
+});
+
+test("shouldFallbackWhatsappCredentialsToSettings blocks dedicated phone without provider", () => {
+  const parsed = parseInboxWhatsappFromChannelConfig({});
+  assert.equal(
+    shouldFallbackWhatsappCredentialsToSettings(
+      {
+        channelConfig: {},
+        channelType: InboxChannelType.WHATSAPP,
+        whatsappPhoneNumberId: "12345",
+        isDefault: true,
+      },
+      parsed,
+    ),
+    false,
+  );
 });

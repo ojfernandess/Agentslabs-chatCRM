@@ -306,13 +306,21 @@ export async function syncEvolutionApiWebhookForInbox(
 ): Promise<{ ok: true } | { ok: false; status: number; body: string } | null> {
   const inbox = await prisma.inbox.findFirst({
     where: { id: inboxId, organizationId, channelType: InboxChannelType.WHATSAPP },
-    select: { channelConfig: true },
+    select: {
+      channelConfig: true,
+      channelType: true,
+      whatsappPhoneNumberId: true,
+      isDefault: true,
+    },
   });
   const effectiveConfig = channelConfigOverride ?? inbox?.channelConfig;
-  if (!effectiveConfig) return null;
+  if (!effectiveConfig || !inbox) return null;
 
   const creds = await resolveInboxWhatsappCredentials(organizationId, {
     channelConfig: effectiveConfig,
+    channelType: inbox.channelType,
+    whatsappPhoneNumberId: inbox.whatsappPhoneNumberId,
+    isDefault: inbox.isDefault,
   });
   if (!creds || creds.whatsappProvider !== "evolution") return null;
 

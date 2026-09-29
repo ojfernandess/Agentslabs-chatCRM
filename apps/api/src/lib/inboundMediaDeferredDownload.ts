@@ -75,14 +75,18 @@ async function downloadDeferredMedia(
     job.metaMediaId &&
     ["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"].includes(msgType)
   ) {
-    const inboxCreds = await resolveInboxWhatsappCredentials(job.organizationId, {
-      channelConfig: (
-        await prisma.inbox.findFirst({
-          where: { id: job.inboxId, organizationId: job.organizationId },
-          select: { channelConfig: true },
-        })
-      )?.channelConfig,
+    const inboxRow = await prisma.inbox.findFirst({
+      where: { id: job.inboxId, organizationId: job.organizationId },
+      select: {
+        channelConfig: true,
+        channelType: true,
+        whatsappPhoneNumberId: true,
+        isDefault: true,
+      },
     });
+    const inboxCreds = inboxRow
+      ? await resolveInboxWhatsappCredentials(job.organizationId, inboxRow)
+      : null;
     const accessToken = decrypt(inboxCreds?.whatsappApiKey) ?? "";
     if (!accessToken) return null;
     const tryPersist = () =>
