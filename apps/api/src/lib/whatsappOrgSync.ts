@@ -5,6 +5,7 @@ import { getDefaultInboxId } from "./defaultInbox.js";
 import { newIngestToken } from "./channelInboxIngest.js";
 import {
   findWhatsappInboxByProvider,
+  isInboxWhatsappConfigured,
   parseInboxWhatsappFromChannelConfig,
   prepareWhatsappChannelConfigForSave,
   withInboxWhatsappPhoneNumberIdColumn,
@@ -13,6 +14,95 @@ import {
 import type { WhatsappInboxChannelPatch } from "./syncWhatsappToDefaultInbox.js";
 
 export type { WhatsappInboxChannelPatch };
+
+const LEGACY_WHATSAPP_SETTINGS_CLEAR_DATA: Prisma.SettingsUpdateInput = {
+  whatsappProvider: null,
+  whatsappPhoneNumberId: null,
+  whatsappApiKey: null,
+  whatsappWebhookSecret: null,
+  evolutionApiBaseUrl: null,
+  whatsappWebhookVerifyToken: null,
+};
+
+export function shouldClearLegacyWhatsappOrgSettings(input: {
+  whatsappInboxCount: number;
+  savedInboxIsDefault: boolean;
+  savedInboxConfigured: boolean;
+  settingsHasWhatsapp: boolean;
+}): boolean {
+  if (!input.savedInboxConfigured || !input.settingsHasWhatsapp) return false;
+  if (input.whatsappInboxCount <= 1) return false;
+  // Caixa dedicada não-default: Settings legado não deve manter credenciais de outra caixa.
+  return !input.savedInboxIsDefault;
+}
+
+function settingsHasLegacyWhatsappCredentials(settings: {
+  whatsappProvider: string | null;
+  whatsappPhoneNumberId: string | null;
+} | null): boolean {
+  return Boolean(settings?.whatsappProvider?.trim() || settings?.whatsappPhoneNumberId?.trim());
+}
+
+/** Remove credenciais WhatsApp obsoletas em Settings (multi-inbox). */
+export async function clearLegacyWhatsappOrgSettings(
+  organizationId: string,
+): Promise<{ cleared: boolean }> {
+  const waInboxCount = await prisma.inbox.count({
+    where: { organizationId, channelType: InboxChannelType.WHATSAPP },
+  });
+  if (waInboxCount <= 1) return { cleared: false };
+
+  const settings = await prisma.settings.findUnique({
+    where: { organizationId },
+    select: { whatsappProvider: true, whatsappPhoneNumberId: true },
+  });
+  if (!settingsHasLegacyWhatsappCredentials(settings)) return { cleared: false };
+
+  await prisma.settings.update({
+    where: { organizationId },
+    data: LEGACY_WHATSAPP_SETTINGS_CLEAR_DATA,
+  });
+  return { cleared: true };
+}
+
+/**
+ * Após gravar caixa WhatsApp dedicada, limpa Settings legado que ainda aponta para outro número
+ * (comum após importar config de outra org e criar caixa Meta nova).
+ */
+export async function clearLegacyWhatsappOrgSettingsIfNeeded(
+  organizationId: string,
+  savedInbox: { isDefault: boolean; channelConfig: unknown },
+): Promise<{ cleared: boolean }> {
+  const parsed = parseInboxWhatsappFromChannelConfig(savedInbox.channelConfig);
+  if (!isInboxWhatsappConfigured(parsed)) return { cleared: false };
+
+  const [waInboxCount, settings] = await Promise.all([
+    prisma.inbox.count({
+      where: { organizationId, channelType: InboxChannelType.WHATSAPP },
+    }),
+    prisma.settings.findUnique({
+      where: { organizationId },
+      select: { whatsappProvider: true, whatsappPhoneNumberId: true },
+    }),
+  ]);
+
+  if (
+    !shouldClearLegacyWhatsappOrgSettings({
+      whatsappInboxCount: waInboxCount,
+      savedInboxIsDefault: savedInbox.isDefault,
+      savedInboxConfigured: true,
+      settingsHasWhatsapp: settingsHasLegacyWhatsappCredentials(settings),
+    })
+  ) {
+    return { cleared: false };
+  }
+
+  await prisma.settings.update({
+    where: { organizationId },
+    data: LEGACY_WHATSAPP_SETTINGS_CLEAR_DATA,
+  });
+  return { cleared: true };
+}
 
 function inboxNameForProvider(provider: string): string {
   switch (provider) {

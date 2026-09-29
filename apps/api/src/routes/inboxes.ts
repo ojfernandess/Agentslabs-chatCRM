@@ -20,6 +20,8 @@ import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSet
 import { syncEvolutionApiWebhookForInbox } from "../lib/evolutionPlatform.js";
 import {
   cleanupWhatsappOrgSettingsAfterInboxDeleted,
+  clearLegacyWhatsappOrgSettings,
+  clearLegacyWhatsappOrgSettingsIfNeeded,
   syncWhatsappInboxCredentialsToSettings,
 } from "../lib/whatsappOrgSync.js";
 import { invalidateAgentBotDispatchContextCache } from "../lib/agentBotDispatchContextCache.js";
@@ -43,6 +45,24 @@ import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
 import { parseEmailAddressList } from "@openconduit/shared";
 import { getEmailInboxUnreadCounts } from "../lib/inboxUnreadCounts.js";
+import type { FastifyBaseLogger } from "fastify";
+
+async function finalizeWhatsappInboxChannelSave(
+  organizationId: string,
+  inbox: { id: string; isDefault: boolean; channelConfig: unknown },
+  log?: FastifyBaseLogger,
+): Promise<{ legacySettingsCleared: boolean }> {
+  await syncWhatsappInboxCredentialsToSettings(organizationId, inbox.id);
+  const { cleared } = await clearLegacyWhatsappOrgSettingsIfNeeded(organizationId, inbox);
+  if (cleared) {
+    log?.info(
+      { organizationId, inboxId: inbox.id },
+      "Cleared legacy WhatsApp credentials from organization Settings after dedicated inbox save",
+    );
+  }
+  await syncEvolutionApiWebhookForInbox(organizationId, inbox.id, log);
+  return { legacySettingsCleared: cleared };
+}
 
 const emailListField = z
   .union([z.string().max(4000), z.array(z.string().email().max(320)).max(50)])
@@ -264,6 +284,23 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  app.post(
+    "/whatsapp/clear-legacy-settings",
+    { preHandler: [requireAdmin] },
+    async (request, reply) => {
+      const organizationId = await resolveTenantOrganizationId(request, reply);
+      if (!organizationId) return;
+      const result = await clearLegacyWhatsappOrgSettings(organizationId);
+      return {
+        ok: true,
+        cleared: result.cleared,
+        message: result.cleared
+          ? "Legacy WhatsApp credentials removed from organization Settings"
+          : "No legacy WhatsApp credentials to clear (requires multiple WhatsApp inboxes)",
+      };
+    },
+  );
+
   app.get("/email-unread-counts", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
@@ -389,8 +426,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (inbox.channelType === InboxChannelType.WHATSAPP && channelConfig) {
-      await syncWhatsappInboxCredentialsToSettings(organizationId, inbox.id);
-      await syncEvolutionApiWebhookForInbox(organizationId, inbox.id, request.log);
+      await finalizeWhatsappInboxChannelSave(
+        organizationId,
+        { id: inbox.id, isDefault: inbox.isDefault, channelConfig: inbox.channelConfig },
+        request.log,
+      );
     }
     invalidateAgentBotDispatchContextCache(organizationId, inbox.id);
 
@@ -1228,8 +1268,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       });
       const effectiveTypeDefault = p.channelType ?? inbox.channelType;
       if (effectiveTypeDefault === InboxChannelType.WHATSAPP && p.channelConfig !== undefined) {
-        await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
-        await syncEvolutionApiWebhookForInbox(organizationId, updated.id, request.log);
+        await finalizeWhatsappInboxChannelSave(
+          organizationId,
+          { id: updated.id, isDefault: updated.isDefault, channelConfig: updated.channelConfig },
+          request.log,
+        );
       }
       invalidateAgentBotDispatchContextCache(organizationId, updated.id);
       return enrichWhatsappInboxResponse(organizationId, updated);
@@ -1258,8 +1301,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
     });
     const effectiveType = p.channelType ?? inbox.channelType;
     if (effectiveType === InboxChannelType.WHATSAPP && p.channelConfig !== undefined) {
-      await syncWhatsappInboxCredentialsToSettings(organizationId, updated.id);
-      await syncEvolutionApiWebhookForInbox(organizationId, updated.id, request.log);
+      await finalizeWhatsappInboxChannelSave(
+        organizationId,
+        { id: updated.id, isDefault: updated.isDefault, channelConfig: updated.channelConfig },
+        request.log,
+      );
     }
     invalidateAgentBotDispatchContextCache(organizationId, updated.id);
     return enrichWhatsappInboxResponse(organizationId, updated);
