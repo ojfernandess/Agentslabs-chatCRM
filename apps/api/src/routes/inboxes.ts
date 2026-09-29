@@ -16,7 +16,10 @@ import {
 } from "../lib/inboxWhatsappConfig.js";
 import { migrateWhatsappSettingsToDefaultInbox } from "../lib/migrateWhatsappSettingsToInbox.js";
 import { syncEvolutionApiWebhookForInbox } from "../lib/evolutionPlatform.js";
-import { syncWhatsappInboxCredentialsToSettings } from "../lib/whatsappOrgSync.js";
+import {
+  cleanupWhatsappOrgSettingsAfterInboxDeleted,
+  syncWhatsappInboxCredentialsToSettings,
+} from "../lib/whatsappOrgSync.js";
 import { getWhatsAppProviderFromChannelConfig } from "../providers/factory.js";
 import { fetchMetaWhatsappAccountHealth } from "../lib/metaWhatsappAccountHealth.js";
 import { ensureMetaCloudWabaSubscribed } from "../lib/metaWebhookSetup.js";
@@ -1290,7 +1293,7 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
 
     const inbox = await prisma.inbox.findFirst({
       where: { id, organizationId },
-      select: { id: true, isDefault: true },
+      select: { id: true, isDefault: true, channelType: true, channelConfig: true },
     });
     if (!inbox) {
       return reply.status(404).send({ error: "Not Found", message: "Inbox not found", statusCode: 404 });
@@ -1337,6 +1340,11 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
       }
 
       await tx.inbox.delete({ where: { id } });
+    });
+
+    await cleanupWhatsappOrgSettingsAfterInboxDeleted(organizationId, {
+      channelType: inbox.channelType,
+      channelConfig: inbox.channelConfig,
     });
 
     return reply.status(204).send();

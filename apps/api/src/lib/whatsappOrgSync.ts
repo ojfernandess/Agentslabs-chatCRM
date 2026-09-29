@@ -180,3 +180,50 @@ export async function syncWhatsappInboxCredentialsToSettings(
     update: data,
   });
 }
+
+/**
+ * Após apagar uma caixa WhatsApp, remove credenciais espelhadas em Settings quando não há
+ * outra caixa com o mesmo provider (evita "Aguardando conexão" fantasma em Provedores WhatsApp).
+ */
+export async function cleanupWhatsappOrgSettingsAfterInboxDeleted(
+  organizationId: string,
+  deleted: {
+    channelType: InboxChannelType;
+    channelConfig: unknown;
+  },
+): Promise<void> {
+  if (deleted.channelType !== InboxChannelType.WHATSAPP) return;
+
+  const parsed = parseInboxWhatsappFromChannelConfig(deleted.channelConfig);
+  const provider = parsed.whatsappProvider?.trim();
+  if (!provider) return;
+
+  const surviving = await findWhatsappInboxByProvider(organizationId, provider);
+  if (surviving) {
+    const settings = await prisma.settings.findUnique({
+      where: { organizationId },
+      select: { whatsappProvider: true },
+    });
+    if (settings?.whatsappProvider === provider) {
+      await syncWhatsappInboxCredentialsToSettings(organizationId, surviving.id);
+    }
+    return;
+  }
+
+  const settings = await prisma.settings.findUnique({
+    where: { organizationId },
+    select: { whatsappProvider: true },
+  });
+  if (settings?.whatsappProvider !== provider) return;
+
+  await prisma.settings.update({
+    where: { organizationId },
+    data: {
+      whatsappProvider: null,
+      whatsappPhoneNumberId: null,
+      whatsappApiKey: null,
+      whatsappWebhookSecret: null,
+      evolutionApiBaseUrl: null,
+    },
+  });
+}
