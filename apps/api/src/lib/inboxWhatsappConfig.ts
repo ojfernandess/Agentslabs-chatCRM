@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { getCachedOrganizationSettings } from "./requestLookupCache.js";
 import { InboxChannelType } from "@prisma/client";
 import { encrypt } from "./encryption.js";
 import { generateWhatsappWebhookVerifyToken } from "./whatsappWebhookVerify.js";
@@ -139,7 +140,7 @@ export async function resolveInboxWhatsappCredentials(
     };
   }
 
-  const settings = await prisma.settings.findUnique({ where: { organizationId } });
+  const settings = await getCachedOrganizationSettings(organizationId);
   if (!settings?.whatsappProvider) return null;
   return {
     whatsappProvider: settings.whatsappProvider,

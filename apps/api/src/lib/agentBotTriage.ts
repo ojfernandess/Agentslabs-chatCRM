@@ -1,6 +1,10 @@
 import type { Bot } from "@prisma/client";
 import type { InboxChannelType } from "@prisma/client";
 import { prisma } from "../db.js";
+import {
+  getCachedInboxWithAgentBot,
+  getCachedOrganizationSettings,
+} from "./requestLookupCache.js";
 
 export type AgentBotDispatchContext = {
   agentBotId: string;
@@ -57,10 +61,7 @@ export async function getAgentBotDispatchContextForInbox(
   organizationId: string,
   inboxId: string,
 ): Promise<AgentBotDispatchContext | null> {
-  const inbox = await prisma.inbox.findFirst({
-    where: { id: inboxId, organizationId },
-    include: { agentBot: true },
-  });
+  const inbox = await getCachedInboxWithAgentBot(organizationId, inboxId);
   if (!inbox) return null;
 
   if (inbox.agentBotId) {
@@ -75,10 +76,7 @@ export async function getAgentBotDispatchContextForInbox(
     return null;
   }
 
-  const settings = await prisma.settings.findUnique({
-    where: { organizationId },
-    include: { agentBot: true },
-  });
+  const settings = await getCachedOrganizationSettings(organizationId);
   return resolveAgentBotFromOrgSettingsRow(organizationId, settings);
 }
 
@@ -86,10 +84,7 @@ export async function getAgentBotDispatchContextForInbox(
 export async function getAgentBotDispatchContext(organizationId: string): Promise<AgentBotDispatchContext | null> {
   const inboxId = await findPreferredInboxIdForOrgTriage(organizationId);
   if (inboxId) return getAgentBotDispatchContextForInbox(organizationId, inboxId);
-  const settings = await prisma.settings.findUnique({
-    where: { organizationId },
-    include: { agentBot: true },
-  });
+  const settings = await getCachedOrganizationSettings(organizationId);
   return resolveAgentBotFromOrgSettingsRow(organizationId, settings);
 }
 

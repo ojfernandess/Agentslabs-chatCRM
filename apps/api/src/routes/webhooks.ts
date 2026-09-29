@@ -58,6 +58,7 @@ import {
   maybeStartMessageTrace,
   runWithTraceHandle,
 } from "../lib/message-processing-monitor/service.js";
+import { getCachedAutoTagRules, runWithRequestLookupCache } from "../lib/requestLookupCache.js";
 import type { ActiveTraceHandle } from "../lib/message-processing-monitor/traceContext.js";
 import { handleWavoipWebhook, verifyWavoipWebhookSecret } from "../lib/wavoipWebhookHandler.js";
 import { logWavoipIntegration } from "../lib/wavoipIntegrationLog.js";
@@ -779,7 +780,7 @@ async function handleWhatsAppPost(
 
       msgMonitor?.stage("auto_tags", "Auto-tags");
       if (inboundBodyForRules) {
-        const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
+        const rules = await getCachedAutoTagRules(organizationId);
         for (const rule of rules) {
           if (inboundBodyForRules.toLowerCase().includes(rule.keyword.toLowerCase())) {
             await prisma.contactTag.upsert({
@@ -834,8 +835,9 @@ async function handleWhatsAppPost(
       );
       };
 
-      if (msgMonitor) await runWithTraceHandle(msgMonitor, processInboundMessage);
-      else await processInboundMessage();
+      const processWithCache = () => runWithRequestLookupCache(processInboundMessage);
+      if (msgMonitor) await runWithTraceHandle(msgMonitor, processWithCache);
+      else await processWithCache();
       finishMessageTrace(msgMonitor, "completed");
 
       processedWebhookEvents += 1;

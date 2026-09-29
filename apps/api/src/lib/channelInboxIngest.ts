@@ -9,6 +9,7 @@ import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
 import { maybeTranscribeInboundAudioMessage } from "./audioTranscription.js";
 import { maybeTranscribeInboundImageMessage } from "./imageTranscription.js";
 import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
+import { getCachedAutoTagRules } from "./requestLookupCache.js";
 import { findConversationByEmailThreadHeaders } from "./emailThreadRouting.js";
 import { ensureConversationForChannelInbox, reopenResolvedConversationData } from "./conversationRouting.js";
 import { tryAutoAssignInboxConversation } from "./inboxAutoAssignment.js";
@@ -340,7 +341,7 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
 
   const inboundBody = inboundForPipeline.body?.trim() ?? "";
   if (inboundBody) {
-    const rules = await prisma.autoTagRule.findMany({ where: { organizationId } });
+    const rules = await getCachedAutoTagRules(organizationId);
     for (const rule of rules) {
       if (inboundBody.toLowerCase().includes(rule.keyword.toLowerCase())) {
         await prisma.contactTag.upsert({

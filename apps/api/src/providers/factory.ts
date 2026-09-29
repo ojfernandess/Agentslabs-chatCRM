@@ -7,10 +7,30 @@ import {
   resolveInboxWhatsappCredentials,
   type InboxWhatsappCredentialSource,
 } from "../lib/inboxWhatsappConfig.js";
+import {
+  getCachedInboxWithAgentBot,
+  getCachedOrganizationSettings,
+  getCachedWhatsAppProviderBundle,
+} from "../lib/requestLookupCache.js";
 import { WhatsAppProviderInterface } from "./types.js";
 import { MetaCloudApiProvider } from "./meta.js";
 import { EvolutionApiProvider } from "./evolution.js";
 import { EvolutionGoProvider } from "./evolutionGo.js";
+
+export type WhatsAppProviderBundle = {
+  provider: WhatsAppProviderInterface | null;
+  kind: string | null;
+};
+
+async function resolveWhatsAppProviderBundleFromInbox(
+  organizationId: string,
+  inbox: { channelConfig: unknown },
+): Promise<WhatsAppProviderBundle> {
+  const creds = await resolveInboxWhatsappCredentials(organizationId, inbox);
+  if (!creds) return { provider: null, kind: null };
+  const provider = await buildProviderFromCredentials(creds);
+  return { provider, kind: creds.whatsappProvider ?? null };
+}
 
 async function buildProviderFromCredentials(
   creds: InboxWhatsappCredentialSource,
@@ -73,32 +93,44 @@ export async function getWhatsAppProviderFromChannelConfig(
   });
 }
 
+export async function getWhatsAppProviderBundleForInbox(
+  organizationId: string,
+  inboxId: string,
+): Promise<WhatsAppProviderBundle> {
+  return await getCachedWhatsAppProviderBundle(organizationId, inboxId, async () => {
+    const inbox = await getCachedInboxWithAgentBot(organizationId, inboxId);
+    if (!inbox) {
+      const settings = await getCachedOrganizationSettings(organizationId);
+      const provider = settings?.whatsappProvider
+        ? await buildProviderFromCredentials({
+            whatsappProvider: settings.whatsappProvider,
+            whatsappPhoneNumberId: settings.whatsappPhoneNumberId,
+            whatsappApiKey: settings.whatsappApiKey,
+            whatsappWebhookSecret: settings.whatsappWebhookSecret,
+            whatsappWebhookVerifyToken: settings.whatsappWebhookVerifyToken ?? null,
+            evolutionApiBaseUrl: settings.evolutionApiBaseUrl,
+          })
+        : null;
+      return { provider, kind: settings?.whatsappProvider ?? null };
+    }
+    return await resolveWhatsAppProviderBundleFromInbox(organizationId, inbox);
+  });
+}
+
 export async function getWhatsAppProviderForInbox(
   organizationId: string,
   inboxId: string,
 ): Promise<WhatsAppProviderInterface | null> {
-  const inbox = await prisma.inbox.findFirst({
-    where: { id: inboxId, organizationId },
-    select: { channelConfig: true },
-  });
-  if (!inbox) return getWhatsAppProvider(organizationId);
-
-  const creds = await resolveInboxWhatsappCredentials(organizationId, inbox);
-  if (!creds) return null;
-  return await buildProviderFromCredentials(creds);
+  const bundle = await getWhatsAppProviderBundleForInbox(organizationId, inboxId);
+  return bundle.provider;
 }
 
 export async function getWhatsappProviderKindForInbox(
   organizationId: string,
   inboxId: string,
 ): Promise<string | null> {
-  const inbox = await prisma.inbox.findFirst({
-    where: { id: inboxId, organizationId },
-    select: { channelConfig: true },
-  });
-  if (!inbox) return null;
-  const creds = await resolveInboxWhatsappCredentials(organizationId, inbox);
-  return creds?.whatsappProvider ?? null;
+  const bundle = await getWhatsAppProviderBundleForInbox(organizationId, inboxId);
+  return bundle.kind;
 }
 
 export async function getWebhookSecret(organizationId: string): Promise<string | null> {

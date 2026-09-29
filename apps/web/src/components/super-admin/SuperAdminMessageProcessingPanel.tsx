@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  ClipboardCopy,
   Download,
   Loader2,
   Play,
@@ -12,6 +13,13 @@ import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { SuperAdminMetricCard, SuperAdminPanel } from "@/components/super-admin/SuperAdminShell";
+import {
+  copyTextToClipboard,
+  downloadTextFile,
+  serializeTraces,
+  type ExportableMessageTrace,
+  type TraceExportFormat,
+} from "@/lib/messageProcessingExport";
 
 type OrgInbox = { id: string; name: string; channelType: string };
 type OrgOption = { id: string; name: string; inboxes: OrgInbox[] };
@@ -38,26 +46,13 @@ type TraceSpan = {
   cpuDeltaPercent: number;
 };
 
-type MessageTrace = {
-  traceId: string;
+type MessageTrace = ExportableMessageTrace & {
   environment: string;
-  direction: "INBOUND" | "OUTBOUND";
-  organizationId: string;
-  organizationName?: string;
-  inboxId?: string;
-  inboxName?: string;
-  provider?: string;
-  status: string;
-  startedAt: string;
-  endedAt?: string;
-  totalDurationMs?: number;
-  errorMessage?: string;
   snapshots: {
     before: ResourceSnapshot;
     peak: ResourceSnapshot;
     after?: ResourceSnapshot;
   };
-  spans: TraceSpan[];
   querySummary: {
     total: number;
     totalDurationMs: number;
@@ -67,7 +62,6 @@ type MessageTrace = {
   realtime: { emits: number; recipients: number; payloadBytes: number };
   bot: { triggered: boolean; durationMs?: number };
   meta: { sendAttempts: number; lastError?: string; wamid?: string };
-  anomalies: Array<{ code: string; severity: string; message: string }>;
   events: Array<{ name: string; count: number }>;
 };
 
@@ -143,6 +137,10 @@ export function SuperAdminMessageProcessingPanel() {
   const [error, setError] = useState<string | null>(null);
   const [investigationMinutes, setInvestigationMinutes] = useState(5);
   const [starting, setStarting] = useState(false);
+  const [checkedTraceIds, setCheckedTraceIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [copyFlash, setCopyFlash] = useState<"ok" | "fail" | null>(null);
+  const copyFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedOrg = useMemo(() => orgs.find((o) => o.id === orgId), [orgs, orgId]);
   const inboxes = selectedOrg?.inboxes ?? [];
@@ -230,8 +228,77 @@ export function SuperAdminMessageProcessingPanel() {
     }
   };
 
-  const exportTrace = (traceId: string, format: "json" | "csv") => {
-    window.open(`/api/v1/super/message-processing/traces/${traceId}/export?format=${format}`, "_blank");
+  const flashCopyMessage = useCallback((result: "ok" | "fail") => {
+    setCopyFlash(result);
+    if (copyFlashTimer.current) clearTimeout(copyFlashTimer.current);
+    copyFlashTimer.current = setTimeout(() => setCopyFlash(null), 2500);
+  }, []);
+
+  const exportTraces = useCallback(
+    (items: ExportableMessageTrace[], format: TraceExportFormat, mode: "copy" | "download") => {
+      if (items.length === 0) return;
+      const { text, mime, ext } = serializeTraces(items, format);
+      if (mode === "copy") {
+        void copyTextToClipboard(text).then((ok) => flashCopyMessage(ok ? "ok" : "fail"));
+        return;
+      }
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const name =
+        items.length === 1
+          ? `${items[0]!.traceId}.${ext}`
+          : `message-traces-${items.length}-${stamp}.${ext}`;
+      downloadTextFile(name, text, mime);
+    },
+    [flashCopyMessage],
+  );
+
+  const checkedCount = checkedTraceIds.size;
+  const allVisibleChecked = traces.length > 0 && traces.every((tr) => checkedTraceIds.has(tr.traceId));
+  const someVisibleChecked = traces.some((tr) => checkedTraceIds.has(tr.traceId));
+
+  const toggleTraceChecked = (traceId: string) => {
+    setCheckedTraceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(traceId)) next.delete(traceId);
+      else next.add(traceId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    setCheckedTraceIds((prev) => {
+      if (allVisibleChecked) {
+        const next = new Set(prev);
+        for (const tr of traces) next.delete(tr.traceId);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const tr of traces) next.add(tr.traceId);
+      return next;
+    });
+  };
+
+  const exportCheckedTraces = async (format: TraceExportFormat, mode: "copy" | "download") => {
+    if (checkedCount === 0) return;
+    setBulkBusy(true);
+    try {
+      const selected = traces.filter((tr) => checkedTraceIds.has(tr.traceId));
+      const fullTraces: ExportableMessageTrace[] = await Promise.all(
+        selected.map(async (tr) => {
+          try {
+            const res = await api.get<{ trace: MessageTrace }>(
+              `/super/message-processing/traces/${tr.traceId}`,
+            );
+            return res.trace;
+          } catch {
+            return tr;
+          }
+        }),
+      );
+      exportTraces(fullTraces, format, mode);
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const sys = overview?.overview.system;
@@ -428,9 +495,79 @@ export function SuperAdminMessageProcessingPanel() {
 
       {tab === "messages" ? (
         <SuperAdminPanel className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+              <input
+                type="checkbox"
+                className="rounded border-slate-300"
+                checked={allVisibleChecked}
+                ref={(el) => {
+                  if (el) el.indeterminate = someVisibleChecked && !allVisibleChecked;
+                }}
+                onChange={toggleSelectAllVisible}
+                disabled={traces.length === 0}
+              />
+              {t("superAdmin.messageProcessing.selectAll")}
+            </label>
+            {checkedCount > 0 ? (
+              <div className="flex flex-wrap items-center gap-1 rounded-lg border border-brand-200/70 bg-brand-50/50 p-1.5">
+                <span className="px-1 text-xs font-semibold text-brand-800">
+                  {t("superAdmin.messageProcessing.selectedCount").replace("{count}", String(checkedCount))}
+                </span>
+                {(["markdown", "json", "csv"] as TraceExportFormat[]).map((format) => (
+                  <button
+                    key={`copy-${format}`}
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => void exportCheckedTraces(format, "copy")}
+                    className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    title={t(`superAdmin.messageProcessing.copy${format === "markdown" ? "Markdown" : format === "json" ? "Json" : "Csv"}`)}
+                  >
+                    {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ClipboardCopy className="h-3 w-3" />}
+                    {format === "markdown" ? "MD" : format.toUpperCase()}
+                  </button>
+                ))}
+                <span className="mx-0.5 text-slate-300" aria-hidden>|</span>
+                {(["markdown", "json", "csv"] as TraceExportFormat[]).map((format) => (
+                  <button
+                    key={`download-${format}`}
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => void exportCheckedTraces(format, "download")}
+                    className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    title={t(`superAdmin.messageProcessing.download${format === "markdown" ? "Markdown" : format === "json" ? "Json" : "Csv"}`)}
+                  >
+                    <Download className="h-3 w-3" />
+                    {format === "markdown" ? "MD" : format.toUpperCase()}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => setCheckedTraceIds(new Set())}
+                  className="ml-1 rounded px-2 py-1 text-xs font-medium text-slate-500 underline hover:text-slate-800"
+                >
+                  {t("superAdmin.messageProcessing.clearSelection")}
+                </button>
+                {copyFlash ? (
+                  <span
+                    className={clsx(
+                      "text-xs",
+                      copyFlash === "ok" ? "text-emerald-600" : "text-red-600",
+                    )}
+                  >
+                    {copyFlash === "ok"
+                      ? t("superAdmin.messageProcessing.copied")
+                      : t("superAdmin.messageProcessing.copyFailed")}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="w-10 px-4 py-3" aria-label={t("superAdmin.messageProcessing.selectAll")} />
                 <th className="px-4 py-3">{t("superAdmin.messageProcessing.colTime")}</th>
                 <th className="px-4 py-3">{t("superAdmin.messageProcessing.colDirection")}</th>
                 <th className="px-4 py-3">{t("superAdmin.messageProcessing.colTrace")}</th>
@@ -443,7 +580,7 @@ export function SuperAdminMessageProcessingPanel() {
             <tbody className="divide-y divide-slate-100">
               {traces.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                     {session?.active
                       ? t("superAdmin.messageProcessing.noTracesYet")
                       : t("superAdmin.messageProcessing.startToCapture")}
@@ -452,6 +589,15 @@ export function SuperAdminMessageProcessingPanel() {
               ) : (
                 traces.map((tr) => (
                   <tr key={tr.traceId} className="hover:bg-slate-50/80">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="rounded border-slate-300"
+                        checked={checkedTraceIds.has(tr.traceId)}
+                        onChange={() => toggleTraceChecked(tr.traceId)}
+                        aria-label={tr.traceId}
+                      />
+                    </td>
                     <td className="px-4 py-3 tabular-nums">{formatTime(tr.startedAt, locale)}</td>
                     <td className="px-4 py-3">
                       {tr.direction === "INBOUND" ? "↓" : "↑"} {tr.provider ?? "WhatsApp"}
@@ -537,22 +683,33 @@ export function SuperAdminMessageProcessingPanel() {
                 <p className="font-mono text-sm text-slate-600">{selectedTrace.traceId}</p>
                 <h3 className="text-lg font-semibold text-slate-900">{t("superAdmin.messageProcessing.traceDetail")}</h3>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => exportTrace(selectedTrace.traceId, "json")}
-                  className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs"
-                >
-                  <Download className="h-3 w-3" /> JSON
-                </button>
-                <button
-                  type="button"
-                  onClick={() => exportTrace(selectedTrace.traceId, "csv")}
-                  className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs"
-                >
-                  <Download className="h-3 w-3" /> CSV
-                </button>
-                <button type="button" onClick={() => setSelectedTrace(null)} className="text-slate-500 hover:text-slate-800">
+              <div className="flex flex-wrap items-center gap-1">
+                {(["markdown", "json", "csv"] as TraceExportFormat[]).map((format) => (
+                  <button
+                    key={`detail-copy-${format}`}
+                    type="button"
+                    onClick={() => exportTraces([selectedTrace], format, "copy")}
+                    className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
+                    title={t(`superAdmin.messageProcessing.copy${format === "markdown" ? "Markdown" : format === "json" ? "Json" : "Csv"}`)}
+                  >
+                    <ClipboardCopy className="h-3 w-3" />
+                    {format === "markdown" ? "MD" : format.toUpperCase()}
+                  </button>
+                ))}
+                <span className="text-slate-300" aria-hidden>|</span>
+                {(["markdown", "json", "csv"] as TraceExportFormat[]).map((format) => (
+                  <button
+                    key={`detail-download-${format}`}
+                    type="button"
+                    onClick={() => exportTraces([selectedTrace], format, "download")}
+                    className="inline-flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
+                    title={t(`superAdmin.messageProcessing.download${format === "markdown" ? "Markdown" : format === "json" ? "Json" : "Csv"}`)}
+                  >
+                    <Download className="h-3 w-3" />
+                    {format === "markdown" ? "MD" : format.toUpperCase()}
+                  </button>
+                ))}
+                <button type="button" onClick={() => setSelectedTrace(null)} className="ml-1 text-slate-500 hover:text-slate-800">
                   ✕
                 </button>
               </div>

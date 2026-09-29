@@ -2,7 +2,12 @@ import type { Prisma, Message, Conversation, InboxChannelType } from "@prisma/cl
 import type { FastifyBaseLogger } from "fastify";
 import { prisma } from "../db.js";
 import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
-import { getWhatsAppProviderForInbox, getWhatsappProviderKindForInbox } from "../providers/factory.js";
+import { getWhatsAppProviderBundleForInbox } from "../providers/factory.js";
+import {
+  getCachedInboxWithAgentBot,
+  getCachedOrganizationSettings,
+  runWithRequestLookupCache,
+} from "./requestLookupCache.js";
 import { MetaCloudApiProvider } from "../providers/meta.js";
 import { isMetaCloudWhatsappProvider } from "./inboxWhatsappConfig.js";
 import { sanitizeProviderErrorMessage } from "./providerErrorMessage.js";
@@ -237,9 +242,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
     throw new Error("Contact is blocked");
   }
 
-  const channelSettings = await prisma.settings.findUnique({
-    where: { organizationId },
-  });
+  const channelSettings = await getCachedOrganizationSettings(organizationId);
   const lockSingleConversation = channelSettings?.lockSingleConversation ?? false;
   let providerKind: string | null | undefined = channelSettings?.whatsappProvider;
 
@@ -248,6 +251,7 @@ export async function deliverOutboundWhatsAppMessage(options: {
   let conversation: Conversation;
   let inboxChannelType: InboxChannelType;
   let inboxChannelConfig: Prisma.JsonValue | null;
+  let whatsappProviderBundle: Awaited<ReturnType<typeof getWhatsAppProviderBundleForInbox>> | null = null;
 
   if (targetConversationId) {
     const conv = await prisma.conversation.findFirst({
@@ -274,14 +278,12 @@ export async function deliverOutboundWhatsAppMessage(options: {
         data: reopenResolvedConversationData(activeConversationStatus),
       });
     }
-    providerKind =
-      (await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId)) ?? providerKind;
+    whatsappProviderBundle = await getWhatsAppProviderBundleForInbox(organizationId, conversation.inboxId);
+    providerKind = whatsappProviderBundle.kind ?? providerKind;
   } else {
     const explicitInboxId = dataConversationId ? undefined : dataInboxId;
     if (explicitInboxId) {
-      const inboxRow = await prisma.inbox.findFirst({
-        where: { id: explicitInboxId, organizationId },
-      });
+      const inboxRow = await getCachedInboxWithAgentBot(organizationId, explicitInboxId);
       if (!inboxRow) {
         throw new Error("Inbox not found");
       }
@@ -345,8 +347,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
       const { inbox: _inbox, ...rest } = conv;
       conversation = rest;
     }
-    providerKind =
-      (await getWhatsappProviderKindForInbox(organizationId, conversation.inboxId)) ?? providerKind;
+    whatsappProviderBundle = await getWhatsAppProviderBundleForInbox(organizationId, conversation.inboxId);
+    providerKind = whatsappProviderBundle.kind ?? providerKind;
   }
 
   if (
@@ -531,7 +533,10 @@ export async function deliverOutboundWhatsAppMessage(options: {
   let providerDeliveryError: Error | null = null;
   if (!isPrivate && !resolvedDeliveryChannel && !skipWhatsappProviderDelivery && inboxChannelType === "WHATSAPP") {
     try {
-      const provider = await getWhatsAppProviderForInbox(organizationId, conversation.inboxId);
+      if (!whatsappProviderBundle) {
+        whatsappProviderBundle = await getWhatsAppProviderBundleForInbox(organizationId, conversation.inboxId);
+      }
+      const provider = whatsappProviderBundle.provider;
       if (provider) {
         const to =
           contact.waId && contact.waId.includes("@g.us") ? contact.waId : contact.phone;
@@ -966,9 +971,11 @@ export async function deliverOutboundWhatsAppMessage(options: {
   };
 
   try {
-    const result = monitorHandle
-      ? await runWithTraceHandle(monitorHandle, executeDelivery)
-      : await executeDelivery();
+    const runDelivery = async () =>
+      monitorHandle
+        ? await runWithTraceHandle(monitorHandle, executeDelivery)
+        : await executeDelivery();
+    const result = await runWithRequestLookupCache(runDelivery);
     finishMessageTrace(monitorHandle, "completed");
     return result;
   } catch (err) {
