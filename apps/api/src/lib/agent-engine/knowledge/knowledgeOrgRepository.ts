@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db.js";
+import { getCachedPlatformSetting } from "../../cachedAutomationAgentProfile.js";
 import {
   orgKnowledgeStoreKey,
   parseOrgKnowledgeStore,
@@ -12,10 +13,7 @@ export type OrgKnowledgeStore = {
 };
 
 export async function loadOrgKnowledgeStore(organizationId: string): Promise<OrgKnowledgeStore> {
-  const row = await prisma.platformSetting.findUnique({
-    where: { key: orgKnowledgeStoreKey(organizationId) },
-    select: { value: true },
-  });
+  const row = await getCachedPlatformSetting(orgKnowledgeStoreKey(organizationId));
   return parseOrgKnowledgeStore(row?.value);
 }
 

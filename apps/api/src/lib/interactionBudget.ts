@@ -1,5 +1,10 @@
 import type { InteractionBudgetStatus } from "@prisma/client";
 import { prisma } from "../db.js";
+import {
+  getCachedInteractionBudgetRow,
+  invalidateCachedInteractionBudgetRow,
+  primeCachedInteractionBudgetRow,
+} from "./cachedAutomationAgentProfile.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 
 /**
@@ -139,10 +144,7 @@ export async function getInteractionBudgetState(params: {
   if (!interactionLimitAppliesToInbox(cfg, params.inboxId)) return DISABLED_STATE;
   if (!(await interactionLimitFeatureEnabled(params.organizationId))) return DISABLED_STATE;
 
-  const row = await prisma.conversationInteractionBudget.findUnique({
-    where: { conversationId: params.conversationId },
-    select: { interactionCount: true, status: true },
-  });
+  const row = await getCachedInteractionBudgetRow(params.conversationId);
   const count = row?.interactionCount ?? 0;
   const status = row?.status === "HUMAN_ACTIVE" ? "HUMAN_ACTIVE" : deriveBudgetStatus(count, cfg.limit);
   return {
@@ -208,6 +210,11 @@ export async function registerAgentInteraction(params: {
     });
   }
 
+  primeCachedInteractionBudgetRow(params.conversationId, {
+    interactionCount: count,
+    status,
+  });
+
   return {
     count,
     limit: params.limit,
@@ -226,6 +233,7 @@ export async function markInteractionBudgetHumanActive(conversationId: string): 
       data: { status: "HUMAN_ACTIVE", updatedAt: new Date() },
     })
     .catch(() => {});
+  invalidateCachedInteractionBudgetRow(conversationId);
 }
 
 /**
@@ -247,6 +255,7 @@ export async function resetInteractionBudgetForConversation(
       },
     })
     .catch(() => {});
+  invalidateCachedInteractionBudgetRow(conversationId);
 }
 
 /**

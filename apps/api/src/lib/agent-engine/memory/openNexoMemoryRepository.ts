@@ -3,6 +3,7 @@ import { prisma } from "../../../db.js";
 import {
   getCachedAutomationAgentProfile,
   getCachedAutomationConversationContextRow,
+  getCachedPlatformSetting,
   primeCachedAutomationConversationContext,
 } from "../../cachedAutomationAgentProfile.js";
 import {
@@ -130,10 +131,7 @@ async function writeAgentStore(ref: ScopeRef, records: MemoryRecord[]): Promise<
 }
 
 export async function loadOrgMemoryStore(organizationId: string): Promise<OrgMemoryStore> {
-  const row = await prisma.platformSetting.findUnique({
-    where: { key: orgMemoryStoreKey(organizationId) },
-    select: { value: true },
-  });
+  const row = await getCachedPlatformSetting(orgMemoryStoreKey(organizationId));
   return parseOrgMemoryStore(row?.value);
 }
 

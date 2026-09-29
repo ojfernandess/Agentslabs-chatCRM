@@ -7,6 +7,8 @@ export type ActiveTraceHandle = {
   trace: MessageProcessingTrace;
   stageStartedAt: number;
   stageCpuStart: number;
+  /** Quando true, `finishMessageTrace` no webhook inbound é ignorado até `completeDeferredMessageTrace`. */
+  deferredFinish?: boolean;
   finish: (status: "completed" | "error", errorMessage?: string) => MessageProcessingTrace;
   stage: (stage: string, label: string, meta?: Record<string, string | number | boolean | null>) => void;
   recordQuery: (model: string, action: string, durationMs: number) => void;

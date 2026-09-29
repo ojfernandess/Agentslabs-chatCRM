@@ -221,12 +221,30 @@ export async function runWithMessageTrace<T>(
   }
 }
 
+export function deferMessageTraceFinish(handle: ActiveTraceHandle | null | undefined): void {
+  if (!handle) return;
+  handle.deferredFinish = true;
+}
+
 export function finishMessageTrace(
   handle: ActiveTraceHandle | null | undefined,
   status: "completed" | "error" = "completed",
   errorMessage?: string,
 ): void {
   if (!handle) return;
+  if (handle.deferredFinish) return;
+  handle.finish(status, errorMessage);
+}
+
+/** Fecha trace inbound adiado após o turno completo do bot (ou enfileiramento BullMQ). */
+export function completeDeferredMessageTrace(
+  handle: ActiveTraceHandle | null | undefined,
+  status: "completed" | "error" = "completed",
+  errorMessage?: string,
+): void {
+  if (!handle) return;
+  if (!handle.deferredFinish) return;
+  handle.deferredFinish = false;
   handle.finish(status, errorMessage);
 }
 

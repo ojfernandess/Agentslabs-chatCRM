@@ -3,7 +3,10 @@ import { describe, it } from "node:test";
 import {
   getCachedAutomationConversationContextRow,
   getCachedOrganizationFeatureEnabled,
+  getCachedInteractionBudgetRow,
+  getCachedRankedKnowledgeSearch,
   primeCachedAutomationConversationContext,
+  primeCachedInteractionBudgetRow,
   runWithAgentTurnLookupCache,
 } from "./cachedAutomationAgentProfile.js";
 
@@ -66,6 +69,30 @@ describe("cachedAutomationAgentProfile", () => {
       primeCachedAutomationConversationContext("conv-1", primed);
       const row = await getCachedAutomationConversationContextRow("conv-1");
       assert.deepEqual(row, primed);
+    });
+  });
+
+  it("deduplicates ranked knowledge search within the same agent turn", async () => {
+    let calls = 0;
+    const resolve = async () => {
+      calls += 1;
+      return { ranked: [{ id: "a" }], mode: "lexical" as const };
+    };
+
+    await runWithAgentTurnLookupCache("bot-1", async () => {
+      const first = await getCachedRankedKnowledgeSearch("org:bot:q:5", resolve);
+      const second = await getCachedRankedKnowledgeSearch("org:bot:q:5", resolve);
+      assert.equal(first.mode, "lexical");
+      assert.equal(second.mode, "lexical");
+      assert.equal(calls, 1);
+    });
+  });
+
+  it("reuses primed interaction budget row without a second loader", async () => {
+    await runWithAgentTurnLookupCache("bot-1", async () => {
+      primeCachedInteractionBudgetRow("conv-1", { interactionCount: 3, status: "ACTIVE" });
+      const row = await getCachedInteractionBudgetRow("conv-1");
+      assert.deepEqual(row, { interactionCount: 3, status: "ACTIVE" });
     });
   });
 

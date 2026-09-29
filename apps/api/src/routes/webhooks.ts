@@ -54,6 +54,8 @@ import {
 } from "../lib/workspaceMessageBroadcast.js";
 import { scheduleIntelligentTaggingDuringConversation } from "../lib/intelligent-tagging/service.js";
 import {
+  completeDeferredMessageTrace,
+  deferMessageTraceFinish,
   finishMessageTrace,
   maybeStartMessageTrace,
   runWithTraceHandle,
@@ -493,6 +495,7 @@ async function handleWhatsAppPost(
         bodyLength: msg.body?.length ?? 0,
       });
 
+      let botDispatchStarted = false;
       const processInboundMessage = async (): Promise<void> => {
       let inboundBody = msg.body;
       if (msg.isGroup && (msg.participantPushName || msg.participantE164)) {
@@ -806,6 +809,8 @@ async function handleWhatsAppPost(
         msgMonitor?.setBot({ triggered: true });
         const fresh = await prisma.conversation.findFirst({ where: { id: conversation.id } });
         if (fresh) {
+          botDispatchStarted = true;
+          if (msgMonitor) deferMessageTraceFinish(msgMonitor);
           void dispatchAgentBotWebhook({
             organizationId,
             settings: {
@@ -816,7 +821,19 @@ async function handleWhatsAppPost(
             contact,
             message: inboundForPipeline,
             log: app.log,
-          });
+            messageTraceHandle: msgMonitor,
+          })
+            .catch((err) => {
+              app.log.error(err, "Agent bot dispatch failed");
+              completeDeferredMessageTrace(
+                msgMonitor,
+                "error",
+                err instanceof Error ? err.message : String(err),
+              );
+            })
+            .finally(() => {
+              completeDeferredMessageTrace(msgMonitor, "completed");
+            });
         }
       } else {
         app.log.warn(
@@ -838,11 +855,21 @@ async function handleWhatsAppPost(
       const processWithCache = () => runWithRequestLookupCache(processInboundMessage);
       if (msgMonitor) await runWithTraceHandle(msgMonitor, processWithCache);
       else await processWithCache();
-      finishMessageTrace(msgMonitor, "completed");
+      if (!botDispatchStarted) {
+        finishMessageTrace(msgMonitor, "completed");
+      }
 
       processedWebhookEvents += 1;
     } catch (err) {
-      finishMessageTrace(msgMonitor, "error", err instanceof Error ? err.message : String(err));
+      if (msgMonitor?.deferredFinish) {
+        completeDeferredMessageTrace(
+          msgMonitor,
+          "error",
+          err instanceof Error ? err.message : String(err),
+        );
+      } else {
+        finishMessageTrace(msgMonitor, "error", err instanceof Error ? err.message : String(err));
+      }
       app.log.error(err, "Error processing incoming webhook message");
     }
   }

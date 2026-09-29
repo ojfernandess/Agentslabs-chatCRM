@@ -5,6 +5,11 @@ import { applyQueryEntityRankingBoost, extractQuerySegmentTokens, queryTerms, ra
 import { postProcessRankedKnowledgeRows } from "./knowledgeChunkPostProcess.js";
 import { rankedSemanticKnowledgeSearch } from "./knowledgeSemanticSearch.js";
 import { isAgentKbDebugEnabled, logAgentKbDebug } from "./agentKnowledgeDebugLog.js";
+import {
+  getCachedKbArticleBotCount,
+  getCachedKbChunkCount,
+  getCachedRankedKnowledgeSearch,
+} from "./cachedAutomationAgentProfile.js";
 
 const KNOWLEDGE_ARTICLE_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -152,11 +157,25 @@ export async function rankedKnowledgeSearch(params: {
   debugLog?: FastifyBaseLogger;
 }): Promise<{ ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" }> {
   const { organizationId, normalizedQuery: norm, limit, debugLog } = params;
+  const cacheKey = `${organizationId}:${params.botId ?? ""}:${norm}:${limit}`;
+  return (await getCachedRankedKnowledgeSearch(cacheKey, () =>
+    rankedKnowledgeSearchUncached(params, debugLog),
+  )) as { ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" };
+}
+
+async function rankedKnowledgeSearchUncached(
+  params: {
+    organizationId: string;
+    normalizedQuery: string;
+    botId: string | undefined;
+    limit: number;
+  },
+  debugLog: FastifyBaseLogger | undefined,
+): Promise<{ ranked: RankedKnowledgeRow[]; mode: "lexical" | "semantic" | "hybrid" }> {
+  const { organizationId, normalizedQuery: norm, limit } = params;
   const botId = await effectiveKnowledgeSearchBotId(organizationId, params.botId);
   const hasKey = Boolean(config.openAiPromptPreviewKey);
-  const chunkCount = hasKey
-    ? await prisma.automationKnowledgeChunk.count({ where: { organizationId } })
-    : 0;
+  const chunkCount = hasKey ? await getCachedKbChunkCount(organizationId) : 0;
 
   let semantic: RankedKnowledgeRow[] = [];
   if (hasKey && chunkCount > 0) {
@@ -225,14 +244,7 @@ export async function rankedKnowledgeSearch(params: {
 
   if (isAgentKbDebugEnabled() && debugLog) {
     const syncLinks =
-      params.botId != null
-        ? await prisma.automationKnowledgeArticleBot.count({
-            where: {
-              botId: params.botId,
-              article: { organizationId, isActive: true, syncToAi: true },
-            },
-          })
-        : 0;
+      params.botId != null ? await getCachedKbArticleBotCount(params.botId) : 0;
     logAgentKbDebug(debugLog, {
       stage: "rankedKnowledgeSearch",
       organizationId,

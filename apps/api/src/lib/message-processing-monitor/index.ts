@@ -2,6 +2,8 @@ export {
   initMessageProcessingMonitor,
   maybeStartMessageTrace,
   finishMessageTrace,
+  deferMessageTraceFinish,
+  completeDeferredMessageTrace,
   runWithMessageTrace,
   recordPrismaQuery,
   recordWorkspaceRealtimeEmit,

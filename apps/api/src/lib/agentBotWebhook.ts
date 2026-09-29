@@ -39,6 +39,11 @@ import {
   getCachedAutomationAgentProfile,
   runWithAgentTurnLookupCache,
 } from "./cachedAutomationAgentProfile.js";
+import { completeDeferredMessageTrace } from "./message-processing-monitor/service.js";
+import {
+  runWithTraceHandle,
+  type ActiveTraceHandle,
+} from "./message-processing-monitor/traceContext.js";
 
 /** UUID reservado em `event: webhook_test` quando ainda não existe bot gravado (formulário de criação). */
 export const AGENT_BOT_WEBHOOK_TEST_PLACEHOLDER_ID = "00000000-0000-0000-0000-000000000001";
@@ -200,7 +205,9 @@ function botManagedByOpenConduit(config: unknown): boolean {
 }
 
 
-async function executeNativeAgentTurn(input: ExecuteNativeAgentTurnInput): Promise<void> {
+async function executeNativeAgentTurn(
+  input: ExecuteNativeAgentTurnInput & { messageTraceHandle?: ActiveTraceHandle | null },
+): Promise<void> {
   const {
     organizationId,
     bot,
@@ -210,6 +217,7 @@ async function executeNativeAgentTurn(input: ExecuteNativeAgentTurnInput): Promi
     log,
     userMessageOverride,
     batchedMessageIds,
+    messageTraceHandle,
   } = input;
   const userMessage = (userMessageOverride ?? message.body ?? "").trim();
 
@@ -263,6 +271,7 @@ async function executeNativeAgentTurn(input: ExecuteNativeAgentTurnInput): Promi
         { id: "agent_engine_queue", name: "Agent Engine Queue" },
         "Execução enfileirada — worker BullMQ processará a resposta",
       );
+      completeDeferredMessageTrace(input.messageTraceHandle, "completed");
       return;
     }
     exLog.warn(
@@ -291,8 +300,9 @@ async function dispatchAgentBotNativeFallback(input: {
   contact: Contact;
   message: Message;
   log: FastifyBaseLogger;
+  messageTraceHandle?: ActiveTraceHandle | null;
 }): Promise<void> {
-  const { organizationId, bot, conversation, contact, message, log } = input;
+  const { organizationId, bot, conversation, contact, message, log, messageTraceHandle } = input;
 
   return await runWithAgentTurnLookupCache(bot.id, async () => {
   const profile = await getCachedAutomationAgentProfile(bot.id, organizationId);
@@ -307,11 +317,12 @@ async function dispatchAgentBotNativeFallback(input: {
       message,
       log,
       engineConfig,
-      onFlush: executeNativeAgentTurn,
+      onFlush: (turnInput) =>
+        executeNativeAgentTurn({ ...turnInput, messageTraceHandle }),
     });
     if (batchResult.action === "deferred") return;
     const { action: _action, ...turnInput } = batchResult;
-    await executeNativeAgentTurn(turnInput);
+    await executeNativeAgentTurn({ ...turnInput, messageTraceHandle });
     return;
   }
 
@@ -322,6 +333,7 @@ async function dispatchAgentBotNativeFallback(input: {
     contact,
     message,
     log,
+    messageTraceHandle,
   });
   });
 }
@@ -407,8 +419,10 @@ export async function dispatchAgentBotWebhook(input: {
   contact: Contact;
   message: Message;
   log: FastifyBaseLogger;
+  messageTraceHandle?: ActiveTraceHandle | null;
 }): Promise<void> {
-  const { organizationId, settings, contact, message, log } = input;
+  const runDispatch = async () => {
+  const { organizationId, settings, contact, message, log, messageTraceHandle } = input;
   let conversation = input.conversation;
   const bot = settings.agentBot;
   if (!settings.agentBotId || !bot?.isActive) {
@@ -493,6 +507,7 @@ export async function dispatchAgentBotWebhook(input: {
       contact,
       message,
       log,
+      messageTraceHandle,
     });
     return;
   }
@@ -579,6 +594,13 @@ export async function dispatchAgentBotWebhook(input: {
       },
     })
     .catch(() => {});
+  };
+
+  if (input.messageTraceHandle) {
+    await runWithTraceHandle(input.messageTraceHandle, runDispatch);
+  } else {
+    await runDispatch();
+  }
 }
 
 /** Comparação segura do cabeçalho recebido pelo integrador (opcional). */

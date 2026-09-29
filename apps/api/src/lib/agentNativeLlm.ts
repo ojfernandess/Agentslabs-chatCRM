@@ -15,7 +15,11 @@ import {
 import { mapPreviewUsageToDetails, type LlmUsageDetails } from "./ai-billing/llmUsageDetails.js";
 import type { PreviewLlmUsage } from "./promptModulePreviewLlm.js";
 import { prisma } from "../db.js";
-import { getCachedAutomationAgentProfile } from "./cachedAutomationAgentProfile.js";
+import {
+  getCachedAutomationAgentProfile,
+  getCachedNativeAgentMessages,
+  getCachedNativeHttpCustomTools,
+} from "./cachedAutomationAgentProfile.js";
 import {
   callAnthropicMessagesWithTools,
   callOpenAiCompatibleChatWithTools,
@@ -1337,25 +1341,9 @@ export async function invokeSingleNativeAgentTool(input: {
   const pinnedArticleIds = parseLinkedKnowledgeArticleIdsFromBehavior(behaviorConfig);
 
   const nativeHttpCustomToolIds = parseEnabledNativeHttpCustomToolIds(behaviorConfig);
-  let customHttpTools: AutomationHttpToolRow[] = [];
-  if (nativeHttpCustomToolIds.length > 0) {
-    const rows = await prisma.automationCustomTool.findMany({
-      where: { organizationId, id: { in: nativeHttpCustomToolIds }, isActive: true },
-      select: {
-        id: true,
-        organizationId: true,
-        name: true,
-        description: true,
-        toolType: true,
-        config: true,
-        parametersSchema: true,
-      },
-    });
-    const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
-    customHttpTools = rows
-      .filter((r) => isAgentExecutableAutomationTool(r))
-      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-  }
+  const customHttpTools: AutomationHttpToolRow[] = (
+    await getCachedNativeHttpCustomTools(organizationId, nativeHttpCustomToolIds)
+  ).filter((r) => isAgentExecutableAutomationTool(r));
 
   const httpRow = customHttpTools.find((r) => r.name.trim().toLowerCase() === toolName.trim().toLowerCase());
   if (httpRow) {
@@ -1935,25 +1923,9 @@ async function generateNativeAgentReplyCore(input: {
       ? (profile.behaviorConfig as Record<string, unknown>)
       : {};
   const executionHints = input.executionHints;
-  let customHttpTools: AutomationHttpToolRow[] = [];
-  if (nativeHttpCustomToolIds.length > 0) {
-    const rows = await prisma.automationCustomTool.findMany({
-      where: { organizationId, id: { in: nativeHttpCustomToolIds }, isActive: true },
-      select: {
-        id: true,
-        organizationId: true,
-        name: true,
-        description: true,
-        toolType: true,
-        config: true,
-        parametersSchema: true,
-      },
-    });
-    const order = new Map(nativeHttpCustomToolIds.map((id, i) => [id, i]));
-    customHttpTools = rows
-      .filter((r) => isAgentExecutableAutomationTool(r))
-      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-  }
+  const customHttpTools: AutomationHttpToolRow[] = (
+    await getCachedNativeHttpCustomTools(organizationId, nativeHttpCustomToolIds)
+  ).filter((r) => isAgentExecutableAutomationTool(r));
   const agentInstructionByToolId = parseConnectedToolAgentInstructions(profile.behaviorConfig);
   const allowedTagIds = flags.assign_contact_tags
     ? await resolveAgentAssignableTagIds(organizationId, profile.behaviorConfig)
@@ -2001,19 +1973,13 @@ async function generateNativeAgentReplyCore(input: {
 
   let kbHistoryForSearch: KnowledgeConversationTurn[] = [];
   if (historyOverride == null && !isolateForConnectedToolsEarly) {
-    const kbHistoryRows = (
-      await prisma.message.findMany({
-        where: buildNativeAgentMessageWhere({
-          conversationId: conversation.id,
-          excludeMessageId: message.id,
-          excludeMessageIds: batchedMessageIds,
-          lastClearedAt: automationCtx.lastClearedAt,
-        }),
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        select: { direction: true, body: true },
-      })
-    ).reverse();
+    const kbHistoryRows = await getCachedNativeAgentMessages({
+      conversationId: conversation.id,
+      excludeMessageId: message.id,
+      excludeMessageIds: batchedMessageIds,
+      lastClearedAt: automationCtx.lastClearedAt,
+      take: 10,
+    });
     kbHistoryForSearch = kbHistoryRows
       .map((m) => ({
         role: m.direction === "INBOUND" ? ("user" as const) : ("assistant" as const),
@@ -2618,19 +2584,14 @@ async function generateNativeAgentReplyCore(input: {
   let loadedHistory: PreviewChatTurn[] = [];
   if (historyOverride == null && !isolateForConnectedTools) {
     loadedHistory = (
-      await prisma.message.findMany({
-        where: buildNativeAgentMessageWhere({
-          conversationId: conversation.id,
-          excludeMessageId: message.id,
-          excludeMessageIds: batchedMessageIds,
-          lastClearedAt,
-        }),
-        orderBy: { createdAt: "desc" },
+      await getCachedNativeAgentMessages({
+        conversationId: conversation.id,
+        excludeMessageId: message.id,
+        excludeMessageIds: batchedMessageIds,
+        lastClearedAt,
         take: 20,
-        select: { direction: true, body: true },
       })
     )
-      .reverse()
       .map((m) => ({
         role: m.direction === "INBOUND" ? ("user" as const) : ("assistant" as const),
         content: (m.body ?? "").trim(),

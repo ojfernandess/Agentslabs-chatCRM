@@ -355,7 +355,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
     !resolvedDeliveryChannel &&
     !forceWhatsAppDelivery &&
     !isPrivate &&
-    type !== "TEMPLATE"
+    type !== "TEMPLATE" &&
+    inboxChannelType !== "WHATSAPP"
   ) {
     if (await isWebchatOutboundActive(organizationId, conversation.id)) {
       resolvedDeliveryChannel = "WEBCHAT";

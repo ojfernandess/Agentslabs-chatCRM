@@ -3,6 +3,7 @@ import { prisma } from "../../../db.js";
 import {
   getCachedAutomationAgentProfile,
   getCachedAutomationConversationContextRow,
+  getCachedOrganizationSettings,
   primeCachedAutomationConversationContext,
 } from "../../cachedAutomationAgentProfile.js";
 import type { AutomationContextState } from "../../automationConversationContextLib.js";
@@ -92,10 +93,7 @@ async function resolveConversationMemoryContext(
   const ctx = await getCachedAutomationConversationContextRow(conversationId);
   let botId = ctx?.botId ?? null;
   if (!botId) {
-    const settings = await prisma.settings.findUnique({
-      where: { organizationId },
-      select: { agentBotId: true },
-    });
+    const settings = await getCachedOrganizationSettings(organizationId);
     botId = settings?.agentBotId ?? null;
   }
 
