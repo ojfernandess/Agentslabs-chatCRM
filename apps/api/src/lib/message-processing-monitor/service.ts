@@ -27,6 +27,7 @@ import {
   isMessageProcessingMonitorEnabled,
   resolveDeploymentEnvironment,
 } from "./config.js";
+import { getAgentEngineQueueDiagnostics } from "../agent-engine/queue/agentEngineQueue.js";
 
 const traceById = new Map<string, ActiveTraceHandle>();
 
@@ -290,6 +291,7 @@ export function getMonitorOverview() {
   const snap = captureResourceSnapshot();
   return {
     environment: resolveDeploymentEnvironment(),
+    agentEngineQueue: getAgentEngineQueueDiagnostics(),
     session,
     system: {
       ...snap,

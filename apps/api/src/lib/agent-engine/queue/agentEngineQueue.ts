@@ -35,6 +35,21 @@ export function isAgentEngineQueueAvailable(): boolean {
   return redisQueueOperational;
 }
 
+export function getAgentEngineQueueDiagnostics() {
+  const redisUrlConfigured = Boolean(getRedisUrl());
+  return {
+    redisUrlConfigured,
+    queueOperational: redisQueueOperational,
+    defaultExecutionQueueEnabled: false,
+    activationHint:
+      redisUrlConfigured && redisQueueOperational
+        ? "Set behaviorConfig.agentEngine.executionQueueEnabled=true on the bot profile to enqueue replies."
+        : redisUrlConfigured
+          ? "REDIS_URL is set but the queue is not operational — check Redis connectivity at API startup."
+          : "Set REDIS_URL and restart the API to enable the agent engine BullMQ queue.",
+  };
+}
+
 export function resolveAgentEngineQueuePriority(
   priority: ConversationPriority | null | undefined,
 ): number {

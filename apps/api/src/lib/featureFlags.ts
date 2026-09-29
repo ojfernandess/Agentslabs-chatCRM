@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { getCachedOrganizationFeatureEnabled } from "./cachedAutomationAgentProfile.js";
 
 /** Chaves conhecidas; valores em falta na BD usam `defaultEnabled`. */
 export const FEATURE_FLAG_DEFINITIONS = [
@@ -121,7 +122,7 @@ export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];
 
 const NVOIP_FEATURE_KEYS = ["nvoip_voice", "nvoip_sms", "nvoip_otp", "nvoip_whatsapp"] as const;
 
-export async function isOrganizationFeatureEnabled(
+async function resolveOrganizationFeatureEnabled(
   organizationId: string,
   key: FeatureFlagKey,
 ): Promise<boolean> {
@@ -160,6 +161,15 @@ export async function isOrganizationFeatureEnabled(
   }
 
   return fallback;
+}
+
+export async function isOrganizationFeatureEnabled(
+  organizationId: string,
+  key: FeatureFlagKey,
+): Promise<boolean> {
+  return getCachedOrganizationFeatureEnabled(organizationId, key, () =>
+    resolveOrganizationFeatureEnabled(organizationId, key),
+  );
 }
 
 export async function isAnyNvoipFeatureEnabled(organizationId: string): Promise<boolean> {

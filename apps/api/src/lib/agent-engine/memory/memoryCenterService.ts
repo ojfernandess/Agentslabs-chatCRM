@@ -1,6 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db.js";
-import { getCachedAutomationAgentProfile } from "../../cachedAutomationAgentProfile.js";
+import {
+  getCachedAutomationAgentProfile,
+  getCachedAutomationConversationContextRow,
+  primeCachedAutomationConversationContext,
+} from "../../cachedAutomationAgentProfile.js";
 import type { AutomationContextState } from "../../automationConversationContextLib.js";
 import { parseAgentEngineConfig } from "../config/parseAgentEngineConfig.js";
 import {
@@ -85,10 +89,7 @@ async function resolveConversationMemoryContext(
   });
   if (!conv) return null;
 
-  const ctx = await prisma.automationConversationContext.findUnique({
-    where: { conversationId },
-    select: { botId: true },
-  });
+  const ctx = await getCachedAutomationConversationContextRow(conversationId);
   let botId = ctx?.botId ?? null;
   if (!botId) {
     const settings = await prisma.settings.findUnique({
@@ -127,11 +128,8 @@ async function removeLegacyMemoryCenterEntry(
   conversationId: string,
   memoryId: string,
 ): Promise<void> {
-  const ctx = await prisma.automationConversationContext.findFirst({
-    where: { conversationId, organizationId },
-    select: { state: true },
-  });
-  if (!ctx) return;
+  const ctx = await getCachedAutomationConversationContextRow(conversationId);
+  if (!ctx || ctx.organizationId !== organizationId) return;
   const prevState =
     ctx.state && typeof ctx.state === "object" ? (ctx.state as Record<string, unknown>) : {};
   const mc = parseMemoryCenterFromState(prevState);
@@ -142,6 +140,10 @@ async function removeLegacyMemoryCenterEntry(
   await prisma.automationConversationContext.updateMany({
     where: { conversationId, organizationId },
     data: { state: nextState as Prisma.InputJsonValue },
+  });
+  primeCachedAutomationConversationContext(conversationId, {
+    ...ctx,
+    state: nextState,
   });
 }
 
@@ -156,11 +158,8 @@ async function patchLegacyMemoryCenterEntry(
     score?: number;
   },
 ): Promise<boolean> {
-  const ctx = await prisma.automationConversationContext.findFirst({
-    where: { conversationId, organizationId },
-    select: { state: true },
-  });
-  if (!ctx) return false;
+  const ctx = await getCachedAutomationConversationContextRow(conversationId);
+  if (!ctx || ctx.organizationId !== organizationId) return false;
   const prevState =
     ctx.state && typeof ctx.state === "object" ? (ctx.state as Record<string, unknown>) : {};
   const mc = parseMemoryCenterFromState(prevState);
@@ -182,6 +181,10 @@ async function patchLegacyMemoryCenterEntry(
   await prisma.automationConversationContext.updateMany({
     where: { conversationId, organizationId },
     data: { state: nextState as Prisma.InputJsonValue },
+  });
+  primeCachedAutomationConversationContext(conversationId, {
+    ...ctx,
+    state: nextState,
   });
   return true;
 }
@@ -403,9 +406,7 @@ export async function updateMemoryCenterForConversation(input: {
   });
   if (!conv) return null;
 
-  const ctx = await prisma.automationConversationContext.findUnique({
-    where: { conversationId: conv.id },
-  });
+  const ctx = await getCachedAutomationConversationContextRow(conv.id);
   if (!ctx) return buildMemoryCenterView({ organizationId: input.organizationId, contactId: conv.contactId, conversationId: conv.id });
 
   const prevState =
@@ -440,6 +441,10 @@ export async function updateMemoryCenterForConversation(input: {
   await prisma.automationConversationContext.update({
     where: { conversationId: conv.id },
     data: { state: nextState as Prisma.InputJsonValue },
+  });
+  primeCachedAutomationConversationContext(conv.id, {
+    ...ctx,
+    state: nextState,
   });
 
   return buildMemoryCenterView({
@@ -551,10 +556,7 @@ export async function importContactMemories(input: {
   });
   if (!conv) return null;
 
-  const ctx = await prisma.automationConversationContext.findUnique({
-    where: { conversationId: conv.id },
-    select: { botId: true },
-  });
+  const ctx = await getCachedAutomationConversationContextRow(conv.id);
 
   const provider = createMemoryProvider("openconduit");
   for (const row of input.memories) {

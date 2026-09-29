@@ -1,6 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db.js";
-import { getCachedAutomationAgentProfile } from "../../cachedAutomationAgentProfile.js";
+import {
+  getCachedAutomationAgentProfile,
+  getCachedAutomationConversationContextRow,
+  primeCachedAutomationConversationContext,
+} from "../../cachedAutomationAgentProfile.js";
 import type { AgentMemoryKind } from "../types.js";
 import {
   buildMemoryContextAppendix,
@@ -330,10 +334,14 @@ export class OpenNexoMemoryProvider implements MemoryProvider {
   }
 
   async load(conversationId: string, organizationId: string): Promise<Record<string, unknown>> {
-    const row = await prisma.automationConversationContext.findFirst({
-      where: { conversationId, organizationId },
-      select: { state: true, updatedAt: true, botId: true },
-    });
+    const cached = await getCachedAutomationConversationContextRow(conversationId);
+    const row =
+      cached?.organizationId === organizationId
+        ? cached
+        : await prisma.automationConversationContext.findFirst({
+            where: { conversationId, organizationId },
+            select: { state: true, updatedAt: true, botId: true },
+          });
     const state =
       row?.state && typeof row.state === "object" ? (row.state as Record<string, unknown>) : {};
     const mc = parseMemoryCenterFromState(state);
@@ -367,10 +375,14 @@ export class OpenNexoMemoryProvider implements MemoryProvider {
     organizationId: string,
     patch: Record<string, unknown>,
   ): Promise<void> {
-    const row = await prisma.automationConversationContext.findFirst({
-      where: { conversationId, organizationId },
-      select: { id: true, state: true, botId: true },
-    });
+    const cached = await getCachedAutomationConversationContextRow(conversationId);
+    const row =
+      cached?.organizationId === organizationId
+        ? cached
+        : await prisma.automationConversationContext.findFirst({
+            where: { conversationId, organizationId },
+            select: { id: true, state: true, botId: true },
+          });
     if (!row) return;
 
     const behaviorConfig = row.botId
@@ -406,9 +418,19 @@ export class OpenNexoMemoryProvider implements MemoryProvider {
 
     const prev =
       row.state && typeof row.state === "object" ? (row.state as Record<string, unknown>) : {};
+    const nextState = { ...prev, agentEngineMemory: patch };
     await prisma.automationConversationContext.update({
       where: { conversationId },
-      data: { state: { ...prev, agentEngineMemory: patch } as Prisma.InputJsonValue },
+      data: { state: nextState as Prisma.InputJsonValue },
+    });
+    primeCachedAutomationConversationContext(conversationId, {
+      organizationId,
+      conversationId,
+      botId: row.botId ?? null,
+      state: nextState,
+      lastClearedAt: cached?.lastClearedAt ?? null,
+      id: cached?.id,
+      updatedAt: cached?.updatedAt,
     });
   }
 }

@@ -1,6 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../../db.js";
-import { getCachedAutomationAgentProfile } from "../../cachedAutomationAgentProfile.js";
+import {
+  getCachedAutomationAgentProfile,
+  getCachedAutomationConversationContextRow,
+  primeCachedAutomationConversationContext,
+} from "../../cachedAutomationAgentProfile.js";
 import {
   orgMemoryStoreKey,
   parseOrgMemoryStore,
@@ -68,11 +72,9 @@ function memoryKeyForScope(scope: MemoryScope): string {
 
 async function readContactState(ref: ScopeRef): Promise<Record<string, unknown>> {
   if (!ref.conversationId) return {};
-  const row = await prisma.automationConversationContext.findFirst({
-    where: { conversationId: ref.conversationId, organizationId: ref.organizationId },
-    select: { state: true },
-  });
-  return row?.state && typeof row.state === "object" ? (row.state as Record<string, unknown>) : {};
+  const row = await getCachedAutomationConversationContextRow(ref.conversationId);
+  if (!row || row.organizationId !== ref.organizationId) return {};
+  return row.state && typeof row.state === "object" ? (row.state as Record<string, unknown>) : {};
 }
 
 async function writeContactState(ref: ScopeRef, state: Record<string, unknown>): Promise<void> {
@@ -80,6 +82,16 @@ async function writeContactState(ref: ScopeRef, state: Record<string, unknown>):
   await prisma.automationConversationContext.updateMany({
     where: { conversationId: ref.conversationId, organizationId: ref.organizationId },
     data: { state: state as Prisma.InputJsonValue },
+  });
+  const cached = await getCachedAutomationConversationContextRow(ref.conversationId);
+  primeCachedAutomationConversationContext(ref.conversationId, {
+    organizationId: ref.organizationId,
+    conversationId: ref.conversationId,
+    botId: cached?.botId ?? ref.botId ?? null,
+    state,
+    lastClearedAt: cached?.lastClearedAt ?? null,
+    id: cached?.id,
+    updatedAt: cached?.updatedAt,
   });
 }
 

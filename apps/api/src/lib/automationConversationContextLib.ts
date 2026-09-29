@@ -1,6 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { clearContactMemoriesForConversation } from "./agent-engine/memory/memoryCenterService.js";
+import {
+  getCachedAutomationConversationContextRow,
+  primeCachedAutomationConversationContext,
+  type CachedAutomationConversationContextRow,
+} from "./cachedAutomationAgentProfile.js";
 
 export type FollowUpCampaignContextState = {
   campaignId: string;
@@ -40,6 +45,16 @@ export type AutomationContextState = {
 
 function asJson(v: unknown): Prisma.InputJsonValue {
   return v as Prisma.InputJsonValue;
+}
+
+function primeAutomationContextCache(
+  conversationId: string,
+  row: Omit<CachedAutomationConversationContextRow, "conversationId">,
+): void {
+  primeCachedAutomationConversationContext(conversationId, {
+    conversationId,
+    ...row,
+  });
 }
 
 function parseNativeTurn(raw: unknown): AutomationContextState["nativeTurn"] {
@@ -439,10 +454,7 @@ async function resolveBotIdForContextSeed(
   fallbackBotId: string | null,
 ): Promise<string | null> {
   if (fallbackBotId) return fallbackBotId;
-  const existing = await prisma.automationConversationContext.findUnique({
-    where: { conversationId },
-    select: { botId: true },
-  });
+  const existing = await getCachedAutomationConversationContextRow(conversationId);
   if (existing?.botId) return existing.botId;
   const exec = await prisma.automationExecution.findFirst({
     where: { organizationId, conversationId },
@@ -488,7 +500,7 @@ export async function clearAutomationConversationContext(
 
   const existingRows = await prisma.automationConversationContext.findMany({
     where: { organizationId, conversationId: { in: conversationIds } },
-    select: { conversationId: true, state: true },
+    select: { conversationId: true, state: true, botId: true },
   });
 
   for (const row of existingRows) {
@@ -496,6 +508,12 @@ export async function clearAutomationConversationContext(
     await prisma.automationConversationContext.update({
       where: { conversationId: row.conversationId },
       data: { state: asJson(nextState), lastClearedAt: clearedAt },
+    });
+    primeAutomationContextCache(row.conversationId, {
+      organizationId,
+      botId: row.botId,
+      state: nextState,
+      lastClearedAt: clearedAt,
     });
   }
 
@@ -523,6 +541,14 @@ export async function clearAutomationConversationContext(
       })),
       skipDuplicates: true,
     });
+    for (const id of missingIds) {
+      primeAutomationContextCache(id, {
+        organizationId,
+        botId: seedBotId,
+        state: {},
+        lastClearedAt: clearedAt,
+      });
+    }
   }
 
   let memoriesCleared = 0;
@@ -542,10 +568,7 @@ export async function loadAutomationConversationContext(conversationId: string):
   state: AutomationContextState;
   lastClearedAt: Date | null;
 }> {
-  const row = await prisma.automationConversationContext.findUnique({
-    where: { conversationId },
-    select: { state: true, lastClearedAt: true },
-  });
+  const row = await getCachedAutomationConversationContextRow(conversationId);
   return {
     state: parseAutomationContextState(row?.state),
     lastClearedAt: row?.lastClearedAt ?? null,
@@ -590,6 +613,12 @@ export async function seedFollowUpCampaignAutomationContext(params: {
       lastClearedAt: clearedAt,
     },
   });
+  primeAutomationContextCache(params.conversationId, {
+    organizationId: params.organizationId,
+    botId: params.botId,
+    state: { followUpCampaign },
+    lastClearedAt: clearedAt,
+  });
 }
 
 export async function mergeNativeTurnAutomationContext(params: {
@@ -621,6 +650,12 @@ export async function mergeNativeTurnAutomationContext(params: {
       botId: params.botId,
       state: asJson(state),
     },
+  });
+  primeAutomationContextCache(params.conversationId, {
+    organizationId: params.organizationId,
+    botId: params.botId,
+    state,
+    lastClearedAt: existing.lastClearedAt,
   });
 }
 
@@ -655,6 +690,12 @@ export async function mergeNativeToolRoundAutomationContext(params: {
       state: asJson(state),
     },
   });
+  primeAutomationContextCache(params.conversationId, {
+    organizationId: params.organizationId,
+    botId: params.botId,
+    state,
+    lastClearedAt: existing.lastClearedAt,
+  });
 }
 
 /** Acrescenta/actualiza slots de fluxo sem apagar o resto do estado. */
@@ -686,6 +727,12 @@ export async function mergeFlowSlotsAutomationContext(params: {
       state: asJson(state),
     },
   });
+  primeAutomationContextCache(params.conversationId, {
+    organizationId: params.organizationId,
+    botId: params.botId,
+    state,
+    lastClearedAt: existing.lastClearedAt,
+  });
 
   return mergedSlots;
 }
@@ -695,11 +742,8 @@ export async function resolveAutomationBotIdForConversation(input: {
   organizationId: string;
   conversationId: string;
 }): Promise<string | null> {
-  const ctx = await prisma.automationConversationContext.findFirst({
-    where: { conversationId: input.conversationId, organizationId: input.organizationId },
-    select: { botId: true },
-  });
-  if (ctx?.botId) return ctx.botId;
+  const ctx = await getCachedAutomationConversationContextRow(input.conversationId);
+  if (ctx?.organizationId === input.organizationId && ctx.botId) return ctx.botId;
 
   const budget = await prisma.conversationInteractionBudget.findFirst({
     where: { conversationId: input.conversationId, organizationId: input.organizationId },
@@ -754,6 +798,12 @@ export async function replaceFlowSlotsAutomationContext(params: {
       botId: params.botId,
       state: asJson(state),
     },
+  });
+  primeAutomationContextCache(params.conversationId, {
+    organizationId: params.organizationId,
+    botId: params.botId,
+    state,
+    lastClearedAt: existing.lastClearedAt,
   });
 
   return state.flowSlots ?? {};
