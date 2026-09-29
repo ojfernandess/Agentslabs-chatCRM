@@ -1,6 +1,6 @@
 # EasyPanel: domínio e portas
 
-O stack expõe a aplicação pelo contentor **caddy**. Por defeito o compose mapeia **8080** (host) → **80** (caddy) e **8443** → **443**. O `Caddyfile` serve **só HTTP** dentro do Docker; o **TLS** costuma ser do próprio EasyPanel.
+O stack expõe a aplicação pelo contentor **caddy**. Por defeito o compose mapeia **8080** (host) → **80** (caddy). O `Caddyfile` serve **só HTTP** dentro do Docker; o **TLS** é do próprio EasyPanel (não há porta 443 no compose).
 
 ## 1. Variáveis de ambiente (projeto Compose)
 
@@ -11,8 +11,7 @@ Define no painel (Environment), no mínimo:
 | `JWT_SECRET` | (64+ chars aleatórios) | Obrigatório. |
 | `PUBLIC_URL` | `https://crm.teudominio.com` | URL **exata** que o utilizador abre no browser (sem barra final no fim). Usada nos webhooks e CORS. |
 | `DB_PASSWORD` | palavra-passe forte | Alinha com o URL interno do Postgres no compose. |
-| `CADDY_HTTP_PORT` | `8080` | Só se quiseres outra porta no host (por omissão já é 8080). |
-| `CADDY_HTTPS_PORT` | `8443` | Idem para HTTPS interno (o bundle atual usa sobretudo HTTP no caddy). |
+| `CADDY_HTTP_PORT` | `8081` | Só se **não** usares `docker-compose.easypanel.yml` e a 8080 estiver ocupada. |
 
 Opcional: `RUN_DB_SEED=true` só no primeiro deploy; depois `false`.
 
@@ -34,9 +33,19 @@ Para VPS **sem** EasyPanel a fazer proxy (só compose), usa o `docker-compose.ym
   → `PUBLIC_URL=https://chat-agentslabs-chat.pbsqki.easypanel.host`
 - Se testares com IP: `PUBLIC_URL=http://IP:8080` (CORS e webhooks refletem isso).
 
-## 4. Conflito de porta 80 no servidor
+## 4. Conflito de portas no servidor (8080, 8443, 80)
 
-Se o deploy falhar com “port 80 already allocated”, não forces `80:80` no override: mantém **8080** (ou a variável `CADDY_HTTP_PORT`) e aponta o domínio do EasyPanel para essa porta. Opcionalmente inclui no comando compose, **por último**, `docker-compose.easypanel.yml`.
+**Recomendado no EasyPanel:** no comando compose (Settings → Compose), inclui **por último** `docker-compose.easypanel.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.easypanel.yml up --build -d
+```
+
+No domínio: serviço **`caddy`**, porta **`80`** (interna). **Não** uses 8080/8081 no domínio — isso é porta do host, não do container.
+
+Se não puderes alterar o comando compose, define `CADDY_HTTP_PORT` para uma porta livre (ex. `8081`). Erros antigos com **8443** deixaram de aplicar (o compose já não publica HTTPS).
+
+Se o deploy falhar com “port 80 already allocated”, não forces `80:80` no override do painel.
 
 ## 5. Verificar
 
