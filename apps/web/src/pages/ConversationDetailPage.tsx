@@ -1400,7 +1400,6 @@ export function ConversationDetailPage() {
       const merged: ConversationDetail = {
         ...base,
         messages: [...existing, message],
-        updatedAt: message.createdAt ?? message.sentAt ?? base.updatedAt,
         ...(newerCursor ? { messagesNewerCursor: newerCursor } : {}),
       };
       setCachedConversationMerged(id, merged, base);

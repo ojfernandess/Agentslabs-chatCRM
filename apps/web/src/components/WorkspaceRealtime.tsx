@@ -242,11 +242,11 @@ export function WorkspaceRealtime() {
             id: data.message.id,
             status: typeof data.message.status === "string" ? data.message.status : "DELIVERED",
             providerError: data.message.providerError ?? null,
-            body: typeof data.message.body === "string" ? data.message.body : undefined,
+            body: typeof data.message.body === "string" ? data.message.body : null,
             mediaUrl:
-              typeof data.message.mediaUrl === "string" ? data.message.mediaUrl : undefined,
+              typeof data.message.mediaUrl === "string" ? data.message.mediaUrl : null,
             mediaType:
-              typeof data.message.mediaType === "string" ? data.message.mediaType : undefined,
+              typeof data.message.mediaType === "string" ? data.message.mediaType : null,
           },
         });
       } else if (
