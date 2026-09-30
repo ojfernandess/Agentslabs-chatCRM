@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
   Activity,
@@ -10,6 +10,7 @@ import {
   HardDrive,
   LayoutDashboard,
   LogOut,
+  Menu,
   MessageCircle,
   Plug,
   HeartPulse,
@@ -22,6 +23,7 @@ import {
   CreditCard,
   CircleHelp,
   LifeBuoy,
+  X,
 } from "lucide-react";
 import { brandAssetUrl, systemLogoOnDarkBgClass } from "@/lib/brandingAssets";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -158,12 +160,12 @@ export function SuperAdminPageHeader({
   icon?: ReactNode;
 }) {
   return (
-    <div className="mb-8 flex flex-col gap-4 border-b border-slate-200/80 pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-6 flex flex-col gap-4 border-b border-slate-200/80 pb-5 sm:mb-8 sm:flex-row sm:items-end sm:justify-between sm:pb-6">
       <div className="flex min-w-0 items-start gap-3">
         {icon ? <div className="shrink-0">{icon}</div> : null}
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Control plane</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+          <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h1>
           {subtitle ? <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">{subtitle}</p> : null}
         </div>
       </div>
@@ -234,6 +236,100 @@ export function SuperAdminPanel({
   );
 }
 
+function SuperAdminSidebar({
+  section,
+  onSectionChange,
+  userEmail,
+  onLogout,
+  onNavigate,
+}: {
+  section: SuperSection;
+  onSectionChange: (id: SuperSection) => void;
+  userEmail?: string;
+  onLogout: () => void;
+  onNavigate?: (id: SuperSection) => void;
+}) {
+  const { t } = useI18n();
+
+  const selectSection = (id: SuperSection) => {
+    onSectionChange(id);
+    onNavigate?.(id);
+  };
+
+  return (
+    <>
+      <div className="border-b border-white/10 px-5 py-5">
+        <img
+          src={brandAssetUrl("/logo.svg")}
+          alt=""
+          className={`h-10 w-auto max-w-[200px] object-contain ${systemLogoOnDarkBgClass}`}
+          decoding="async"
+        />
+        <div className="mt-4 flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/20 ring-1 ring-brand-400/30">
+            <Shield className="h-4 w-4 text-brand-300" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              {t("superAdmin.consoleBadge")}
+            </p>
+            <p className="truncate text-sm font-medium text-white">{t("superAdmin.consoleTitle")}</p>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.labelKey}>
+            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              {t(group.labelKey)}
+            </p>
+            <ul className="space-y-0.5">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = section === item.id;
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => selectSection(item.id)}
+                      className={clsx(
+                        "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                        active
+                          ? "bg-white/10 font-medium text-white ring-1 ring-white/10"
+                          : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
+                      )}
+                    >
+                      <Icon className={clsx("h-4 w-4 shrink-0", active ? "text-brand-300" : "text-slate-500")} />
+                      <span className="truncate">{t(item.labelKey)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      <div className="border-t border-white/10 p-4">
+        {userEmail ? (
+          <p className="mb-3 truncate px-1 text-xs text-slate-500" title={userEmail}>
+            {userEmail}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-200 transition-colors hover:bg-white/10"
+        >
+          <LogOut className="h-4 w-4" />
+          {t("nav.logout")}
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function SuperAdminShell({
   section,
   onSectionChange,
@@ -243,107 +339,88 @@ export function SuperAdminShell({
   children,
 }: SuperAdminShellProps) {
   const { t } = useI18n();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     pushLightThemeScope();
     return () => popThemeScope();
   }, []);
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [section]);
+
   const sectionTitle = t(SECTION_TITLE_KEYS[section]);
   const sectionSubtitleKey = SECTION_SUBTITLE_KEYS[section];
   const sectionSubtitle = sectionSubtitleKey ? t(sectionSubtitleKey) : undefined;
 
   return (
-    <div className="flex min-h-screen bg-[#f4f6fb] text-slate-900">
-      <aside className="flex w-[260px] shrink-0 flex-col border-r border-white/10 bg-[#1B2230] text-slate-200">
-        <div className="border-b border-white/10 px-5 py-5">
-          <img
-            src={brandAssetUrl("/logo.svg")}
-            alt=""
-            className={`h-10 w-auto max-w-[200px] object-contain ${systemLogoOnDarkBgClass}`}
-            decoding="async"
-          />
-          <div className="mt-4 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/20 ring-1 ring-brand-400/30">
-              <Shield className="h-4 w-4 text-brand-300" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                {t("superAdmin.consoleBadge")}
-              </p>
-              <p className="truncate text-sm font-medium text-white">{t("superAdmin.consoleTitle")}</p>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.labelKey}>
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                {t(group.labelKey)}
-              </p>
-              <ul className="space-y-0.5">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = section === item.id;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => onSectionChange(item.id)}
-                        className={clsx(
-                          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                          active
-                            ? "bg-white/10 font-medium text-white ring-1 ring-white/10"
-                            : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
-                        )}
-                      >
-                        <Icon className={clsx("h-4 w-4 shrink-0", active ? "text-brand-300" : "text-slate-500")} />
-                        <span className="truncate">{t(item.labelKey)}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </nav>
-
-        <div className="border-t border-white/10 p-4">
-          {userEmail ? (
-            <p className="mb-3 truncate px-1 text-xs text-slate-500" title={userEmail}>
-              {userEmail}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={onLogout}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 transition-colors hover:bg-white/10"
-          >
-            <LogOut className="h-4 w-4" />
-            {t("nav.logout")}
-          </button>
-        </div>
+    <div className="flex min-h-dvh bg-[#f4f6fb] text-slate-900">
+      <aside className="hidden w-[260px] shrink-0 flex-col border-r border-white/10 bg-[#1B2230] text-slate-200 lg:flex lg:flex-col">
+        <SuperAdminSidebar
+          section={section}
+          onSectionChange={onSectionChange}
+          userEmail={userEmail}
+          onLogout={onLogout}
+        />
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/80 px-6 backdrop-blur-md">
-          <div className="min-w-0">
+      {mobileNavOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            onClick={() => setMobileNavOpen(false)}
+            aria-label={t("common.close")}
+          />
+          <aside className="relative flex h-full w-[min(100vw-2.5rem,280px)] max-w-full flex-col border-r border-white/10 bg-[#1B2230] text-slate-200 shadow-xl">
+            <div className="absolute right-2 top-2 z-10">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white"
+                aria-label={t("common.close")}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <SuperAdminSidebar
+              section={section}
+              onSectionChange={onSectionChange}
+              userEmail={userEmail}
+              onLogout={onLogout}
+              onNavigate={() => setMobileNavOpen(false)}
+            />
+          </aside>
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex min-h-14 shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white/80 px-4 backdrop-blur-md lg:justify-between lg:px-6">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200/80 text-slate-700 hover:bg-slate-50 lg:hidden"
+            aria-label={t("common.openMenu")}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-slate-900">{sectionTitle}</p>
             {sectionSubtitle ? (
               <p className="truncate text-xs text-slate-500">{sectionSubtitle}</p>
             ) : (
-              <p className="text-xs text-slate-500">{t("superAdmin.consoleSubtitle")}</p>
+              <p className="truncate text-xs text-slate-500">{t("superAdmin.consoleSubtitle")}</p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-500/20 sm:inline">
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
+            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-500/20">
               {t("superAdmin.envProduction")}
             </span>
           </div>
         </header>
 
-        <main className="relative flex-1 overflow-auto">
+        <main className="relative min-h-0 flex-1 overflow-auto">
           <div
             className="pointer-events-none absolute inset-0 opacity-60"
             aria-hidden
@@ -357,7 +434,7 @@ export function SuperAdminShell({
             className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-500/[0.04] via-transparent to-violet-500/[0.05]"
             aria-hidden
           />
-          <div className="relative mx-auto max-w-[1440px] px-6 py-8 lg:px-10 lg:py-10">
+          <div className="relative mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
             {error ? (
               <div
                 className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"

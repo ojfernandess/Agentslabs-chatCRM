@@ -79,6 +79,7 @@ import {
 } from "@/lib/contactNotes";
 import { dispatchRemindersUpdated } from "@/hooks/useActionableReminders";
 import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
+import { useMobileConversationViewport } from "@/hooks/useMobileConversationViewport";
 import { useAuth } from "@/hooks/useAuth";
 import {
   isOnlineForTransfer,
@@ -712,6 +713,8 @@ export function ConversationDetailPage() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
+
+  useMobileConversationViewport(isMobileLayout && !isEmbeddedLayout);
   const templateWrapRef = useRef<HTMLDivElement>(null);
   const cannedWrapRef = useRef<HTMLDivElement>(null);
   const cannedPanelRef = useRef<HTMLDivElement>(null);
@@ -4100,6 +4103,15 @@ export function ConversationDetailPage() {
     );
   };
 
+  const mobileViewportStyle =
+    isMobileLayout && !emailWorkspaceMode
+      ? {
+          height: "var(--crm-mobile-vvh, 100dvh)",
+          maxHeight: "var(--crm-mobile-vvh, 100dvh)",
+          transform: "translateY(var(--crm-mobile-vvo, 0px))",
+        }
+      : undefined;
+
   return (
     <div
       className={clsx(
@@ -4108,6 +4120,7 @@ export function ConversationDetailPage() {
           ? "min-w-0 flex-1 flex-col bg-ink-50 dark:bg-[#0F1420] xl:flex-row"
           : "flex-col bg-ink-50 dark:bg-[#0F1420] lg:flex-row",
       )}
+      style={mobileViewportStyle}
     >
       {!emailWorkspaceMode ? (
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
@@ -5367,7 +5380,7 @@ export function ConversationDetailPage() {
                                 : t("conversationDetail.placeholderNormal")
                         }
                         disabled={((isOutsideWindow || contactIsBlocked) && !privateNote) || recording}
-                        className="min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500 max-lg:min-h-[2.5rem] max-lg:py-1.5"
+                        className="touch-target-compact min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-1 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400/40 focus:outline-none focus:ring-1 focus:ring-brand-500/20 disabled:text-ink-400 dark:text-ink-50 dark:placeholder:text-ink-500 dark:focus:ring-brand-400/25 dark:disabled:text-ink-500 max-lg:min-h-[2.5rem] max-lg:py-1.5 max-lg:text-base"
                         style={{ minHeight: isMobileLayout ? "2.5rem" : "4.75rem" }}
                       />
                       <motion.button
