@@ -38,12 +38,17 @@ export type ConversationMessageCreatedDetail = {
   bellNotify?: boolean;
 };
 
+/** Partial row patch from WS `message.updated` (status-only updates omit body/media). */
 export type ConversationMessageUpdatedDetail = {
   conversationId: string;
-  message: Pick<
-    ConversationMessagePushPayload,
-    "id" | "status" | "providerError" | "body" | "mediaUrl" | "mediaType"
-  >;
+  message: {
+    id: string;
+    status: string;
+    providerError?: string | null;
+    body?: string;
+    mediaUrl?: string;
+    mediaType?: string;
+  };
 };
 
 export type ConversationMessageReactionsUpdatedDetail = {

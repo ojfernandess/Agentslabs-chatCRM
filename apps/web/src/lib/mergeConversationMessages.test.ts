@@ -22,7 +22,14 @@ test("mergeMessagesById keeps local-only messages from realtime", () => {
 });
 
 test("mergeMessagesById keeps local body when remote row has empty body", () => {
-  const local = [
+  type Row = {
+    id: string;
+    sentAt: string;
+    createdAt: string;
+    status: string;
+    body?: string | null;
+  };
+  const local: Row[] = [
     {
       id: "a",
       sentAt: "2026-01-01T10:00:00.000Z",
@@ -31,7 +38,7 @@ test("mergeMessagesById keeps local body when remote row has empty body", () => 
       body: "teste",
     },
   ];
-  const remote = [
+  const remote: Row[] = [
     {
       id: "a",
       sentAt: "2026-01-01T10:00:00.000Z",
