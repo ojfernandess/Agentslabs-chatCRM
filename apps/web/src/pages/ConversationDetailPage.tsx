@@ -1138,9 +1138,6 @@ export function ConversationDetailPage() {
         ]);
         if (epoch !== conversationLoadEpochRef.current) return;
         if (requestId !== activeConversationIdRef.current) return;
-        for (const m of tail.messages) {
-          if (!prevMessages.some((row) => row.id === m.id)) seenMessageIds.current.add(m.id);
-        }
         setConversation((prev) => {
           const merged = mergeIncrementalConversationSnapshot({
             meta,
@@ -1149,7 +1146,12 @@ export function ConversationDetailPage() {
             tailMessages: tail.messages,
             newestCursor: tail.newestCursor,
           }) as ConversationDetail;
+          for (const m of merged.messages ?? []) {
+            seenMessageIds.current.add(m.id);
+          }
           setCachedConversationMerged(requestId, merged, prev && prev.id === meta.id ? prev : null);
+          messagesRef.current = merged.messages ?? [];
+          messagesOwnerConversationIdRef.current = requestId;
           return merged;
         });
         setTeamPickerId(meta.team?.id ?? "");
@@ -1251,7 +1253,23 @@ export function ConversationDetailPage() {
       const meta = await api.get<ConversationDetail>(`/conversations/${requestId}?messages=0`);
       if (requestId !== activeConversationIdRef.current) return;
       setConversation((prev) => {
-        if (!prev) return meta;
+        const cached =
+          prev?.id === requestId ? prev : getCachedConversation<ConversationDetail>(requestId);
+        const preservedMessages = prev?.messages ?? cached?.messages;
+        if (!prev) {
+          if (!preservedMessages?.length) return meta;
+          const merged: ConversationDetail = {
+            ...meta,
+            messages: preservedMessages,
+            messagesHasMore: cached?.messagesHasMore ?? meta.messagesHasMore,
+            messagesOlderCursor: cached?.messagesOlderCursor ?? meta.messagesOlderCursor,
+            messagesNewerCursor: cached?.messagesNewerCursor ?? meta.messagesNewerCursor,
+            messagesPaginationEnabled:
+              cached?.messagesPaginationEnabled ?? meta.messagesPaginationEnabled,
+          };
+          setCachedConversation(requestId, merged);
+          return merged;
+        }
         const merged: ConversationDetail = {
           ...meta,
           messages: prev.messages,
@@ -1395,14 +1413,16 @@ export function ConversationDetailPage() {
 
   const appendPushedMessage = useCallback((message: Message, newerCursor?: string | null) => {
     if (!id) return;
-    if (seenMessageIds.current.has(message.id)) return;
-    seenMessageIds.current.add(message.id);
     let applied = false;
     setConversation((prev) => {
       const base =
         prev?.id === id ? prev : getCachedConversation<ConversationDetail>(id);
       if (!base || base.id !== id) return prev;
       let existing = base.messages ?? [];
+      if (seenMessageIds.current.has(message.id) && existing.some((m) => m.id === message.id)) {
+        applied = true;
+        return prev?.id === id ? prev : base;
+      }
       if (message.direction === "OUTBOUND") {
         const matchedOptimistic = existing.find(
           (row) =>
@@ -1419,18 +1439,26 @@ export function ConversationDetailPage() {
       }
       if (existing.some((m) => m.id === message.id)) {
         applied = true;
+        seenMessageIds.current.add(message.id);
         const merged = { ...base, messages: existing };
-        if (prev?.id === id) return merged;
+        if (prev?.id === id) {
+          messagesRef.current = merged.messages ?? [];
+          messagesOwnerConversationIdRef.current = id;
+          return merged;
+        }
         setCachedConversationMerged(id, merged, base);
         return merged;
       }
       applied = true;
+      seenMessageIds.current.add(message.id);
       const merged: ConversationDetail = {
         ...base,
         messages: [...existing, message],
         ...(newerCursor ? { messagesNewerCursor: newerCursor } : {}),
       };
       setCachedConversationMerged(id, merged, base);
+      messagesRef.current = merged.messages ?? [];
+      messagesOwnerConversationIdRef.current = id;
       return merged;
     });
     if (!applied) {
@@ -2340,6 +2368,7 @@ export function ConversationDetailPage() {
       });
       if (replyingTo) setReplyingTo(null);
       reconcileOptimisticOutboundMessage(optimisticMessage.id, created, conversationId);
+      setSending(false);
       if (conversationId === activeConversationIdRef.current && !isEmailLayout) {
         stickToBottomRef.current = true;
       }
@@ -3003,9 +3032,6 @@ export function ConversationDetailPage() {
     isWhatsappInbox &&
     (whatsappProvider === "meta" || whatsappProvider === "360dialog");
   const contactDisplayName = conversation.contact.name?.trim() || "Cliente";
-  const hasPendingOptimisticOutbound = (conversation.messages ?? []).some((message) =>
-    isOptimisticOutboundMessageId(message.id),
-  );
   const isWebsiteInbox = conversation.inbox?.channelType === "WEBSITE";
   const isEmailInbox = conversation.inbox?.channelType === "EMAIL" || isEmailLayout;
   const emailWorkspaceMode = isEmailInbox && isEmailLayout;
@@ -5084,7 +5110,7 @@ export function ConversationDetailPage() {
                 {!emailWorkspaceMode ? <span className="block h-8 w-8 shrink-0" aria-hidden /> : null}
               </motion.div>
             ) : null}
-            {(sending && !hasPendingOptimisticOutbound) || (attachBusy && attachKind === "IMAGE") ? (
+            {attachBusy ? (
               <motion.div
                 className="mb-2 mt-2 flex w-full justify-end gap-2"
                 initial={{ opacity: 0 }}
