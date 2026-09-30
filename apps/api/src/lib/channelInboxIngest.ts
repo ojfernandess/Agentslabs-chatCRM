@@ -4,6 +4,7 @@ import type { InboxChannelType, MessageType } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { appendTimelineEvent } from "./timeline.js";
+import { resolveConversationBellNotify } from "./conversationBellScope.js";
 import { notifyConversationNewMessage, serializeMessageForWorkspaceWs } from "./workspaceMessageBroadcast.js";
 import { dispatchAgentBotWebhook } from "./agentBotWebhook.js";
 import { config } from "../config.js";
@@ -298,11 +299,16 @@ export async function processChannelInboxInbound(input: ChannelInboundInput): Pr
     },
   });
 
-  notifyConversationNewMessage(
-    organizationId,
-    conversation.id,
-    serializeMessageForWorkspaceWs(inbound),
-  );
+  const bellNotify = resolveConversationBellNotify({
+    conversationsAllScopeHumanOnly: channelSettings?.conversationsAllScopeHumanOnly ?? false,
+    agentBotTriageActive: useAgentBot,
+    status: conversation.status,
+    assignedToId: conversation.assignedToId,
+    awaitingHumanHandoff: conversation.awaitingHumanHandoff,
+  });
+  notifyConversationNewMessage(organizationId, conversation.id, serializeMessageForWorkspaceWs(inbound), {
+    bellNotify,
+  });
 
   const waitForTranscription = await resolveWaitForInboundTranscription(organizationId, agentCtx);
   const transcription = startInboundMediaTranscription({

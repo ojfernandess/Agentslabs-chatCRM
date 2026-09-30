@@ -338,6 +338,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     return {
       notifyConversationOpen: settings.notifyConversationOpen,
       notifyConversationPending: settings.notifyConversationPending,
+      conversationsAllScopeHumanOnly: settings.conversationsAllScopeHumanOnly ?? false,
     };
   });
 

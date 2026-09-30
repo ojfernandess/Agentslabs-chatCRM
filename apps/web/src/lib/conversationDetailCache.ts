@@ -41,7 +41,7 @@ export function setCachedConversationMerged<T extends CachedConversationWithMess
 ): void {
   const prevMessages = previous?.messages ?? [];
   const nextMessages = data.messages ?? [];
-  if (prevMessages.length > 0 && nextMessages.length > 0) {
+  if (prevMessages.length > 0) {
     const mergedMessages = mergeMessagesById(prevMessages, nextMessages);
     if (mergedMessages.length > nextMessages.length) {
       setCachedConversation(id, { ...data, messages: mergedMessages });

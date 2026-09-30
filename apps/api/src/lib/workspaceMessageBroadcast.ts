@@ -134,11 +134,13 @@ export function broadcastConversationMessageCreated(
   organizationId: string,
   conversationId: string,
   message: WorkspaceMessagePayload,
+  options?: { bellNotify?: boolean },
 ): void {
   broadcastToConversation(organizationId, conversationId, {
     type: "message.created",
     conversationId,
     message,
+    ...(options?.bellNotify === false ? { bellNotify: false } : {}),
   });
 }
 
@@ -197,9 +199,11 @@ export function notifyConversationNewMessage(
   organizationId: string,
   conversationId: string,
   message: WorkspaceMessagePayload,
-  extra?: { awaitingHumanHandoff?: boolean },
+  extra?: { awaitingHumanHandoff?: boolean; bellNotify?: boolean },
 ): void {
-  broadcastConversationMessageCreated(organizationId, conversationId, message);
+  broadcastConversationMessageCreated(organizationId, conversationId, message, {
+    bellNotify: extra?.bellNotify,
+  });
   // Fase 4 — evita `conversation.updated` só por nova mensagem (clientes usam message.created).
   if (conversationUpdatedBroadcastHasStructuralFields(extra)) {
     broadcastConversationUpdated(organizationId, conversationId, extra);

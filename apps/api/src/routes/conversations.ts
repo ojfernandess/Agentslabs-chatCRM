@@ -140,6 +140,8 @@ const querySchema = z.object({
   emailFolderId: z.string().uuid().optional(),
   /** Pesquisa por nome, e-mail, telefone ou corpo da última mensagem. */
   q: z.string().max(200).optional(),
+  /** `1` = lista para o sino (aplica separação humano/bot em «Todas as conversas» quando activa). */
+  forBell: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
 const auditQuerySchema = z.object({
@@ -441,6 +443,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const waitingAttendance = isMineFlag(query.waitingAttendance);
     const activeAttendance = isMineFlag(query.activeAttendance);
     const mineRequested = isMineFlag(query.mine);
+    const forBell = isMineFlag(query.forBell);
     const trashOnly = isMineFlag(query.trash);
     const starredOnly = isMineFlag(query.starred);
 
@@ -565,6 +568,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       activeAttendance,
       mineRequested,
     });
+    if (forBell && !orgAllScope) {
+      return { data: [], total: 0, page: query.page, pageSize: query.pageSize };
+    }
     if (orgAllScope) {
       const orgSettings = await prisma.settings.findUnique({
         where: { organizationId },

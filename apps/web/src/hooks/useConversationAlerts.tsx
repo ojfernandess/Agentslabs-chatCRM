@@ -24,6 +24,7 @@ import {
   CONVERSATION_MESSAGE_CREATED_EVENT,
   type ConversationMessageCreatedDetail,
 } from "@/lib/conversationMessagePush";
+import { conversationSuppressedFromHumanAllBell } from "@/lib/conversationListScope";
 
 const BELL_CLEARED_KEY = "openconduit_bell_cleared_at";
 const POLL_MS = 22_000;
@@ -36,6 +37,7 @@ const MESSAGE_POLL_DEBOUNCE_MS = 2_000;
 export interface ConversationNotificationPrefs {
   notifyConversationOpen: boolean;
   notifyConversationPending: boolean;
+  conversationsAllScopeHumanOnly?: boolean;
 }
 
 interface LastMessage {
@@ -51,6 +53,9 @@ interface ConversationRow {
   status: string;
   updatedAt: string;
   isUnread?: boolean;
+  assignedToId?: string | null;
+  awaitingHumanHandoff?: boolean;
+  agentBotTriageActive?: boolean;
   contact: { id: string; name: string; phone: string; profilePictureUrl?: string | null };
   messages: LastMessage[];
 }
@@ -87,6 +92,11 @@ function shouldShowInBell(
   prefs: ConversationNotificationPrefs,
   clearedAt: number,
 ): boolean {
+  if (
+    conversationSuppressedFromHumanAllBell(c, prefs.conversationsAllScopeHumanOnly === true)
+  ) {
+    return false;
+  }
   if (!qualifies(c, prefs)) return false;
   const last = c.messages?.[0];
   if (!last || last.direction !== "INBOUND") return false;
@@ -206,10 +216,11 @@ export function useConversationAlerts() {
     let full: ConversationListResponse;
     let delta: ConversationListResponse;
     try {
+      const bellQuery = "pageSize=100&forBell=1";
       [full, delta] = await Promise.all([
-        api.get<ConversationListResponse>("/conversations?pageSize=100"),
+        api.get<ConversationListResponse>(`/conversations?${bellQuery}`),
         api.get<ConversationListResponse>(
-          `/conversations?since=${encodeURIComponent(since)}&pageSize=100`,
+          `/conversations?since=${encodeURIComponent(since)}&${bellQuery}`,
         ),
       ]);
     } catch {
@@ -228,6 +239,9 @@ export function useConversationAlerts() {
     const openConversationId = getOpenConversationId();
 
     for (const c of delta.data) {
+      if (conversationSuppressedFromHumanAllBell(c, prefs.conversationsAllScopeHumanOnly === true)) {
+        continue;
+      }
       if (!qualifies(c, prefs)) continue;
       const last = c.messages?.[0];
       if (!last || last.direction !== "INBOUND") continue;
@@ -305,6 +319,7 @@ export function useConversationAlerts() {
   const bumpBadgeForInboundMessage = useCallback(
     (detail: ConversationMessageCreatedDetail) => {
       if (detail.message.direction !== "INBOUND") return;
+      if (detail.bellNotify === false) return;
       const openConversationId = getOpenConversationId();
       if (openConversationId && detail.conversationId === openConversationId) return;
 
@@ -364,6 +379,7 @@ export function useConversationAlerts() {
     const onMessageCreated = (event: Event) => {
       const detail = (event as CustomEvent<ConversationMessageCreatedDetail>).detail;
       if (!detail?.message || detail.message.direction !== "INBOUND") return;
+      if (detail.bellNotify === false) return;
       bumpBadgeForInboundMessage(detail);
       scheduleMessagePoll();
     };

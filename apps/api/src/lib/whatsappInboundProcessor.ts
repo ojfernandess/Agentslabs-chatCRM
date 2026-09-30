@@ -31,6 +31,7 @@ import {
   resolveInboundReplyTarget,
   resolveMessageReplyForApi,
 } from "./messageReply.js";
+import { resolveConversationBellNotify } from "./conversationBellScope.js";
 import {
   broadcastConversationMessageReactionsUpdated,
   broadcastConversationMessageUpdated,
@@ -466,6 +467,13 @@ export async function processWhatsAppWebhookEvents(
       msgMonitor?.setIds({ conversationId: conversation.id, messageId: inbound.id });
 
       msgMonitor?.stage("realtime", "Realtime emitido");
+      const bellNotify = resolveConversationBellNotify({
+        conversationsAllScopeHumanOnly: channelSettings.conversationsAllScopeHumanOnly ?? false,
+        agentBotTriageActive: useAgentBotOnInbox,
+        status: conversation.status,
+        assignedToId: conversation.assignedToId,
+        awaitingHumanHandoff: conversation.awaitingHumanHandoff,
+      });
       notifyConversationNewMessage(
         organizationId,
         conversation.id,
@@ -473,6 +481,7 @@ export async function processWhatsAppWebhookEvents(
           contactName: contact.name,
           replyTo: resolveMessageReplyForApi(inbound, contact.name),
         }),
+        { bellNotify },
       );
 
       if (deferMediaDownload) {

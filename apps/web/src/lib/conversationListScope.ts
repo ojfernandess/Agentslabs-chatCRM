@@ -37,6 +37,19 @@ function isBotQueueRow(row: ConversationScopeRow): boolean {
   return row.status === "PENDING" && assignedId(row) == null && !row.awaitingHumanHandoff;
 }
 
+/** Sino / desktop — espelha API `conversationBellScope` quando separação humano/bot está activa. */
+export function conversationSuppressedFromHumanAllBell(
+  row: ConversationScopeRow,
+  conversationsAllScopeHumanOnly: boolean,
+): boolean {
+  if (!conversationsAllScopeHumanOnly) return false;
+  if (!row.agentBotTriageActive) return false;
+  if (row.status === "RESOLVED") return true;
+  if (row.awaitingHumanHandoff) return false;
+  if (assignedId(row) != null) return false;
+  return row.status === "OPEN" || row.status === "PENDING";
+}
+
 function isBotScopeRow(row: ConversationScopeRow, includeResolvedInBotScope: boolean): boolean {
   if (!row.agentBotTriageActive) return false;
   const statuses = includeResolvedInBotScope ? ["OPEN", "PENDING", "RESOLVED"] : ["OPEN", "PENDING"];

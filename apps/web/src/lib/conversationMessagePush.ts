@@ -34,6 +34,8 @@ export const CONVERSATION_MESSAGE_REACTIONS_UPDATED_EVENT = "openconduit:convers
 export type ConversationMessageCreatedDetail = {
   conversationId: string;
   message: ConversationMessagePushPayload;
+  /** `false` = fila do bot (separação «Todas as conversas») — não incrementar sino em tempo real. */
+  bellNotify?: boolean;
 };
 
 export type ConversationMessageUpdatedDetail = {

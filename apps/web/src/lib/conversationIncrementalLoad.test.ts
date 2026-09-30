@@ -52,6 +52,26 @@ test("mergeIncrementalConversationSnapshot appends only unseen tail messages", (
   assert.equal(merged.messagesNewerCursor, "cursor-2");
 });
 
+test("mergeIncrementalConversationSnapshot keeps realtime rows from prev.messages when prevMessages snapshot is stale", () => {
+  const merged = mergeIncrementalConversationSnapshot({
+    meta: { id: "conv-1", messages: [] },
+    prev: {
+      id: "conv-1",
+      messages: [
+        { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+        { id: "2", sentAt: "2026-01-01T10:02:00.000Z", createdAt: "2026-01-01T10:02:00.000Z", status: "DELIVERED" },
+      ],
+    },
+    prevMessages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+    ],
+    tailMessages: [],
+    newestCursor: null,
+  });
+
+  assert.deepEqual(merged.messages?.map((m) => m.id), ["1", "2"]);
+});
+
 test("mergeIncrementalConversationSnapshot drops optimistic rows when tail adds persisted message", () => {
   const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
   const merged = mergeIncrementalConversationSnapshot({

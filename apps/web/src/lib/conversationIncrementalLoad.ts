@@ -1,4 +1,8 @@
-import type { MergeableConversation, MergeableMessage } from "./mergeConversationMessages.js";
+import {
+  mergeMessagesById,
+  type MergeableConversation,
+  type MergeableMessage,
+} from "./mergeConversationMessages.js";
 import { stripOptimisticOutboundMessages } from "./optimisticOutboundMessage.js";
 
 export type ConversationMessageTailResponse = {
@@ -15,6 +19,10 @@ export function mergeIncrementalConversationSnapshot<T extends MergeableConversa
 }): T {
   let safePrevMessages =
     input.prev && input.prev.id === input.meta.id ? input.prevMessages : [];
+  // `prevMessages` may be snapshotted before HTTP; `prev.messages` can include WS/realtime rows added during the fetch.
+  if (input.prev && input.prev.id === input.meta.id && (input.prev.messages?.length ?? 0) > 0) {
+    safePrevMessages = mergeMessagesById(safePrevMessages, input.prev.messages ?? []);
+  }
   const existingIds = new Set(safePrevMessages.map((message) => message.id));
   const newMessages = input.tailMessages.filter((message) => !existingIds.has(message.id));
   if (newMessages.length > 0) {

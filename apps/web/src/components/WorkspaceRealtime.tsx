@@ -167,6 +167,7 @@ export function WorkspaceRealtime() {
       presenceConnected?: boolean;
       effectiveAvailabilityStatus?: string;
       message?: ConversationMessagePushPayload;
+      bellNotify?: boolean;
     }) => {
       if (data.type === "user.presence_changed" && data.userId && data.effectiveAvailabilityStatus) {
         publishUserPresenceChanged(
@@ -226,6 +227,7 @@ export function WorkspaceRealtime() {
         publishConversationMessageCreated({
           conversationId: data.conversationId,
           message: data.message,
+          ...(data.bellNotify === false ? { bellNotify: false } : {}),
         });
       } else if (
         data.type === "message.updated" &&
