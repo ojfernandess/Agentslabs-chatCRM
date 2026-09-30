@@ -10,6 +10,7 @@ import {
   userMessageLooksLikeAmenityItemQuestion,
   userMessageLooksLikeCheckoutProcedureQuestion,
   userMessageLooksLikeEstablishmentEntryFaqQuestion,
+  userMessageLooksLikeUnitFactualWithEstablishmentNamed,
 } from "./unitKnowledgeFlow.js";
 
 test("userMessageLooksLikeAmenityItemQuestion detects pet question", () => {
@@ -148,6 +149,34 @@ test("shouldEscalateAfterKnowledgeGap false for checkout without establishment e
 
 test("userMessageLooksLikeKbEscalationCandidate excludes access blocked problem", () => {
   assert.equal(userMessageLooksLikeKbEscalationCandidate("não consigo entrar no quarto"), false);
+});
+
+test("userMessageLooksLikeUnitFactualWithEstablishmentNamed detects Brooklin address question", () => {
+  assert.equal(
+    userMessageLooksLikeUnitFactualWithEstablishmentNamed("Qual endereço do hotel Brooklin?"),
+    true,
+  );
+});
+
+test("shouldEscalateAfterKnowledgeGap false for C5 address with unit named even when KB lacks answer", () => {
+  assert.equal(
+    userMessageLooksLikeKbEscalationCandidate("Qual endereço do hotel Brooklin?"),
+    false,
+  );
+  assert.equal(
+    shouldEscalateAfterKnowledgeGap({
+      userMessage: "Qual endereço do hotel Brooklin?",
+      toolOutcomes: [
+        {
+          name: "buscar_conhecimento",
+          ok: true,
+          preview: "Wi-Fi: rede Audaar · senha no check-in.",
+        },
+      ],
+      callHumanSucceeded: false,
+    }),
+    false,
+  );
 });
 
 test("shouldEscalateAfterKnowledgeGap false for social greeting even when KB lacks answer", () => {

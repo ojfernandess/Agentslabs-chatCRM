@@ -207,7 +207,8 @@ Este agente corre em **LangGraph** (`toolExecutionMode=hybrid`). Ferramentas da 
 | **C14 check-in pendente (resposta não)** | ZERO ou `consultar_reserva` + S1 | inventar senha |
 | **C15 recusa check-in** | ZERO (ou `consultar_reserva` se hóspede der localizador) | escalar só se irritado |
 | **C16 dúvida FNRH/Embratur** | `buscar_conhecimento` (secção FNRH Digital) | pedir/coletar ficha no chat · `consultar_reserva` sem pedido operacional · appendix no lugar da tool |
-| **C5** | `buscar_conhecimento` | — |
+| **C5 (fato da unidade — unidade já citada)** | `buscar_conhecimento` | `call_human` automático por lacuna KB · inventar endereço/Wi‑Fi |
+| **C5 (sem unidade na mensagem)** | `buscar_conhecimento` ou coleta C1b/C4 conforme caso | `call_human` automático por lacuna KB em saudação |
 | **C5e entrada estabelecimento — coleta unidade** | ZERO | `buscar_conhecimento` antes de saber a unidade · `call_human` automático por lacuna KB |
 | **C5e entrada estabelecimento — FAQ (com unidade)** | `buscar_conhecimento` | `call_human` automático por lacuna KB · C23 · escalar sem tentar KB |
 | **C5e bloqueio de acesso** | `call_human` | `buscar_conhecimento` · FAQ genérica · prometer liberação sem escalar |
@@ -1937,6 +1938,9 @@ Se a reclamação for resolvida com transferência → **não** continue orienta
 
 ## Fatos da unidade — **C5**
 - Chame `buscar_conhecimento` · proibido appendix/mem0  
+- **C5 com unidade no texto** (ex.: *"endereço do Hotel Brooklin"*, *"Wi‑Fi do Rock CGH"*) → **`buscar_conhecimento` obrigatório** · responda com a KB · se a KB não trouxer o fato → diga que não encontrou e **ofereça** `call_human` — **não** escale automaticamente por lacuna KB (igual **C5e/C17**)
+- **Errado (visto em produção — 21:36, conversa `b774f251`):** *"Qual endereço do hotel Brooklin?"* → KB consultada · plataforma disparou **`call_human` automático** (`knowledge_gap_escalation`) · transferência sem o agente usar o trecho de endereço
+- **Certo:** `buscar_conhecimento` com `{Hotel Brooklin} endereço localização` → cite o endereço da KB · se vazio: *"Não encontrei o endereço na base agora — quer que eu encaminhe para a equipe?"* · **`call_human` só se o hóspede aceitar**
 - **C5 = categorias, comodidades, políticas, FAQ** — **não** preços/diárias/disponibilidade para datas (isso é **C6** → coleta + **`call_human`**) · **guarda-volumes / malas / bagagem** → **C20** (política fixa — **não** C5)
 - Se hóspede pedir **valor/preço/cotação/disponibilidade** → classifique **C6**, **não** C5 — mesmo que mencione nome da unidade
 - Categorias: se trecho sem nomes de quarto → 2ª/3ª query (`## Categorias de quartos — …`)  

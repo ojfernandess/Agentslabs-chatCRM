@@ -575,6 +575,24 @@ export function knowledgeContentCoversQuery(haystack: string, query: string): bo
       return sections.some((sec) => sectionAnswersTopic(sec, topics));
     }
     if (isKnowledgeOverviewChunk(body)) return false;
+    const bodyLower = body.toLowerCase();
+    for (const topic of topics) {
+      const syns = TOPIC_SYNONYMS[topic] ?? [topic];
+      for (const s of syns) {
+        const synLower = s.toLowerCase();
+        if (!bodyLower.includes(synLower)) continue;
+        if (isTangentialTopicMention(body, s)) continue;
+        const idx = bodyLower.indexOf(synLower);
+        const slice = body.slice(Math.max(0, idx - 12), idx + 360);
+        if (sectionBodyHasAnswerFacts(slice)) return true;
+        if (
+          topic === "localizacao" &&
+          /\b(?:rua|r\.|av\.|avenida|alameda|rod\.|logradouro|n[º°]\s*\d|\d{5}-?\d{3})\b/i.test(slice)
+        ) {
+          return true;
+        }
+      }
+    }
     return false;
   }
 

@@ -107,6 +107,37 @@ export function userMessageLooksLikeReceiptOrInvoiceRequest(userMessage?: string
   );
 }
 
+/**
+ * C5 — fato da unidade com estabelecimento já citado na mensagem (endereço, Wi‑Fi, horários, etc.).
+ * Não confundir com C17/C5e/C19 (regras próprias de lacuna KB) nem C18 comodidade (pode escalar se item ausente).
+ */
+export function userMessageLooksLikeUnitFactualWithEstablishmentNamed(
+  userMessage?: string | null,
+): boolean {
+  const msg = (userMessage ?? "").trim();
+  if (!msg) return false;
+  if (!resolveEstablishmentInConversation({ userMessage: msg })) return false;
+  if (isOperationalQuoteMessage(msg)) return false;
+  if (userMessageLooksLikeCheckoutProcedureQuestion(msg)) return false;
+  if (userMessageLooksLikeEstablishmentEntryFaqQuestion(msg)) return false;
+  if (userMessageLooksLikeReceiptOrInvoiceRequest(msg)) return false;
+  if (userMessageLooksLikeAmenityItemQuestion(msg)) return false;
+  if (messageLooksLikeHumanHandoffRequest(msg)) return false;
+
+  return (
+    /\b(endere[cç]o|localiza[cç][aã]o|onde\s+fica|como\s+chegar|cep|mapa|proximidades?)\b/i.test(
+      msg,
+    ) ||
+    /\b(wifi|wi[\s-]?fi|internet|rede\s+wi|senha\s+da\s+rede|ssid)\b/i.test(msg) ||
+    (/\b(hor[aá]rio|funcionamento|abertura|fechamento)\b/i.test(msg) &&
+      !/\bcheck[\s-]?in\b/i.test(msg)) ||
+    (/\b(quarto|categorias?|su[ií]tes?|acomoda[cç][aã]o|tipos?\s+de\s+quarto)\b/i.test(msg) &&
+      /\b(qual|quais|quantos?|tipos?|categorias?)\b/i.test(msg)) ||
+    (/\b(pol[ií]tica|pol[ií]ticas|regras?|cancelamento|reembolso)\b/i.test(msg) &&
+      /\b(qual|quais|como)\b/i.test(msg))
+  );
+}
+
 /** Pergunta sobre item/comodidade específica (ferro, secador, etc.). */
 export function userMessageLooksLikeAmenityItemQuestion(userMessage?: string | null): boolean {
   const t = (userMessage ?? "").trim();

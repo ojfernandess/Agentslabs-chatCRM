@@ -22,6 +22,7 @@ import {
   userMessageLooksLikeCheckoutProcedureQuestion,
   userMessageLooksLikeEstablishmentEntryFaqQuestion,
   userMessageLooksLikeReceiptOrInvoiceRequest,
+  userMessageLooksLikeUnitFactualWithEstablishmentNamed,
 } from "./unitKnowledgeFlow.js";
 
 export function kbOutcomeCoversUserQuery(
@@ -47,6 +48,7 @@ export function userMessageLooksLikeKbEscalationCandidate(userMessage?: string |
   if (isOperationalQuoteMessage(msg)) return false;
   if (userMessageLooksLikeAccessBlockedProblem(msg)) return false;
   if (userMessageLooksLikeEstablishmentEntryFaqQuestion(msg)) return false;
+  if (userMessageLooksLikeUnitFactualWithEstablishmentNamed(msg)) return false;
   if (userMessageLooksLikeCheckoutProcedureQuestion(msg)) return false;
 
   if (

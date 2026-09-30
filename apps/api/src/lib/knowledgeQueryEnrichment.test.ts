@@ -79,6 +79,12 @@ test("knowledgeContentCoversQuery false for header-only appendix", () => {
   assert.equal(knowledgeContentCoversQuery(appendix, "quais quartos?"), false);
 });
 
+test("knowledgeContentCoversQuery true for flat address line without markdown sections", () => {
+  const flat =
+    "Hotel Brooklin — informações gerais\n\n**Endereço:** Rua Verbo Divino, 1234 — Brooklin, São Paulo — CEP 04519-000";
+  assert.equal(knowledgeContentCoversQuery(flat, "Qual endereço do hotel Brooklin?"), true);
+});
+
 test("knowledgeContentCoversQuery true when appendix contains wifi section data", () => {
   const appendix =
     "### Base de conhecimento\n**1. Hotel X**\n## WiFi\n- **Rede:** HOTEL X\n- **Senha:** abc123";
