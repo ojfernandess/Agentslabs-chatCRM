@@ -2,6 +2,7 @@ import { extractQuerySegmentTokens, queryTerms } from "./knowledgeSearchRanking.
 import { stripProactiveKnowledgeAppendixShell } from "./kbAppendix.js";
 import {
   messageLooksLikeEscalationTurn,
+  messageLooksLikeVagueProblemReport,
   userMessageLooksLikeAccessBlockedProblem,
 } from "./agent-engine/escalation/escalationTurnDetection.js";
 import {
@@ -207,6 +208,9 @@ export function userMessageLooksLikeKnowledgeSeekingQuery(userMessage: string): 
     return false;
   }
   if (messageLooksLikeEscalationTurn(t)) {
+    return false;
+  }
+  if (messageLooksLikeVagueProblemReport(t)) {
     return false;
   }
   if (userMessageLooksLikeAccessBlockedProblem(t)) {

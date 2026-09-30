@@ -72,6 +72,14 @@ test("shouldRequireCallHumanThisTurn not on vague problem (triage first)", () =>
   );
 });
 
+test("messageLooksLikeVagueProblemReport accepts ajuda durante estadia wording", () => {
+  assert.equal(
+    messageLooksLikeVagueProblemReport("Preciso de uma ajuda durante minha estadia!"),
+    true,
+  );
+  assert.equal(messageLooksLikeVagueProblemReport("preciso de ajuda"), true);
+});
+
 test("messageLooksLikeReservationUpdateRequest detects update wording", () => {
   assert.equal(messageLooksLikeReservationUpdateRequest("preciso atualizar uma reserva"), true);
 });

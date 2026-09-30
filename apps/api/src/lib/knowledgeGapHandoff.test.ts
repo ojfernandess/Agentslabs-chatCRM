@@ -6,6 +6,7 @@ import {
   shouldEscalateAfterKnowledgeGap,
   userMessageLooksLikeKbEscalationCandidate,
 } from "./knowledgeGapHandoff.js";
+import { messageLooksLikeVagueProblemReport } from "./agent-engine/escalation/escalationTurnDetection.js";
 import {
   userMessageLooksLikeAmenityItemQuestion,
   userMessageLooksLikeCheckoutProcedureQuestion,
@@ -185,6 +186,20 @@ test("shouldEscalateAfterKnowledgeGap false for social greeting even when KB lac
     shouldEscalateAfterKnowledgeGap({
       userMessage: "Boa tarde, tudo bem?",
       toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "" }],
+      callHumanSucceeded: false,
+    }),
+    false,
+  );
+});
+
+test("shouldEscalateAfterKnowledgeGap false for vague stay help (C13t — conversa 6625bef6)", () => {
+  const msg = "Preciso de uma ajuda durante minha estadia!";
+  assert.equal(messageLooksLikeVagueProblemReport(msg), true);
+  assert.equal(userMessageLooksLikeKbEscalationCandidate(msg), false);
+  assert.equal(
+    shouldEscalateAfterKnowledgeGap({
+      userMessage: msg,
+      toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "Wi-Fi Brooklin" }],
       callHumanSucceeded: false,
     }),
     false,

@@ -71,7 +71,9 @@ export function messageLooksLikeVagueProblemReport(userMessage?: string | null):
     /\bn[aã]o est[aá] (?:dando certo|funcionando|conseguindo)\b/i.test(t) ||
     /\bestou tentando\b[\s\S]{0,60}\bn[aã]o\b/i.test(t) ||
     /\btenho (?:um )?problema\b/i.test(t) ||
-    /\bpreciso de ajuda\b/i.test(t)
+    /\bpreciso de (?:uma )?ajuda\b/i.test(t) ||
+    /\b(?:preciso|quero) (?:de )?ajuda\b[\s\S]{0,50}\bestadia\b/i.test(t) ||
+    /\bajuda\b[\s\S]{0,40}\bdurante\b[\s\S]{0,30}\bestadia\b/i.test(t)
   );
 }
 
