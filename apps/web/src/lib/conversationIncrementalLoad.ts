@@ -1,9 +1,10 @@
 import {
+  applyPersistedOutboundConfirmations,
+  finalizeConversationMessages,
   mergeMessagesById,
   type MergeableConversation,
   type MergeableMessage,
 } from "./mergeConversationMessages.js";
-import { applyPersistedOutboundConfirmations } from "./mergeConversationMessages.js";
 
 export type ConversationMessageTailResponse = {
   messages: MergeableMessage[];
@@ -31,11 +32,13 @@ export function mergeIncrementalConversationSnapshot<T extends MergeableConversa
   const idsAfterConfirm = new Set(safePrevMessages.map((message) => message.id));
   const messagesToAppend = newMessages.filter((message) => !idsAfterConfirm.has(message.id));
 
+  const mergedMessages = finalizeConversationMessages(
+    messagesToAppend.length ? [...safePrevMessages, ...messagesToAppend] : safePrevMessages,
+  );
+
   return {
     ...input.meta,
-    messages: messagesToAppend.length
-      ? [...safePrevMessages, ...messagesToAppend]
-      : safePrevMessages,
+    messages: mergedMessages,
     messagesHasMore: input.prev?.messagesHasMore ?? input.meta.messagesHasMore,
     messagesOlderCursor: input.prev?.messagesOlderCursor ?? input.meta.messagesOlderCursor,
     messagesNewerCursor: input.newestCursor ?? input.prev?.messagesNewerCursor ?? input.meta.messagesNewerCursor,

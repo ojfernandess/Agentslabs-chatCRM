@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createOptimisticOutboundMessage } from "./optimisticOutboundMessage.js";
 import {
+  finalizeConversationMessages,
   isRemoteMessagesSnapshotStale,
   localMessagesMissingFromRemote,
   mergeConversationWithRemote,
@@ -98,6 +99,29 @@ test("isRemoteMessagesSnapshotStale detects older HTTP windows", () => {
     ],
   );
   assert.equal(stale, true);
+});
+
+test("finalizeConversationMessages removes optimistic when persisted twin is already listed", () => {
+  const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
+  const optimisticRow = {
+    ...optimistic,
+    body: "Olá",
+    sentAt: "2026-01-01T10:01:30.000Z",
+    createdAt: "2026-01-01T10:01:30.000Z",
+  };
+  const finalized = finalizeConversationMessages([
+    { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+    optimisticRow,
+    {
+      id: "real-2",
+      direction: "OUTBOUND",
+      body: "Olá",
+      sentAt: "2026-01-01T10:02:00.000Z",
+      createdAt: "2026-01-01T10:02:00.000Z",
+      status: "SENT",
+    },
+  ]);
+  assert.deepEqual(finalized.map((m) => m.id), ["1", "real-2"]);
 });
 
 test("mergeConversationWithRemote drops optimistic rows when HTTP returns the persisted message", () => {

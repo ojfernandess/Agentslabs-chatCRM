@@ -194,6 +194,7 @@ import {
 import { mergeIncrementalConversationSnapshot } from "@/lib/conversationIncrementalLoad";
 import {
   applyPersistedOutboundConfirmations,
+  finalizeConversationMessages,
   mergeConversationWithRemote,
   persistedOutboundReplacesOptimistic,
 } from "@/lib/mergeConversationMessages";
@@ -1384,15 +1385,21 @@ export function ConversationDetailPage() {
       const apply = (base: ConversationDetail): ConversationDetail => {
         const messages = base.messages ?? [];
         if (messages.some((m) => m.id === persisted.id)) {
-          return { ...base, messages: messages.filter((m) => m.id !== optimisticId) };
+          return {
+            ...base,
+            messages: finalizeConversationMessages(messages.filter((m) => m.id !== optimisticId)),
+          };
         }
         const optimisticIndex = messages.findIndex((m) => m.id === optimisticId);
         if (optimisticIndex >= 0) {
           const next = [...messages];
           next[optimisticIndex] = persisted;
-          return { ...base, messages: next };
+          return { ...base, messages: finalizeConversationMessages(next) };
         }
-        return { ...base, messages: [...messages, persisted] };
+        return {
+          ...base,
+          messages: finalizeConversationMessages([...messages, persisted]),
+        };
       };
 
       setConversation((prev) => {
@@ -1456,7 +1463,7 @@ export function ConversationDetailPage() {
       seenMessageIds.current.add(message.id);
       const merged: ConversationDetail = {
         ...base,
-        messages: [...existing, message],
+        messages: finalizeConversationMessages([...existing, message]),
         ...(newerCursor ? { messagesNewerCursor: newerCursor } : {}),
       };
       setCachedConversationMerged(id, merged, base);
