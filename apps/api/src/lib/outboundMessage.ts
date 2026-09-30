@@ -351,13 +351,8 @@ export async function deliverOutboundWhatsAppMessage(options: {
     providerKind = whatsappProviderBundle.kind ?? providerKind;
   }
 
-  if (
-    !resolvedDeliveryChannel &&
-    !forceWhatsAppDelivery &&
-    !isPrivate &&
-    type !== "TEMPLATE" &&
-    inboxChannelType !== "WHATSAPP"
-  ) {
+  /** Continuidade Web Chat na mesma conversa (ex.: inbox WhatsApp + link /s/…): só WhatsApp quando `forceWhatsAppDelivery`. */
+  if (!resolvedDeliveryChannel && !forceWhatsAppDelivery && !isPrivate && type !== "TEMPLATE") {
     if (await isWebchatOutboundActive(organizationId, conversation.id)) {
       resolvedDeliveryChannel = "WEBCHAT";
     }
