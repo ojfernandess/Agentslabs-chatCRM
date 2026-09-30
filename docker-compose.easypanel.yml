@@ -1,5 +1,10 @@
 # Use as the LAST compose file in the deploy command (EasyPanel). Example:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.easypanel.yml build api worker web
 #   docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.easypanel.yml up -d
+#
+# O override gerado pelo painel costuma definir só `image:` no serviço api (openconduit-api:local) sem
+# `build`, o que provoca "No such image: openconduit-api:local" após rebuild longo do web. Este ficheiro
+# repõe o build da API e garante que worker/agent-worker partilham a mesma tag.
 #
 # EasyPanel encaminha domínios pela rede Docker (Domains → serviço caddy, porta 80).
 # Não publique ports no host — evita o aviso "ports is used in caddy" e conflitos com 80/443.
@@ -10,3 +15,25 @@ services:
     ports: []
   redis:
     ports: []
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: openconduit-api:local
+    pull_policy: build
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: openconduit-api:local
+    pull_policy: never
+  agent-worker:
+    image: openconduit-api:local
+    pull_policy: never
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_PUBLIC_ASSETS_VERSION: ${VITE_PUBLIC_ASSETS_VERSION:-}
+    pull_policy: build

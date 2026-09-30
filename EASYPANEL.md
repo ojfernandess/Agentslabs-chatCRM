@@ -35,11 +35,19 @@ Para VPS **sem** EasyPanel a fazer proxy (só compose), usa o `docker-compose.ym
 
 ## 4. Conflito de portas no servidor (8080, 8443, 80)
 
-**Recomendado no EasyPanel:** no comando compose (Settings → Compose), inclui **por último** `docker-compose.easypanel.yml`:
+**Recomendado no EasyPanel:** no comando compose (Settings → Compose), inclui **por último** `docker-compose.easypanel.yml` e **constrói a API antes** do `up` (evita `No such image: openconduit-api:local` quando só o `web` rebuilda):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.easypanel.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.easypanel.yml build api worker web && docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.easypanel.yml up -d
 ```
+
+Alternativa (mesmo efeito):
+
+```bash
+sh scripts/easypanel-compose-up.sh
+```
+
+**Não uses** só `docker-compose.yml` + `docker-compose.override.yml` do painel — o override costuma apontar `api` para `openconduit-api:local` **sem** `build`, e o deploy falha após o build longo do frontend.
 
 No domínio: serviço **`caddy`**, porta **`80`** (interna). **Não** uses 8080/8081 no domínio — isso é porta do host, não do container.
 
@@ -47,7 +55,19 @@ Se não puderes alterar o comando compose, define `CADDY_HTTP_PORT` para uma por
 
 Se o deploy falhar com “port 80 already allocated”, não forces `80:80` no override do painel.
 
-## 5. Verificar
+## 5. Erro `No such image: openconduit-api:local`
+
+Sintoma: o build do **web** termina com sucesso, mas o `up` falha ao recriar `api` com *No such image: openconduit-api:local*.
+
+Causa habitual: o `docker-compose.override.yml` do EasyPanel define `image: openconduit-api:local` no serviço `api` mas **remove** o bloco `build`, e o painel só reconstrói o `web`.
+
+**Correção:**
+
+1. Em **Settings → Compose**, usa o comando da secção 4 (com `docker-compose.easypanel.yml` **por último**).
+2. No servidor (SSH), confirma que a imagem existe: `docker image ls openconduit-api:local`.
+3. Se faltar: `docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.easypanel.yml build api worker --no-cache` e depois `up -d`.
+
+## 6. Verificar
 
 - Contentores **api**, **web**, **caddy** em execução.
 - Abrir o URL configurado: o frontend deve responder; login chama `/api/v1/...`.
@@ -61,7 +81,7 @@ docker compose build api web --no-cache
 docker compose up -d api web
 ```
 
-## 6. Super admin e Wavoip
+## 7. Super admin e Wavoip
 
 - No painel **`/super`** não há chamadas de voz nem WebSocket do tenant — é normal.
 - Para testar ligações: **Organizações → Entrar na organização**, depois abrir **Conversas** como um agente.
@@ -124,7 +144,7 @@ docker exec -it NOME_CONTAINER_DB psql -U openconduit -d openconduit -c "ALTER U
 
 Actualiza `DB_PASSWORD` no Environment do EasyPanel e reinicia só **api**.
 
-## 7. Vários agentes na mesma organização
+## 9. Vários agentes na mesma organização
 
 - Cada utilizador deve usar **browser/perfil separado** (o token fica em `localStorage` por origem — duas contas no mesmo Chrome partilham a mesma sessão).
 - A API aplica rate limit **por token JWT**, não só por IP, para vários agentes atrás do proxy EasyPanel não se deslogarem em massa.
