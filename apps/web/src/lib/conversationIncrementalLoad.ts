@@ -4,6 +4,7 @@ import {
   type MergeableMessage,
 } from "./mergeConversationMessages.js";
 import { stripOptimisticOutboundMessages } from "./optimisticOutboundMessage.js";
+import { incomingMessagesConfirmOptimisticOutbound } from "./mergeConversationMessages.js";
 
 export type ConversationMessageTailResponse = {
   messages: MergeableMessage[];
@@ -25,7 +26,10 @@ export function mergeIncrementalConversationSnapshot<T extends MergeableConversa
   }
   const existingIds = new Set(safePrevMessages.map((message) => message.id));
   const newMessages = input.tailMessages.filter((message) => !existingIds.has(message.id));
-  if (newMessages.length > 0) {
+  if (
+    newMessages.length > 0 &&
+    incomingMessagesConfirmOptimisticOutbound(safePrevMessages, newMessages)
+  ) {
     safePrevMessages = stripOptimisticOutboundMessages(safePrevMessages);
   }
 

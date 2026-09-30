@@ -731,6 +731,8 @@ export function ConversationDetailPage() {
   const conversationLoadEpochRef = useRef(0);
   const workspaceWsConnectedRef = useRef(workspaceWsConnected);
   const pendingOutboundOptimisticRef = useRef<string | null>(null);
+  /** Keeps React list key stable when optimistic outbound id is replaced by persisted id. */
+  const outboundMessageRowKeyRef = useRef(new Map<string, string>());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
 
@@ -742,6 +744,7 @@ export function ConversationDetailPage() {
     activeConversationIdRef.current = id;
     conversationLoadEpochRef.current += 1;
     pendingOutboundOptimisticRef.current = null;
+    outboundMessageRowKeyRef.current.clear();
     if (id) clearInflightConversation(id);
     messagesRef.current = [];
     messagesOwnerConversationIdRef.current = null;
@@ -1265,6 +1268,11 @@ export function ConversationDetailPage() {
 
   const refreshConversationAfterSuccessfulSend = useCallback(async (opts?: { skipMessageReload?: boolean }) => {
     try {
+      if (opts?.skipMessageReload && workspaceWsConnected) {
+        void conversationsOutlet?.refreshList?.();
+        void emailOutlet?.refreshThreads?.();
+        return;
+      }
       if (opts?.skipMessageReload || workspaceWsConnected) {
         await loadConversationMeta();
       } else {
@@ -1347,13 +1355,20 @@ export function ConversationDetailPage() {
         pendingOutboundOptimisticRef.current = null;
       }
       seenMessageIds.current.add(persisted.id);
+      outboundMessageRowKeyRef.current.set(persisted.id, optimisticId);
 
       const apply = (base: ConversationDetail): ConversationDetail => {
-        const withoutOptimistic = (base.messages ?? []).filter((m) => m.id !== optimisticId);
-        if (withoutOptimistic.some((m) => m.id === persisted.id)) {
-          return { ...base, messages: withoutOptimistic };
+        const messages = base.messages ?? [];
+        if (messages.some((m) => m.id === persisted.id)) {
+          return { ...base, messages: messages.filter((m) => m.id !== optimisticId) };
         }
-        return { ...base, messages: [...withoutOptimistic, persisted] };
+        const optimisticIndex = messages.findIndex((m) => m.id === optimisticId);
+        if (optimisticIndex >= 0) {
+          const next = [...messages];
+          next[optimisticIndex] = persisted;
+          return { ...base, messages: next };
+        }
+        return { ...base, messages: [...messages, persisted] };
       };
 
       setConversation((prev) => {
@@ -1386,6 +1401,11 @@ export function ConversationDetailPage() {
       if (!base || base.id !== id) return prev;
       let existing = base.messages ?? [];
       if (message.direction === "OUTBOUND") {
+        for (const row of existing) {
+          if (isOptimisticOutboundMessageId(row.id)) {
+            outboundMessageRowKeyRef.current.set(message.id, row.id);
+          }
+        }
         existing = stripOptimisticOutboundMessages(existing);
         pendingOutboundOptimisticRef.current = null;
       }
@@ -4742,8 +4762,12 @@ export function ConversationDetailPage() {
               const msg = list[i];
               if (!msg) return null;
               const groupedPrev = messageGroupedWithPrevious(list, i);
-              const isNew = !seenMessageIds.current.has(msg.id);
+              const isNew =
+                !isOptimisticOutboundMessageId(msg.id) && !seenMessageIds.current.has(msg.id);
               if (isNew) seenMessageIds.current.add(msg.id);
+              if (isOptimisticOutboundMessageId(msg.id)) {
+                seenMessageIds.current.add(msg.id);
+              }
               const showAvatar = !groupedPrev;
               const inbound = msg.direction === "INBOUND";
               const blockSpacing = !groupedPrev && i > 0 ? "mt-3" : "";
@@ -4970,9 +4994,13 @@ export function ConversationDetailPage() {
                 </div>
               );
 
+              const messageRowKey = isOptimisticOutboundMessageId(msg.id)
+                ? msg.id
+                : (outboundMessageRowKeyRef.current.get(msg.id) ?? msg.id);
+
               return (
                 <div
-                  key={msg.id}
+                  key={messageRowKey}
                   id={`conversation-message-${msg.id}`}
                   className={clsx("group", blockSpacing)}
                 >

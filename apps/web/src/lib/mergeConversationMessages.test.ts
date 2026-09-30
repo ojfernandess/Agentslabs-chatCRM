@@ -71,6 +71,37 @@ test("isRemoteMessagesSnapshotStale detects older HTTP windows", () => {
 
 test("mergeConversationWithRemote drops optimistic rows when HTTP returns the persisted message", () => {
   const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
+  const optimisticRow = {
+    ...optimistic,
+    sentAt: "2026-01-01T10:01:30.000Z",
+    createdAt: "2026-01-01T10:01:30.000Z",
+  };
+  const local = {
+    id: "conv-1",
+    messages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      optimisticRow,
+    ],
+  };
+  const remote = {
+    id: "conv-1",
+    messages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      {
+        id: "real-2",
+        direction: "OUTBOUND",
+        sentAt: "2026-01-01T10:02:00.000Z",
+        createdAt: "2026-01-01T10:02:00.000Z",
+        status: "SENT",
+      },
+    ],
+  };
+  const merged = mergeConversationWithRemote(local, remote);
+  assert.deepEqual(merged.messages?.map((m) => m.id), ["1", "real-2"]);
+});
+
+test("mergeConversationWithRemote keeps optimistic row when HTTP only adds inbound message", () => {
+  const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
   const local = {
     id: "conv-1",
     messages: [
@@ -82,11 +113,19 @@ test("mergeConversationWithRemote drops optimistic rows when HTTP returns the pe
     id: "conv-1",
     messages: [
       { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
-      { id: "real-2", sentAt: "2026-01-01T10:02:00.000Z", createdAt: "2026-01-01T10:02:00.000Z", status: "SENT" },
+      {
+        id: "bot-2",
+        direction: "INBOUND",
+        sentAt: "2026-01-01T10:02:00.000Z",
+        createdAt: "2026-01-01T10:02:00.000Z",
+        status: "DELIVERED",
+      },
     ],
   };
   const merged = mergeConversationWithRemote(local, remote);
-  assert.deepEqual(merged.messages?.map((m) => m.id), ["1", "real-2"]);
+  assert.equal(merged.messages?.length, 3);
+  assert.ok(merged.messages?.some((m) => m.id === optimistic.id));
+  assert.ok(merged.messages?.some((m) => m.id === "bot-2"));
 });
 
 test("localMessagesMissingFromRemote detects ws-only rows", () => {

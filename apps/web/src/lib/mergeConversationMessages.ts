@@ -1,11 +1,39 @@
-import { stripOptimisticOutboundMessages } from "./optimisticOutboundMessage.js";
+import {
+  isOptimisticOutboundMessageId,
+  stripOptimisticOutboundMessages,
+} from "./optimisticOutboundMessage.js";
 
 export type MergeableMessage = {
   id: string;
   sentAt: string;
   createdAt: string;
   status: string;
+  direction?: string;
 };
+
+const OPTIMISTIC_OUTBOUND_CONFIRM_SLACK_MS = 15_000;
+
+/** True when newly arrived rows include a persisted outbound that likely replaces a pending optimistic send. */
+export function incomingMessagesConfirmOptimisticOutbound<T extends MergeableMessage>(
+  localMessages: T[],
+  incomingMessages: T[],
+): boolean {
+  const optimistic = localMessages.filter((m) => isOptimisticOutboundMessageId(m.id));
+  if (!optimistic.length || !incomingMessages.length) return false;
+
+  const optimisticMaxTs = maxMessageTimestampMs(optimistic);
+  const minConfirmTs = optimisticMaxTs - OPTIMISTIC_OUTBOUND_CONFIRM_SLACK_MS;
+
+  return incomingMessages.some((message) => {
+    if (isOptimisticOutboundMessageId(message.id)) return false;
+    if (localMessages.some((local) => local.id === message.id)) return false;
+    if (message.direction === "INBOUND") return false;
+    if (message.direction === "OUTBOUND") {
+      return messageTimestampMs(message) >= minConfirmTs;
+    }
+    return false;
+  });
+}
 
 export function messageTimestampMs(message: Pick<MergeableMessage, "sentAt" | "createdAt">): number {
   const sent = Date.parse(message.sentAt);
@@ -70,11 +98,12 @@ export function mergeConversationWithRemote<T extends MergeableConversation>(loc
 
   const localMessages = local.messages ?? [];
   const remoteMessages = remote.messages ?? [];
-  const localPersisted = stripOptimisticOutboundMessages(localMessages);
-  const remoteAddsPersistedRows = remoteMessages.some(
-    (message) => !localPersisted.some((localMessage) => localMessage.id === message.id),
+  const newInRemote = remoteMessages.filter(
+    (message) => !localMessages.some((localMessage) => localMessage.id === message.id),
   );
-  const mergeLocal = remoteAddsPersistedRows ? localPersisted : localMessages;
+  const mergeLocal = incomingMessagesConfirmOptimisticOutbound(localMessages, newInRemote)
+    ? stripOptimisticOutboundMessages(localMessages)
+    : localMessages;
   const mergedMessages = mergeMessagesById(mergeLocal, remoteMessages);
   const preservedLocalOnly = localMessagesMissingFromRemote(mergeLocal, remoteMessages).length > 0;
 

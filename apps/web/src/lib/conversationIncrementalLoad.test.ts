@@ -74,6 +74,11 @@ test("mergeIncrementalConversationSnapshot keeps realtime rows from prev.message
 
 test("mergeIncrementalConversationSnapshot drops optimistic rows when tail adds persisted message", () => {
   const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
+  const optimisticRow = {
+    ...optimistic,
+    sentAt: "2026-01-01T10:01:30.000Z",
+    createdAt: "2026-01-01T10:01:30.000Z",
+  };
   const merged = mergeIncrementalConversationSnapshot({
     meta: {
       id: "conv-1",
@@ -87,13 +92,49 @@ test("mergeIncrementalConversationSnapshot drops optimistic rows when tail adds 
     },
     prevMessages: [
       { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
-      { ...optimistic, sentAt: optimistic.sentAt, createdAt: optimistic.createdAt },
+      optimisticRow,
     ],
     tailMessages: [
-      { id: "real-2", sentAt: "2026-01-01T10:02:00.000Z", createdAt: "2026-01-01T10:02:00.000Z", status: "SENT" },
+      {
+        id: "real-2",
+        direction: "OUTBOUND",
+        sentAt: "2026-01-01T10:02:00.000Z",
+        createdAt: "2026-01-01T10:02:00.000Z",
+        status: "SENT",
+      },
     ],
     newestCursor: "cursor-2",
   });
 
   assert.deepEqual(merged.messages?.map((m) => m.id), ["1", "real-2"]);
+});
+
+test("mergeIncrementalConversationSnapshot keeps optimistic when tail only adds inbound", () => {
+  const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
+  const merged = mergeIncrementalConversationSnapshot({
+    meta: { id: "conv-1", messages: [] },
+    prev: {
+      id: "conv-1",
+      messages: [
+        { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      ],
+    },
+    prevMessages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      { ...optimistic, sentAt: optimistic.sentAt, createdAt: optimistic.createdAt },
+    ],
+    tailMessages: [
+      {
+        id: "bot-2",
+        direction: "INBOUND",
+        sentAt: "2026-01-01T10:02:00.000Z",
+        createdAt: "2026-01-01T10:02:00.000Z",
+        status: "DELIVERED",
+      },
+    ],
+    newestCursor: "cursor-2",
+  });
+
+  assert.equal(merged.messages?.length, 3);
+  assert.ok(merged.messages?.some((m) => m.id === optimistic.id));
 });
