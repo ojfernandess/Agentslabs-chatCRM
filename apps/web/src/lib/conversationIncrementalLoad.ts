@@ -3,8 +3,7 @@ import {
   type MergeableConversation,
   type MergeableMessage,
 } from "./mergeConversationMessages.js";
-import { stripOptimisticOutboundMessages } from "./optimisticOutboundMessage.js";
-import { incomingMessagesConfirmOptimisticOutbound } from "./mergeConversationMessages.js";
+import { applyPersistedOutboundConfirmations } from "./mergeConversationMessages.js";
 
 export type ConversationMessageTailResponse = {
   messages: MergeableMessage[];
@@ -26,16 +25,17 @@ export function mergeIncrementalConversationSnapshot<T extends MergeableConversa
   }
   const existingIds = new Set(safePrevMessages.map((message) => message.id));
   const newMessages = input.tailMessages.filter((message) => !existingIds.has(message.id));
-  if (
-    newMessages.length > 0 &&
-    incomingMessagesConfirmOptimisticOutbound(safePrevMessages, newMessages)
-  ) {
-    safePrevMessages = stripOptimisticOutboundMessages(safePrevMessages);
+  if (newMessages.length > 0) {
+    safePrevMessages = applyPersistedOutboundConfirmations(safePrevMessages, newMessages);
   }
+  const idsAfterConfirm = new Set(safePrevMessages.map((message) => message.id));
+  const messagesToAppend = newMessages.filter((message) => !idsAfterConfirm.has(message.id));
 
   return {
     ...input.meta,
-    messages: newMessages.length ? [...safePrevMessages, ...newMessages] : safePrevMessages,
+    messages: messagesToAppend.length
+      ? [...safePrevMessages, ...messagesToAppend]
+      : safePrevMessages,
     messagesHasMore: input.prev?.messagesHasMore ?? input.meta.messagesHasMore,
     messagesOlderCursor: input.prev?.messagesOlderCursor ?? input.meta.messagesOlderCursor,
     messagesNewerCursor: input.newestCursor ?? input.prev?.messagesNewerCursor ?? input.meta.messagesNewerCursor,

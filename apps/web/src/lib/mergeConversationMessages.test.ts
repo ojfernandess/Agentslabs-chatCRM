@@ -73,6 +73,7 @@ test("mergeConversationWithRemote drops optimistic rows when HTTP returns the pe
   const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
   const optimisticRow = {
     ...optimistic,
+    body: "Olá",
     sentAt: "2026-01-01T10:01:30.000Z",
     createdAt: "2026-01-01T10:01:30.000Z",
   };
@@ -90,6 +91,7 @@ test("mergeConversationWithRemote drops optimistic rows when HTTP returns the pe
       {
         id: "real-2",
         direction: "OUTBOUND",
+        body: "Olá",
         sentAt: "2026-01-01T10:02:00.000Z",
         createdAt: "2026-01-01T10:02:00.000Z",
         status: "SENT",
@@ -98,6 +100,34 @@ test("mergeConversationWithRemote drops optimistic rows when HTTP returns the pe
   };
   const merged = mergeConversationWithRemote(local, remote);
   assert.deepEqual(merged.messages?.map((m) => m.id), ["1", "real-2"]);
+});
+
+test("mergeConversationWithRemote keeps optimistic when HTTP adds unrelated bot outbound", () => {
+  const optimistic = createOptimisticOutboundMessage({ body: "Resposta do atendente", type: "TEXT" });
+  const local = {
+    id: "conv-1",
+    messages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      { ...optimistic, body: "Resposta do atendente", sentAt: optimistic.sentAt, createdAt: optimistic.createdAt },
+    ],
+  };
+  const remote = {
+    id: "conv-1",
+    messages: [
+      { id: "1", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "DELIVERED" },
+      {
+        id: "bot-2",
+        direction: "OUTBOUND",
+        body: "Mensagem automática do bot",
+        sentAt: "2026-01-01T10:02:00.000Z",
+        createdAt: "2026-01-01T10:02:00.000Z",
+        status: "SENT",
+      },
+    ],
+  };
+  const merged = mergeConversationWithRemote(local, remote);
+  assert.equal(merged.messages?.length, 3);
+  assert.ok(merged.messages?.some((m) => m.id === optimistic.id));
 });
 
 test("mergeConversationWithRemote keeps optimistic row when HTTP only adds inbound message", () => {

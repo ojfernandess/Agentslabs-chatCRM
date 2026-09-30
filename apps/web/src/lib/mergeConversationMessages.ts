@@ -1,7 +1,4 @@
-import {
-  isOptimisticOutboundMessageId,
-  stripOptimisticOutboundMessages,
-} from "./optimisticOutboundMessage.js";
+import { isOptimisticOutboundMessageId } from "./optimisticOutboundMessage.js";
 
 export type MergeableMessage = {
   id: string;
@@ -9,30 +6,55 @@ export type MergeableMessage = {
   createdAt: string;
   status: string;
   direction?: string;
+  body?: string | null;
 };
 
 const OPTIMISTIC_OUTBOUND_CONFIRM_SLACK_MS = 15_000;
+const OPTIMISTIC_OUTBOUND_CONFIRM_MAX_FUTURE_MS = 120_000;
 
-/** True when newly arrived rows include a persisted outbound that likely replaces a pending optimistic send. */
-export function incomingMessagesConfirmOptimisticOutbound<T extends MergeableMessage>(
+/** True when a persisted outbound row is the server copy of a specific optimistic send (not any other outbound). */
+export function persistedOutboundReplacesOptimistic<T extends MergeableMessage>(
+  optimistic: T,
+  persisted: T,
+): boolean {
+  if (!isOptimisticOutboundMessageId(optimistic.id)) return false;
+  if (isOptimisticOutboundMessageId(persisted.id)) return false;
+  if (persisted.direction === "INBOUND") return false;
+
+  const optBody = (optimistic.body ?? "").trim();
+  const perBody = (persisted.body ?? "").trim();
+  if (optBody && perBody) {
+    return optBody === perBody;
+  }
+
+  if (persisted.direction !== "OUTBOUND") return false;
+  const optTs = messageTimestampMs(optimistic);
+  const perTs = messageTimestampMs(persisted);
+  return (
+    perTs >= optTs - OPTIMISTIC_OUTBOUND_CONFIRM_SLACK_MS &&
+    perTs <= optTs + OPTIMISTIC_OUTBOUND_CONFIRM_MAX_FUTURE_MS
+  );
+}
+
+/** Swap matching optimistic rows for persisted outbound in-place; leave unrelated optimistics untouched. */
+export function applyPersistedOutboundConfirmations<T extends MergeableMessage>(
   localMessages: T[],
   incomingMessages: T[],
-): boolean {
-  const optimistic = localMessages.filter((m) => isOptimisticOutboundMessageId(m.id));
-  if (!optimistic.length || !incomingMessages.length) return false;
-
-  const optimisticMaxTs = maxMessageTimestampMs(optimistic);
-  const minConfirmTs = optimisticMaxTs - OPTIMISTIC_OUTBOUND_CONFIRM_SLACK_MS;
-
-  return incomingMessages.some((message) => {
-    if (isOptimisticOutboundMessageId(message.id)) return false;
-    if (localMessages.some((local) => local.id === message.id)) return false;
-    if (message.direction === "INBOUND") return false;
-    if (message.direction === "OUTBOUND") {
-      return messageTimestampMs(message) >= minConfirmTs;
-    }
-    return false;
-  });
+): T[] {
+  let result = localMessages;
+  for (const incoming of incomingMessages) {
+    if (incoming.direction === "INBOUND") continue;
+    const index = result.findIndex(
+      (message) =>
+        isOptimisticOutboundMessageId(message.id) &&
+        persistedOutboundReplacesOptimistic(message, incoming),
+    );
+    if (index < 0) continue;
+    const next = [...result];
+    next[index] = incoming;
+    result = next;
+  }
+  return result;
 }
 
 export function messageTimestampMs(message: Pick<MergeableMessage, "sentAt" | "createdAt">): number {
@@ -101,9 +123,7 @@ export function mergeConversationWithRemote<T extends MergeableConversation>(loc
   const newInRemote = remoteMessages.filter(
     (message) => !localMessages.some((localMessage) => localMessage.id === message.id),
   );
-  const mergeLocal = incomingMessagesConfirmOptimisticOutbound(localMessages, newInRemote)
-    ? stripOptimisticOutboundMessages(localMessages)
-    : localMessages;
+  const mergeLocal = applyPersistedOutboundConfirmations(localMessages, newInRemote);
   const mergedMessages = mergeMessagesById(mergeLocal, remoteMessages);
   const preservedLocalOnly = localMessagesMissingFromRemote(mergeLocal, remoteMessages).length > 0;
 

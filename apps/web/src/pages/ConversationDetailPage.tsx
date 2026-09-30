@@ -191,11 +191,14 @@ import {
   setInflightConversation,
 } from "@/lib/conversationDetailCache";
 import { mergeIncrementalConversationSnapshot } from "@/lib/conversationIncrementalLoad";
-import { mergeConversationWithRemote } from "@/lib/mergeConversationMessages";
+import {
+  applyPersistedOutboundConfirmations,
+  mergeConversationWithRemote,
+  persistedOutboundReplacesOptimistic,
+} from "@/lib/mergeConversationMessages";
 import {
   createOptimisticOutboundMessage,
   isOptimisticOutboundMessageId,
-  stripOptimisticOutboundMessages,
 } from "@/lib/optimisticOutboundMessage";
 import { parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import {
@@ -1401,13 +1404,18 @@ export function ConversationDetailPage() {
       if (!base || base.id !== id) return prev;
       let existing = base.messages ?? [];
       if (message.direction === "OUTBOUND") {
-        for (const row of existing) {
-          if (isOptimisticOutboundMessageId(row.id)) {
-            outboundMessageRowKeyRef.current.set(message.id, row.id);
+        const matchedOptimistic = existing.find(
+          (row) =>
+            isOptimisticOutboundMessageId(row.id) &&
+            persistedOutboundReplacesOptimistic(row, message),
+        );
+        if (matchedOptimistic) {
+          outboundMessageRowKeyRef.current.set(message.id, matchedOptimistic.id);
+          if (pendingOutboundOptimisticRef.current === matchedOptimistic.id) {
+            pendingOutboundOptimisticRef.current = null;
           }
         }
-        existing = stripOptimisticOutboundMessages(existing);
-        pendingOutboundOptimisticRef.current = null;
+        existing = applyPersistedOutboundConfirmations(existing, [message]);
       }
       if (existing.some((m) => m.id === message.id)) {
         applied = true;

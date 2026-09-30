@@ -76,6 +76,7 @@ test("mergeIncrementalConversationSnapshot drops optimistic rows when tail adds 
   const optimistic = createOptimisticOutboundMessage({ body: "Olá", type: "TEXT" });
   const optimisticRow = {
     ...optimistic,
+    body: "Olá",
     sentAt: "2026-01-01T10:01:30.000Z",
     createdAt: "2026-01-01T10:01:30.000Z",
   };
@@ -98,6 +99,7 @@ test("mergeIncrementalConversationSnapshot drops optimistic rows when tail adds 
       {
         id: "real-2",
         direction: "OUTBOUND",
+        body: "Olá",
         sentAt: "2026-01-01T10:02:00.000Z",
         createdAt: "2026-01-01T10:02:00.000Z",
         status: "SENT",
