@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 import { getMetaPolicyVersions } from "./metaPolicyConfig.js";
 import { getActiveBillingPolicyPhase } from "./metaBillingPolicy.js";
+import { reconcileWhatsappLedgerBillabilityForRange } from "./messageBillingLedger.js";
 
 export const WHATSAPP_CONSUMPTION_CATEGORIES = [
   "SERVICE",
@@ -170,7 +171,7 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
     let currency: string | null = null;
 
     if (b.costSamples > 0) {
-      billable = b.billable;
+      billable = b.billableDelivered > 0 ? b.billableDelivered : b.billable;
       estimatedCost = b.estimatedCost;
       currency = b.currency;
     } else if (hasBillabilitySignal) {
@@ -196,6 +197,11 @@ export async function getWhatsappConsumption(params: {
   from: Date;
   to: Date;
 }): Promise<CategoryConsumptionRow[]> {
+  await reconcileWhatsappLedgerBillabilityForRange({
+    organizationId: params.organizationId,
+    from: params.from,
+    to: params.to,
+  });
   const rows = await prisma.messageBillingLedgerEntry.groupBy({
     by: ["messageCategory", "billingStatus", "currency", "metaBillable"],
     where: {

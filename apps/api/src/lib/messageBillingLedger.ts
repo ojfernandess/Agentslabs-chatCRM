@@ -288,12 +288,110 @@ export async function recordMessageLedgerEntry(input: LedgerEntryInput): Promise
           serviceWindowOpenAtSend: input.serviceWindowOpenAtSend ?? undefined,
         },
       });
+      await syncLedgerWithMessageDeliveryStatus(input);
       return;
     }
 
     await prisma.messageBillingLedgerEntry.create({ data });
   } catch {
     /* ledger é observabilidade — nunca falha o envio */
+  }
+}
+
+/** Webhook de entrega pode chegar antes do ledger — alinha status e custo estimado. */
+async function syncLedgerWithMessageDeliveryStatus(input: LedgerEntryInput): Promise<void> {
+  if (input.channel !== "WHATSAPP" || !input.messageId) return;
+  const msg = await prisma.message.findUnique({
+    where: { id: input.messageId },
+    select: { status: true, providerMsgId: true },
+  });
+  if (!msg || (msg.status !== "DELIVERED" && msg.status !== "READ")) return;
+  const providerMessageId = input.providerMessageId ?? msg.providerMsgId;
+  if (!providerMessageId) return;
+  await updateLedgerDeliveryStatus({
+    organizationId: input.organizationId,
+    providerMessageId,
+    status: msg.status,
+    metaPricing: null,
+  });
+}
+
+/**
+ * Preenche metaBillable/custo em entregas antigas (metaBillable null) antes de agregar consumo.
+ */
+export async function reconcileWhatsappLedgerBillabilityForRange(params: {
+  organizationId: string;
+  from: Date;
+  to: Date;
+  limit?: number;
+}): Promise<void> {
+  const limit = params.limit ?? 300;
+  const stale = await prisma.messageBillingLedgerEntry.findMany({
+    where: {
+      organizationId: params.organizationId,
+      channel: "WHATSAPP",
+      sentAt: { gte: params.from, lte: params.to },
+      metaBillable: null,
+      OR: [
+        { billingStatus: { in: ["DELIVERED", "READ"] } },
+        { billingStatus: "SENT", messageId: { not: null } },
+      ],
+    },
+    select: {
+      id: true,
+      messageId: true,
+      providerMessageId: true,
+      billingStatus: true,
+    },
+    take: limit,
+  });
+
+  for (const entry of stale) {
+    try {
+      if (entry.billingStatus === "SENT" && entry.messageId) {
+        const msg = await prisma.message.findUnique({
+          where: { id: entry.messageId },
+          select: { status: true, providerMsgId: true },
+        });
+        if (msg?.status === "DELIVERED" || msg?.status === "READ") {
+          const providerMessageId = entry.providerMessageId ?? msg.providerMsgId;
+          if (providerMessageId) {
+            await updateLedgerDeliveryStatus({
+              organizationId: params.organizationId,
+              providerMessageId,
+              status: msg.status,
+              metaPricing: null,
+            });
+          }
+        }
+        continue;
+      }
+
+      if (entry.billingStatus === "DELIVERED" || entry.billingStatus === "READ") {
+        const full = await prisma.messageBillingLedgerEntry.findUnique({ where: { id: entry.id } });
+        if (!full) continue;
+        const now = full.deliveredAt ?? full.readAt ?? new Date();
+        const cost = await computeDeliveredCost(full, null, now);
+        await prisma.messageBillingLedgerEntry.update({
+          where: { id: entry.id },
+          data: {
+            metaBillable: cost.metaBillable,
+            estimatedCost: cost.estimatedCost,
+            currency: cost.currency,
+            pricingVersion: cost.pricingVersion,
+            metaPricingType: cost.metaPricingType,
+            metaPricingCategory: cost.metaPricingCategory,
+            metaPricingModel: cost.metaPricingModel,
+            market: cost.market,
+            listUnitPrice: cost.listUnitPrice,
+            volumeTierDiscountPercent: cost.volumeTierDiscountPercent,
+            serviceFreeTierApplied: cost.serviceFreeTierApplied,
+          },
+        });
+      }
+    } catch {
+      /* observabilidade */
+    }
   }
 }
 

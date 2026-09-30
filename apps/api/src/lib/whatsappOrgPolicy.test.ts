@@ -92,6 +92,22 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
     assert.equal(service.estimatedCost, null);
   });
 
+  it("counts billable from metaBillable when cost rows exist but unit price is only on billable flag", () => {
+    const rows = foldLedgerAggregation([
+      {
+        messageCategory: "SERVICE",
+        billingStatus: "DELIVERED",
+        currency: "USD",
+        metaBillable: true,
+        _count: { _all: 4 },
+        _sum: { estimatedCost: 0.32 },
+      },
+    ]);
+    const service = rows.find((r) => r.category === "SERVICE")!;
+    assert.equal(service.billable, 4);
+    assert.equal(service.estimatedCost, 0.32);
+  });
+
   it("shows zero billable/cost when delivered messages are explicitly non-billable", () => {
     const rows = foldLedgerAggregation([
       {
