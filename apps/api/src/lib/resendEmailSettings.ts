@@ -11,6 +11,8 @@ import {
   DEFAULT_PAYMENT_CONFIRMATION_SUBJECT,
   DEFAULT_USER_INVITE_HTML,
   DEFAULT_USER_INVITE_SUBJECT,
+  DEFAULT_WHATSAPP_BILLABLE_ALERT_HTML,
+  DEFAULT_WHATSAPP_BILLABLE_ALERT_SUBJECT,
   isPlaceholderSystemLogoUrl,
   normalizeSystemLogoUrl,
   SYSTEM_LOGO_PATH,
@@ -36,6 +38,8 @@ export type ResendEmailConfig = {
   organizationExportHtmlTemplate?: string | null;
   paymentConfirmationSubject?: string | null;
   paymentConfirmationHtmlTemplate?: string | null;
+  whatsappBillableAlertSubject?: string | null;
+  whatsappBillableAlertHtmlTemplate?: string | null;
 };
 
 export { DEFAULT_PASSWORD_RESET_HTML, DEFAULT_PASSWORD_RESET_SUBJECT };
@@ -43,6 +47,7 @@ export { DEFAULT_USER_INVITE_HTML, DEFAULT_USER_INVITE_SUBJECT };
 export { DEFAULT_BILLING_REMINDER_HTML, DEFAULT_BILLING_REMINDER_SUBJECT };
 export { DEFAULT_ORGANIZATION_EXPORT_HTML, DEFAULT_ORGANIZATION_EXPORT_SUBJECT };
 export { DEFAULT_PAYMENT_CONFIRMATION_HTML, DEFAULT_PAYMENT_CONFIRMATION_SUBJECT };
+export { DEFAULT_WHATSAPP_BILLABLE_ALERT_HTML, DEFAULT_WHATSAPP_BILLABLE_ALERT_SUBJECT };
 
 export const DEFAULT_SYSTEM_LOGO_PATH = SYSTEM_LOGO_PATH;
 
@@ -112,6 +117,14 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
     typeof o.paymentConfirmationHtmlTemplate === "string" && o.paymentConfirmationHtmlTemplate.trim()
       ? o.paymentConfirmationHtmlTemplate.trim().slice(0, 100_000)
       : null;
+  const whatsappBillableAlertSubject =
+    typeof o.whatsappBillableAlertSubject === "string" && o.whatsappBillableAlertSubject.trim()
+      ? o.whatsappBillableAlertSubject.trim().slice(0, 200)
+      : null;
+  const whatsappBillableAlertHtmlTemplate =
+    typeof o.whatsappBillableAlertHtmlTemplate === "string" && o.whatsappBillableAlertHtmlTemplate.trim()
+      ? o.whatsappBillableAlertHtmlTemplate.trim().slice(0, 100_000)
+      : null;
   return {
     apiKey,
     fromEmail,
@@ -127,6 +140,8 @@ export function parseResendEmailValue(raw: unknown): ResendEmailConfig | null {
     organizationExportHtmlTemplate,
     paymentConfirmationSubject,
     paymentConfirmationHtmlTemplate,
+    whatsappBillableAlertSubject,
+    whatsappBillableAlertHtmlTemplate,
   };
 }
 
@@ -233,6 +248,30 @@ export function getPaymentConfirmationTemplatesForEditor(raw: unknown): { subjec
       typeof o.paymentConfirmationHtmlTemplate === "string" && o.paymentConfirmationHtmlTemplate.trim()
         ? o.paymentConfirmationHtmlTemplate.trim().slice(0, 100_000)
         : DEFAULT_PAYMENT_CONFIRMATION_HTML,
+  };
+}
+
+export function resolveWhatsappBillableAlertTemplates(cfg: ResendEmailConfig): {
+  subjectTpl: string;
+  htmlTpl: string;
+} {
+  return {
+    subjectTpl: cfg.whatsappBillableAlertSubject?.trim() || DEFAULT_WHATSAPP_BILLABLE_ALERT_SUBJECT,
+    htmlTpl: cfg.whatsappBillableAlertHtmlTemplate?.trim() || DEFAULT_WHATSAPP_BILLABLE_ALERT_HTML,
+  };
+}
+
+export function getWhatsappBillableAlertTemplatesForEditor(raw: unknown): { subject: string; html: string } {
+  const o = raw && typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    subject:
+      typeof o.whatsappBillableAlertSubject === "string" && o.whatsappBillableAlertSubject.trim()
+        ? o.whatsappBillableAlertSubject.trim().slice(0, 200)
+        : DEFAULT_WHATSAPP_BILLABLE_ALERT_SUBJECT,
+    html:
+      typeof o.whatsappBillableAlertHtmlTemplate === "string" && o.whatsappBillableAlertHtmlTemplate.trim()
+        ? o.whatsappBillableAlertHtmlTemplate.trim().slice(0, 100_000)
+        : DEFAULT_WHATSAPP_BILLABLE_ALERT_HTML,
   };
 }
 

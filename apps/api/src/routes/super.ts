@@ -39,6 +39,17 @@ import {
   isOrganizationFeatureEnabled,
   type FeatureFlagKey,
 } from "../lib/featureFlags.js";
+import {
+  canSuperAdminAccessWhatsappConsumptionDashboard,
+  getWhatsappConsumptionInsightsConfig,
+  setWhatsappConsumptionInsightsConfig,
+  WHATSAPP_CONSUMPTION_DASHBOARD_FLAG,
+} from "../lib/whatsappConsumptionInsights.js";
+import {
+  getWhatsappConsumption,
+  getWhatsappPolicyOverview,
+  resolveConsumptionRange,
+} from "../lib/whatsappOrgPolicy.js";
 import { AI_BILLING_MODES } from "../lib/ai-billing/aiBillingTypes.js";
 import {
   DEFAULT_PIPELINE_STAGES,
@@ -93,6 +104,7 @@ import {
   getOrganizationExportTemplatesForEditor,
   getPasswordResetTemplatesForEditor,
   getPaymentConfirmationTemplatesForEditor,
+  getWhatsappBillableAlertTemplatesForEditor,
   getUserInviteTemplatesForEditor,
   isPlaceholderSystemLogoUrl,
   parseResendEmailValue,
@@ -276,6 +288,8 @@ const resendEmailPutSchema = z.object({
   organizationExportHtmlTemplate: z.string().max(100_000).optional(),
   paymentConfirmationSubject: z.string().max(200).optional(),
   paymentConfirmationHtmlTemplate: z.string().max(100_000).optional(),
+  whatsappBillableAlertSubject: z.string().max(200).optional(),
+  whatsappBillableAlertHtmlTemplate: z.string().max(100_000).optional(),
 });
 
 const turnstilePutSchema = z.object({
@@ -345,6 +359,11 @@ const conversationMediaRetentionPutSchema = z.object({
 const featureFlagPatchSchema = z.object({
   key: z.string().min(1).max(64),
   enabled: z.boolean(),
+});
+
+const whatsappConsumptionInsightsPatchSchema = z.object({
+  visibility: z.enum(["organization", "super_admin_only"]).optional(),
+  alertAdminOnBillable: z.boolean().optional(),
 });
 
 function superJwtBase(request: { user: JwtPayload }): JwtPayload {
@@ -560,6 +579,11 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         };
       }),
     );
+    const waInsightsConfig = await getWhatsappConsumptionInsightsConfig(org.id);
+    const waDashboardEnabled = await isOrganizationFeatureEnabled(
+      org.id,
+      WHATSAPP_CONSUMPTION_DASHBOARD_FLAG,
+    );
     return {
       organizationId: org.id,
       organizationName: org.name,
@@ -574,6 +598,11 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         lastBalance: nvoipAccount?.lastBalance ?? null,
         callCount30d: nvoipCallCount30d,
         lastLog: lastNvoipLog,
+      },
+      whatsappConsumptionInsights: {
+        enabled: waDashboardEnabled,
+        visibility: waInsightsConfig.visibility,
+        alertAdminOnBillable: waInsightsConfig.alertAdminOnBillable,
       },
       flags,
     };
@@ -627,6 +656,91 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     });
     return { ok: true, key: parsed.data.key, enabled: parsed.data.enabled };
   });
+
+  app.patch<{ Params: { id: string } }>(
+    "/organizations/:id/whatsapp-consumption-insights",
+    async (request, reply) => {
+      const parsed = whatsappConsumptionInsightsPatchSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: parsed.error.message,
+          statusCode: 400,
+        });
+      }
+      const org = await prisma.organization.findUnique({
+        where: { id: request.params.id },
+        select: { id: true },
+      });
+      if (!org) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message: "Organization not found",
+          statusCode: 404,
+        });
+      }
+      const config = await setWhatsappConsumptionInsightsConfig(org.id, parsed.data);
+      await safeAudit(request, {
+        actorUserId: request.user.id,
+        organizationId: org.id,
+        action: "super.whatsapp_consumption_insights.update",
+        resourceType: "whatsapp_consumption_insights",
+        resourceId: org.id,
+        metadata: {
+          visibility: config.visibility,
+          alertAdminOnBillable: config.alertAdminOnBillable,
+        },
+        ip: clientIp(request),
+      });
+      return config;
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/organizations/:id/whatsapp-policy/overview",
+    async (request, reply) => {
+      const orgId = request.params.id;
+      if (!(await canSuperAdminAccessWhatsappConsumptionDashboard(orgId))) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message: "whatsapp_consumption_dashboard_disabled",
+          statusCode: 404,
+        });
+      }
+      return getWhatsappPolicyOverview(orgId);
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/organizations/:id/whatsapp-policy/consumption",
+    async (request, reply) => {
+      const orgId = request.params.id;
+      if (!(await canSuperAdminAccessWhatsappConsumptionDashboard(orgId))) {
+        return reply.status(404).send({
+          error: "Not Found",
+          message: "whatsapp_consumption_dashboard_disabled",
+          statusCode: 404,
+        });
+      }
+      const q = request.query as Record<string, string | undefined>;
+      const range = resolveConsumptionRange({
+        preset: q.preset,
+        from: q.from,
+        to: q.to,
+      });
+      const categories = await getWhatsappConsumption({
+        organizationId: orgId,
+        from: range.from,
+        to: range.to,
+      });
+      return {
+        preset: range.preset,
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
+        categories,
+      };
+    },
+  );
 
   app.get("/organizations", async () => {
     const organizations = await prisma.organization.findMany({
@@ -1937,6 +2051,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const billingReminderTpl = getBillingReminderTemplatesForEditor(row?.value);
     const organizationExportTpl = getOrganizationExportTemplatesForEditor(row?.value);
     const paymentConfirmationTpl = getPaymentConfirmationTemplatesForEditor(row?.value);
+    const whatsappBillableAlertTpl = getWhatsappBillableAlertTemplatesForEditor(row?.value);
     const rawVal =
       row?.value && typeof row.value === "object" && row.value !== null
         ? (row.value as Record<string, unknown>)
@@ -1965,6 +2080,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         organizationExportHtmlTemplate: organizationExportTpl.html,
         paymentConfirmationSubject: paymentConfirmationTpl.subject,
         paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
+        whatsappBillableAlertSubject: whatsappBillableAlertTpl.subject,
+        whatsappBillableAlertHtmlTemplate: whatsappBillableAlertTpl.html,
       };
     }
     return {
@@ -1984,6 +2101,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       organizationExportHtmlTemplate: organizationExportTpl.html,
       paymentConfirmationSubject: paymentConfirmationTpl.subject,
       paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
+      whatsappBillableAlertSubject: whatsappBillableAlertTpl.subject,
+      whatsappBillableAlertHtmlTemplate: whatsappBillableAlertTpl.html,
     };
   });
 
@@ -2135,6 +2254,18 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         : (typeof existingVal.paymentConfirmationHtmlTemplate === "string"
             ? existingVal.paymentConfirmationHtmlTemplate
             : null) ?? null;
+    const whatsappBillableAlertSubject =
+      parsed.data.whatsappBillableAlertSubject !== undefined
+        ? parsed.data.whatsappBillableAlertSubject.trim().slice(0, 200) || null
+        : (typeof existingVal.whatsappBillableAlertSubject === "string"
+            ? existingVal.whatsappBillableAlertSubject
+            : null) ?? null;
+    const whatsappBillableAlertHtmlTemplate =
+      parsed.data.whatsappBillableAlertHtmlTemplate !== undefined
+        ? parsed.data.whatsappBillableAlertHtmlTemplate.trim().slice(0, 100_000) || null
+        : (typeof existingVal.whatsappBillableAlertHtmlTemplate === "string"
+            ? existingVal.whatsappBillableAlertHtmlTemplate
+            : null) ?? null;
     const value = {
       apiKey,
       fromEmail: parsed.data.fromEmail.trim().toLowerCase(),
@@ -2150,6 +2281,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       organizationExportHtmlTemplate,
       paymentConfirmationSubject,
       paymentConfirmationHtmlTemplate,
+      whatsappBillableAlertSubject,
+      whatsappBillableAlertHtmlTemplate,
     };
     await prisma.platformSetting.upsert({
       where: { key: RESEND_EMAIL_PLATFORM_KEY },
@@ -2169,6 +2302,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
     const billingReminderTpl = getBillingReminderTemplatesForEditor(value);
     const organizationExportTpl = getOrganizationExportTemplatesForEditor(value);
     const paymentConfirmationTpl = getPaymentConfirmationTemplatesForEditor(value);
+    const whatsappBillableAlertTpl = getWhatsappBillableAlertTemplatesForEditor(value);
     return {
       configured: true,
       fromEmail: value.fromEmail,
@@ -2186,6 +2320,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
       organizationExportHtmlTemplate: organizationExportTpl.html,
       paymentConfirmationSubject: paymentConfirmationTpl.subject,
       paymentConfirmationHtmlTemplate: paymentConfirmationTpl.html,
+      whatsappBillableAlertSubject: whatsappBillableAlertTpl.subject,
+      whatsappBillableAlertHtmlTemplate: whatsappBillableAlertTpl.html,
     };
   });
 

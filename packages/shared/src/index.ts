@@ -16,6 +16,7 @@ export * from "./legalVersions.js";
 export * from "./billingReminderEmailTemplate.js";
 export * from "./organizationExportEmailTemplate.js";
 export * from "./paymentConfirmationEmailTemplate.js";
+export * from "./whatsappBillableAlertEmailTemplate.js";
 export * from "./dealCategoryCatalog.js";
 export * from "./dealCategoryValidation.js";
 export * from "./metaDeliveryErrorHints.js";

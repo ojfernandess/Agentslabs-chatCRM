@@ -3397,7 +3397,7 @@ export function SettingsPage() {
               {section === "billing" && isAdmin && (
                 <motion.div variants={staggerItem} className="space-y-6">
                   <BillingSettingsPanel />
-                  <WhatsappOrgPolicyPanel />
+                  {user?.whatsappConsumptionDashboardTenantVisible ? <WhatsappOrgPolicyPanel /> : null}
                 </motion.div>
               )}
 

@@ -331,10 +331,19 @@ export async function reconcileWhatsappLedgerBillabilityForRange(params: {
       organizationId: params.organizationId,
       channel: "WHATSAPP",
       sentAt: { gte: params.from, lte: params.to },
-      metaBillable: null,
       OR: [
-        { billingStatus: { in: ["DELIVERED", "READ"] } },
-        { billingStatus: "SENT", messageId: { not: null } },
+        {
+          metaBillable: null,
+          OR: [
+            { billingStatus: { in: ["DELIVERED", "READ"] } },
+            { billingStatus: "SENT", messageId: { not: null } },
+          ],
+        },
+        {
+          metaBillable: true,
+          estimatedCost: null,
+          billingStatus: { in: ["DELIVERED", "READ"] },
+        },
       ],
     },
     select: {

@@ -6882,12 +6882,40 @@ export const messages = {
         webchat: "Web Chat (continuidade da conversa)",
         whatsapp_message_policy: "Política de mensagens WhatsApp (Meta)",
         cost_aware_messaging: "Mensagens com consciência de custo",
+        whatsapp_consumption_dashboard:
+          "WhatsApp — Política de Mensagens e Consumo (painel)",
       },
+      whatsappInsightsTitle: "Painel WhatsApp — Política e Consumo",
+      whatsappInsightsHint:
+        "Ative a funcionalidade acima. Escolha onde o painel é exibido (consultas ao ledger só ocorrem quando o painel é carregado).",
+      whatsappInsightsModeOrg: "Visível na organização",
+      whatsappInsightsModeOrgDesc:
+        "Administradores do tenant veem o painel em Configurações → Faturação (comportamento habitual).",
+      whatsappInsightsModeSuper: "Somente super admin",
+      whatsappInsightsModeSuperDesc:
+        "O painel não aparece no tenant; consulte abaixo nesta página.",
+      whatsappInsightsAlertBillable:
+        "Enviar e-mail aos administradores do tenant quando houver mensagens cobráveis no mês (uma vez por mês; requer Resend configurado).",
+      whatsappInsightsSaveError: "Não foi possível guardar as opções do painel WhatsApp.",
       usageMetrics: "Métricas de uso",
       usageMetricsSubtitle: "Mensagens processadas por tenant (janelas de 7 e 30 dias).",
       globalSettings: "Definições globais",
-      globalSettingsSubtitle:
-        "Armazenamento chave–valor (JSON) para políticas de plataforma. Ex.: maintenance_mode: {\"enabled\":false}.",
+      globalSettingsSubtitle: "Configuração da plataforma por área — escolha uma aba ao lado.",
+      globalSettingsTabsHint: "Cada aba agrupa um tipo de definição; só o conteúdo da aba activa é mostrado.",
+      globalSettingsTab: {
+        publicDocs: "Documentação pública",
+        apiRateLimit: "Limites de API",
+        typography: "Tipografia",
+        conversations: "Mensagens nas conversas",
+        mediaStorage: "Armazenamento de mídia",
+        turnstile: "Cloudflare Turnstile",
+        resend: "E-mail transacional (Resend)",
+        tenantPermissions: "Permissões de tenant",
+        platformRegistry: "Registo JSON da plataforma",
+      },
+      resendWhatsappBillableAlertTemplateTitle: "Alerta — WhatsApp mensagens cobráveis (admins do tenant)",
+      resendWhatsappBillableAlertTemplateHint:
+        "Enviado quando a opção de alerta está activa no painel de consumo WhatsApp (modo super admin). Placeholders: organização, total cobrável, mês (YYYY-MM).",
       helpCenter: {
         nav: "Ajuda e Suporte",
         title: "Central de Ajuda",
@@ -14523,12 +14551,38 @@ export const messages = {
         webchat: "Web Chat (conversation continuity)",
         whatsapp_message_policy: "WhatsApp message policy (Meta)",
         cost_aware_messaging: "Cost-aware messaging",
+        whatsapp_consumption_dashboard: "WhatsApp — message policy & consumption dashboard",
       },
+      whatsappInsightsTitle: "WhatsApp policy & consumption",
+      whatsappInsightsHint:
+        "Enable the feature above, then choose where the dashboard is shown (ledger queries run only when the panel is loaded).",
+      whatsappInsightsModeOrg: "Visible in the organization",
+      whatsappInsightsModeOrgDesc:
+        "Tenant admins see the panel under Settings → Billing (default behavior).",
+      whatsappInsightsModeSuper: "Super admin only",
+      whatsappInsightsModeSuperDesc: "Hidden from the tenant; use the panel below on this page.",
+      whatsappInsightsAlertBillable:
+        "Email tenant admins when billable WhatsApp messages appear in the month (once per month; requires Resend).",
+      whatsappInsightsSaveError: "Could not save WhatsApp dashboard options.",
       usageMetrics: "Usage metrics",
       usageMetricsSubtitle: "Message volume per tenant (7- and 30-day windows).",
       globalSettings: "Global settings",
-      globalSettingsSubtitle:
-        "Key–value JSON for platform policy. Example: maintenance_mode: {\"enabled\":false}.",
+      globalSettingsSubtitle: "Platform configuration by area — pick a tab on the side.",
+      globalSettingsTabsHint: "Each tab groups one settings area; only the active tab content is shown.",
+      globalSettingsTab: {
+        publicDocs: "Public documentation",
+        apiRateLimit: "API rate limits",
+        typography: "Typography",
+        conversations: "Conversation messages",
+        mediaStorage: "Media storage",
+        turnstile: "Cloudflare Turnstile",
+        resend: "Transactional email (Resend)",
+        tenantPermissions: "Tenant permissions",
+        platformRegistry: "Platform JSON registry",
+      },
+      resendWhatsappBillableAlertTemplateTitle: "Alert — WhatsApp billable messages (tenant admins)",
+      resendWhatsappBillableAlertTemplateHint:
+        "Sent when billable alert is enabled on the WhatsApp consumption panel (super-admin-only mode). Placeholders: organization, billable total, month (YYYY-MM).",
       helpCenter: {
         nav: "Help & Support",
         title: "Help Center",

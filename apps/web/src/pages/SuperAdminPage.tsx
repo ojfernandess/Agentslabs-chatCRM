@@ -41,6 +41,12 @@ import { SuperAdminHelpdeskPanel } from "@/components/super-admin/SuperAdminHelp
 import { SuperAdminMetaDeliveryPanel } from "@/components/super-admin/SuperAdminMetaDeliveryPanel";
 import { SuperAdminMessageProcessingPanel } from "@/components/super-admin/SuperAdminMessageProcessingPanel";
 import { SuperAdminWhatsappPricingPanel } from "@/components/super-admin/SuperAdminWhatsappPricingPanel";
+import { WhatsappOrgPolicyPanel } from "@/pages/settings/WhatsappOrgPolicyPanel";
+import {
+  SuperAdminGlobalSettingsLayout,
+  type GlobalSettingsTabId,
+} from "@/components/super-admin/SuperAdminGlobalSettingsLayout";
+import { ResendWhatsappBillableAlertTemplateEditor } from "@/components/ResendWhatsappBillableAlertTemplateEditor";
 import { invalidateTurnstileConfigCache } from "@/hooks/useTurnstileConfig";
 import { translateBillingStatus } from "@/lib/billingStatusLabels";
 
@@ -217,6 +223,11 @@ interface FeatureFlagsPayload {
     } | null;
   };
   flags: FeatureFlagRow[];
+  whatsappConsumptionInsights?: {
+    enabled: boolean;
+    visibility: "organization" | "super_admin_only";
+    alertAdminOnBillable: boolean;
+  };
 }
 
 interface NvoipPlatformMetricsPayload {
@@ -363,6 +374,8 @@ interface SuperResendPayload {
   organizationExportHtmlTemplate: string;
   paymentConfirmationSubject: string;
   paymentConfirmationHtmlTemplate: string;
+  whatsappBillableAlertSubject: string;
+  whatsappBillableAlertHtmlTemplate: string;
 }
 
 interface SuperTurnstilePayload {
@@ -416,6 +429,7 @@ export function SuperAdminPage() {
   const [flagsPayload, setFlagsPayload] = useState<FeatureFlagsPayload | null>(null);
   const [flagsLoading, setFlagsLoading] = useState(false);
   const [flagBusy, setFlagBusy] = useState<string | null>(null);
+  const [whatsappInsightsBusy, setWhatsappInsightsBusy] = useState(false);
 
   const [usageMetrics, setUsageMetrics] = useState<UsageMetricsPayload | null>(null);
   const [nvoipMetrics, setNvoipMetrics] = useState<NvoipPlatformMetricsPayload | null>(null);
@@ -527,6 +541,8 @@ export function SuperAdminPage() {
     organizationExportHtmlTemplate: "",
     paymentConfirmationSubject: "",
     paymentConfirmationHtmlTemplate: "",
+    whatsappBillableAlertSubject: "",
+    whatsappBillableAlertHtmlTemplate: "",
   });
   const [resendApiKey, setResendApiKey] = useState("");
   const [resendFromEmail, setResendFromEmail] = useState("");
@@ -544,6 +560,10 @@ export function SuperAdminPage() {
   const [resendOrganizationExportHtml, setResendOrganizationExportHtml] = useState("");
   const [resendPaymentConfirmationSubject, setResendPaymentConfirmationSubject] = useState("");
   const [resendPaymentConfirmationHtml, setResendPaymentConfirmationHtml] = useState("");
+  const [resendWhatsappBillableAlertSubject, setResendWhatsappBillableAlertSubject] = useState("");
+  const [resendWhatsappBillableAlertHtml, setResendWhatsappBillableAlertHtml] = useState("");
+
+  const [globalSettingsTab, setGlobalSettingsTab] = useState<GlobalSettingsTabId>("publicDocs");
 
   const [turnstileLoad, setTurnstileLoad] = useState(false);
   const [turnstileSaving, setTurnstileSaving] = useState(false);
@@ -839,6 +859,8 @@ export function SuperAdminPage() {
         setResendOrganizationExportHtml(d.organizationExportHtmlTemplate);
         setResendPaymentConfirmationSubject(d.paymentConfirmationSubject);
         setResendPaymentConfirmationHtml(d.paymentConfirmationHtmlTemplate);
+        setResendWhatsappBillableAlertSubject(d.whatsappBillableAlertSubject);
+        setResendWhatsappBillableAlertHtml(d.whatsappBillableAlertHtmlTemplate);
         setResendApiKey("");
       })
       .catch(() => {
@@ -859,6 +881,8 @@ export function SuperAdminPage() {
             organizationExportHtmlTemplate: "",
             paymentConfirmationSubject: "",
             paymentConfirmationHtmlTemplate: "",
+            whatsappBillableAlertSubject: "",
+            whatsappBillableAlertHtmlTemplate: "",
           });
           setResendFromEmail("");
           setResendFromName("OpenNexo CRM");
@@ -1134,6 +1158,22 @@ export function SuperAdminPage() {
     }
   };
 
+  const patchWhatsappConsumptionInsights = async (patch: {
+    visibility?: "organization" | "super_admin_only";
+    alertAdminOnBillable?: boolean;
+  }) => {
+    if (!flagsOrgId) return;
+    setWhatsappInsightsBusy(true);
+    try {
+      await api.patch(`/super/organizations/${flagsOrgId}/whatsapp-consumption-insights`, patch);
+      await fetchFlags(flagsOrgId);
+    } catch {
+      setError(t("superAdmin.whatsappInsightsSaveError"));
+    } finally {
+      setWhatsappInsightsBusy(false);
+    }
+  };
+
   const openBillingModal = (o: OrgRow) => {
     setBillingOrg(o);
     const tier = o.planTier ?? "free";
@@ -1384,6 +1424,8 @@ export function SuperAdminPage() {
         organizationExportHtmlTemplate: string;
         paymentConfirmationSubject: string;
         paymentConfirmationHtmlTemplate: string;
+        whatsappBillableAlertSubject: string;
+        whatsappBillableAlertHtmlTemplate: string;
       } = {
         fromEmail: resendFromEmail.trim(),
         fromName: (resendFromName.trim() || "OpenNexo CRM").slice(0, 120),
@@ -1398,6 +1440,8 @@ export function SuperAdminPage() {
         organizationExportHtmlTemplate: resendOrganizationExportHtml,
         paymentConfirmationSubject: resendPaymentConfirmationSubject.trim(),
         paymentConfirmationHtmlTemplate: resendPaymentConfirmationHtml,
+        whatsappBillableAlertSubject: resendWhatsappBillableAlertSubject.trim(),
+        whatsappBillableAlertHtmlTemplate: resendWhatsappBillableAlertHtml,
       };
       if (resendApiKey.trim()) body.apiKey = resendApiKey.trim();
       const d = await api.put<SuperResendPayload>("/super/resend-email", body);
@@ -1414,6 +1458,8 @@ export function SuperAdminPage() {
       setResendOrganizationExportHtml(d.organizationExportHtmlTemplate);
       setResendPaymentConfirmationSubject(d.paymentConfirmationSubject);
       setResendPaymentConfirmationHtml(d.paymentConfirmationHtmlTemplate);
+      setResendWhatsappBillableAlertSubject(d.whatsappBillableAlertSubject);
+      setResendWhatsappBillableAlertHtml(d.whatsappBillableAlertHtmlTemplate);
       setResendApiKey("");
     } catch {
       setError("Não foi possível guardar as definições Resend.");
@@ -2070,16 +2116,16 @@ export function SuperAdminPage() {
           )}
 
           {section === "globalSettings" && (
-            <div className="mx-auto max-w-3xl space-y-8">
-              <div>
-                <h1 className="text-xl font-bold text-ink-900">{t("superAdmin.globalSettings")}</h1>
-                <p className="mt-1 text-sm text-ink-600">{t("superAdmin.globalSettingsSubtitle")}</p>
-              </div>
-              <SuperAdminPublicDocsPanel />
-              <SuperAdminApiRateLimitPanel />
-              <SuperAdminPlatformTypographyPanel />
-              <SuperAdminConversationMessagesPanel />
+            <SuperAdminGlobalSettingsLayout
+              activeTab={globalSettingsTab}
+              onTabChange={setGlobalSettingsTab}
+            >
+              {globalSettingsTab === "publicDocs" ? <SuperAdminPublicDocsPanel /> : null}
+              {globalSettingsTab === "apiRateLimit" ? <SuperAdminApiRateLimitPanel /> : null}
+              {globalSettingsTab === "typography" ? <SuperAdminPlatformTypographyPanel /> : null}
+              {globalSettingsTab === "conversations" ? <SuperAdminConversationMessagesPanel /> : null}
 
+              {globalSettingsTab === "mediaStorage" ? (
               <section className="card-surface p-6">
                 <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.mediaStorageTitle")}</h2>
                 <p className="mb-4 text-sm text-ink-600">{t("superAdmin.mediaStorageSubtitle")}</p>
@@ -2204,6 +2250,9 @@ export function SuperAdminPage() {
                   </form>
                 )}
               </section>
+              ) : null}
+
+              {globalSettingsTab === "turnstile" ? (
               <section className="card-surface p-6">
                 <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.turnstileTitle")}</h2>
                 <p className="mb-2 text-sm text-ink-600">{t("superAdmin.turnstileSubtitle")}</p>
@@ -2270,6 +2319,9 @@ export function SuperAdminPage() {
                   </form>
                 )}
               </section>
+              ) : null}
+
+              {globalSettingsTab === "resend" ? (
               <section className="card-surface p-6">
                 <h2 className="mb-2 font-semibold text-ink-900">{t("superAdmin.resendEmailTitle")}</h2>
                 <p className="mb-2 text-sm text-ink-600">{t("superAdmin.resendEmailSubtitle")}</p>
@@ -2392,16 +2444,32 @@ export function SuperAdminPage() {
                       onSubjectChange={setResendPaymentConfirmationSubject}
                       onHtmlChange={setResendPaymentConfirmationHtml}
                     />
+                    <ResendWhatsappBillableAlertTemplateEditor
+                      fromName={resendFromName}
+                      logoUrl={resendSystemLogoUrl}
+                      resolvedLogoUrl={resendResolvedSystemLogoUrl}
+                      subject={resendWhatsappBillableAlertSubject}
+                      html={resendWhatsappBillableAlertHtml}
+                      onSubjectChange={setResendWhatsappBillableAlertSubject}
+                      onHtmlChange={setResendWhatsappBillableAlertHtml}
+                    />
                     <button type="submit" className="btn-primary" disabled={resendSaving}>
                       {resendSaving ? t("common.saving") : t("superAdmin.resendSave")}
                     </button>
                   </form>
                 )}
               </section>
+              ) : null}
+
+              {globalSettingsTab === "tenantPermissions" ? (
               <section className="card-surface p-6">
                 <h2 className="mb-4 font-semibold text-ink-900">{t("superAdmin.tenantPermissions")}</h2>
                 <p className="text-sm text-ink-600">{t("superAdmin.tenantPermissionsSubtitle")}</p>
               </section>
+              ) : null}
+
+              {globalSettingsTab === "platformRegistry" ? (
+              <>
               <form onSubmit={(e) => void savePlatformSetting(e)} className="card-surface space-y-4 p-6">
                 <h2 className="font-semibold text-ink-900">Definição</h2>
                 <div>
@@ -2444,7 +2512,9 @@ export function SuperAdminPage() {
                   </ul>
                 )}
               </section>
-            </div>
+              </>
+              ) : null}
+            </SuperAdminGlobalSettingsLayout>
           )}
 
           {section === "whatsappEmbedded" && (
@@ -3109,6 +3179,79 @@ export function SuperAdminPage() {
                     </li>
                   ))}
                 </ul>
+                  {flagsPayload.whatsappConsumptionInsights?.enabled ? (
+                    <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-950">
+                      <p className="font-semibold">{t("superAdmin.whatsappInsightsTitle")}</p>
+                      <p className="text-emerald-800">{t("superAdmin.whatsappInsightsHint")}</p>
+                      <fieldset className="space-y-2" disabled={whatsappInsightsBusy}>
+                        <label className="flex cursor-pointer items-start gap-2">
+                          <input
+                            type="radio"
+                            name="wa-insights-visibility"
+                            className="mt-1"
+                            checked={
+                              flagsPayload.whatsappConsumptionInsights.visibility === "organization"
+                            }
+                            onChange={() =>
+                              void patchWhatsappConsumptionInsights({ visibility: "organization" })
+                            }
+                          />
+                          <span>
+                            <span className="font-medium">{t("superAdmin.whatsappInsightsModeOrg")}</span>
+                            <span className="block text-xs text-emerald-800">
+                              {t("superAdmin.whatsappInsightsModeOrgDesc")}
+                            </span>
+                          </span>
+                        </label>
+                        <label className="flex cursor-pointer items-start gap-2">
+                          <input
+                            type="radio"
+                            name="wa-insights-visibility"
+                            className="mt-1"
+                            checked={
+                              flagsPayload.whatsappConsumptionInsights.visibility ===
+                              "super_admin_only"
+                            }
+                            onChange={() =>
+                              void patchWhatsappConsumptionInsights({
+                                visibility: "super_admin_only",
+                              })
+                            }
+                          />
+                          <span>
+                            <span className="font-medium">{t("superAdmin.whatsappInsightsModeSuper")}</span>
+                            <span className="block text-xs text-emerald-800">
+                              {t("superAdmin.whatsappInsightsModeSuperDesc")}
+                            </span>
+                          </span>
+                        </label>
+                      </fieldset>
+                      {flagsPayload.whatsappConsumptionInsights.visibility === "super_admin_only" ? (
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            disabled={whatsappInsightsBusy}
+                            checked={flagsPayload.whatsappConsumptionInsights.alertAdminOnBillable}
+                            onChange={(e) =>
+                              void patchWhatsappConsumptionInsights({
+                                alertAdminOnBillable: e.target.checked,
+                              })
+                            }
+                          />
+                          <span>{t("superAdmin.whatsappInsightsAlertBillable")}</span>
+                        </label>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {flagsPayload.whatsappConsumptionInsights?.enabled &&
+                  flagsPayload.whatsappConsumptionInsights.visibility === "super_admin_only" &&
+                  flagsOrgId ? (
+                    <div className="max-w-5xl">
+                      <WhatsappOrgPolicyPanel
+                        apiPrefix={`/super/organizations/${flagsOrgId}/whatsapp-policy`}
+                      />
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>

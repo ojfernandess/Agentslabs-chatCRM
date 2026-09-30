@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "../db.js";
 import { getOrganizationFeatureMap } from "../lib/featureFlags.js";
+import { canTenantAccessWhatsappConsumptionDashboard } from "../lib/whatsappConsumptionInsights.js";
 import { authenticate } from "../middleware/auth.js";
 import { isValidEmail } from "@openconduit/shared";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
@@ -646,6 +647,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       orgIdForFeatures !== null && orgIdForFeatures !== undefined
         ? await getOrganizationFeatureMap(orgIdForFeatures)
         : undefined;
+    const whatsappConsumptionDashboardTenantVisible =
+      orgIdForFeatures != null
+        ? await canTenantAccessWhatsappConsumptionDashboard(orgIdForFeatures)
+        : false;
 
     const memberships =
       user.role === "SUPER_ADMIN"
@@ -691,6 +696,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       superAdminActorId,
       superAdminActor,
       organizationFeatures,
+      whatsappConsumptionDashboardTenantVisible,
       hasApiAccessToken: !!user.apiAccessTokenHash,
       apiAccessTokenLastUsedAt: user.apiAccessTokenLastUsedAt,
       apiAccessTokenPrefix: user.apiAccessTokenPrefix,

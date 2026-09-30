@@ -7,6 +7,7 @@ const {
   buildServiceQuotaAlerts,
   foldLedgerAggregation,
   resolveConsumptionRange,
+  resolveServiceFreeQuotaForDisplay,
 } = await import("./whatsappOrgPolicy.js");
 
 describe("resolveConsumptionRange", () => {
@@ -155,5 +156,43 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
     assert.equal(m.estimatedCost, 0.125);
     assert.equal(m.billable, 2);
     assert.equal(m.currency, "USD");
+  });
+});
+
+describe("resolveServiceFreeQuotaForDisplay", () => {
+  const activeNoTier = {
+    id: "jul-sep-2026",
+    serviceFreeTierPerNumberPerMonth: null,
+  } as import("./metaBillingPolicy.js").MetaBillingPolicyPhase;
+  const laterWithTier = {
+    id: "oct-2026",
+    serviceFreeTierPerNumberPerMonth: 1000,
+  } as import("./metaBillingPolicy.js").MetaBillingPolicyPhase;
+
+  it("prefers platform override, then active phase, then any phase with tier", () => {
+    assert.equal(
+      resolveServiceFreeQuotaForDisplay(
+        { serviceFreeMessagesPerNumberPerMonth: 500 },
+        activeNoTier,
+        [activeNoTier, laterWithTier],
+      ),
+      500,
+    );
+    assert.equal(
+      resolveServiceFreeQuotaForDisplay(
+        { serviceFreeMessagesPerNumberPerMonth: null },
+        { ...activeNoTier, serviceFreeTierPerNumberPerMonth: 750 },
+        [activeNoTier],
+      ),
+      750,
+    );
+    assert.equal(
+      resolveServiceFreeQuotaForDisplay(
+        { serviceFreeMessagesPerNumberPerMonth: null },
+        activeNoTier,
+        [activeNoTier, laterWithTier],
+      ),
+      1000,
+    );
   });
 });

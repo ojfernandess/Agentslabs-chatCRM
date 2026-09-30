@@ -51,7 +51,12 @@ function unavailable(t: (k: string) => string): string {
   return t("settings.whatsappPolicyUnavailable");
 }
 
-export function WhatsappOrgPolicyPanel() {
+type WhatsappOrgPolicyPanelProps = {
+  /** Prefixo da API (tenant: `/whatsapp-policy`; super admin: `/super/organizations/:id/whatsapp-policy`). */
+  apiPrefix?: string;
+};
+
+export function WhatsappOrgPolicyPanel({ apiPrefix = "/whatsapp-policy" }: WhatsappOrgPolicyPanelProps) {
   const { t, locale } = useI18n();
   const localeTag = locale === "pt-BR" ? "pt-BR" : "en";
   const [overview, setOverview] = useState<PolicyOverview | null>(null);
@@ -91,7 +96,7 @@ export function WhatsappOrgPolicyPanel() {
   const loadOverview = useCallback(async () => {
     setLoadingPolicy(true);
     try {
-      const data = await api.get<PolicyOverview>("/whatsapp-policy/overview");
+      const data = await api.get<PolicyOverview>(`${apiPrefix}/overview`);
       setOverview(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : unavailable(t));
@@ -99,7 +104,7 @@ export function WhatsappOrgPolicyPanel() {
     } finally {
       setLoadingPolicy(false);
     }
-  }, [t]);
+  }, [apiPrefix, t]);
 
   const loadConsumption = useCallback(
     async (nextPreset: Preset, from?: string, to?: string) => {
@@ -110,7 +115,7 @@ export function WhatsappOrgPolicyPanel() {
           qs.set("from", from);
           qs.set("to", to);
         }
-        const data = await api.get<ConsumptionResponse>(`/whatsapp-policy/consumption?${qs.toString()}`);
+        const data = await api.get<ConsumptionResponse>(`${apiPrefix}/consumption?${qs.toString()}`);
         setConsumption(data);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : unavailable(t));
@@ -119,7 +124,7 @@ export function WhatsappOrgPolicyPanel() {
         setLoadingConsumption(false);
       }
     },
-    [t],
+    [apiPrefix, t],
   );
 
   useEffect(() => {

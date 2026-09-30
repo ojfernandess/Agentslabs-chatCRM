@@ -116,6 +116,11 @@ export const FEATURE_FLAG_DEFINITIONS = [
     key: "cost_aware_messaging",
     defaultEnabled: true,
   },
+  /** Dashboard Política/Consumo WhatsApp (reconcile + agregação); desligado por omissão para reduzir carga. */
+  {
+    key: "whatsapp_consumption_dashboard",
+    defaultEnabled: false,
+  },
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_DEFINITIONS)[number]["key"];

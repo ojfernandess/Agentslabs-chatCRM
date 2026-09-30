@@ -2,8 +2,18 @@ import { WHATSAPP_SESSION_WINDOW_HOURS } from "@openconduit/shared";
 import { prisma } from "../db.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 import { getMetaPolicyVersions } from "./metaPolicyConfig.js";
-import { getActiveBillingPolicyPhase } from "./metaBillingPolicy.js";
-import { reconcileWhatsappLedgerBillabilityForRange } from "./messageBillingLedger.js";
+import {
+  getActiveBillingPolicyPhase,
+  getMetaBillingPolicyPhases,
+  type MetaBillingPolicyPhase,
+} from "./metaBillingPolicy.js";
+import {
+  estimateWhatsappMessageCost,
+  reconcileWhatsappLedgerBillabilityForRange,
+} from "./messageBillingLedger.js";
+import type { MessageCategory } from "./messagePolicyEngine.js";
+import type { MetaPolicyVersions } from "./metaPolicyConfig.js";
+import { maybeNotifyWhatsappBillableStarted } from "./whatsappConsumptionInsights.js";
 
 export const WHATSAPP_CONSUMPTION_CATEGORIES = [
   "SERVICE",
@@ -192,6 +202,80 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
   });
 }
 
+/** Franquia Service para UI — platform setting → fase vigente → primeira fase com tier definido. */
+export function resolveServiceFreeQuotaForDisplay(
+  versions: Pick<MetaPolicyVersions, "serviceFreeMessagesPerNumberPerMonth">,
+  activePhase: MetaBillingPolicyPhase,
+  phases: MetaBillingPolicyPhase[],
+): number | null {
+  if (versions.serviceFreeMessagesPerNumberPerMonth != null) {
+    return versions.serviceFreeMessagesPerNumberPerMonth;
+  }
+  if (activePhase.serviceFreeTierPerNumberPerMonth != null) {
+    return activePhase.serviceFreeTierPerNumberPerMonth;
+  }
+  for (const phase of phases) {
+    if (phase.serviceFreeTierPerNumberPerMonth != null) {
+      return phase.serviceFreeTierPerNumberPerMonth;
+    }
+  }
+  return null;
+}
+
+async function sampleRecipientPhoneForOrg(organizationId: string, from: Date, to: Date): Promise<string | null> {
+  const row = await prisma.messageBillingLedgerEntry.findFirst({
+    where: {
+      organizationId,
+      channel: "WHATSAPP",
+      sentAt: { gte: from, lte: to },
+      recipientPhone: { not: null },
+    },
+    orderBy: { sentAt: "desc" },
+    select: { recipientPhone: true },
+  });
+  const phone = row?.recipientPhone?.replace(/[^0-9]/g, "");
+  return phone && phone.length >= 8 ? phone : null;
+}
+
+/** Preenche custo estimado agregado quando o ledger já tem metaBillable mas sem unit price (máx. 4 lookups). */
+export async function enrichConsumptionEstimatedCosts(
+  organizationId: string,
+  rows: CategoryConsumptionRow[],
+  range: { from: Date; to: Date },
+): Promise<CategoryConsumptionRow[]> {
+  const needsEnrich = rows.some(
+    (row) => row.billable != null && row.billable > 0 && row.estimatedCost == null,
+  );
+  if (!needsEnrich) return rows;
+
+  const phone =
+    (await sampleRecipientPhoneForOrg(organizationId, range.from, range.to)) ?? "5511999999999";
+  const at = range.to;
+
+  const out: CategoryConsumptionRow[] = [];
+  for (const row of rows) {
+    if (row.billable == null || row.billable <= 0 || row.estimatedCost != null) {
+      out.push(row);
+      continue;
+    }
+    const est = await estimateWhatsappMessageCost({
+      organizationId,
+      recipientPhone: phone,
+      category: row.category as MessageCategory,
+      at,
+      isTemplate: false,
+      serviceWindowOpenAtSend: false,
+    });
+    const unit = est.estimatedCost != null ? Number(est.estimatedCost) : null;
+    out.push({
+      ...row,
+      estimatedCost: unit != null ? unit * row.billable : null,
+      currency: est.currency ?? row.currency,
+    });
+  }
+  return out;
+}
+
 export async function getWhatsappConsumption(params: {
   organizationId: string;
   from: Date;
@@ -213,7 +297,13 @@ export async function getWhatsappConsumption(params: {
     _count: { _all: true },
     _sum: { estimatedCost: true },
   });
-  return foldLedgerAggregation(rows);
+  const folded = foldLedgerAggregation(rows);
+  const result = await enrichConsumptionEstimatedCosts(params.organizationId, folded, {
+    from: params.from,
+    to: params.to,
+  });
+  void maybeNotifyWhatsappBillableStarted(params.organizationId, result).catch(() => {});
+  return result;
 }
 
 export type WhatsappPolicyOverview = {
@@ -231,10 +321,9 @@ export type WhatsappPolicyOverview = {
 
 export async function getWhatsappPolicyOverview(organizationId: string): Promise<WhatsappPolicyOverview> {
   const versions = await getMetaPolicyVersions();
-  const activeBillingPhase = await getActiveBillingPolicyPhase();
-  const quota =
-    versions.serviceFreeMessagesPerNumberPerMonth ??
-    activeBillingPhase.serviceFreeTierPerNumberPerMonth;
+  const phases = await getMetaBillingPolicyPhases();
+  const activePhase = await getActiveBillingPolicyPhase();
+  const quota = resolveServiceFreeQuotaForDisplay(versions, activePhase, phases);
   const [billingActive, messagePolicyActive] = await Promise.all([
     isOrganizationFeatureEnabled(organizationId, "cost_aware_messaging"),
     isOrganizationFeatureEnabled(organizationId, "whatsapp_message_policy"),
@@ -243,7 +332,12 @@ export async function getWhatsappPolicyOverview(organizationId: string): Promise
   let serviceUsed: number | null = null;
   try {
     const rows = await getWhatsappConsumption({ organizationId, from, to });
-    serviceUsed = rows.find((r) => r.category === "SERVICE")?.delivered ?? 0;
+    const serviceRow = rows.find((r) => r.category === "SERVICE");
+    if (serviceRow?.billable != null) {
+      serviceUsed = serviceRow.billable;
+    } else {
+      serviceUsed = serviceRow?.delivered ?? 0;
+    }
   } catch {
     serviceUsed = null;
   }
