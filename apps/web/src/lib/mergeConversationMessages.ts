@@ -79,7 +79,25 @@ export function mergeMessagesById<T extends MergeableMessage>(local: T[], remote
     byId.set(message.id, message);
   }
   for (const message of remote) {
-    byId.set(message.id, message);
+    const localMessage = byId.get(message.id);
+    if (!localMessage) {
+      byId.set(message.id, message);
+      continue;
+    }
+    const merged = { ...localMessage, ...message };
+    const remoteBody = (message.body ?? "").trim();
+    const localBody = (localMessage.body ?? "").trim();
+    if (!remoteBody && localBody) {
+      merged.body = localMessage.body;
+    }
+    const remoteMedia = (message as { mediaUrl?: string | null }).mediaUrl ?? "";
+    const localMedia = (localMessage as { mediaUrl?: string | null }).mediaUrl ?? "";
+    if (!remoteMedia && localMedia) {
+      (merged as { mediaUrl?: string | null }).mediaUrl = (
+        localMessage as { mediaUrl?: string | null }
+      ).mediaUrl;
+    }
+    byId.set(message.id, merged);
   }
   const merged = Array.from(byId.values());
   merged.sort((a, b) => {

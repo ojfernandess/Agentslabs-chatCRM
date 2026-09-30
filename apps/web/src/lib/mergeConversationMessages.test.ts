@@ -21,6 +21,30 @@ test("mergeMessagesById keeps local-only messages from realtime", () => {
   assert.deepEqual(merged.map((m) => m.id), ["a", "b"]);
 });
 
+test("mergeMessagesById keeps local body when remote row has empty body", () => {
+  const local = [
+    {
+      id: "a",
+      sentAt: "2026-01-01T10:00:00.000Z",
+      createdAt: "2026-01-01T10:00:00.000Z",
+      status: "SENT",
+      body: "teste",
+    },
+  ];
+  const remote = [
+    {
+      id: "a",
+      sentAt: "2026-01-01T10:00:00.000Z",
+      createdAt: "2026-01-01T10:00:00.000Z",
+      status: "DELIVERED",
+      body: null,
+    },
+  ];
+  const merged = mergeMessagesById(local, remote);
+  assert.equal(merged[0]?.status, "DELIVERED");
+  assert.equal(merged[0]?.body, "teste");
+});
+
 test("mergeMessagesById prefers remote fields for the same id", () => {
   const local = [
     { id: "a", sentAt: "2026-01-01T10:00:00.000Z", createdAt: "2026-01-01T10:00:00.000Z", status: "SENT" },

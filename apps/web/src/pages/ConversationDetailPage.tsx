@@ -1278,7 +1278,7 @@ export function ConversationDetailPage() {
           messagesNewerCursor: prev.messagesNewerCursor,
           messagesPaginationEnabled: prev.messagesPaginationEnabled ?? meta.messagesPaginationEnabled,
         };
-        setCachedConversation(requestId, merged);
+        setCachedConversationMerged(requestId, merged, prev);
         return merged;
       });
       setTeamPickerId(meta.team?.id ?? "");
@@ -1474,9 +1474,9 @@ export function ConversationDetailPage() {
       patch: {
         status: string;
         providerError?: string | null;
-        body?: string | null;
-        mediaUrl?: string | null;
-        mediaType?: string | null;
+        body?: string;
+        mediaUrl?: string;
+        mediaType?: string;
       },
     ) => {
       if (!id) return;
@@ -1975,10 +1975,12 @@ export function ConversationDetailPage() {
       if (detail?.conversationId !== id || !detail.message?.id) return;
       patchPushedMessageDelivery(detail.message.id, {
         status: detail.message.status,
-        providerError: detail.message.providerError,
-        body: detail.message.body,
-        mediaUrl: detail.message.mediaUrl,
-        mediaType: detail.message.mediaType,
+        ...(detail.message.providerError !== undefined
+          ? { providerError: detail.message.providerError }
+          : {}),
+        ...(typeof detail.message.body === "string" ? { body: detail.message.body } : {}),
+        ...(typeof detail.message.mediaUrl === "string" ? { mediaUrl: detail.message.mediaUrl } : {}),
+        ...(typeof detail.message.mediaType === "string" ? { mediaType: detail.message.mediaType } : {}),
       });
     };
     const onMessageReactionsUpdated = (e: Event) => {
@@ -2451,7 +2453,9 @@ export function ConversationDetailPage() {
         body.resolveReminder = extra.resolveReminder;
       }
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, body);
-      setConversation(data);
+      setConversation((prev) =>
+        prev && prev.id === data.id ? mergeConversationWithRemote(prev, data) : data,
+      );
       setResolveOpen(false);
       setClosureReason("");
       setClosureAmount("");
@@ -2486,7 +2490,9 @@ export function ConversationDetailPage() {
     setPriorityError("");
     try {
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, { priority });
-      setConversation(data);
+      setConversation((prev) =>
+        prev && prev.id === data.id ? mergeConversationWithRemote(prev, data) : data,
+      );
       window.dispatchEvent(
         new CustomEvent("openconduit:conversation-updated", { detail: { conversationId: id } }),
       );
@@ -2525,7 +2531,9 @@ export function ConversationDetailPage() {
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, {
         teamId: teamPickerId || null,
       });
-      setConversation(data);
+      setConversation((prev) =>
+        prev && prev.id === data.id ? mergeConversationWithRemote(prev, data) : data,
+      );
       setTeamPickerId(data.team?.id ?? "");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -2751,7 +2759,9 @@ export function ConversationDetailPage() {
       const data = await api.post<ConversationDetail>(`/conversations/${id}/lead-owner-decision`, {
         action,
       });
-      setConversation(data);
+      setConversation((prev) =>
+        prev && prev.id === data.id ? mergeConversationWithRemote(prev, data) : data,
+      );
       if (action === "transfer") {
         setTeamPickerId(data.team?.id ?? "");
         window.dispatchEvent(
@@ -2782,7 +2792,9 @@ export function ConversationDetailPage() {
       }
       const data = await api.put<ConversationDetail>(`/conversations/${id}`, body);
       invalidateCachedConversation(id);
-      setConversation(data);
+      setConversation((prev) =>
+        prev && prev.id === data.id ? mergeConversationWithRemote(prev, data) : data,
+      );
       setTeamPickerId(data.team?.id ?? "");
       setTransferOpen(false);
       window.dispatchEvent(new CustomEvent("openconduit:team-transfer-badges-refresh"));
