@@ -259,8 +259,6 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_PUBLIC_ASSETS_VERSION: ${VITE_PUBLIC_ASSETS_VERSION:-}
-      depends_on:
-        - api
     pull_policy: build
     restart: unless-stopped
     depends_on:
