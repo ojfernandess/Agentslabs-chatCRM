@@ -29,17 +29,25 @@ export type ConversationScopeRow = {
   };
 };
 
-function assignedId(row: ConversationScopeRow): string | null {
+export type ConversationBellScopeRow = {
+  status: string;
+  assignedTo?: { id: string; name?: string } | null;
+  assignedToId?: string | null;
+  awaitingHumanHandoff?: boolean;
+  agentBotTriageActive?: boolean;
+};
+
+function assignedId(row: ConversationBellScopeRow): string | null {
   return row.assignedToId ?? row.assignedTo?.id ?? null;
 }
 
-function isBotQueueRow(row: ConversationScopeRow): boolean {
+function isBotQueueRow(row: ConversationBellScopeRow): boolean {
   return row.status === "PENDING" && assignedId(row) == null && !row.awaitingHumanHandoff;
 }
 
 /** Sino / desktop — espelha API `conversationBellScope` quando separação humano/bot está activa. */
 export function conversationSuppressedFromHumanAllBell(
-  row: ConversationScopeRow,
+  row: ConversationBellScopeRow,
   conversationsAllScopeHumanOnly: boolean,
 ): boolean {
   if (!conversationsAllScopeHumanOnly) return false;
