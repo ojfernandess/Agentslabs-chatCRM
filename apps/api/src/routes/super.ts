@@ -42,6 +42,7 @@ import {
 import {
   canSuperAdminAccessWhatsappConsumptionDashboard,
   getWhatsappConsumptionInsightsConfig,
+  listWhatsappBillableAlertAdmins,
   setWhatsappConsumptionInsightsConfig,
   WHATSAPP_CONSUMPTION_DASHBOARD_FLAG,
 } from "../lib/whatsappConsumptionInsights.js";
@@ -364,6 +365,7 @@ const featureFlagPatchSchema = z.object({
 const whatsappConsumptionInsightsPatchSchema = z.object({
   visibility: z.enum(["organization", "super_admin_only"]).optional(),
   alertAdminOnBillable: z.boolean().optional(),
+  billableAlertRecipientUserIds: z.array(z.string().uuid()).max(100).optional(),
 });
 
 function superJwtBase(request: { user: JwtPayload }): JwtPayload {
@@ -603,6 +605,8 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         enabled: waDashboardEnabled,
         visibility: waInsightsConfig.visibility,
         alertAdminOnBillable: waInsightsConfig.alertAdminOnBillable,
+        billableAlertRecipientUserIds: waInsightsConfig.billableAlertRecipientUserIds,
+        alertAdmins: await listWhatsappBillableAlertAdmins(org.id),
       },
       flags,
     };
@@ -689,6 +693,7 @@ export async function superRoutes(app: FastifyInstance): Promise<void> {
         metadata: {
           visibility: config.visibility,
           alertAdminOnBillable: config.alertAdminOnBillable,
+          billableAlertRecipientCount: config.billableAlertRecipientUserIds?.length ?? null,
         },
         ip: clientIp(request),
       });

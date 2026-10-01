@@ -6900,6 +6900,10 @@ export const messages = {
         "O painel não aparece no tenant; consulte abaixo nesta página.",
       whatsappInsightsAlertBillable:
         "Enviar e-mail aos administradores do tenant quando houver mensagens cobráveis no mês (uma vez por mês; requer Resend configurado).",
+      whatsappInsightsAlertRecipients: "Administradores que recebem o e-mail",
+      whatsappInsightsAlertRecipientsNone: "Esta organização não tem administradores com e-mail.",
+      whatsappInsightsAlertRecipientsEmpty:
+        "Nenhum administrador selecionado. O alerta não será enviado.",
       whatsappInsightsSaveError: "Não foi possível guardar as opções do painel WhatsApp.",
       usageMetrics: "Métricas de uso",
       usageMetricsSubtitle: "Mensagens processadas por tenant (janelas de 7 e 30 dias).",
@@ -14571,6 +14575,9 @@ export const messages = {
       whatsappInsightsModeSuperDesc: "Hidden from the tenant; use the panel below on this page.",
       whatsappInsightsAlertBillable:
         "Email tenant admins when billable WhatsApp messages appear in the month (once per month; requires Resend).",
+      whatsappInsightsAlertRecipients: "Administrators who receive the email",
+      whatsappInsightsAlertRecipientsNone: "This organization has no administrators with an email address.",
+      whatsappInsightsAlertRecipientsEmpty: "No administrator selected. The alert will not be sent.",
       whatsappInsightsSaveError: "Could not save WhatsApp dashboard options.",
       usageMetrics: "Usage metrics",
       usageMetricsSubtitle: "Message volume per tenant (7- and 30-day windows).",

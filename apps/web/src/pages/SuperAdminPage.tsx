@@ -227,6 +227,8 @@ interface FeatureFlagsPayload {
     enabled: boolean;
     visibility: "organization" | "super_admin_only";
     alertAdminOnBillable: boolean;
+    billableAlertRecipientUserIds: string[] | null;
+    alertAdmins: Array<{ id: string; name: string; email: string }>;
   };
 }
 
@@ -1161,6 +1163,7 @@ export function SuperAdminPage() {
   const patchWhatsappConsumptionInsights = async (patch: {
     visibility?: "organization" | "super_admin_only";
     alertAdminOnBillable?: boolean;
+    billableAlertRecipientUserIds?: string[];
   }) => {
     if (!flagsOrgId) return;
     setWhatsappInsightsBusy(true);
@@ -3227,19 +3230,77 @@ export function SuperAdminPage() {
                         </label>
                       </fieldset>
                       {flagsPayload.whatsappConsumptionInsights.visibility === "super_admin_only" ? (
-                        <label className="flex cursor-pointer items-center gap-2">
-                          <input
-                            type="checkbox"
-                            disabled={whatsappInsightsBusy}
-                            checked={flagsPayload.whatsappConsumptionInsights.alertAdminOnBillable}
-                            onChange={(e) =>
-                              void patchWhatsappConsumptionInsights({
-                                alertAdminOnBillable: e.target.checked,
-                              })
-                            }
-                          />
-                          <span>{t("superAdmin.whatsappInsightsAlertBillable")}</span>
-                        </label>
+                        <div className="space-y-3">
+                          <label className="flex cursor-pointer items-center gap-2">
+                            <input
+                              type="checkbox"
+                              disabled={whatsappInsightsBusy}
+                              checked={flagsPayload.whatsappConsumptionInsights.alertAdminOnBillable}
+                              onChange={(e) =>
+                                void patchWhatsappConsumptionInsights({
+                                  alertAdminOnBillable: e.target.checked,
+                                })
+                              }
+                            />
+                            <span>{t("superAdmin.whatsappInsightsAlertBillable")}</span>
+                          </label>
+                          {flagsPayload.whatsappConsumptionInsights.alertAdminOnBillable ? (
+                            <div className="space-y-2 rounded-lg border border-emerald-200 bg-white/70 p-3">
+                              <p className="text-xs font-medium text-emerald-900">
+                                {t("superAdmin.whatsappInsightsAlertRecipients")}
+                              </p>
+                              {(flagsPayload.whatsappConsumptionInsights.alertAdmins ?? []).length === 0 ? (
+                                <p className="text-xs text-emerald-800">
+                                  {t("superAdmin.whatsappInsightsAlertRecipientsNone")}
+                                </p>
+                              ) : (
+                                <ul className="space-y-1.5">
+                                  {flagsPayload.whatsappConsumptionInsights.alertAdmins.map((admin) => {
+                                    const saved =
+                                      flagsPayload.whatsappConsumptionInsights?.billableAlertRecipientUserIds;
+                                    const checked = saved == null ? true : saved.includes(admin.id);
+                                    return (
+                                      <li key={admin.id}>
+                                        <label className="flex cursor-pointer items-start gap-2">
+                                          <input
+                                            type="checkbox"
+                                            className="mt-0.5"
+                                            disabled={whatsappInsightsBusy}
+                                            checked={checked}
+                                            onChange={(e) => {
+                                              const admins =
+                                                flagsPayload.whatsappConsumptionInsights?.alertAdmins ?? [];
+                                              const current =
+                                                saved == null
+                                                  ? admins.map((row) => row.id)
+                                                  : saved;
+                                              const next = e.target.checked
+                                                ? [...new Set([...current, admin.id])]
+                                                : current.filter((id) => id !== admin.id);
+                                              void patchWhatsappConsumptionInsights({
+                                                billableAlertRecipientUserIds: next,
+                                              });
+                                            }}
+                                          />
+                                          <span>
+                                            <span className="font-medium">{admin.name}</span>
+                                            <span className="block text-xs text-emerald-800">{admin.email}</span>
+                                          </span>
+                                        </label>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              )}
+                              {flagsPayload.whatsappConsumptionInsights.billableAlertRecipientUserIds
+                                ?.length === 0 ? (
+                                <p className="text-xs text-emerald-800">
+                                  {t("superAdmin.whatsappInsightsAlertRecipientsEmpty")}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}

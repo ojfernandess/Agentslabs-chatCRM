@@ -8,6 +8,7 @@ const {
   foldLedgerAggregation,
   resolveConsumptionRange,
   resolveServiceFreeQuotaForDisplay,
+  resolveServiceQuotaUsed,
 } = await import("./whatsappOrgPolicy.js");
 
 describe("resolveConsumptionRange", () => {
@@ -156,6 +157,24 @@ describe("foldLedgerAggregation — SENT is not DELIVERED (spec §41)", () => {
     assert.equal(m.estimatedCost, 0.125);
     assert.equal(m.billable, 2);
     assert.equal(m.currency, "USD");
+  });
+});
+
+describe("resolveServiceQuotaUsed", () => {
+  it("counts delivered service messages, not the billable remainder", () => {
+    assert.equal(resolveServiceQuotaUsed(undefined), 0);
+    assert.equal(
+      resolveServiceQuotaUsed({
+        category: "SERVICE",
+        sent: 128,
+        delivered: 125,
+        failed: 0,
+        billable: 0,
+        estimatedCost: 0,
+        currency: null,
+      }),
+      125,
+    );
   });
 });
 

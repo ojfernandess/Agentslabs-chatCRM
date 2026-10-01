@@ -1,16 +1,24 @@
 import { prisma } from "../db.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
+import { reconcileWhatsappLedgerBillabilityForRange } from "./messageBillingLedger.js";
 import { getResendEmailConfigFromDb } from "./resendEmailSettings.js";
 import { sendWhatsappBillableAlertEmail } from "./sendWhatsappBillableAlertEmail.js";
-import type { CategoryConsumptionRow } from "./whatsappOrgPolicy.js";
 
 export const WHATSAPP_CONSUMPTION_DASHBOARD_FLAG = "whatsapp_consumption_dashboard" as const;
 
 export type WhatsappConsumptionVisibility = "organization" | "super_admin_only";
 
+export type WhatsappBillableAlertAdmin = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export type WhatsappConsumptionInsightsOrgConfig = {
   visibility: WhatsappConsumptionVisibility;
   alertAdminOnBillable: boolean;
+  /** `null` = todos os administradores (comportamento anterior). Lista vazia = ninguém. */
+  billableAlertRecipientUserIds: string[] | null;
   lastBillableAlertMonth: string | null;
 };
 
@@ -19,6 +27,7 @@ const PLATFORM_SETTING_KEY = "whatsapp_consumption_insights_by_org";
 const DEFAULT_CONFIG: WhatsappConsumptionInsightsOrgConfig = {
   visibility: "organization",
   alertAdminOnBillable: false,
+  billableAlertRecipientUserIds: null,
   lastBillableAlertMonth: null,
 };
 
@@ -29,9 +38,14 @@ function normalizeOrgConfig(raw: unknown): WhatsappConsumptionInsightsOrgConfig 
   const o = raw as Record<string, unknown>;
   const visibility =
     o.visibility === "super_admin_only" ? "super_admin_only" : "organization";
+  const rawIds = o.billableAlertRecipientUserIds;
+  const billableAlertRecipientUserIds = Array.isArray(rawIds)
+    ? [...new Set(rawIds.filter((id): id is string => typeof id === "string" && id.length > 0))]
+    : null;
   return {
     visibility,
     alertAdminOnBillable: o.alertAdminOnBillable === true,
+    billableAlertRecipientUserIds,
     lastBillableAlertMonth:
       typeof o.lastBillableAlertMonth === "string" ? o.lastBillableAlertMonth : null,
   };
@@ -67,10 +81,35 @@ export async function getWhatsappConsumptionInsightsConfig(
   return map[organizationId] ?? { ...DEFAULT_CONFIG };
 }
 
+export async function listWhatsappBillableAlertAdmins(
+  organizationId: string,
+): Promise<WhatsappBillableAlertAdmin[]> {
+  const admins = await prisma.user.findMany({
+    where: {
+      OR: [
+        { organizationId, role: "ADMIN" },
+        { memberships: { some: { organizationId, role: "ADMIN" } } },
+      ],
+    },
+    select: { id: true, name: true, email: true },
+    orderBy: [{ name: "asc" }, { email: "asc" }],
+  });
+  return admins
+    .filter((admin) => admin.email.includes("@"))
+    .map((admin) => ({
+      id: admin.id,
+      name: admin.name.trim() || admin.email,
+      email: admin.email.trim().toLowerCase(),
+    }));
+}
+
 export async function setWhatsappConsumptionInsightsConfig(
   organizationId: string,
   patch: Partial<
-    Pick<WhatsappConsumptionInsightsOrgConfig, "visibility" | "alertAdminOnBillable">
+    Pick<
+      WhatsappConsumptionInsightsOrgConfig,
+      "visibility" | "alertAdminOnBillable" | "billableAlertRecipientUserIds"
+    >
   >,
 ): Promise<WhatsappConsumptionInsightsOrgConfig> {
   const map = await loadConfigMap();
@@ -82,6 +121,14 @@ export async function setWhatsappConsumptionInsightsConfig(
       ? { alertAdminOnBillable: patch.alertAdminOnBillable }
       : {}),
   };
+  if (patch.billableAlertRecipientUserIds != null) {
+    const allowed = new Set(
+      (await listWhatsappBillableAlertAdmins(organizationId)).map((admin) => admin.id),
+    );
+    next.billableAlertRecipientUserIds = [
+      ...new Set(patch.billableAlertRecipientUserIds.filter((id) => allowed.has(id))),
+    ];
+  }
   if (next.visibility === "organization") {
     next.alertAdminOnBillable = false;
   }
@@ -108,45 +155,61 @@ export async function canSuperAdminAccessWhatsappConsumptionDashboard(
   return isWhatsappConsumptionDashboardEnabled(organizationId);
 }
 
-function calendarMonthKey(d: Date): string {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
+/** Mês civil local — o mesmo recorte de `calendarMonthRange` na política WhatsApp. */
+function currentCalendarMonth(): { from: Date; to: Date; monthKey: string } {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return { from, to, monthKey };
 }
 
-function totalBillable(rows: CategoryConsumptionRow[]): number {
-  return rows.reduce((sum, r) => sum + (r.billable != null && r.billable > 0 ? r.billable : 0), 0);
-}
-
-async function resolveOrgAdminEmails(organizationId: string): Promise<string[]> {
-  const admins = await prisma.user.findMany({
-    where: {
-      OR: [
-        { organizationId, role: "ADMIN" },
-        { memberships: { some: { organizationId, role: "ADMIN" } } },
-      ],
-    },
-    select: { email: true },
-  });
-  return [...new Set(admins.map((a) => a.email.trim().toLowerCase()).filter((e) => e.includes("@")))];
-}
-
-/** Uma vez por mês, se configurado — chamado após agregar consumo (não bloqueia a resposta). */
-export async function maybeNotifyWhatsappBillableStarted(
+async function countBillableDeliveredThisMonth(
   organizationId: string,
-  rows: CategoryConsumptionRow[],
-): Promise<void> {
+  from: Date,
+  to: Date,
+): Promise<number> {
+  await reconcileWhatsappLedgerBillabilityForRange({ organizationId, from, to });
+  return prisma.messageBillingLedgerEntry.count({
+    where: {
+      organizationId,
+      channel: "WHATSAPP",
+      metaBillable: true,
+      billingStatus: { in: ["DELIVERED", "READ"] },
+      sentAt: { gte: from, lte: to },
+    },
+  });
+}
+
+async function resolveBillableAlertRecipientEmails(
+  organizationId: string,
+  selectedUserIds: string[] | null,
+): Promise<string[]> {
+  const admins = await listWhatsappBillableAlertAdmins(organizationId);
+  const chosen =
+    selectedUserIds == null
+      ? admins
+      : admins.filter((admin) => selectedUserIds.includes(admin.id));
+  return [...new Set(chosen.map((admin) => admin.email).filter((email) => email.includes("@")))];
+}
+
+/**
+ * Uma vez por mês, se configurado.
+ * A contagem é sempre o mês civil corrente (mensagens entregues e cobráveis),
+ * independente do preset aberto no dashboard.
+ */
+export async function maybeNotifyWhatsappBillableStarted(organizationId: string): Promise<void> {
   const enabled = await isWhatsappConsumptionDashboardEnabled(organizationId);
   if (!enabled) return;
 
   const cfg = await getWhatsappConsumptionInsightsConfig(organizationId);
   if (cfg.visibility !== "super_admin_only" || !cfg.alertAdminOnBillable) return;
 
-  const billable = totalBillable(rows);
-  if (billable <= 0) return;
-
-  const monthKey = calendarMonthKey(new Date());
+  const { from, to, monthKey } = currentCalendarMonth();
   if (cfg.lastBillableAlertMonth === monthKey) return;
+
+  const billable = await countBillableDeliveredThisMonth(organizationId, from, to);
+  if (billable <= 0) return;
 
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -154,7 +217,10 @@ export async function maybeNotifyWhatsappBillableStarted(
   });
   if (!org) return;
 
-  const recipients = await resolveOrgAdminEmails(organizationId);
+  const recipients = await resolveBillableAlertRecipientEmails(
+    organizationId,
+    cfg.billableAlertRecipientUserIds,
+  );
   const cfgResend = await getResendEmailConfigFromDb();
   if (!cfgResend || recipients.length === 0) return;
 

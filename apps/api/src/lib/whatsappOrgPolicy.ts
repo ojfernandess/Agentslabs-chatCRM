@@ -202,6 +202,16 @@ export function foldLedgerAggregation(rows: LedgerAggRow[]): CategoryConsumption
   });
 }
 
+/**
+ * Uso da franquia mensal Service: mensagens entregues no mês.
+ * `billable` é só o que a Meta cobra por cima da franquia — não o consumo da quota.
+ */
+export function resolveServiceQuotaUsed(
+  serviceRow: Pick<CategoryConsumptionRow, "delivered"> | undefined,
+): number {
+  return serviceRow?.delivered ?? 0;
+}
+
 /** Franquia Service para UI — platform setting → fase vigente → primeira fase com tier definido. */
 export function resolveServiceFreeQuotaForDisplay(
   versions: Pick<MetaPolicyVersions, "serviceFreeMessagesPerNumberPerMonth">,
@@ -302,7 +312,7 @@ export async function getWhatsappConsumption(params: {
     from: params.from,
     to: params.to,
   });
-  void maybeNotifyWhatsappBillableStarted(params.organizationId, result).catch(() => {});
+  void maybeNotifyWhatsappBillableStarted(params.organizationId).catch(() => {});
   return result;
 }
 
@@ -333,11 +343,7 @@ export async function getWhatsappPolicyOverview(organizationId: string): Promise
   try {
     const rows = await getWhatsappConsumption({ organizationId, from, to });
     const serviceRow = rows.find((r) => r.category === "SERVICE");
-    if (serviceRow?.billable != null) {
-      serviceUsed = serviceRow.billable;
-    } else {
-      serviceUsed = serviceRow?.delivered ?? 0;
-    }
+    serviceUsed = resolveServiceQuotaUsed(serviceRow);
   } catch {
     serviceUsed = null;
   }

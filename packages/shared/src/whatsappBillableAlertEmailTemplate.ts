@@ -18,7 +18,7 @@ export const DEFAULT_WHATSAPP_BILLABLE_ALERT_HTML = `<!DOCTYPE html>
   {{logoHtml}}
   <p>Olá,</p>
   <p>A organização <strong>{{organizationName}}</strong> passou a ter mensagens WhatsApp <strong>cobráveis</strong> no mês <strong>{{monthKey}}</strong>.</p>
-  <p>Total cobrável no período consultado: <strong>{{billableCount}}</strong>.</p>
+  <p>Total cobrável no mês <strong>{{monthKey}}</strong>: <strong>{{billableCount}}</strong>.</p>
   <p>Contacte o suporte da plataforma ou consulte a política de consumo WhatsApp para detalhes por categoria.</p>
   <p style="font-size: 12px; color: #6b7280;">Enviado pelo {{appName}}.</p>
 </body>
