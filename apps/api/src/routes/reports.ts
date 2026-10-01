@@ -84,8 +84,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       pendingCount,
       createdInRange,
       resolvedInRange,
-      inboundMsg,
-      outboundMsg,
+      inboundAll,
+      outboundAll,
       resolutionAvg,
       firstResponsePairs,
       teamsForBusinessHours,
@@ -125,7 +125,6 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         where: {
           direction: "INBOUND",
           isPrivate: false,
-          sentAt: { gte: from, lte: to },
           conversation: { organizationId: org },
         },
       }),
@@ -133,7 +132,6 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         where: {
           direction: "OUTBOUND",
           isPrivate: false,
-          sentAt: { gte: from, lte: to },
           conversation: { organizationId: org },
         },
       }),
@@ -472,6 +470,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
     for (const r of outboundHumanActorBucketRows) touch(r, "messagesOutboundHuman");
 
     const timeSeries = Array.from(merge.values()).sort((a, b) => a.bucket.localeCompare(b.bucket));
+    const messagesInboundPeriod = inboundRows.reduce((sum, row) => sum + Number(row.n || 0), 0);
+    const messagesOutboundPeriod = outboundRows.reduce((sum, row) => sum + Number(row.n || 0), 0);
 
     const scheduleByTeamId = new Map<string, ParsedBusinessSchedule>();
     for (const row of teamsForBusinessHours) {
@@ -585,8 +585,10 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         pendingConversations: pendingCount,
         conversationsCreated: createdInRange,
         conversationsResolved: resolvedInRange,
-        messagesInbound: inboundMsg,
-        messagesOutbound: outboundMsg,
+        messagesInbound: messagesInboundPeriod,
+        messagesOutbound: messagesOutboundPeriod,
+        messagesInboundTotal: inboundAll,
+        messagesOutboundTotal: outboundAll,
         avgFirstResponseMinutes,
         avgFirstResponseBusinessMinutes,
         avgResolutionMinutes: resolutionAvg[0]?.minutes != null ? round2(resolutionAvg[0].minutes) : null,

@@ -62,6 +62,8 @@ interface ReportsPayload {
     conversationsResolved: number;
     messagesInbound: number;
     messagesOutbound: number;
+    messagesInboundTotal?: number;
+    messagesOutboundTotal?: number;
     avgFirstResponseMinutes: number | null;
     avgFirstResponseBusinessMinutes: number | null;
     avgResolutionMinutes: number | null;
@@ -274,6 +276,18 @@ export function ReportsPage() {
     setFromStr(toInputDate(startOfDay(subDays(end, inclusiveDays - 1))));
   };
 
+  const applyToday = () => {
+    const today = toInputDate(new Date());
+    setFromStr(today);
+    setToStr(today);
+  };
+
+  const applyThisMonth = () => {
+    const now = new Date();
+    setFromStr(toInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+    setToStr(toInputDate(now));
+  };
+
   const chartData = useMemo(() => {
     if (!data?.timeSeries.length) return [];
     return data.timeSeries.map((row) => ({
@@ -439,6 +453,20 @@ export function ReportsPage() {
             <div className="flex flex-wrap gap-1.5 border-b border-ink-100 pb-3 dark:border-ink-800 lg:border-0 lg:pb-0">
               <button
                 type="button"
+                onClick={applyToday}
+                className="rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+              >
+                {t("reportsPage.presetToday")}
+              </button>
+              <button
+                type="button"
+                onClick={applyThisMonth}
+                className="rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+              >
+                {t("reportsPage.presetThisMonth")}
+              </button>
+              <button
+                type="button"
                 onClick={() => applyPreset(7)}
                 className="rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-ink-100 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
               >
@@ -549,6 +577,16 @@ export function ReportsPage() {
                   <Kpi icon={MessageSquare} label={t("reportsPage.kpiResolved")} value={data.summary.conversationsResolved} />
                   <Kpi icon={BarChart3} label={t("reportsPage.kpiInbound")} value={data.summary.messagesInbound} />
                   <Kpi icon={MessageSquare} label={t("reportsPage.kpiOutbound")} value={data.summary.messagesOutbound} />
+                  <Kpi
+                    icon={BarChart3}
+                    label={t("reportsPage.kpiInboundTotal")}
+                    value={data.summary.messagesInboundTotal ?? 0}
+                  />
+                  <Kpi
+                    icon={MessageSquare}
+                    label={t("reportsPage.kpiOutboundTotal")}
+                    value={data.summary.messagesOutboundTotal ?? 0}
+                  />
                   <Kpi icon={Clock} label={t("reportsPage.kpiAvgFirstResponse")} value={fmtMin(data.summary.avgFirstResponseMinutes)} />
                   <Kpi
                     icon={Timer}
