@@ -360,6 +360,18 @@ export function isOperationalQuoteMessage(userMessage: string): boolean {
   ) {
     return true;
   }
+  if (/\bper[ií]odo\s+casal\b/i.test(t) && !/\b(?:localizador|verificar\s+reserva)\b/i.test(t)) {
+    return true;
+  }
+  if (
+    /\b(?:quanto\s+(?:est[aá]|custa|fica|sai)|qual\s+(?:o|a)\s+(?:valor|pre[cç]o)|pre[cç]o\s+d[aeo]|di[aá]ria|tarifa)\b/i.test(
+      t,
+    ) &&
+    /\b(?:per[ií]odo|casal|di[aá]ria|su[ií]te|quarto|hospedagem|estadia|tarifa)\b/i.test(t) &&
+    !/\b(?:localizador|wifi|wi-fi|senha|estacionamento|check-?out)\b/i.test(t)
+  ) {
+    return true;
+  }
   if (
     /\d{1,2}[\/.\-]\d{1,2}/.test(t) &&
     /\b(pessoas?|h[oó]spedes?|\d+\s*pessoas?)\b/i.test(t) &&

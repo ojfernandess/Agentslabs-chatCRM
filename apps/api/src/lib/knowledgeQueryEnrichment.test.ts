@@ -198,6 +198,13 @@ test("verify reservation with locator is operational lookup", () => {
   assert.equal(userMessageLooksLikeKnowledgeSeekingQuery(msg), false);
 });
 
+test("couple period price question is a quote, not a KB gap", () => {
+  const msg = "Boa tarde!\nQuanto está o período casal?";
+  assert.equal(isOperationalQuoteMessage(msg), true);
+  assert.equal(userMessageLooksLikeKnowledgeSeekingQuery(msg), false);
+  assert.equal(resolveKnowledgeSearchSkip(msg), "operational_quote");
+});
+
 test("cotação and quote stay details are not knowledge-seeking queries", () => {
   assert.equal(userMessageLooksLikeKnowledgeSeekingQuery("gostaria de fazer uma cotação"), false);
   assert.equal(isOperationalQuoteMessage("gostaria de fazer uma cotação"), true);

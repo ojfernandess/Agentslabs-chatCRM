@@ -192,6 +192,19 @@ test("shouldEscalateAfterKnowledgeGap false for social greeting even when KB lac
   );
 });
 
+test("shouldEscalateAfterKnowledgeGap false for couple period price (C6 — conversa ae9c0fd0)", () => {
+  const msg = "Boa tarde!\nQuanto está o período casal?";
+  assert.equal(userMessageLooksLikeKbEscalationCandidate(msg), false);
+  assert.equal(
+    shouldEscalateAfterKnowledgeGap({
+      userMessage: msg,
+      toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "" }],
+      callHumanSucceeded: false,
+    }),
+    false,
+  );
+});
+
 test("shouldEscalateAfterKnowledgeGap false for vague stay help (C13t — conversa 6625bef6)", () => {
   const msg = "Preciso de uma ajuda durante minha estadia!";
   assert.equal(messageLooksLikeVagueProblemReport(msg), true);
