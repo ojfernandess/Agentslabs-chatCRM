@@ -3,6 +3,10 @@ import { startOfDay, subDays, format } from "date-fns";
 import { prisma } from "../db.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { loadConversationInboxVisibilityWhere } from "../lib/conversationInboxVisibility.js";
+import {
+  applyHumanAttendanceSnapshotIfEnabled,
+  cloneConversationWhere,
+} from "../lib/conversationListScope.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.addHook("preHandler", async (request) => {
@@ -23,6 +27,15 @@ export async function dashboardRoutes(app: FastifyInstance) {
       role: request.user.role,
     });
 
+    const openWhere = cloneConversationWhere(visibleConversations);
+    openWhere.status = "OPEN";
+    const pendingWhere = cloneConversationWhere(visibleConversations);
+    pendingWhere.status = "PENDING";
+    await Promise.all([
+      applyHumanAttendanceSnapshotIfEnabled(organizationId, openWhere, "OPEN"),
+      applyHumanAttendanceSnapshotIfEnabled(organizationId, pendingWhere, "PENDING"),
+    ]);
+
     const [
       openConversations,
       pendingConversations,
@@ -33,8 +46,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
       messageStats,
       recentConversations,
     ] = await Promise.all([
-      prisma.conversation.count({ where: { ...visibleConversations, status: "OPEN" } }),
-      prisma.conversation.count({ where: { ...visibleConversations, status: "PENDING" } }),
+      prisma.conversation.count({ where: openWhere }),
+      prisma.conversation.count({ where: pendingWhere }),
       prisma.contact.count({ where: { organizationId } }),
       prisma.reminder.count({
         where: {
@@ -64,7 +77,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         _count: true,
       }),
       prisma.conversation.findMany({
-        where: { ...visibleConversations, status: "OPEN" },
+        where: openWhere,
         take: 5,
         orderBy: { updatedAt: "desc" },
         include: {

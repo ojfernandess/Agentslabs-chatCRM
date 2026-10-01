@@ -6,6 +6,7 @@ import { prisma } from "../db.js";
 import { businessMinutesBetween, parseTeamBusinessHours, type ParsedBusinessSchedule } from "../lib/businessHours.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { resolveAgentBotFromOrgSettingsRow } from "../lib/agentBotTriage.js";
+import { applyHumanAttendanceSnapshotIfEnabled } from "../lib/conversationListScope.js";
 import {
   analyzeAggregateHealth,
   analyzeConversationForInsights,
@@ -71,6 +72,13 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
 
     const org = organizationId;
 
+    const openWhere = { organizationId: org, status: "OPEN" as const, deletedAt: null };
+    const pendingWhere = { organizationId: org, status: "PENDING" as const, deletedAt: null };
+    await Promise.all([
+      applyHumanAttendanceSnapshotIfEnabled(org, openWhere, "OPEN"),
+      applyHumanAttendanceSnapshotIfEnabled(org, pendingWhere, "PENDING"),
+    ]);
+
     const [
       openCount,
       pendingCount,
@@ -101,8 +109,8 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       handoffsToHumanRows,
       pendingBotQueueCount,
     ] = await Promise.all([
-      prisma.conversation.count({ where: { organizationId: org, status: "OPEN", deletedAt: null } }),
-      prisma.conversation.count({ where: { organizationId: org, status: "PENDING", deletedAt: null } }),
+      prisma.conversation.count({ where: openWhere }),
+      prisma.conversation.count({ where: pendingWhere }),
       prisma.conversation.count({
         where: { organizationId: org, createdAt: { gte: from, lte: to } },
       }),
@@ -692,8 +700,10 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       return replyAssistLlmUnavailable(reply, assist);
     }
 
+    const openHealthWhere = { organizationId, status: "OPEN" as const, deletedAt: null };
+    await applyHumanAttendanceSnapshotIfEnabled(organizationId, openHealthWhere, "OPEN");
     const conversations = await prisma.conversation.findMany({
-      where: { organizationId, status: "OPEN" },
+      where: openHealthWhere,
       orderBy: { updatedAt: "desc" },
       take: 15,
       include: {

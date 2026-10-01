@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "../db.js";
 import { listInboxIdsWithAgentBotTriage } from "./agentBotTriage.js";
 
 export function appendConversationWhereAnd(
@@ -52,6 +53,34 @@ export async function applyAllConversationsHumanAttendanceScope(
   });
 
   return true;
+}
+
+/** Cópia rasa para aplicar o escopo humano sem mutar o `where` partilhado (ex.: visibilidade do dashboard). */
+export function cloneConversationWhere(
+  base: Prisma.ConversationWhereInput,
+): Prisma.ConversationWhereInput {
+  const next: Prisma.ConversationWhereInput = { ...base };
+  if (base.AND) next.AND = Array.isArray(base.AND) ? [...base.AND] : [base.AND];
+  if (base.OR) next.OR = Array.isArray(base.OR) ? [...base.OR] : [base.OR];
+  if (base.NOT) next.NOT = Array.isArray(base.NOT) ? [...base.NOT] : base.NOT;
+  return next;
+}
+
+/**
+ * KPIs de «abertas/pendentes agora» devem usar o mesmo recorte de «Todas as conversas»
+ * quando a separação humano/bot está activa — senão a fila do bot infla o painel e o relatório.
+ */
+export async function applyHumanAttendanceSnapshotIfEnabled(
+  organizationId: string,
+  where: Prisma.ConversationWhereInput,
+  explicitStatus: "OPEN" | "PENDING",
+): Promise<void> {
+  const settings = await prisma.settings.findUnique({
+    where: { organizationId },
+    select: { conversationsAllScopeHumanOnly: true },
+  });
+  if (settings?.conversationsAllScopeHumanOnly !== true) return;
+  await applyAllConversationsHumanAttendanceScope(organizationId, where, explicitStatus);
 }
 
 /** Estados incluídos na aba «Bot em atendimento». Com separação activa, inclui finalizadas do bot. */

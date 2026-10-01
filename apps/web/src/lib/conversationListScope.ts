@@ -42,7 +42,11 @@ function assignedId(row: ConversationBellScopeRow): string | null {
 }
 
 function isBotQueueRow(row: ConversationBellScopeRow): boolean {
-  return row.status === "PENDING" && assignedId(row) == null && !row.awaitingHumanHandoff;
+  return (
+    (row.status === "OPEN" || row.status === "PENDING") &&
+    assignedId(row) == null &&
+    !row.awaitingHumanHandoff
+  );
 }
 
 /** Sino / desktop — espelha API `conversationBellScope` quando separação humano/bot está activa. */

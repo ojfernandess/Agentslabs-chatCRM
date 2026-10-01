@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mergeConversationScopeHint, type ConversationScopeRow } from "./conversationListScope.js";
+import {
+  conversationMatchesListScope,
+  mergeConversationScopeHint,
+  type ConversationListScopeState,
+  type ConversationScopeRow,
+} from "./conversationListScope.js";
 
 const baseRow = {
   id: "conv-1",
@@ -46,6 +51,50 @@ test("mergeConversationScopeHint — assignedToId sem nome usa utilizador actual
 test("mergeConversationScopeHint — assignedToId sem nome preserva nome existente", () => {
   const merged = mergeConversationScopeHint(baseRow, { assignedToId: "user-1" });
   assert.equal(merged.assignedTo?.name, "Maria");
+});
+
+const humanAllScope: ConversationListScopeState = {
+  botAttendanceActive: false,
+  attendanceScopeActive: false,
+  mineActive: false,
+  statusFilter: "OPEN",
+  teamFilter: "",
+  inboxFilter: "",
+  leadTypeFilter: "",
+  hideResolvedInAllScope: true,
+  orgAllScopeHumanOnly: true,
+};
+
+test("conversationMatchesListScope — fila do bot OPEN não entra em Abertas humanas", () => {
+  assert.equal(
+    conversationMatchesListScope(
+      {
+        id: "conv-bot",
+        status: "OPEN",
+        assignedToId: null,
+        awaitingHumanHandoff: false,
+        agentBotTriageActive: true,
+      },
+      humanAllScope,
+    ),
+    false,
+  );
+});
+
+test("conversationMatchesListScope — OPEN atribuída continua em Abertas", () => {
+  assert.equal(
+    conversationMatchesListScope(
+      {
+        id: "conv-human",
+        status: "OPEN",
+        assignedToId: "user-1",
+        awaitingHumanHandoff: false,
+        agentBotTriageActive: true,
+      },
+      humanAllScope,
+    ),
+    true,
+  );
 });
 
 test("mergeConversationScopeHint — assignedTo vazio preserva nome da linha", () => {
