@@ -32,6 +32,21 @@ function wrapSelection(el: HTMLTextAreaElement, before: string, after: string) {
   el.setSelectionRange(innerStart, innerEnd);
 }
 
+function asTemplateList(rows: unknown): TemplateSendModalTemplate[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const tpl = row as TemplateSendModalTemplate;
+    if (!tpl.id || !tpl.name) return [];
+    return [
+      {
+        ...tpl,
+        bodyVariableCount: typeof tpl.bodyVariableCount === "number" ? tpl.bodyVariableCount : 0,
+      },
+    ];
+  });
+}
+
 function insertLinePrefix(el: HTMLTextAreaElement, prefix: string) {
   const start = el.selectionStart;
   const val = el.value;
@@ -91,25 +106,41 @@ export function ContactQuickMessageModal({
     void loadInboxes();
   }, [open, loadInboxes, contact?.id]);
 
-  useEffect(() => {
-    if (!open) return;
-    const q = inboxId ? `?inboxId=${encodeURIComponent(inboxId)}` : "";
-    void (async () => {
-      try {
-        const rows = await api.get<TemplateSendModalTemplate[]>(`/templates${q}`);
-        setMessageTemplates(rows ?? []);
-      } catch {
-        setMessageTemplates([]);
-      }
-    })();
-  }, [open, inboxId]);
-
   const selectedInbox = inboxes.find((i) => i.id === inboxId);
   const selectedWaProvider = selectedInbox
     ? parseInboxWhatsappFromChannelConfig(selectedInbox.channelConfig).whatsappProvider
     : null;
   const isMetaInbox =
     selectedInbox?.channelType === "WHATSAPP" && isWhatsAppCloudApiProvider(selectedWaProvider ?? "");
+
+  useEffect(() => {
+    if (!open || !inboxId) return;
+    let cancelled = false;
+    const load = async (sync: boolean) => {
+      const params = new URLSearchParams({ inboxId });
+      if (sync) params.set("sync", "1");
+      const rows = await api.get<unknown>(`/templates?${params.toString()}`);
+      return asTemplateList(rows);
+    };
+    void (async () => {
+      try {
+        let list = await load(false);
+        if (!cancelled && isMetaInbox && list.length === 0) {
+          try {
+            list = await load(true);
+          } catch {
+            /* mantém a lista local se a sincronização com a Meta falhar */
+          }
+        }
+        if (!cancelled) setMessageTemplates(list);
+      } catch {
+        if (!cancelled) setMessageTemplates([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, inboxId, isMetaInbox]);
 
   const toolbarBtn =
     "rounded-md p-2 text-gray-500 transition hover:bg-gray-100 disabled:opacity-40 dark:text-ink-400 dark:hover:bg-ink-800";
@@ -225,9 +256,41 @@ export function ContactQuickMessageModal({
 
               <div className="px-2 pt-2">
                 {isMetaInbox ? (
-                  <p className="mb-2 px-2 text-xs text-amber-800/90 dark:text-amber-200/90">
-                    {t("quickMessage.metaTemplatesOnly")}
-                  </p>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2">
+                    <p className="min-w-0 flex-1 text-xs text-amber-800/90 dark:text-amber-200/90">
+                      {t("quickMessage.metaTemplatesOnly")}
+                    </p>
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-50 dark:border-amber-700 dark:bg-ink-900 dark:text-amber-100 dark:hover:bg-amber-950/40"
+                      onClick={() => setTemplatePickerOpen((v) => !v)}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {t("quickMessage.sendTemplate")}
+                    </button>
+                  </div>
+                ) : null}
+                {templatePickerOpen && isMetaInbox ? (
+                  <div className="mx-2 mb-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 dark:border-ink-700 dark:bg-ink-900">
+                    {messageTemplates.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-gray-500 dark:text-ink-400">
+                        {t("quickMessage.noTemplates")}
+                      </p>
+                    ) : null}
+                    {messageTemplates.map((tp) => (
+                      <button
+                        key={tp.id}
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50 dark:hover:bg-ink-800"
+                        onClick={() => {
+                          setTemplatePickerOpen(false);
+                          setTemplateModal(tp);
+                        }}
+                      >
+                        <span className="font-semibold text-gray-900 dark:text-ink-100">{tp.name}</span>
+                      </button>
+                    ))}
+                  </div>
                 ) : null}
                 <div className="flex flex-wrap gap-0.5 border-b border-gray-100 px-2 pb-2 dark:border-ink-800">
                   <button
@@ -290,34 +353,7 @@ export function ContactQuickMessageModal({
                   >
                     <ListOrdered className="h-4 w-4" />
                   </button>
-                  {isMetaInbox && messageTemplates.length > 0 ? (
-                    <button
-                      type="button"
-                      className={toolbarBtn}
-                      title={t("quickMessage.templates")}
-                      onClick={() => setTemplatePickerOpen((v) => !v)}
-                    >
-                      <FileText className="h-4 w-4" />
-                    </button>
-                  ) : null}
                 </div>
-                {templatePickerOpen && isMetaInbox ? (
-                  <div className="mx-2 mb-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 dark:border-ink-700 dark:bg-ink-900">
-                    {messageTemplates.map((tp) => (
-                      <button
-                        key={tp.id}
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-xs hover:bg-gray-50 dark:hover:bg-ink-800"
-                        onClick={() => {
-                          setTemplatePickerOpen(false);
-                          setTemplateModal(tp);
-                        }}
-                      >
-                        <span className="font-semibold text-gray-900 dark:text-ink-100">{tp.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
                 <textarea
                   ref={taRef}
                   value={body}

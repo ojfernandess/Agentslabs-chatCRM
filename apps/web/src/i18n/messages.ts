@@ -5535,6 +5535,7 @@ export const messages = {
       linkPrompt: "Cole o URL",
       sendTemplate: "Enviar modelo",
       templates: "Modelos WhatsApp",
+      noTemplates: "Nenhum modelo aprovado nesta caixa.",
       metaTemplatesOnly: "Fora da janela de 24h — envie um modelo aprovado pela Meta.",
     },
     contactEdit: {
@@ -13216,6 +13217,7 @@ export const messages = {
       linkPrompt: "Paste URL",
       sendTemplate: "Send template",
       templates: "WhatsApp templates",
+      noTemplates: "No approved templates for this inbox.",
       metaTemplatesOnly: "Outside the 24-hour window — send a Meta-approved template.",
     },
     contactEdit: {
