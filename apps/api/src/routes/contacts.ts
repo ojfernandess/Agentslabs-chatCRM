@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { authenticate, requireAdmin } from "../middleware/auth.js";
-import { normalizePhoneE164, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, formatMessageBodyForPreview, isChannelParticipantPhone } from "@openconduit/shared";
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, formatMessageBodyForPreview, isChannelParticipantPhone } from "@openconduit/shared";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { ensurePipelineStageForLeadType } from "../lib/pipelineLeadTypeSync.js";
 import { syncDealsForContactPipelineStage } from "../lib/dealStageSync.js";
@@ -27,9 +27,13 @@ import { contactHasEmailFilter } from "../lib/conversationUserEmailState.js";
 import { WEBSITE_PHONE_PREFIX } from "@openconduit/shared";
 import { buildWebsiteVisitorIndexMap, enrichWebsiteContact } from "../lib/websiteVisitorContacts.js";
 import { assertCanAddContacts, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
+import { normalizeContactPhone } from "../lib/contactPhone.js";
+
+/** Entrada formatada (+55 11 94802-7351). O valor gravado continua E.164 (no máximo 16). */
+const CONTACT_PHONE_INPUT_MAX = 40;
 
 const createContactSchema = z.object({
-  phone: z.string().min(7).max(16),
+  phone: z.string().trim().min(7).max(CONTACT_PHONE_INPUT_MAX),
   name: z.string().min(1).max(255),
   notes: z.string().max(5000).optional(),
   tags: z.array(z.string().uuid()).optional(),
@@ -42,9 +46,13 @@ const updateContactSchema = z.object({
     .min(1)
     .max(512)
     .optional()
-    .refine((v) => v == null || isChannelParticipantPhone(v) || (v.length >= 7 && v.length <= 16), {
-      message: "Invalid phone number format",
-    }),
+    .refine(
+      (v) =>
+        v == null ||
+        isChannelParticipantPhone(v) ||
+        (v.trim().length <= CONTACT_PHONE_INPUT_MAX && normalizeContactPhone(v) != null),
+      { message: "Invalid phone number format" },
+    ),
   notes: z.string().max(5000).optional(),
   email: z.string().max(255).nullable().optional(),
   accountId: z.string().uuid().nullable().optional(),
@@ -591,7 +599,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: parsed.error.message, statusCode: 400 });
     }
 
-    const phone = normalizePhoneE164(parsed.data.phone);
+    const phone = normalizeContactPhone(parsed.data.phone);
     if (!phone) {
       return reply.status(400).send({ error: "Bad Request", message: "Invalid phone number format", statusCode: 400 });
     }
@@ -729,7 +737,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           statusCode: 400,
         });
       } else {
-        const normalized = normalizePhoneE164(incoming);
+        const normalized = normalizeContactPhone(incoming);
         if (!normalized) {
           return reply.status(400).send({ error: "Bad Request", message: "Invalid phone number format", statusCode: 400 });
         }
@@ -753,7 +761,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       if (parsed.data.mobilePhone === null || parsed.data.mobilePhone.trim() === "") {
         data.mobilePhone = null;
       } else {
-        const normalizedMobile = normalizePhoneE164(parsed.data.mobilePhone.trim());
+        const normalizedMobile = normalizeContactPhone(parsed.data.mobilePhone.trim());
         if (!normalizedMobile) {
           return reply.status(400).send({
             error: "Bad Request",
