@@ -15,12 +15,14 @@ import type { JwtPayload } from "../middleware/auth.js";
 import {
   extractTemplateBodyParametersFromMetaComponents,
   normalizeExternalSendTemplatePayload,
+  outboundActorForExternalTemplate,
   phoneDigitsOnly,
   sanitizeMetaTemplateComponentsForSend,
   type ExternalSendTemplateBody,
 } from "./externalSendTemplateHelpers.js";
 import { effectiveBodyVariableCount } from "./templateVariables.js";
 import { isOutboundWhatsappDeliveryError } from "./metaSendErrors.js";
+import { getAgentBotDispatchContextForInbox } from "./agentBotTriage.js";
 
 export {
   externalSendTemplateBodySchema,
@@ -289,6 +291,12 @@ export async function executeExternalSendTemplate(options: {
     );
   }
 
+  const botCtx = await getAgentBotDispatchContextForInbox(organizationId, inbox.id);
+  const actor = outboundActorForExternalTemplate({
+    userId,
+    bot: botCtx ? { id: botCtx.agentBotId, name: botCtx.agentBot.name } : null,
+  });
+
   const { message, conversation } = await deliverOutboundWhatsAppMessage({
     organizationId,
     data: {
@@ -299,7 +307,7 @@ export async function executeExternalSendTemplate(options: {
       templateBodyParameters: bodyParams.length > 0 ? bodyParams : undefined,
       ...(existingConversationId ? { conversationId: existingConversationId } : {}),
     },
-    actor: { kind: "user", userId },
+    actor,
     log,
     newConversation: { status: "OPEN", assignedToId: null },
     postSendConversationPolicy: postSendPolicyForInboxType(payload.inboxType),

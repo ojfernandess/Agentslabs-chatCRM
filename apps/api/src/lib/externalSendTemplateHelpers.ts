@@ -80,6 +80,19 @@ export function normalizeExternalSendTemplatePayload(body: ExternalSendTemplateB
   };
 }
 
+/**
+ * O token da API pertence a um usuário. Sem isto, o prefixo do WhatsApp sai com o nome desse atendente.
+ * Se a caixa (ou a organização) tiver bot operacional com nome, o envio usa esse nome.
+ */
+export function outboundActorForExternalTemplate(input: {
+  userId: string;
+  bot: { id: string; name: string } | null;
+}): { kind: "user"; userId: string } | { kind: "agent_bot"; botId: string } {
+  const botName = input.bot?.name?.trim();
+  if (input.bot && botName) return { kind: "agent_bot", botId: input.bot.id };
+  return { kind: "user", userId: input.userId };
+}
+
 export function phoneDigitsOnly(raw: string): string {
   return raw.replace(/\D/g, "");
 }

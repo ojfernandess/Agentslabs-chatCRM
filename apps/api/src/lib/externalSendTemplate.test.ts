@@ -4,6 +4,7 @@ import {
   extractTemplateBodyParametersFromMetaComponents,
   externalSendTemplateBodySchema,
   normalizeExternalSendTemplatePayload,
+  outboundActorForExternalTemplate,
   phoneDigitsOnly,
   sanitizeMetaTemplateComponentsForSend,
 } from "./externalSendTemplateHelpers.js";
@@ -91,6 +92,27 @@ test("sanitizeMetaTemplateComponentsForSend keeps parameter_name for named Meta 
       parameters: [{ type: "text", parameter_name: "nome", text: "Ana" }],
     },
   ]);
+});
+
+test("outboundActorForExternalTemplate uses the bot name when a bot is configured", () => {
+  assert.deepEqual(
+    outboundActorForExternalTemplate({
+      userId: "user-1",
+      bot: { id: "bot-1", name: "Auda" },
+    }),
+    { kind: "agent_bot", botId: "bot-1" },
+  );
+  assert.deepEqual(
+    outboundActorForExternalTemplate({
+      userId: "user-1",
+      bot: { id: "bot-1", name: "   " },
+    }),
+    { kind: "user", userId: "user-1" },
+  );
+  assert.deepEqual(
+    outboundActorForExternalTemplate({ userId: "user-1", bot: null }),
+    { kind: "user", userId: "user-1" },
+  );
 });
 
 test("phoneDigitsOnly normalizes display numbers", () => {
