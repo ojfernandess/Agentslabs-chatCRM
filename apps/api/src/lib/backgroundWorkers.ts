@@ -29,6 +29,7 @@ import { runNvoipHistorySyncTick } from "./nvoipHistorySyncJob.js";
 import { runInboxEmailSyncTick } from "./inboxEmailSyncJob.js";
 import { runNvoipTokenRefreshTick } from "./nvoipTokenRefreshJob.js";
 import { runAutoResolveInactiveConversationsTick } from "./autoResolveInactiveConversations.js";
+import { runAnnouncementSchedulerTick } from "./announcements/announcementScheduler.js";
 import { ensureWavoipVoiceEnabledForOrgsWithDevices } from "./featureFlags.js";
 import { getAgentEngineQueueDiagnostics } from "./agent-engine/queue/agentEngineQueue.js";
 import { getPlatformHealthExtension } from "./platform-observability/platformDashboard.js";
@@ -93,6 +94,11 @@ export function startBackgroundSchedulers(app: FastifyInstance): void {
     void runBroadcastSchedulerTick(app);
   }, broadcastSchedulerMs);
   void runBroadcastSchedulerTick(app);
+
+  setInterval(() => {
+    void runAnnouncementSchedulerTick(app.log);
+  }, broadcastSchedulerMs);
+  void runAnnouncementSchedulerTick(app.log);
 
   setInterval(() => {
     void runLeadFinderSchedulerTick(app);

@@ -181,6 +181,7 @@ export const messages = {
       collapseSidebar: "Recolher menu",
       expandSidebar: "Expandir menu",
       help: "Ajuda",
+      announcements: "Mural de Avisos",
     },
     help: {
       backToApp: "Voltar ao sistema",
@@ -6925,6 +6926,7 @@ export const messages = {
       resendWhatsappBillableAlertTemplateTitle: "Alerta — WhatsApp mensagens cobráveis (admins do tenant)",
       resendWhatsappBillableAlertTemplateHint:
         "Enviado quando a opção de alerta está activa no painel de consumo WhatsApp (modo super admin). Placeholders: organização, total cobrável, mês (YYYY-MM).",
+      announcementsNav: "Mural de Avisos",
       helpCenter: {
         nav: "Ajuda e Suporte",
         title: "Central de Ajuda",
@@ -7880,6 +7882,7 @@ export const messages = {
       collapseSidebar: "Collapse menu",
       expandSidebar: "Expand menu",
       help: "Help",
+      announcements: "Announcements",
     },
     help: {
       backToApp: "Back to app",
@@ -14600,6 +14603,7 @@ export const messages = {
       resendWhatsappBillableAlertTemplateTitle: "Alert — WhatsApp billable messages (tenant admins)",
       resendWhatsappBillableAlertTemplateHint:
         "Sent when billable alert is enabled on the WhatsApp consumption panel (super-admin-only mode). Placeholders: organization, billable total, month (YYYY-MM).",
+      announcementsNav: "Announcements",
       helpCenter: {
         nav: "Help & Support",
         title: "Help Center",

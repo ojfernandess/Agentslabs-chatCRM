@@ -622,6 +622,11 @@ model User {
   helpdeskRequestsAccepted     OrgHelpdeskRequest[]          @relation("HelpdeskRequestAccepter")
   helpdeskMessages             OrgHelpdeskMessage[]
   helpdeskAttachments          OrgHelpdeskAttachment[]
+  announcementsCreated         Announcement[]                @relation("AnnouncementCreatedBy")
+  announcementsUpdated         Announcement[]                @relation("AnnouncementUpdatedBy")
+  announcementsPublished       Announcement[]                @relation("AnnouncementPublishedBy")
+  announcementsArchived        Announcement[]                @relation("AnnouncementArchivedBy")
+  announcementReads            AnnouncementRead[]
 
   @@index([organizationId])
   @@map("users")
@@ -3456,4 +3461,115 @@ model OrgHelpdeskAttachment {
 
   @@index([requestId])
   @@map("org_helpdesk_attachments")
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  CRITICAL
+}
+
+enum AnnouncementTargetType {
+  ALL
+  ORGANIZATION
+  PLAN
+}
+
+/// Categorias do mural de avisos da plataforma (catálogo global, não por organização).
+model AnnouncementCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique @db.VarChar(64)
+  name        String   @db.VarChar(80)
+  description String?  @db.Text
+  /// Nome de ícone lucide-react (whitelist no backend).
+  icon        String   @default("Info") @db.VarChar(40)
+  /// Tom visual discreto (whitelist no backend).
+  tone        String   @default("slate") @db.VarChar(24)
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  announcements Announcement[]
+
+  @@map("announcement_categories")
+}
+
+/// Comunicado oficial da plataforma. Um registro, segmentado por targets — sem cópia por organização.
+model Announcement {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  title                    String                 @db.VarChar(180)
+  slug                     String                 @unique @db.VarChar(200)
+  summary                  String                 @db.VarChar(500)
+  /// Markdown sanitizado. HTML não é persistido.
+  content                  String                 @db.Text
+  categoryId               String                 @map("category_id") @db.Uuid
+  category                 AnnouncementCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  coverUrl                 String?                @map("cover_url") @db.VarChar(2048)
+  priority                 AnnouncementPriority   @default(NORMAL)
+  status                   AnnouncementStatus     @default(DRAFT)
+  isFeatured               Boolean                @default(false) @map("is_featured")
+  isPinned                 Boolean                @default(false) @map("is_pinned")
+  notifyUsers              Boolean                @default(true) @map("notify_users")
+  requiresAcknowledgement  Boolean                @default(false) @map("requires_acknowledgement")
+  publishedAt              DateTime?              @map("published_at")
+  scheduledAt              DateTime?              @map("scheduled_at")
+  expiresAt                DateTime?              @map("expires_at")
+  ctaLabel                 String?                @map("cta_label") @db.VarChar(80)
+  ctaUrl                   String?                @map("cta_url") @db.VarChar(2048)
+  createdById              String                 @map("created_by") @db.Uuid
+  createdBy                User                   @relation("AnnouncementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedById              String?                @map("updated_by") @db.Uuid
+  updatedBy                User?                  @relation("AnnouncementUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  publishedById            String?                @map("published_by") @db.Uuid
+  publishedBy              User?                  @relation("AnnouncementPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  archivedById             String?                @map("archived_by") @db.Uuid
+  archivedBy               User?                  @relation("AnnouncementArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  archivedAt               DateTime?              @map("archived_at")
+  createdAt                DateTime               @default(now()) @map("created_at")
+  updatedAt                DateTime               @updatedAt @map("updated_at")
+  deletedAt                DateTime?              @map("deleted_at")
+
+  targets AnnouncementTarget[]
+  reads   AnnouncementRead[]
+
+  @@index([status, publishedAt])
+  @@index([scheduledAt])
+  @@index([deletedAt])
+  @@index([categoryId])
+  @@map("announcements")
+}
+
+model AnnouncementTarget {
+  id             String                 @id @default(uuid()) @db.Uuid
+  announcementId String                 @map("announcement_id") @db.Uuid
+  announcement   Announcement           @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  targetType     AnnouncementTargetType @map("target_type")
+  /// Vazio quando targetType = ALL. UUID de organização ou plano nos demais casos.
+  targetId       String                 @default("") @map("target_id") @db.VarChar(64)
+
+  @@unique([announcementId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@map("announcement_targets")
+}
+
+/// Estado individual de leitura. Criado só quando o usuário abre (ou marca todas). Sem pré-inserção em massa.
+model AnnouncementRead {
+  announcementId String       @map("announcement_id") @db.Uuid
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id") @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @map("read_at")
+  acknowledgedAt DateTime?    @map("acknowledged_at")
+
+  @@id([announcementId, userId])
+  @@index([userId])
+  @@map("announcement_reads")
 }

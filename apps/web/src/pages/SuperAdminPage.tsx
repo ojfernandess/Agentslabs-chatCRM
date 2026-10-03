@@ -38,6 +38,7 @@ import { SuperAdminMcpSection } from "@/components/super-admin/SuperAdminMcpSect
 import { SuperAdminBillingSection } from "@/components/super-admin/SuperAdminBillingSection";
 import { SuperAdminHelpCenterPanel } from "@/components/super-admin/SuperAdminHelpCenterPanel";
 import { SuperAdminHelpdeskPanel } from "@/components/super-admin/SuperAdminHelpdeskPanel";
+import { SuperAdminAnnouncementsPanel } from "@/components/super-admin/SuperAdminAnnouncementsPanel";
 import { SuperAdminMetaDeliveryPanel } from "@/components/super-admin/SuperAdminMetaDeliveryPanel";
 import { SuperAdminMessageProcessingPanel } from "@/components/super-admin/SuperAdminMessageProcessingPanel";
 import { SuperAdminWhatsappPricingPanel } from "@/components/super-admin/SuperAdminWhatsappPricingPanel";
@@ -3053,6 +3054,7 @@ export function SuperAdminPage() {
 
           {section === "helpCenter" && <SuperAdminHelpCenterPanel />}
           {section === "orgHelpdesk" && <SuperAdminHelpdeskPanel />}
+          {section === "announcements" && <SuperAdminAnnouncementsPanel />}
 
           {section === "featureFlags" && (
             <div className="mx-auto max-w-3xl space-y-6">

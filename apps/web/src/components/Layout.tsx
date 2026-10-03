@@ -25,6 +25,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   CircleHelp,
+  Newspaper,
 } from "lucide-react";
 import { HelpModal } from "@/components/help/HelpModal";
 import clsx from "clsx";
@@ -32,6 +33,7 @@ import { ConversationNotifyBell } from "@/components/ConversationNotifyBell";
 import { EmailUnreadCountBadge } from "@/components/inboxes/EmailUnreadCountBadge";
 import { UserProfileMenu } from "@/components/UserProfileMenu";
 import { useConversationAlerts } from "@/hooks/useConversationAlerts";
+import { useAnnouncementAlerts } from "@/hooks/useAnnouncementAlerts";
 import { useActionableReminders } from "@/hooks/useActionableReminders";
 import { ReminderActionableBanner } from "@/components/reminders/ReminderActionableBanner";
 import { useConversationBubbleTheme } from "@/hooks/useConversationBubbleTheme";
@@ -179,6 +181,7 @@ export function Layout() {
   const showCrmKanban = user?.organizationFeatures?.crm_kanban ?? true;
   const showDeals = user?.organizationFeatures?.crm_deals ?? true;
   const { badgeCount, alertPreviews, clearBadge, requestDesktopPermission } = useConversationAlerts();
+  const announcementAlerts = useAnnouncementAlerts();
   const [sidebarTeams, setSidebarTeams] = useState<SidebarTeam[]>([]);
   const [sidebarInboxes, setSidebarInboxes] = useState<SidebarInbox[]>([]);
   const [emailInboxUnread, setEmailInboxUnread] = useState<EmailInboxUnreadCounts>({});
@@ -455,19 +458,19 @@ export function Layout() {
         : "text-ink-600 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-ink-50",
     );
 
-  const unreadBadge = (count: number, collapsed: boolean) =>
+  const unreadBadge = (count: number, collapsed: boolean, label = t("nav.teamTransferUnreadBadge")) =>
     count > 0 ? (
       collapsed ? (
         <span
           className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-600 ring-2 ring-white dark:ring-ink-950"
-          title={t("nav.teamTransferUnreadBadge")}
-          aria-label={`${t("nav.teamTransferUnreadBadge")}: ${count}`}
+          title={label}
+          aria-label={`${label}: ${count}`}
         />
       ) : (
         <span
           className="shrink-0 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm"
-          title={t("nav.teamTransferUnreadBadge")}
-          aria-label={`${t("nav.teamTransferUnreadBadge")}: ${count}`}
+          title={label}
+          aria-label={`${label}: ${count}`}
         >
           {count > 99 ? "99+" : count}
         </span>
@@ -759,6 +762,21 @@ export function Layout() {
           <CircleHelp className="h-5 w-5 shrink-0" />
           {!collapsed ? <span className="min-w-0 truncate">{t("nav.help")}</span> : null}
         </button>
+        <NavLink
+          to="/announcements"
+          title={collapsed ? t("nav.announcements") : undefined}
+          onClick={() => {
+            if (!showCollapseToggle) setMobileNavOpen(false);
+          }}
+          className={({ isActive }) => navLinkClass(isActive, collapsed)}
+        >
+          <span className="relative shrink-0">
+            <Newspaper className="h-5 w-5" />
+            {collapsed ? unreadBadge(announcementAlerts.unreadCount, true, t("nav.announcements")) : null}
+          </span>
+          {!collapsed ? <span className="min-w-0 flex-1 truncate">{t("nav.announcements")}</span> : null}
+          {!collapsed ? unreadBadge(announcementAlerts.unreadCount, false, t("nav.announcements")) : null}
+        </NavLink>
       </nav>
 
       <div
@@ -780,7 +798,13 @@ export function Layout() {
           </div>
         ) : null}
         <div className={clsx("flex w-full", collapsed ? "flex-col items-center gap-2" : "items-end gap-2")}>
-          <ConversationNotifyBell badgeCount={badgeCount} alertPreviews={alertPreviews} clearBadge={clearBadge} />
+          <ConversationNotifyBell
+            badgeCount={badgeCount}
+            alertPreviews={alertPreviews}
+            clearBadge={clearBadge}
+            announcementItems={announcementAlerts.items}
+            announcementUnread={announcementAlerts.unreadCount}
+          />
           {user ? (
             <UserProfileMenu
               user={user}
@@ -884,7 +908,13 @@ export function Layout() {
             <div className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50">{orgLabel}</div>
           </div>
           <div className="flex items-center gap-2">
-            <ConversationNotifyBell badgeCount={badgeCount} alertPreviews={alertPreviews} clearBadge={clearBadge} />
+            <ConversationNotifyBell
+            badgeCount={badgeCount}
+            alertPreviews={alertPreviews}
+            clearBadge={clearBadge}
+            announcementItems={announcementAlerts.items}
+            announcementUnread={announcementAlerts.unreadCount}
+          />
             {user ? (
               <UserProfileMenu user={user} onLogout={() => handleLogout()} className="min-w-0" />
             ) : null}

@@ -1,8 +1,10 @@
 import { createPortal } from "react-dom";
 import { useLayoutEffect, useRef, useState, useEffect } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Newspaper } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ConversationAlertPreview } from "@/hooks/useConversationAlerts";
+import type { AnnouncementAlertItem } from "@/hooks/useAnnouncementAlerts";
+import { announcementText } from "@/components/announcements/announcementCopy";
 import { ContactAvatar } from "@/components/ContactAvatar";
 import { useI18n } from "@/i18n/I18nProvider";
 import clsx from "clsx";
@@ -11,6 +13,8 @@ export interface ConversationNotifyBellProps {
   badgeCount: number;
   alertPreviews: ConversationAlertPreview[];
   clearBadge: () => void;
+  announcementItems?: AnnouncementAlertItem[];
+  announcementUnread?: number;
 }
 
 const PANEL_W = 320;
@@ -103,9 +107,17 @@ function computePanelPosition(anchor: DOMRect): PanelPos {
   };
 }
 
-export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }: ConversationNotifyBellProps) {
+export function ConversationNotifyBell({
+  badgeCount,
+  alertPreviews,
+  clearBadge,
+  announcementItems = [],
+  announcementUnread = 0,
+}: ConversationNotifyBellProps) {
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const announcements = announcementText(locale);
+  const shownBadge = badgeCount + announcementUnread;
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<PanelPos>({
@@ -170,12 +182,36 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
       )}
     >
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        {alertPreviews.length === 0 ? (
+        {announcementItems.length === 0 && alertPreviews.length === 0 ? (
           <p className="px-3 py-4 text-center text-xs text-ink-500 dark:text-ink-400">
             {t("conversationAlerts.empty")}
           </p>
         ) : (
-          alertPreviews.map((row) => (
+          <>
+            {announcementItems.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                role="menuitem"
+                className="flex w-full gap-3 px-3 py-2.5 text-left transition-colors hover:bg-ink-50 dark:hover:bg-ink-700/60"
+                onClick={() => {
+                  setOpen(false);
+                  navigate(`/announcements/${row.id}`);
+                }}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-200">
+                  <Newspaper className="h-4 w-4" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink-900 dark:text-ink-50">
+                    {announcements.bellTitle}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs font-medium text-ink-800 dark:text-ink-100">{row.title}</span>
+                  <span className="mt-0.5 line-clamp-2 text-xs text-ink-600 dark:text-ink-300">{row.summary}</span>
+                </span>
+              </button>
+            ))}
+            {alertPreviews.map((row) => (
             <button
               key={row.id}
               type="button"
@@ -199,10 +235,23 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
                 <span className="mt-0.5 line-clamp-2 text-xs text-ink-600 dark:text-ink-300">{row.preview}</span>
               </span>
             </button>
-          ))
+          ))}
+          </>
         )}
       </div>
-      <div className="shrink-0 border-t border-ink-100 p-2 dark:border-soft-border">
+      <div className="shrink-0 space-y-1 border-t border-ink-100 p-2 dark:border-soft-border">
+        {announcementUnread > 0 ? (
+          <button
+            type="button"
+            className="w-full rounded-xl py-1.5 text-center text-xs font-semibold text-ink-700 hover:bg-ink-50 dark:text-ink-200 dark:hover:bg-ink-800"
+            onClick={() => {
+              setOpen(false);
+              navigate("/announcements");
+            }}
+          >
+            {announcements.bellOpen}
+          </button>
+        ) : null}
         <button
           type="button"
           className="w-full rounded-xl bg-slate-100 py-1.5 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80"
@@ -227,7 +276,7 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
           onClick={() => setOpen((o) => !o)}
           className={clsx(
             "relative flex h-11 w-11 items-center justify-center rounded-xl border-0 shadow-none transition-colors",
-            badgeCount > 0
+            shownBadge > 0
               ? "bg-amber-100 text-amber-800 hover:bg-amber-200/80 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200/90 dark:bg-slate-800/70 dark:text-slate-200 dark:hover:bg-slate-700/80",
           )}
@@ -235,10 +284,10 @@ export function ConversationNotifyBell({ badgeCount, alertPreviews, clearBadge }
           aria-expanded={open}
           aria-haspopup="true"
         >
-          <Bell className={clsx("h-5 w-5", badgeCount > 0 && "animate-pulse")} />
-          {badgeCount > 0 && (
+          <Bell className={clsx("h-5 w-5", shownBadge > 0 && "animate-pulse")} />
+          {shownBadge > 0 && (
             <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-600 px-1 text-[9px] font-bold text-white dark:bg-amber-500">
-              {badgeCount > 99 ? "99+" : badgeCount}
+              {shownBadge > 99 ? "99+" : shownBadge}
             </span>
           )}
         </button>

@@ -290,6 +290,8 @@ export function WorkspaceRealtime() {
           botId: data.botId,
           botName: data.botName,
         });
+      } else if (data.type === "announcement.published") {
+        window.dispatchEvent(new CustomEvent("openconduit:announcement-published"));
       } else if (
         data.type === "wavoip.call.incoming" ||
         data.type === "threecx.call.incoming" ||

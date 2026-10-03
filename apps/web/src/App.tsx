@@ -12,6 +12,8 @@ import { ConversationDetailPage } from "@/pages/ConversationDetailPage";
 import { ContactsPage } from "@/pages/ContactsPage";
 import { ContactDetailPage } from "@/pages/ContactDetailPage";
 import { RemindersPage } from "@/pages/RemindersPage";
+import { AnnouncementsPage } from "@/pages/AnnouncementsPage";
+import { AnnouncementDetailPage } from "@/pages/AnnouncementDetailPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { WavoipQrConnectPage } from "@/pages/settings/WavoipQrConnectPage";
 import { ProfilePage } from "@/pages/ProfilePage";
@@ -203,6 +205,8 @@ export function App() {
           }
         />
         <Route path="reminders" element={<RemindersPage />} />
+        <Route path="announcements" element={<AnnouncementsPage />} />
+        <Route path="announcements/:id" element={<AnnouncementDetailPage />} />
         <Route
           path="help/*"
           element={
