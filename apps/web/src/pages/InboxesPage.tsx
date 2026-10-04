@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import clsx from "clsx";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -6,7 +7,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition } from "@/components/Motion";
 import { HelpContextButton } from "@/components/help/HelpContextButton";
-import { Plus } from "lucide-react";
+import { Copy, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { InboxCreateWizard, INBOX_CHANNEL_ORDER, type InboxChannelId } from "@/components/InboxCreateWizard";
 import { InboxesKpiStrip, type InboxKpiStats } from "@/components/inboxes/InboxesKpiStrip";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/components/inboxes/InboxesToolbar";
 import { InboxCard, type InboxPanelTab } from "@/components/inboxes/InboxCard";
 import { InboxesTipBanner } from "@/components/inboxes/InboxesTipBanner";
-import { inboxIsChannelReady, memberInitials } from "@/lib/inboxChannelUi";
+import { inboxConnectionLabel, inboxIsChannelReady, memberInitials } from "@/lib/inboxChannelUi";
 import { WebsiteWidgetBuilder } from "@/components/WebsiteWidgetBuilder";
 import {
   websiteWidgetFromChannelConfig,
@@ -27,10 +28,11 @@ import {
 import { WhatsAppProviderConfigFields } from "@/components/inboxes/WhatsAppProviderConfigFields";
 import {
   buildInboxWhatsappChannelConfig,
+  isInboxWhatsappConfigured,
   isWhatsAppCloudApiProvider,
   parseInboxWhatsappFromChannelConfig,
 } from "@/lib/inboxWhatsappConfig";
-import { MASKED_WHATSAPP_SECRET } from "@/lib/whatsappOrgConfig";
+import { MASKED_WHATSAPP_SECRET, whatsappProviderLabel } from "@/lib/whatsappOrgConfig";
 import { WhatsAppMetaWebhookCopyPanel } from "@/components/inboxes/WhatsAppMetaWebhookCopyPanel";
 import { WhatsAppMetaAccountHealthPanel } from "@/components/inboxes/WhatsAppMetaAccountHealthPanel";
 import {
@@ -518,7 +520,11 @@ export function InboxesPage() {
       if (inboxIsChannelReady(row.channelType, row.channelConfig, row.ingestToken, row.whatsappConfigured)) {
         connectedChannels += 1;
       }
-      if (row.channelType === "WHATSAPP" && row.whatsappConfigured) {
+      if (
+        row.channelType === "WHATSAPP" &&
+        (row.whatsappConfigured ??
+          isInboxWhatsappConfigured(parseInboxWhatsappFromChannelConfig(row.channelConfig)))
+      ) {
         whatsappReady += 1;
       }
     }
@@ -623,6 +629,108 @@ export function InboxesPage() {
               </p>
               <p className="text-sm font-medium text-[#111827] dark:text-ink-100">{t("inboxesPage.dashboard.created")}</p>
               <p className="text-xs text-[#64748B]">{row.name}</p>
+            </div>
+          </div>
+        ) : null}
+        {tab === "overview" && !showHealth ? (
+          <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 dark:border-ink-700 dark:bg-ink-950/60">
+            <h3 className="text-sm font-semibold text-[#111827] dark:text-ink-50">
+              {t("inboxesPage.dashboard.statusAndConnection")}
+            </h3>
+            <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[#111827] dark:text-ink-100">
+              <span
+                className={clsx(
+                  "h-1.5 w-1.5 rounded-full",
+                  inboxIsChannelReady(row.channelType, row.channelConfig, row.ingestToken, row.whatsappConfigured)
+                    ? "bg-emerald-500"
+                    : "bg-amber-500",
+                )}
+              />
+              {inboxIsChannelReady(row.channelType, row.channelConfig, row.ingestToken, row.whatsappConfigured)
+                ? t("inboxesPage.dashboard.statusActive")
+                : t("inboxesPage.dashboard.statusNeedsSetup")}
+            </p>
+            <p className="mt-1 text-xs text-[#64748B]">
+              {inboxConnectionLabel(row.channelType, row.channelConfig, row.whatsappConfigured) ??
+                channelShort(row.channelType)}
+            </p>
+          </div>
+        ) : null}
+        {tab === "overview" ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white dark:border-ink-700 dark:bg-ink-950/60">
+              <h3 className="border-b border-[#E5E7EB] px-4 py-3 text-sm font-semibold text-[#111827] dark:border-ink-700 dark:text-ink-50">
+                {t("inboxesPage.dashboard.accountInfo")}
+              </h3>
+              <dl className="divide-y divide-[#E5E7EB] text-sm dark:divide-ink-800">
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-[#64748B]">{t("inboxesPage.channelLabel")}</dt>
+                  <dd className="font-medium text-[#111827] dark:text-ink-50">{channelShort(row.channelType)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-[#64748B]">{t("inboxesPage.dashboard.provider")}</dt>
+                  <dd className="font-medium text-[#111827] dark:text-ink-50">
+                    {row.channelType === "WHATSAPP"
+                      ? whatsappProviderLabel(waFields.whatsappProvider)
+                      : (inboxConnectionLabel(row.channelType, row.channelConfig, row.whatsappConfigured) ?? "—")}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-[#64748B]">{t("inboxesPage.agentBotField")}</dt>
+                  <dd className="font-medium text-[#111827] dark:text-ink-50">
+                    {row.agentBot?.name ?? t("inboxesPage.agentBotOrgDefault")}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-[#64748B]">{t("inboxesPage.inboxId")}</dt>
+                  <dd className="flex min-w-0 items-center gap-1 font-mono text-xs text-[#111827] dark:text-ink-100">
+                    <span className="truncate">{row.id}</span>
+                    <button
+                      type="button"
+                      onClick={() => void copyInboxId(row.id)}
+                      className="rounded p-1 text-[#64748B] hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-ink-800"
+                      aria-label={t("inboxesPage.inboxId")}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 dark:border-ink-700 dark:bg-ink-950/60">
+              <h3 className="text-sm font-semibold text-[#111827] dark:text-ink-50">
+                {t("inboxesPage.dashboard.quickActions")}
+              </h3>
+              <div className="mt-3 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => void startEdit(row)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-[#E5E7EB] px-3 py-2 text-left text-sm font-medium text-[#111827] hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-100"
+                >
+                  <Pencil className="h-4 w-4" />
+                  {t("inboxesPage.dashboard.menuEdit")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPanelTab((p) => ({ ...p, [row.id]: "integration" }));
+                    void startEdit(row);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg border border-[#E5E7EB] px-3 py-2 text-left text-sm font-medium text-[#111827] hover:border-brand-300 hover:text-brand-700 dark:border-ink-700 dark:text-ink-100"
+                >
+                  <Settings2 className="h-4 w-4" />
+                  {t("inboxesPage.dashboard.menuIntegration")}
+                </button>
+                <button
+                  type="button"
+                  disabled={rows.length <= 1 || patchingId === row.id}
+                  onClick={() => void handleDeleteInbox(row)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-40 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {t("inboxesPage.dashboard.menuDelete")}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
@@ -1059,7 +1167,7 @@ export function InboxesPage() {
                           </div>
                         </div>
                       ) : null}
-                      {tab === "team" ? (
+                      {tab === "overview" || tab === "team" ? (
                       <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white dark:border-ink-700 dark:bg-ink-950/60">
                         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E5E7EB] px-4 py-3 dark:border-ink-700">
                           <h3 className="text-sm font-semibold text-[#111827] dark:text-ink-50">

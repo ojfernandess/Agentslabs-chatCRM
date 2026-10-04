@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { Bot, ChevronDown, MoreHorizontal, Pencil } from "lucide-react";
+import { Bot, Check, ChevronDown, Copy, MoreHorizontal, Pencil } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { InboxChannelIcon } from "@/components/inboxes/InboxChannelIcon";
 import {
   INBOX_CHANNEL_STYLES,
   formatInboxDate,
+  inboxConnectionLabel,
   inboxIsChannelReady,
   isInboxChannelId,
+  memberInitials,
+  relativeActivityBars,
 } from "@/lib/inboxChannelUi";
 import { isInboxEmailConfigured, parseInboxEmailFromChannelConfig } from "@/lib/inboxEmailConfig";
 import { isInboxWhatsappConfigured, parseInboxWhatsappFromChannelConfig } from "@/lib/inboxWhatsappConfig";
@@ -65,10 +68,12 @@ export function InboxCard({
   row,
   open,
   viewMode,
+  maxConversations,
   locale,
   isAdmin,
   canDelete,
   patching,
+  copiedId,
   channelLabel,
   panelTab = "overview",
   onPanelTabChange,
@@ -77,6 +82,7 @@ export function InboxCard({
   onConfigure,
   onDelete,
   onSetDefault,
+  onCopyId,
   onOpenEmail,
   expandedContent,
 }: Props) {
@@ -86,14 +92,17 @@ export function InboxCard({
   const channelId = isInboxChannelId(row.channelType) ? row.channelType : null;
   const channelStyle = channelId ? INBOX_CHANNEL_STYLES[channelId] : null;
   const ready = inboxIsChannelReady(row.channelType, row.channelConfig, row.ingestToken, row.whatsappConfigured);
+  const connection = inboxConnectionLabel(row.channelType, row.channelConfig, row.whatsappConfigured);
+  const members = row.members ?? [];
+  const bars = relativeActivityBars(row._count.conversations, maxConversations);
   const wa = row.channelType === "WHATSAPP" ? parseInboxWhatsappFromChannelConfig(row.channelConfig) : null;
   const email = row.channelType === "EMAIL" ? parseInboxEmailFromChannelConfig(row.channelConfig) : null;
-  const provider =
-    wa && (row.whatsappConfigured ?? isInboxWhatsappConfigured(wa))
-      ? whatsappProviderLabel(wa.whatsappProvider)
-      : email && isInboxEmailConfigured(email)
-        ? email.emailFromAddress || null
-        : null;
+  const waConfigured = Boolean(wa && (row.whatsappConfigured ?? isInboxWhatsappConfigured(wa)));
+  const provider = waConfigured
+    ? whatsappProviderLabel(wa?.whatsappProvider)
+    : email && isInboxEmailConfigured(email)
+      ? email.emailFromAddress || null
+      : connection;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -128,7 +137,8 @@ export function InboxCard({
       )}
     >
       <div className="flex flex-col gap-4 p-4 sm:p-5">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
           <button
             type="button"
             onClick={openDetails}
@@ -161,18 +171,96 @@ export function InboxCard({
               ) : null}
             </div>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#64748B] dark:text-ink-400">
-              {provider ? <span>{provider}</span> : <span>{channelLabel(row.channelType)}</span>}
-              {row.agentBot ? (
-                <span className="inline-flex items-center gap-1 text-violet-700 dark:text-violet-300">
-                  <Bot className="h-3 w-3" />
-                  {row.agentBot.name}
-                  {!row.agentBot.isActive ? ` ${t("inboxesPage.wizard.agentBotInactive")}` : ""}
-                </span>
-              ) : (
-                <span>{t("inboxesPage.agentBotOrgDefault")}</span>
-              )}
+              <span>
+                {t("inboxesPage.members")}: {row._count.members}
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                {t("inboxesPage.conversations")}: {row._count.conversations}
+              </span>
+              {connection ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>
+                    {t("inboxesPage.dashboard.connection")}: {connection}
+                  </span>
+                </>
+              ) : null}
+            </p>
+            <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[#64748B] dark:text-ink-400">
+              <Bot className="h-3 w-3 text-violet-600" />
+              <span>{t("inboxesPage.agentBotField")}:</span>
+              <span className="font-medium text-[#111827] dark:text-ink-100">
+                {row.agentBot
+                  ? `${row.agentBot.name}${!row.agentBot.isActive ? ` ${t("inboxesPage.wizard.agentBotInactive")}` : ""}`
+                  : t("inboxesPage.agentBotOrgDefault")}
+              </span>
+            </p>
+            {waConfigured && provider ? (
+              <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                {t("inboxesPage.dashboard.whatsappOnInbox")} · {provider}
+              </p>
+            ) : null}
+            <p className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-[#64748B]">
+              <span>{t("inboxesPage.inboxId")}</span>
+              <span className="truncate">{row.id}</span>
+              <button
+                type="button"
+                onClick={onCopyId}
+                className="rounded p-0.5 text-[#64748B] hover:bg-slate-100 hover:text-[#111827] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-ink-800"
+                aria-label={t("inboxesPage.inboxId")}
+              >
+                {copiedId === row.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
             </p>
           </div>
+          </div>
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center xl:items-start">
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <p className="mb-1 text-[11px] font-medium text-[#64748B]">{t("inboxesPage.dashboard.activity")}</p>
+                <div className="flex h-8 items-end gap-0.5" aria-hidden>
+                  {bars.map((h, i) => (
+                    <span
+                      key={i}
+                      className="w-1.5 rounded-sm bg-brand-500/80"
+                      style={{ height: `${Math.round(h * 100)}%` }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-lg font-semibold leading-none text-[#111827] dark:text-ink-50">{row._count.conversations}</p>
+                <p className="mt-1 text-[11px] text-[#64748B]">{t("inboxesPage.conversations")}</p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold leading-none text-[#111827] dark:text-ink-50">{row._count.members}</p>
+                <p className="mt-1 text-[11px] text-[#64748B]">{t("inboxesPage.dashboard.agents")}</p>
+                {members.length > 0 ? (
+                  <div className="mt-1 flex -space-x-1.5">
+                    {members.slice(0, 4).map((m) => (
+                      <span
+                        key={m.id}
+                        title={m.user.name}
+                        className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[9px] font-bold text-brand-800 ring-2 ring-white dark:bg-brand-950 dark:text-brand-200 dark:ring-ink-950"
+                      >
+                        {memberInitials(m.user.name)}
+                      </span>
+                    ))}
+                    {members.length > 4 ? (
+                      <span className="flex h-6 items-center pl-2 text-[10px] font-semibold text-[#64748B]">
+                        +{members.length - 4}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#111827] dark:text-ink-50">{formatInboxDate(row.createdAt, locale)}</p>
+                <p className="mt-1 text-[11px] text-[#64748B]">{t("inboxesPage.dashboard.created")}</p>
+              </div>
+            </div>
           <div className="flex shrink-0 items-center gap-2">
             <span
               className={clsx(
@@ -268,13 +356,7 @@ export function InboxCard({
               </>
             ) : null}
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Metric label={t("inboxesPage.conversations")} value={String(row._count.conversations)} />
-          <Metric label={t("inboxesPage.dashboard.agents")} value={String(row._count.members)} />
-          <Metric label={t("inboxesPage.dashboard.activity")} value={ready ? t("inboxesPage.dashboard.statusActive") : t("inboxesPage.dashboard.statusNeedsSetup")} />
-          <Metric label={t("inboxesPage.dashboard.created")} value={formatInboxDate(row.createdAt, locale)} />
+          </div>
         </div>
       </div>
 
@@ -304,14 +386,5 @@ export function InboxCard({
         </div>
       ) : null}
     </article>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-[#64748B] dark:text-ink-400">{label}</p>
-      <p className="mt-0.5 text-sm font-semibold text-[#111827] dark:text-ink-50">{value}</p>
-    </div>
   );
 }

@@ -170,11 +170,16 @@ function normalizeWhatsappInboxChannelConfig(
 function enrichWhatsappInboxResponse<T extends { id: string; channelType: string; channelConfig?: unknown }>(
   organizationId: string,
   inbox: T,
-): T & { whatsappWebhookUrl?: string; whatsappWebhookVerifyToken?: string | null } {
+): T & {
+  whatsappConfigured?: boolean;
+  whatsappWebhookUrl?: string;
+  whatsappWebhookVerifyToken?: string | null;
+} {
   if (inbox.channelType !== InboxChannelType.WHATSAPP) return inbox;
   const meta = whatsappWebhookMetaFromConfig(inbox.channelConfig, organizationId, inbox.id);
   return {
     ...maskInboxRowChannelConfig(inbox),
+    whatsappConfigured: isInboxWhatsappConfiguredFromChannelConfig(inbox.channelConfig),
     whatsappWebhookUrl: meta.webhookUrl,
     whatsappWebhookVerifyToken: meta.verifyToken,
   };

@@ -123,7 +123,7 @@ export function WhatsAppMetaAccountHealthPanel({ inboxId, inboxName, channelConf
   const allChecksOk = health?.checks?.length ? health.checks.every((c) => c.ok) : false;
 
   return (
-    <div className={clsx("space-y-4", className)}>
+    <div className={clsx("grid items-start gap-4 lg:grid-cols-2", className)}>
       <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white dark:border-ink-700 dark:bg-ink-950/60">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ink-100 p-4 dark:border-ink-800 sm:p-5">
           <div className="flex min-w-0 flex-1 gap-3">
@@ -136,6 +136,9 @@ export function WhatsAppMetaAccountHealthPanel({ inboxId, inboxName, channelConf
               />
             </div>
             <div className="min-w-0">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">
+                {t("inboxesPage.dashboard.statusAndConnection")}
+              </p>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">
                   {health?.connected !== false

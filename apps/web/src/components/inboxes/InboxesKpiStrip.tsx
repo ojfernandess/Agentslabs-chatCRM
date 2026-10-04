@@ -74,14 +74,16 @@ export function InboxesKpiStrip({ stats }: Props) {
       {cards.map((card) => (
         <div
           key={card.id}
-          className="rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 dark:border-ink-700 dark:bg-ink-950/70"
+          className="flex items-start justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-white px-4 py-3.5 dark:border-ink-700 dark:bg-ink-950/70"
         >
-          <div className={clsx("mb-3 flex h-8 w-8 items-center justify-center rounded-lg", card.iconBg)}>
+          <div className="min-w-0">
+            <p className="text-2xl font-semibold tracking-tight text-[#111827] dark:text-ink-50">{card.value}</p>
+            <p className="mt-0.5 text-sm font-medium text-[#111827] dark:text-ink-100">{card.label}</p>
+            <p className="mt-0.5 text-xs text-[#64748B] dark:text-ink-400">{card.hint}</p>
+          </div>
+          <div className={clsx("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", card.iconBg)}>
             <card.icon className="h-4 w-4" />
           </div>
-          <p className="text-2xl font-semibold tracking-tight text-[#111827] dark:text-ink-50">{card.value}</p>
-          <p className="mt-0.5 text-sm font-medium text-[#111827] dark:text-ink-100">{card.label}</p>
-          <p className="mt-0.5 text-xs text-[#64748B] dark:text-ink-400">{card.hint}</p>
         </div>
       ))}
     </div>
