@@ -24,12 +24,18 @@ export type ParsedBusinessSchedule = {
 };
 
 function parseHm(s: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s.trim());
   if (!m) return null;
   const h = Number(m[1]);
   const mi = Number(m[2]);
   if (!Number.isInteger(h) || !Number.isInteger(mi) || h < 0 || h > 23 || mi < 0 || mi > 59) return null;
   return h * 60 + mi;
+}
+
+function isoWeekday(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  if (!Number.isInteger(n) || n < 1 || n > 7) return null;
+  return n;
 }
 
 function isValidIanaTimeZone(tz: string): boolean {
@@ -42,6 +48,15 @@ function isValidIanaTimeZone(tz: string): boolean {
 }
 
 export function parseTeamBusinessHours(raw: unknown): ParsedBusinessSchedule | null {
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (!text) return null;
+    try {
+      return parseTeamBusinessHours(JSON.parse(text));
+    } catch {
+      return null;
+    }
+  }
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
   const tzRaw =
@@ -69,10 +84,9 @@ export function parseTeamBusinessHours(raw: unknown): ParsedBusinessSchedule | n
 
   let workDays: number[] = [1, 2, 3, 4, 5];
   if (Array.isArray(o.workDays)) {
-    const arr = o.workDays.filter((x): x is number => typeof x === "number" && Number.isInteger(x));
+    const arr = o.workDays.map(isoWeekday).filter((d): d is number => d != null);
     if (arr.length > 0) workDays = arr;
   }
-  if (!workDays.every((d) => d >= 1 && d <= 7)) return null;
 
   return {
     timeZone: tzRaw,
@@ -80,6 +94,60 @@ export function parseTeamBusinessHours(raw: unknown): ParsedBusinessSchedule | n
     openMin,
     closeMin,
   };
+}
+
+export function businessScheduleKey(schedule: ParsedBusinessSchedule): string {
+  const days = [...schedule.workDaysIso].sort((a, b) => a - b).join(",");
+  return `${schedule.timeZone}|${schedule.openMin}|${schedule.closeMin}|${days}`;
+}
+
+/** Horário único da organização. Vários calendários diferentes não têm um fallback comum. */
+export function sharedBusinessSchedule(
+  schedules: Iterable<ParsedBusinessSchedule>,
+): ParsedBusinessSchedule | null {
+  let first: ParsedBusinessSchedule | null = null;
+  let key = "";
+  for (const schedule of schedules) {
+    const nextKey = businessScheduleKey(schedule);
+    if (!first) {
+      first = schedule;
+      key = nextKey;
+      continue;
+    }
+    if (nextKey !== key) return null;
+  }
+  return first;
+}
+
+/**
+ * Calendário da 1ª resposta em horário útil.
+ * Usa a equipe da conversa, depois a equipe do atendente, depois o horário único da organização.
+ */
+export function resolveConversationBusinessSchedule(opts: {
+  teamId?: string | null;
+  assigneeId?: string | null;
+  scheduleByTeamId: ReadonlyMap<string, ParsedBusinessSchedule>;
+  teamIdsByUserId?: ReadonlyMap<string, readonly string[]>;
+  orgFallback?: ParsedBusinessSchedule | null;
+}): ParsedBusinessSchedule | null {
+  const teamId = opts.teamId ?? null;
+  if (teamId) {
+    const direct = opts.scheduleByTeamId.get(teamId);
+    if (direct) return direct;
+  }
+
+  const assigneeId = opts.assigneeId ?? null;
+  if (assigneeId && opts.teamIdsByUserId) {
+    const found: ParsedBusinessSchedule[] = [];
+    for (const id of opts.teamIdsByUserId.get(assigneeId) ?? []) {
+      const schedule = opts.scheduleByTeamId.get(id);
+      if (schedule) found.push(schedule);
+    }
+    const shared = sharedBusinessSchedule(found);
+    if (shared) return shared;
+  }
+
+  return opts.orgFallback ?? null;
 }
 
 /** Minutos entre dois instantes UTC contando só o intervalo [start,end) ∩ janelas úteis. */

@@ -63,12 +63,18 @@ export function parseBusinessHours(raw: unknown): BusinessHoursValue | null {
   };
 }
 
+function clockHm(value: string): string {
+  const match = /^(\d{1,2}):(\d{2})/.exec(value.trim());
+  if (!match) return value;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
 export function businessHoursToJson(value: BusinessHoursValue | null): Record<string, unknown> | null {
   if (!value) return null;
   return {
     timezone: value.timezone,
-    start: value.start,
-    end: value.end,
+    start: clockHm(value.start),
+    end: clockHm(value.end),
     workDays: value.workDays,
   };
 }
@@ -147,8 +153,8 @@ export function BusinessHoursEditor({ enabled, value, onEnabledChange, onChange 
               </label>
               <input
                 type="time"
-                value={value.start}
-                onChange={(e) => onChange({ ...value, start: e.target.value })}
+                value={clockHm(value.start)}
+                onChange={(e) => onChange({ ...value, start: clockHm(e.target.value) })}
                 className="input-field w-full text-sm"
               />
             </div>
@@ -158,8 +164,8 @@ export function BusinessHoursEditor({ enabled, value, onEnabledChange, onChange 
               </label>
               <input
                 type="time"
-                value={value.end}
-                onChange={(e) => onChange({ ...value, end: e.target.value })}
+                value={clockHm(value.end)}
+                onChange={(e) => onChange({ ...value, end: clockHm(e.target.value) })}
                 className="input-field w-full text-sm"
               />
             </div>

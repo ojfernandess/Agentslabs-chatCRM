@@ -3,7 +3,13 @@ import { z } from "zod";
 import { endOfDay, startOfDay, subDays } from "date-fns";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
-import { businessMinutesBetween, parseTeamBusinessHours, type ParsedBusinessSchedule } from "../lib/businessHours.js";
+import {
+  businessMinutesBetween,
+  parseTeamBusinessHours,
+  resolveConversationBusinessSchedule,
+  sharedBusinessSchedule,
+  type ParsedBusinessSchedule,
+} from "../lib/businessHours.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { resolveAgentBotFromOrgSettingsRow } from "../lib/agentBotTriage.js";
 import { applyHumanAttendanceSnapshotIfEnabled } from "../lib/conversationListScope.js";
@@ -89,6 +95,7 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       resolutionAvg,
       firstResponsePairs,
       teamsForBusinessHours,
+      teamMemberRows,
       createdRows,
       resolvedRows,
       inboundRows,
@@ -143,8 +150,10 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
           AND c.updated_at >= ${from}
           AND c.updated_at <= ${to}
       `,
-      prisma.$queryRaw<Array<{ team_id: string | null; first_in: Date; first_out: Date }>>`
-        SELECT c.team_id, fi.first_in, fo.first_out
+      prisma.$queryRaw<
+        Array<{ team_id: string | null; assigned_to_id: string | null; first_in: Date; first_out: Date }>
+      >`
+        SELECT c.team_id, c.assigned_to_id, fi.first_in, fo.first_out
         FROM (
           SELECT m.conversation_id, MIN(m.sent_at) AS first_in
           FROM messages m
@@ -170,6 +179,10 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       prisma.team.findMany({
         where: { organizationId: org },
         select: { id: true, businessHours: true },
+      }),
+      prisma.teamMember.findMany({
+        where: { team: { organizationId: org } },
+        select: { userId: true, teamId: true },
       }),
       prisma.$queryRaw<Array<{ bucket: Date; n: number }>>(
         Prisma.sql`
@@ -478,6 +491,13 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       const s = parseTeamBusinessHours(row.businessHours);
       if (s) scheduleByTeamId.set(row.id, s);
     }
+    const teamIdsByUserId = new Map<string, string[]>();
+    for (const member of teamMemberRows) {
+      const list = teamIdsByUserId.get(member.userId);
+      if (list) list.push(member.teamId);
+      else teamIdsByUserId.set(member.userId, [member.teamId]);
+    }
+    const orgBusinessSchedule = sharedBusinessSchedule(scheduleByTeamId.values());
 
     let firstResponseWallSumMin = 0;
     let firstResponseWallN = 0;
@@ -491,13 +511,18 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
         firstResponseWallSumMin += wallMin;
         firstResponseWallN += 1;
       }
-      if (p.team_id) {
-        const sch = scheduleByTeamId.get(p.team_id);
-        if (sch) {
-          firstResponseBizSumMin += businessMinutesBetween(inAt, outAt, sch);
-          firstResponseBizN += 1;
-        }
-      }
+      const sch = resolveConversationBusinessSchedule({
+        teamId: p.team_id,
+        assigneeId: p.assigned_to_id,
+        scheduleByTeamId,
+        teamIdsByUserId,
+        orgFallback: orgBusinessSchedule,
+      });
+      if (!sch) continue;
+      const businessMin = businessMinutesBetween(inAt, outAt, sch);
+      if (!Number.isFinite(businessMin)) continue;
+      firstResponseBizSumMin += businessMin;
+      firstResponseBizN += 1;
     }
     const avgFirstResponseMinutes =
       firstResponseWallN > 0 ? round2(firstResponseWallSumMin / firstResponseWallN) : null;
