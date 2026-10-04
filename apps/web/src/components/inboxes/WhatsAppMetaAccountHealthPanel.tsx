@@ -124,7 +124,7 @@ export function WhatsAppMetaAccountHealthPanel({ inboxId, inboxName, channelConf
 
   return (
     <div className={clsx("space-y-4", className)}>
-      <div className="overflow-hidden rounded-2xl border border-ink-200/80 bg-gradient-to-br from-white to-slate-50/90 shadow-sm dark:border-ink-700/80 dark:from-ink-950/80 dark:to-ink-900/40">
+      <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white dark:border-ink-700 dark:bg-ink-950/60">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ink-100 p-4 dark:border-ink-800 sm:p-5">
           <div className="flex min-w-0 flex-1 gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-ink-200/80 dark:bg-ink-900 dark:ring-ink-700">
@@ -181,7 +181,7 @@ export function WhatsAppMetaAccountHealthPanel({ inboxId, inboxName, channelConf
         </div>
       </div>
 
-      <div className="rounded-2xl border border-ink-200/80 bg-white p-4 shadow-sm dark:border-ink-700/80 dark:bg-ink-950/60 sm:p-5">
+      <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 dark:border-ink-700 dark:bg-ink-950/60 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h4 className="text-sm font-semibold text-ink-900 dark:text-ink-50">

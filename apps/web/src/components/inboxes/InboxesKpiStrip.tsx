@@ -16,7 +16,6 @@ type KpiCard = {
   value: string;
   hint: string;
   icon: typeof Inbox;
-  accent: string;
   iconBg: string;
 };
 
@@ -34,8 +33,7 @@ export function InboxesKpiStrip({ stats }: Props) {
       value: String(stats.inboxCount),
       hint: t("inboxesPage.dashboard.kpiActiveInboxesHint"),
       icon: Inbox,
-      accent: "text-violet-600 dark:text-violet-400",
-      iconBg: "bg-violet-500/10 ring-violet-500/20",
+      iconBg: "bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300",
     },
     {
       id: "conversations",
@@ -43,8 +41,7 @@ export function InboxesKpiStrip({ stats }: Props) {
       value: stats.totalConversations.toLocaleString(),
       hint: t("inboxesPage.dashboard.kpiConversationsHint"),
       icon: MessageSquare,
-      accent: "text-blue-600 dark:text-blue-400",
-      iconBg: "bg-blue-500/10 ring-blue-500/20",
+      iconBg: "bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-300",
     },
     {
       id: "members",
@@ -52,8 +49,7 @@ export function InboxesKpiStrip({ stats }: Props) {
       value: String(stats.totalMemberSlots),
       hint: t("inboxesPage.dashboard.kpiMembersHint"),
       icon: Users,
-      accent: "text-emerald-600 dark:text-emerald-400",
-      iconBg: "bg-emerald-500/10 ring-emerald-500/20",
+      iconBg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300",
     },
     {
       id: "connected",
@@ -61,8 +57,7 @@ export function InboxesKpiStrip({ stats }: Props) {
       value: `${stats.connectedChannels}/${stats.inboxCount}`,
       hint: t("inboxesPage.dashboard.kpiConnectedHint"),
       icon: Plug,
-      accent: "text-amber-600 dark:text-amber-400",
-      iconBg: "bg-amber-500/10 ring-amber-500/20",
+      iconBg: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300",
     },
     {
       id: "whatsapp",
@@ -70,30 +65,23 @@ export function InboxesKpiStrip({ stats }: Props) {
       value: String(stats.whatsappReady),
       hint: t("inboxesPage.dashboard.kpiWhatsAppHint"),
       icon: Activity,
-      accent: "text-rose-600 dark:text-rose-400",
-      iconBg: "bg-rose-500/10 ring-rose-500/20",
+      iconBg: "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300",
     },
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       {cards.map((card) => (
         <div
           key={card.id}
-          className="group relative overflow-hidden rounded-2xl border border-ink-200/80 bg-white p-4 shadow-sm transition hover:border-brand-200 hover:shadow-md dark:border-ink-700/80 dark:bg-ink-950/60 dark:hover:border-brand-800/60"
+          className="rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 dark:border-ink-700 dark:bg-ink-950/70"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-ink-500 dark:text-ink-400">{card.label}</p>
-              <p className={clsx("mt-1 text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50", card.accent)}>
-                {card.value}
-              </p>
-              <p className="mt-1 text-[11px] leading-snug text-ink-500 dark:text-ink-400">{card.hint}</p>
-            </div>
-            <div className={clsx("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1", card.iconBg)}>
-              <card.icon className={clsx("h-5 w-5", card.accent)} />
-            </div>
+          <div className={clsx("mb-3 flex h-8 w-8 items-center justify-center rounded-lg", card.iconBg)}>
+            <card.icon className="h-4 w-4" />
           </div>
+          <p className="text-2xl font-semibold tracking-tight text-[#111827] dark:text-ink-50">{card.value}</p>
+          <p className="mt-0.5 text-sm font-medium text-[#111827] dark:text-ink-100">{card.label}</p>
+          <p className="mt-0.5 text-xs text-[#64748B] dark:text-ink-400">{card.hint}</p>
         </div>
       ))}
     </div>

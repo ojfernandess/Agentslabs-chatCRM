@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 
 export function WhatsAppMetaWebhookCopyPanel({
@@ -18,6 +18,8 @@ export function WhatsAppMetaWebhookCopyPanel({
   const { t } = useI18n();
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedToken, setCopiedToken] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const maskedToken = verifyToken ? "•".repeat(Math.min(28, Math.max(12, verifyToken.length))) : "";
 
   const copy = async (text: string, which: "url" | "token") => {
     if (!text) return;
@@ -66,9 +68,21 @@ export function WhatsAppMetaWebhookCopyPanel({
             {t("inboxesPage.wizard.whatsappMeta.webhookVerifyTokenLabel")}
           </label>
           <div className="flex items-stretch gap-2">
-            <code className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-xs text-ink-800 dark:border-ink-600 dark:bg-ink-950 dark:text-emerald-200/90">
-              {verifyToken || "—"}
+            <code className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-xs tracking-wide text-ink-800 dark:border-ink-600 dark:bg-ink-950 dark:text-emerald-200/90">
+              {verifyToken ? (showToken ? verifyToken : maskedToken) : "—"}
             </code>
+            <button
+              type="button"
+              onClick={() => setShowToken((v) => !v)}
+              disabled={!verifyToken}
+              className="btn-secondary shrink-0 px-3"
+              aria-label={showToken ? t("inboxesPage.dashboard.hideSecret") : t("inboxesPage.dashboard.showSecret")}
+            >
+              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              <span className="ml-1 hidden sm:inline">
+                {showToken ? t("inboxesPage.dashboard.hideSecret") : t("inboxesPage.dashboard.showSecret")}
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => void copy(verifyToken, "token")}

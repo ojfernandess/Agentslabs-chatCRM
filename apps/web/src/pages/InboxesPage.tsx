@@ -6,7 +6,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { isTenantAdmin } from "@/lib/authRole";
 import { PageTransition } from "@/components/Motion";
 import { HelpContextButton } from "@/components/help/HelpContextButton";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { InboxCreateWizard, INBOX_CHANNEL_ORDER, type InboxChannelId } from "@/components/InboxCreateWizard";
 import { InboxesKpiStrip, type InboxKpiStats } from "@/components/inboxes/InboxesKpiStrip";
 import {
@@ -15,9 +15,9 @@ import {
   type InboxStatusFilter,
   type InboxViewMode,
 } from "@/components/inboxes/InboxesToolbar";
-import { InboxCard } from "@/components/inboxes/InboxCard";
+import { InboxCard, type InboxPanelTab } from "@/components/inboxes/InboxCard";
 import { InboxesTipBanner } from "@/components/inboxes/InboxesTipBanner";
-import { inboxIsChannelReady } from "@/lib/inboxChannelUi";
+import { inboxIsChannelReady, memberInitials } from "@/lib/inboxChannelUi";
 import { WebsiteWidgetBuilder } from "@/components/WebsiteWidgetBuilder";
 import {
   websiteWidgetFromChannelConfig,
@@ -173,6 +173,8 @@ export function InboxesPage() {
   const [assignEnabled, setAssignEnabled] = useState<Record<string, boolean>>({});
   const [assignLimit, setAssignLimit] = useState<Record<string, string>>({});
   const [assignSavingId, setAssignSavingId] = useState<string | null>(null);
+  const [panelTab, setPanelTab] = useState<Record<string, InboxPanelTab>>({});
+  const [memberMenuId, setMemberMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -581,21 +583,50 @@ export function InboxesPage() {
 
   const renderExpandedPanel = (row: InboxRow) => {
     const members = row.members ?? [];
+    const tab = panelTab[row.id] ?? "overview";
+    const editing = editingId === row.id;
+    const waFields = parseInboxWhatsappFromChannelConfig(row.channelConfig);
+    const showHealth =
+      row.channelType === "WHATSAPP" && isWhatsAppCloudApiProvider(waFields.whatsappProvider ?? "");
     return (
-      <div>
-        {row.channelType === "WHATSAPP" &&
-        isWhatsAppCloudApiProvider(
-          parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappProvider ?? "",
-        ) ? (
-          <div className="mb-5">
+      <div className="space-y-5">
+        {showHealth ? (
+          <div className={tab === "overview" || tab === "diagnostics" ? "" : "hidden"}>
             <WhatsAppMetaAccountHealthPanel
               inboxId={row.id}
               inboxName={row.name}
               channelConfig={row.channelConfig}
             />
           </div>
+        ) : tab === "diagnostics" ? (
+          <p className="text-sm text-[#64748B] dark:text-ink-400">
+            {inboxIsChannelReady(row.channelType, row.channelConfig, row.ingestToken, row.whatsappConfigured)
+              ? t("inboxesPage.dashboard.statusActive")
+              : t("inboxesPage.dashboard.statusNeedsSetup")}
+          </p>
         ) : null}
-                      {editingId === row.id ? (
+        {tab === "overview" ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 dark:border-ink-700 dark:bg-ink-950/60">
+              <p className="text-2xl font-semibold text-[#111827] dark:text-ink-50">{row._count.conversations}</p>
+              <p className="text-sm font-medium text-[#111827] dark:text-ink-100">{t("inboxesPage.conversations")}</p>
+              <p className="text-xs text-[#64748B]">{t("inboxesPage.dashboard.statInInbox")}</p>
+            </div>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 dark:border-ink-700 dark:bg-ink-950/60">
+              <p className="text-2xl font-semibold text-[#111827] dark:text-ink-50">{row._count.members}</p>
+              <p className="text-sm font-medium text-[#111827] dark:text-ink-100">{t("inboxesPage.dashboard.agents")}</p>
+              <p className="text-xs text-[#64748B]">{t("inboxesPage.dashboard.statAssigned")}</p>
+            </div>
+            <div className="rounded-xl border border-[#E5E7EB] bg-white px-4 py-3 dark:border-ink-700 dark:bg-ink-950/60">
+              <p className="text-sm font-semibold text-[#111827] dark:text-ink-50">
+                {row.createdAt ? new Date(row.createdAt).toLocaleDateString(locale) : "—"}
+              </p>
+              <p className="text-sm font-medium text-[#111827] dark:text-ink-100">{t("inboxesPage.dashboard.created")}</p>
+              <p className="text-xs text-[#64748B]">{row.name}</p>
+            </div>
+          </div>
+        ) : null}
+                      {editing && (tab === "overview" || tab === "integration") ? (
                         <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50/40 p-3 dark:border-brand-900/50 dark:bg-brand-950/20">
                           <h3 className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-brand-800 dark:text-brand-200">
                             {t("inboxesPage.editSection")}
@@ -805,7 +836,8 @@ export function InboxesPage() {
                           </div>
                         </div>
                       ) : null}
-                      <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50/80 p-3 dark:border-ink-600 dark:bg-ink-900/40">
+                      {tab === "integration" ? (
+                      <div className="rounded-xl border border-[#E5E7EB] bg-white p-4 dark:border-ink-700 dark:bg-ink-950/60">
                         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-ink-400">
                           {t("inboxesPage.ingestTitle")}
                         </h3>
@@ -963,7 +995,8 @@ export function InboxesPage() {
                           {t("inboxesPage.outboundWebhookDoc")}
                         </p>
                       </div>
-                      {isAdmin ? (
+                      ) : null}
+                      {tab === "automation" && isAdmin ? (
                         <div className="mb-4 grid gap-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-ink-600 dark:bg-ink-900/40 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                           <div>
                             <h3 className="text-sm font-semibold text-brand-600 dark:text-brand-400">
@@ -1026,65 +1059,115 @@ export function InboxesPage() {
                           </div>
                         </div>
                       ) : null}
-                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-ink-500">
-                        {t("inboxesPage.members")}
-                      </h3>
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <select
-                          value={addUserId[row.id] ?? ""}
-                          onChange={(e) => setAddUserId((p) => ({ ...p, [row.id]: e.target.value }))}
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
-                        >
-                          <option value="">{t("inboxesPage.selectUser")}</option>
-                          {orgUsers.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.name} ({u.email})
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void handleAddMember(row.id)}
-                          className="rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-medium text-white dark:bg-ink-600"
-                        >
-                          {t("inboxesPage.addMember")}
-                        </button>
-                      </div>
-                      <ul className="space-y-1">
-                        {members.map((m) => (
-                          <li
-                            key={m.id}
-                            className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-ink-900/60"
-                          >
-                            <span className="text-gray-800 dark:text-ink-100">
-                              {m.user.name} <span className="text-gray-500 dark:text-ink-400">({m.user.email})</span>
-                            </span>
+                      {tab === "team" ? (
+                      <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white dark:border-ink-700 dark:bg-ink-950/60">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E5E7EB] px-4 py-3 dark:border-ink-700">
+                          <h3 className="text-sm font-semibold text-[#111827] dark:text-ink-50">
+                            {t("inboxesPage.members")} ({members.length})
+                          </h3>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={addUserId[row.id] ?? ""}
+                              onChange={(e) => setAddUserId((p) => ({ ...p, [row.id]: e.target.value }))}
+                              className="rounded-lg border border-[#E5E7EB] bg-white px-2 py-1.5 text-sm dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                            >
+                              <option value="">{t("inboxesPage.selectUser")}</option>
+                              {orgUsers.map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.name} ({u.email})
+                                </option>
+                              ))}
+                            </select>
                             <button
                               type="button"
-                              onClick={() => void handleRemoveMember(row.id, m.userId)}
-                              className="text-red-600 hover:text-red-700 dark:text-red-400"
-                              title={t("inboxesPage.removeMember")}
+                              onClick={() => void handleAddMember(row.id)}
+                              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              + {t("inboxesPage.addMember")}
                             </button>
-                          </li>
-                        ))}
-                      </ul>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-[#64748B] dark:bg-ink-900/60">
+                              <tr>
+                                <th className="px-4 py-2 font-semibold">{t("inboxesPage.dashboard.colName")}</th>
+                                <th className="px-4 py-2 font-semibold">{t("inboxesPage.dashboard.colEmail")}</th>
+                                <th className="px-4 py-2 font-semibold">{t("inboxesPage.dashboard.colRole")}</th>
+                                <th className="px-4 py-2 font-semibold">{t("inboxesPage.dashboard.colStatus")}</th>
+                                <th className="px-4 py-2 font-semibold">{t("inboxesPage.dashboard.colActions")}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {members.map((m) => (
+                                <tr key={m.id} className="border-t border-[#E5E7EB] dark:border-ink-800">
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center gap-2 font-medium text-[#111827] dark:text-ink-50">
+                                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-[10px] font-bold text-brand-800 dark:bg-brand-950 dark:text-brand-200">
+                                        {memberInitials(m.user.name)}
+                                      </span>
+                                      {m.user.name}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-[#64748B]">{m.user.email}</td>
+                                  <td className="px-4 py-3 text-[#111827] dark:text-ink-100">{m.user.role}</td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                      {t("inboxesPage.dashboard.memberActive")}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        className="rounded-lg px-2 py-1 text-[#64748B] hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-ink-800"
+                                        aria-label={t("inboxesPage.dashboard.moreActions")}
+                                        aria-expanded={memberMenuId === m.id}
+                                        onClick={() => setMemberMenuId((cur) => (cur === m.id ? null : m.id))}
+                                      >
+                                        •••
+                                      </button>
+                                      {memberMenuId === m.id ? (
+                                        <button
+                                          type="button"
+                                          className="whitespace-nowrap rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 dark:border-red-900/50 dark:bg-ink-900 dark:text-red-300"
+                                          onClick={() => {
+                                            setMemberMenuId(null);
+                                            void handleRemoveMember(row.id, m.userId);
+                                          }}
+                                        >
+                                          {t("inboxesPage.removeMember")}
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                      ) : null}
                     </div>
     );
   };
 
   return (
     <PageTransition>
-      <div className="mx-auto max-w-[1400px] space-y-6 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto min-h-full max-w-[1400px] space-y-6 bg-[#F7F8FC] p-4 dark:bg-transparent sm:p-6 lg:p-8">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-2xl">
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-ink-900 dark:text-ink-50 sm:text-3xl">
+            <p className="text-xs font-medium text-[#64748B] dark:text-ink-400">
               {t("inboxesPage.title")}
-              <span className="sr-only">{t("inboxesPage.subtitle")}</span>
+              <span className="px-1.5 text-ink-300">/</span>
+              {t("inboxesPage.dashboard.breadcrumb")}
+            </p>
+            <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold tracking-tight text-[#111827] dark:text-ink-50">
+              {t("inboxesPage.title")}
               <HelpContextButton articleSlug="settings/inboxes" className="p-1" />
             </h1>
-            <p className="mt-2 text-sm leading-relaxed text-ink-500 dark:text-ink-400">{t("inboxesPage.subtitle")}</p>
+            <p className="mt-1 text-sm text-[#64748B] dark:text-ink-400">{t("inboxesPage.subtitle")}</p>
             {!isAdmin ? (
               <p className="mt-2 text-sm text-amber-700 dark:text-amber-300/90">{t("inboxesPage.readOnlyHint")}</p>
             ) : null}
@@ -1096,7 +1179,7 @@ export function InboxesPage() {
                 setWizardInitialChannel(null);
                 setWizardOpen(true);
               }}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:bg-brand-700 dark:shadow-brand-900/30"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
             >
               <Plus className="h-4 w-4" />
               {t("inboxesPage.create")}
@@ -1172,8 +1255,18 @@ export function InboxesPage() {
                   patching={patchingId === row.id}
                   copiedId={copiedInboxId}
                   channelLabel={channelShort}
+                  panelTab={panelTab[row.id] ?? "overview"}
+                  onPanelTabChange={(next) => setPanelTab((p) => ({ ...p, [row.id]: next }))}
                   onToggle={() => toggle(row.id)}
-                  onEdit={() => void startEdit(row)}
+                  onEdit={() => {
+                    setPanelTab((p) => ({ ...p, [row.id]: "overview" }));
+                    void startEdit(row);
+                  }}
+                  onConfigure={() => {
+                    setPanelTab((p) => ({ ...p, [row.id]: "integration" }));
+                    setExpanded((p) => ({ ...p, [row.id]: true }));
+                    void startEdit(row);
+                  }}
                   onDelete={() => void handleDeleteInbox(row)}
                   onSetDefault={() => void handleSetDefault(row.id)}
                   onCopyId={() => void copyInboxId(row.id)}
