@@ -4172,7 +4172,7 @@ export const messages = {
         fieldEmailFrom: "E-mail de envio (De:)",
         fieldEmailSmtpHost: "Servidor SMTP",
         channelNoteWhatsApp:
-          "Cada provedor WhatsApp (Meta Cloud API, Evolution API, etc.) usa uma caixa de entrada própria, com credenciais e webhook dedicados.",
+          "A Meta Cloud API pode ter várias caixas na mesma organização, uma por ID de número. Os outros provedores (360dialog, Evolution, Twilio) continuam com uma caixa cada, com credenciais e webhook dedicados.",
         channelNoteNative:
           "Este canal usa rotas públicas nativas (Client API e webhooks por plataforma), sem JSON genérico como fluxo principal.",
         whatsappMeta: {
@@ -4200,11 +4200,13 @@ export const messages = {
           validationApiKey: "Informe a chave da API.",
           editSectionTitle: "Provedor WhatsApp",
           editSectionHint:
-            "Credenciais e webhook desta caixa ficam no channelConfig da inbox. Cada provedor deve ter sua própria caixa WhatsApp.",
+            "Credenciais e webhook desta caixa ficam no channelConfig da inbox. A Meta Cloud API aceita várias caixas (um ID de número por caixa); os outros provedores ficam com uma caixa cada.",
           providerNewInboxNotice:
             "Será criada uma nova caixa para {newProvider}. As caixas existentes ({existing}) serão mantidas com seus provedores atuais.",
           providerAlreadyExists:
             "Já existe uma caixa WhatsApp para este provedor ({name}). Edite essa caixa ou escolha outro provedor.",
+          phoneNumberIdAlreadyExists:
+            "Este ID de número de telefone já está na caixa {name}. Use outro número da Meta Cloud API.",
           validationInstance: "Informe o nome da instância.",
           fieldWebhookSecret: "Webhook secret",
           fieldWebhookSecretPlaceholder: "App Secret do app Meta",
@@ -11860,7 +11862,7 @@ export const messages = {
         fieldEmailFrom: "From address",
         fieldEmailSmtpHost: "SMTP server",
         channelNoteWhatsApp:
-          "Each WhatsApp provider (Meta Cloud API, Evolution API, etc.) uses its own inbox with dedicated credentials and webhook URL.",
+          "Meta Cloud API can have several inboxes in the same organization, one per phone number ID. Other providers (360dialog, Evolution, Twilio) still use one inbox each, with dedicated credentials and webhook URL.",
         channelNoteNative:
           "This channel uses native public routes (Client API and per-platform webhooks), not a generic JSON webhook as the primary flow.",
         whatsappMeta: {
@@ -11885,11 +11887,13 @@ export const messages = {
           validationApiKey: "Enter the API key.",
           editSectionTitle: "WhatsApp provider",
           editSectionHint:
-            "This inbox stores its own provider credentials and webhook. Use a separate WhatsApp inbox per provider.",
+            "This inbox stores its own provider credentials and webhook. Meta Cloud API allows several inboxes (one phone number ID each); other providers stay at one inbox each.",
           providerNewInboxNotice:
             "A new inbox will be created for {newProvider}. Existing inboxes ({existing}) will be kept with their current providers.",
           providerAlreadyExists:
             "A WhatsApp inbox for this provider already exists ({name}). Edit that inbox or choose another provider.",
+          phoneNumberIdAlreadyExists:
+            "This phone number ID is already used by inbox {name}. Use another Meta Cloud API number.",
           validationInstance: "Enter the instance name.",
           fieldWebhookSecret: "Webhook secret",
           fieldWebhookSecretPlaceholder: "Meta app secret",

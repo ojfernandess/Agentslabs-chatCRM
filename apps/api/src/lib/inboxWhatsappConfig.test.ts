@@ -2,12 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { InboxChannelType } from "@prisma/client";
 import {
+  whatsappProviderAllowsMultipleInboxes,
   inboxWhatsappPhoneNumberIdForColumn,
   withInboxWhatsappPhoneNumberIdColumn,
   parseInboxWhatsappFromChannelConfig,
   shouldFallbackWhatsappCredentialsToSettings,
   allowWhatsappSettingsPhoneInboxFallback,
 } from "./inboxWhatsappConfig.js";
+
+test("whatsappProviderAllowsMultipleInboxes only for Meta Cloud API", () => {
+  assert.equal(whatsappProviderAllowsMultipleInboxes("meta"), true);
+  assert.equal(whatsappProviderAllowsMultipleInboxes("360dialog"), false);
+  assert.equal(whatsappProviderAllowsMultipleInboxes("evolution"), false);
+  assert.equal(whatsappProviderAllowsMultipleInboxes("evolution_go"), false);
+  assert.equal(whatsappProviderAllowsMultipleInboxes("twilio"), false);
+});
 
 test("inboxWhatsappPhoneNumberIdForColumn reads channelConfig", () => {
   assert.equal(

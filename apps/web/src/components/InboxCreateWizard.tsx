@@ -340,12 +340,23 @@ export function InboxCreateWizard({
         setError(t("inboxesPage.wizard.whatsappMeta.validationPhoneNumberId"));
         return;
       }
-      const existingSame = existingWhatsappInboxes.find((i) => i.provider === waProvider);
-      if (existingSame) {
-        setError(
-          t("inboxesPage.wizard.whatsappMeta.providerAlreadyExists").replace("{name}", existingSame.name),
-        );
-        return;
+      if (waProvider !== "meta") {
+        const existingSame = existingWhatsappInboxes.find((i) => i.provider === waProvider);
+        if (existingSame) {
+          setError(
+            t("inboxesPage.wizard.whatsappMeta.providerAlreadyExists").replace("{name}", existingSame.name),
+          );
+          return;
+        }
+      } else {
+        const phoneId = waProviderPhoneId.trim();
+        const existingPhone = existingWhatsappInboxes.find((i) => i.phoneNumberId && i.phoneNumberId === phoneId);
+        if (existingPhone) {
+          setError(
+            t("inboxesPage.wizard.whatsappMeta.phoneNumberIdAlreadyExists").replace("{name}", existingPhone.name),
+          );
+          return;
+        }
       }
       if (!waProviderApiKey.trim()) {
         setError(t("inboxesPage.wizard.whatsappMeta.validationApiKey"));

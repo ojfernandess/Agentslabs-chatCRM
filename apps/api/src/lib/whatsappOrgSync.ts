@@ -5,11 +5,13 @@ import { getDefaultInboxId } from "./defaultInbox.js";
 import { newIngestToken } from "./channelInboxIngest.js";
 import {
   findWhatsappInboxByProvider,
+  findWhatsappInboxesByProvider,
   isInboxWhatsappConfigured,
   parseInboxWhatsappFromChannelConfig,
   prepareWhatsappChannelConfigForSave,
   withInboxWhatsappPhoneNumberIdColumn,
   inboxWhatsappPhoneNumberIdForColumn,
+  whatsappProviderAllowsMultipleInboxes,
 } from "./inboxWhatsappConfig.js";
 import type { WhatsappInboxChannelPatch } from "./syncWhatsappToDefaultInbox.js";
 
@@ -168,7 +170,21 @@ export async function syncWhatsappCredentialsToInbox(
   const provider = patch.whatsappProvider.trim();
   const incoming = patchToIncoming(patch);
 
-  const existing = await findWhatsappInboxByProvider(organizationId, provider);
+  let existing = await findWhatsappInboxByProvider(organizationId, provider);
+  if (whatsappProviderAllowsMultipleInboxes(provider)) {
+    const sameProvider = await findWhatsappInboxesByProvider(organizationId, provider);
+    if (sameProvider.length > 1) {
+      const phoneId = patch.whatsappPhoneNumberId?.trim();
+      const match = phoneId
+        ? sameProvider.find((row) => {
+            const fromColumn = row.whatsappPhoneNumberId?.trim();
+            const fromConfig = parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappPhoneNumberId?.trim();
+            return fromColumn === phoneId || fromConfig === phoneId;
+          })
+        : undefined;
+      existing = match ? { id: match.id, name: match.name } : null;
+    }
+  }
   if (existing) {
     const inbox = await prisma.inbox.findFirst({
       where: { id: existing.id, organizationId },

@@ -6,6 +6,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { InboxChannelType, Prisma } from "@prisma/client";
 import { newIngestToken, participantPhoneKey } from "../lib/channelInboxIngest.js";
 import {
+  assertUniqueWhatsappPhoneNumberIdInOrg,
   assertUniqueWhatsappProviderInOrg,
   isInboxWhatsappConfiguredFromChannelConfig,
   isMetaCloudWhatsappProvider,
@@ -357,6 +358,17 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
             statusCode: 409,
           });
         }
+      }
+      const phoneId = prepared
+        ? parseInboxWhatsappFromChannelConfig(prepared).whatsappPhoneNumberId
+        : undefined;
+      const phoneUnique = await assertUniqueWhatsappPhoneNumberIdInOrg(organizationId, phoneId);
+      if (phoneUnique.conflict) {
+        return reply.status(409).send({
+          error: "Conflict",
+          message: `This WhatsApp phone number ID is already used by inbox "${phoneUnique.existingInboxName}".`,
+          statusCode: 409,
+        });
       }
       channelConfig = prepared as Prisma.InputJsonValue;
     } else if (channelType === InboxChannelType.TELEGRAM && body.channelConfig != null) {
@@ -1204,6 +1216,17 @@ export async function inboxRoutes(app: FastifyInstance): Promise<void> {
               statusCode: 409,
             });
           }
+        }
+        const phoneId = normalized
+          ? parseInboxWhatsappFromChannelConfig(normalized).whatsappPhoneNumberId
+          : undefined;
+        const phoneUnique = await assertUniqueWhatsappPhoneNumberIdInOrg(organizationId, phoneId, inbox.id);
+        if (phoneUnique.conflict) {
+          return reply.status(409).send({
+            error: "Conflict",
+            message: `This WhatsApp phone number ID is already used by inbox "${phoneUnique.existingInboxName}".`,
+            statusCode: 409,
+          });
         }
         const parsed = parseInboxWhatsappFromChannelConfig(normalized);
         if (

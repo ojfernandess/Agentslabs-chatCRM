@@ -120,6 +120,7 @@ export type WhatsappInboxSummary = {
   id: string;
   name: string;
   provider: string | null;
+  phoneNumberId: string | null;
 };
 
 export function summarizeWhatsappInboxes(
@@ -127,9 +128,13 @@ export function summarizeWhatsappInboxes(
 ): WhatsappInboxSummary[] {
   return rows
     .filter((r) => r.channelType === "WHATSAPP")
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      provider: parseInboxWhatsappFromChannelConfig(r.channelConfig).whatsappProvider ?? null,
-    }));
+    .map((r) => {
+      const parsed = parseInboxWhatsappFromChannelConfig(r.channelConfig);
+      return {
+        id: r.id,
+        name: r.name,
+        provider: parsed.whatsappProvider ?? null,
+        phoneNumberId: parsed.whatsappPhoneNumberId?.trim() || null,
+      };
+    });
 }

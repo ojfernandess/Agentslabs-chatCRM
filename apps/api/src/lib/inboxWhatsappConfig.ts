@@ -82,6 +82,11 @@ export function isMetaCloudWhatsappProvider(provider: string | null | undefined)
   return provider === "meta" || provider === "360dialog";
 }
 
+/** Meta Cloud API pode ter várias caixas na mesma organização (um Phone Number ID por caixa). */
+export function whatsappProviderAllowsMultipleInboxes(provider: string | null | undefined): boolean {
+  return provider === "meta";
+}
+
 /** Valor indexado em `Inbox.whatsappPhoneNumberId` (derivado de `channelConfig`). */
 export function inboxWhatsappPhoneNumberIdForColumn(channelConfig: unknown): string | null {
   const id = parseInboxWhatsappFromChannelConfig(channelConfig).whatsappPhoneNumberId?.trim();
@@ -210,21 +215,28 @@ export async function resolveInboxWhatsappCredentials(
   };
 }
 
+export async function findWhatsappInboxesByProvider(
+  organizationId: string,
+  provider: string,
+  excludeInboxId?: string,
+): Promise<{ id: string; name: string; channelConfig: unknown; whatsappPhoneNumberId: string | null }[]> {
+  const rows = await prisma.inbox.findMany({
+    where: { organizationId, channelType: InboxChannelType.WHATSAPP },
+    select: { id: true, name: true, channelConfig: true, whatsappPhoneNumberId: true },
+  });
+  return rows.filter((row) => {
+    if (excludeInboxId && row.id === excludeInboxId) return false;
+    return parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappProvider === provider;
+  });
+}
+
 export async function findWhatsappInboxByProvider(
   organizationId: string,
   provider: string,
   excludeInboxId?: string,
 ): Promise<{ id: string; name: string } | null> {
-  const rows = await prisma.inbox.findMany({
-    where: { organizationId, channelType: InboxChannelType.WHATSAPP },
-    select: { id: true, name: true, channelConfig: true },
-  });
-  for (const row of rows) {
-    if (excludeInboxId && row.id === excludeInboxId) continue;
-    const p = parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappProvider;
-    if (p === provider) return { id: row.id, name: row.name };
-  }
-  return null;
+  const [first] = await findWhatsappInboxesByProvider(organizationId, provider, excludeInboxId);
+  return first ? { id: first.id, name: first.name } : null;
 }
 
 async function findWhatsappInboxByPhoneNumberIdFromJson(
@@ -338,9 +350,32 @@ export async function assertUniqueWhatsappProviderInOrg(
   provider: string,
   excludeInboxId?: string,
 ): Promise<{ conflict: true; existingInboxName: string } | { conflict: false }> {
+  if (whatsappProviderAllowsMultipleInboxes(provider)) return { conflict: false };
   const existing = await findWhatsappInboxByProvider(organizationId, provider, excludeInboxId);
   if (existing) {
     return { conflict: true, existingInboxName: existing.name };
+  }
+  return { conflict: false };
+}
+
+export async function assertUniqueWhatsappPhoneNumberIdInOrg(
+  organizationId: string,
+  phoneNumberId: string | null | undefined,
+  excludeInboxId?: string,
+): Promise<{ conflict: true; existingInboxName: string } | { conflict: false }> {
+  const needle = phoneNumberId?.trim();
+  if (!needle) return { conflict: false };
+  const rows = await prisma.inbox.findMany({
+    where: { organizationId, channelType: InboxChannelType.WHATSAPP },
+    select: { id: true, name: true, channelConfig: true, whatsappPhoneNumberId: true },
+  });
+  for (const row of rows) {
+    if (excludeInboxId && row.id === excludeInboxId) continue;
+    const fromColumn = row.whatsappPhoneNumberId?.trim();
+    const fromConfig = parseInboxWhatsappFromChannelConfig(row.channelConfig).whatsappPhoneNumberId?.trim();
+    if (fromColumn === needle || fromConfig === needle) {
+      return { conflict: true, existingInboxName: row.name };
+    }
   }
   return { conflict: false };
 }
