@@ -120,6 +120,8 @@ export function InboxCard({
     };
   }, [menuOpen]);
 
+  const wide = viewMode !== "grid" || open;
+
   const openDetails = () => {
     if (row.channelType === "EMAIL" && onOpenEmail) {
       onOpenEmail();
@@ -133,11 +135,12 @@ export function InboxCard({
       className={clsx(
         "overflow-hidden rounded-xl border bg-white dark:bg-ink-950/70",
         open ? "border-brand-200 dark:border-brand-800/60" : "border-[#E5E7EB] dark:border-ink-700",
-        viewMode === "grid" && "h-full",
+        viewMode === "grid" && open && "col-span-full",
+        viewMode === "grid" && !open && "h-full",
       )}
     >
       <div className="flex flex-col gap-4 p-4 sm:p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className={clsx("flex flex-col gap-4", wide && "xl:flex-row xl:items-start xl:justify-between")}>
           <div className="flex min-w-0 flex-1 items-start gap-3">
           <button
             type="button"
@@ -170,39 +173,32 @@ export function InboxCard({
                 </span>
               ) : null}
             </div>
-            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#64748B] dark:text-ink-400">
-              <span>
-                {t("inboxesPage.members")}: {row._count.members}
-              </span>
-              <span aria-hidden>·</span>
-              <span>
-                {t("inboxesPage.conversations")}: {row._count.conversations}
-              </span>
-              {connection ? (
-                <>
-                  <span aria-hidden>·</span>
-                  <span>
-                    {t("inboxesPage.dashboard.connection")}: {connection}
-                  </span>
-                </>
-              ) : null}
+            <p className="mt-1 text-xs leading-relaxed text-[#64748B] dark:text-ink-400">
+              {t("inboxesPage.members")}: {row._count.members}
+              {" · "}
+              {t("inboxesPage.conversations")}: {row._count.conversations}
+              {connection ? ` · ${t("inboxesPage.dashboard.connection")}: ${connection}` : ""}
             </p>
-            <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[#64748B] dark:text-ink-400">
-              <Bot className="h-3 w-3 text-violet-600" />
-              <span>{t("inboxesPage.agentBotField")}:</span>
-              <span className="font-medium text-[#111827] dark:text-ink-100">
-                {row.agentBot
-                  ? `${row.agentBot.name}${!row.agentBot.isActive ? ` ${t("inboxesPage.wizard.agentBotInactive")}` : ""}`
-                  : t("inboxesPage.agentBotOrgDefault")}
+            <p className="mt-1 flex items-start gap-1 text-xs leading-relaxed text-[#64748B] dark:text-ink-400">
+              <Bot className="mt-0.5 h-3 w-3 shrink-0 text-violet-600" />
+              <span>
+                {t("inboxesPage.agentBotField")}:{" "}
+                <span className="font-medium text-[#111827] dark:text-ink-100">
+                  {row.agentBot
+                    ? `${row.agentBot.name}${!row.agentBot.isActive ? ` ${t("inboxesPage.wizard.agentBotInactive")}` : ""}`
+                    : t("inboxesPage.agentBotOrgDefault")}
+                </span>
               </span>
             </p>
             {waConfigured && provider ? (
-              <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {t("inboxesPage.dashboard.whatsappOnInbox")} · {provider}
+              <p className="mt-1 flex items-start gap-1.5 text-xs leading-relaxed text-emerald-700 dark:text-emerald-300">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                <span>
+                  {t("inboxesPage.dashboard.whatsappOnInbox")} · {provider}
+                </span>
               </p>
             ) : null}
-            <p className="mt-1 flex items-center gap-1.5 font-mono text-[11px] text-[#64748B]">
+            <p className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-[#64748B]">
               <span>{t("inboxesPage.inboxId")}</span>
               <span className="truncate">{row.id}</span>
               <button
@@ -216,8 +212,8 @@ export function InboxCard({
             </p>
           </div>
           </div>
-          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center xl:items-start">
-            <div className="flex flex-wrap items-end gap-4">
+          <div className={clsx("flex min-w-0 flex-col gap-3", wide && "xl:max-w-md xl:shrink-0 xl:flex-row xl:items-start")}>
+            <div className={clsx(wide ? "flex flex-wrap items-end gap-4" : "grid w-full grid-cols-2 gap-3 border-t border-[#E5E7EB] pt-3 dark:border-ink-800")}>
               <div>
                 <p className="mb-1 text-[11px] font-medium text-[#64748B]">{t("inboxesPage.dashboard.activity")}</p>
                 <div className="flex h-8 items-end gap-0.5" aria-hidden>
@@ -261,10 +257,10 @@ export function InboxCard({
                 <p className="mt-1 text-[11px] text-[#64748B]">{t("inboxesPage.dashboard.created")}</p>
               </div>
             </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <span
               className={clsx(
-                "hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold sm:inline-flex",
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold",
                 ready
                   ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
                   : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200",
