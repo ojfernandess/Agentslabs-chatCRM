@@ -8,6 +8,32 @@ export function NvoipActiveCallBar() {
   const voice = useNvoipVoiceOptional();
   const sip = useNvoipSipPhoneOptional();
   const call = voice?.activeCall;
+  const sipLive = sip?.status === "ringing" || sip?.status === "in-call";
+  if (!call && sip && sipLive) {
+    const inboundLabel =
+      sip.status === "ringing" ? t("nvoip.sip.status.ringing") : t("nvoip.sip.status.in-call");
+    const inboundHint =
+      sip.status === "ringing" ? t("nvoip.sip.hintRinging") : t("nvoip.sip.hintActive");
+    return (
+      <div className="fixed bottom-4 left-1/2 z-[115] max-w-md -translate-x-1/2 rounded-2xl border border-orange-500/30 bg-slate-900/95 px-4 py-2.5 text-sm text-white shadow-xl backdrop-blur-md">
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <span className="font-medium">{t("nvoip.voice.activeCall")}</span>
+            <span className="text-orange-300">{inboundLabel}</span>
+            <button
+              type="button"
+              onClick={() => sip.hangup()}
+              className="inline-flex items-center gap-1 rounded-lg bg-red-600/90 px-2.5 py-1 text-xs font-semibold hover:bg-red-500"
+            >
+              <PhoneOff className="h-3.5 w-3.5" />
+              {t("nvoip.voice.hangUp")}
+            </button>
+          </div>
+          <p className="text-center text-[11px] text-slate-300">{inboundHint}</p>
+        </div>
+      </div>
+    );
+  }
   if (!call) return null;
   const embedded = voice.voiceMode === "embedded_sip";
 

@@ -78,7 +78,6 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const voiceMode =
       embeddedSipEnabled &&
       pabxMode !== "external_pabx_trunk" &&
-      pabxMode !== "platform_webphone" &&
       userSipCreds &&
       resolution?.source === "embedded_sip"
         ? ("embedded_sip" as const)
