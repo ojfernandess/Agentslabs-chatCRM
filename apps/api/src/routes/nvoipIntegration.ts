@@ -14,7 +14,6 @@ import {
 } from "../lib/nvoipConfig.js";
 import {
   testNvoipConnection,
-  nvoipPasswordGrant,
   nvoipGetBalance,
   nvoipListDids,
   nvoipListScheduledTorpedos,

@@ -341,9 +341,13 @@ export const config = {
   mem0ApiBaseUrl: optionalEnv("MEM0_API_BASE_URL", "https://api.mem0.ai")
     .trim()
     .replace(/\/+$/, ""),
-  /** API Nvoip v2 — https://nvoip.docs.apiary.io/ */
-  nvoipApiBaseUrl: optionalEnv("NVOIP_API_BASE_URL", "https://api.nvoip.com.br/v2").replace(/\/+$/, ""),
-  /** Basic auth para POST /oauth/token (credencial pública da documentação Nvoip). */
+  /** API Nvoip v3 — coleção Postman nvoip-api-v3. OAuth fica em /auth/oauth2/token, fora desta base. */
+  nvoipApiBaseUrl: optionalEnv("NVOIP_API_BASE_URL", "https://api.nvoip.com.br/v3").replace(/\/+$/, ""),
+  nvoipOAuthTokenUrl: optionalEnv(
+    "NVOIP_OAUTH_TOKEN_URL",
+    "https://api.nvoip.com.br/auth/oauth2/token",
+  ).replace(/\/+$/, ""),
+  /** Legado v2. A v3 autentica com Basic do client_id e client_secret da conta, não com esta credencial. */
   /** Alerta de saldo baixo (R$) ao atualizar saldo Nvoip; pode ser sobreposto por conta (externalConfig). */
   nvoipDefaultBalanceAlertBrl: Number(optionalEnv("NVOIP_BALANCE_ALERT_BRL", "5")) || 5,
   nvoipOAuthBasic: optionalEnv(

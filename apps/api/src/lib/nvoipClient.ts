@@ -34,6 +34,25 @@ function apiUrl(path: string): string {
   return `${base}${p}`;
 }
 
+/** Percent-encoding no estilo `urllib.parse.quote_plus` (credencial Basic da API v3). */
+export function nvoipQuotePlus(value: string): string {
+  return encodeURIComponent(value)
+    .replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/%20/gi, "+");
+}
+
+export function nvoipEncodeClientCredentialsBasic(clientId: string, clientSecret: string): string {
+  const raw = `${nvoipQuotePlus(clientId)}:${nvoipQuotePlus(clientSecret)}`;
+  return Buffer.from(raw, "utf8").toString("base64");
+}
+
+function oauthClientHeaders(clientId: string, clientSecret: string): Headers {
+  return nvoipRequestHeaders({
+    Authorization: `Basic ${nvoipEncodeClientCredentialsBasic(clientId, clientSecret)}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  });
+}
+
 function nvoipRequestHeaders(extra?: RequestInit["headers"]): Headers {
   const headers = new Headers(extra);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
@@ -74,26 +93,10 @@ function nvoipExtractApiError(data: Record<string, unknown>, fallback: string): 
   return fallback;
 }
 
-export async function nvoipPasswordGrant(
-  numbersip: string,
-  userToken: string,
-): Promise<NvoipTokenResponse> {
-  const body = new URLSearchParams({
-    username: numbersip.trim(),
-    password: userToken.trim(),
-    grant_type: "password",
-  });
-  const res = await fetchWithRateLimitBackoff(apiUrl("/oauth/token"), {
-    method: "POST",
-    headers: nvoipRequestHeaders({
-      Authorization: `Basic ${config.nvoipOAuthBasic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    }),
-    body,
-  });
+async function readOAuthTokenResponse(res: Response, fallback: string): Promise<NvoipTokenResponse> {
   const data = await parseJson<NvoipTokenResponse & { error?: string; error_description?: string }>(res);
   if (!res.ok) {
-    const errMsg = data.error_description ?? data.error ?? `oauth_failed_${res.status}`;
+    const errMsg = data.error_description ?? data.error ?? fallback;
     if (res.status === 403 || errMsg.toLowerCase() === "forbidden") {
       throw new Error("nvoip_oauth_forbidden");
     }
@@ -103,25 +106,43 @@ export async function nvoipPasswordGrant(
   return data;
 }
 
-export async function nvoipRefreshGrant(refreshToken: string): Promise<NvoipTokenResponse> {
+/** API v3: POST https://api.nvoip.com.br/auth/oauth2/token com grant_type=client_credentials. */
+export async function nvoipClientCredentialsGrant(
+  clientId: string,
+  clientSecret: string,
+): Promise<NvoipTokenResponse> {
+  const body = new URLSearchParams({ grant_type: "client_credentials" });
+  const res = await fetchWithRateLimitBackoff(config.nvoipOAuthTokenUrl, {
+    method: "POST",
+    headers: oauthClientHeaders(clientId.trim(), clientSecret.trim()),
+    body,
+  });
+  return readOAuthTokenResponse(res, `oauth_failed_${res.status}`);
+}
+
+export async function nvoipRefreshGrant(
+  refreshToken: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<NvoipTokenResponse> {
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken.trim(),
   });
-  const res = await fetchWithRateLimitBackoff(apiUrl("/oauth/token"), {
+  const res = await fetchWithRateLimitBackoff(config.nvoipOAuthTokenUrl, {
     method: "POST",
-    headers: nvoipRequestHeaders({
-      Authorization: `Basic ${config.nvoipOAuthBasic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    }),
+    headers: oauthClientHeaders(clientId.trim(), clientSecret.trim()),
     body,
   });
-  const data = await parseJson<NvoipTokenResponse & { error?: string; error_description?: string }>(res);
-  if (!res.ok) {
-    throw new Error(data.error_description ?? data.error ?? `refresh_failed_${res.status}`);
-  }
-  if (!data.access_token) throw new Error("nvoip_missing_access_token");
-  return data;
+  return readOAuthTokenResponse(res, `refresh_failed_${res.status}`);
+}
+
+/** Compatibilidade: numbersip é o client_id e o user token é o client_secret. */
+export async function nvoipPasswordGrant(
+  numbersip: string,
+  userToken: string,
+): Promise<NvoipTokenResponse> {
+  return nvoipClientCredentialsGrant(numbersip, userToken);
 }
 
 async function persistTokens(accountId: string, tokens: NvoipTokenResponse) {
@@ -150,20 +171,19 @@ export async function getNvoipAccessToken(account: NvoipAccount): Promise<string
     if (existing) return existing;
   }
 
+  const clientSecret = decryptNvoipSecret(account.userTokenEnc);
+  if (!clientSecret) throw new Error("nvoip_credentials_missing");
+  const clientId = account.numbersip.trim();
   const refresh = decryptNvoipSecret(account.refreshTokenEnc);
   let tokens: NvoipTokenResponse;
   if (refresh) {
     try {
-      tokens = await nvoipRefreshGrant(refresh);
+      tokens = await nvoipRefreshGrant(refresh, clientId, clientSecret);
     } catch {
-      const userToken = decryptNvoipSecret(account.userTokenEnc);
-      if (!userToken) throw new Error("nvoip_credentials_missing");
-      tokens = await nvoipPasswordGrant(account.numbersip, userToken);
+      tokens = await nvoipClientCredentialsGrant(clientId, clientSecret);
     }
   } else {
-    const userToken = decryptNvoipSecret(account.userTokenEnc);
-    if (!userToken) throw new Error("nvoip_credentials_missing");
-    tokens = await nvoipPasswordGrant(account.numbersip, userToken);
+    tokens = await nvoipClientCredentialsGrant(clientId, clientSecret);
   }
 
   await persistTokens(account.id, tokens);
@@ -213,49 +233,19 @@ function parseBalanceResponse(text: string, res: Response): { balance: string } 
   return { balance: String(raw) };
 }
 
-async function nvoipFetchBalanceWithToken(
-  accessToken: string,
-  input?: { numbersip?: string; napikey?: string | null },
-): Promise<{ balance: string }> {
+async function nvoipFetchBalanceWithToken(accessToken: string): Promise<{ balance: string }> {
   const authHeaders = nvoipRequestHeaders({ Authorization: `Bearer ${accessToken}` });
-  const numbersip = input?.numbersip?.trim();
-  const napikey = input?.napikey?.trim();
-
-  const bearerUrls: string[] = [];
   for (const path of ["/balance", "/balance/"]) {
-    bearerUrls.push(apiUrl(path));
-    if (numbersip) {
-      bearerUrls.push(apiUrl(`${path}?numbersip=${encodeURIComponent(numbersip)}`));
-    }
-  }
-  for (const url of bearerUrls) {
-    const res = await fetchWithRateLimitBackoff(url, { method: "GET", headers: authHeaders });
+    const res = await fetchWithRateLimitBackoff(apiUrl(path), { method: "GET", headers: authHeaders });
     const parsed = parseBalanceResponse(await res.text(), res);
     if (parsed) return parsed;
   }
-
-  if (napikey && numbersip) {
-    const qs = new URLSearchParams({ numbersip, napikey });
-    for (const path of ["/balance", "/balance/"]) {
-      const res = await fetchWithRateLimitBackoff(apiUrl(`${path}?${qs.toString()}`), {
-        method: "GET",
-        headers: nvoipRequestHeaders(),
-      });
-      const parsed = parseBalanceResponse(await res.text(), res);
-      if (parsed) return parsed;
-    }
-  }
-
   throw new Error("nvoip_balance_unavailable");
 }
 
 export async function nvoipGetBalance(account: NvoipAccount): Promise<{ balance: string }> {
   const accessToken = await getNvoipAccessToken(account);
-  const napikey = decryptNvoipSecret(account.napikeyEnc);
-  return nvoipFetchBalanceWithToken(accessToken, {
-    numbersip: account.numbersip,
-    napikey,
-  });
+  return nvoipFetchBalanceWithToken(accessToken);
 }
 
 export async function nvoipCreateCall(
@@ -1063,11 +1053,8 @@ export async function nvoipSendSms(
   account: NvoipAccount,
   input: { phone: string; message: string; flashSms?: boolean },
 ): Promise<Record<string, unknown>> {
-  const body: Record<string, unknown> = {
+  const body = {
     numberPhone: input.phone,
-    phone: input.phone,
-    called: input.phone,
-    destination: input.phone,
     message: input.message,
     flashSms: input.flashSms ?? false,
   };
@@ -1092,11 +1079,16 @@ export async function nvoipSendOtp(
   account: NvoipAccount,
   input: { destination: string; channel: NvoipOtpChannel },
 ): Promise<{ key: string; raw: Record<string, unknown> }> {
-  const body = {
-    destination: input.destination,
-    type: input.channel,
-    channel: input.channel,
-  };
+  const methods =
+    input.channel === "voice"
+      ? { torpedo: true }
+      : input.channel === "email"
+        ? { email: true }
+        : { sms: true };
+  const body =
+    input.channel === "email"
+      ? { email: input.destination, methods }
+      : { phoneNumber: input.destination, methods };
   const res = await nvoipAuthorizedFetch(account, "/otp", {
     method: "POST",
     body: JSON.stringify(body),
@@ -1266,8 +1258,10 @@ export async function nvoipSendWaTemplate(
     destination: input.destination,
     instance: input.instance,
     language: input.language,
-    functions: input.functions ?? [],
   };
+  if (input.functions?.some((name) => name === "to_flow" || name === "toFlow")) {
+    body.functions = { to_flow: true };
+  }
   const res = await nvoipAuthorizedFetch(account, "/wa/sendTemplates", {
     method: "POST",
     body: JSON.stringify(body),
@@ -1413,10 +1407,7 @@ export async function testNvoipConnection(input: {
     const tokens = await nvoipPasswordGrant(input.numbersip, input.userToken);
     let balance = "—";
     try {
-      const fetched = await nvoipFetchBalanceWithToken(tokens.access_token, {
-        numbersip: input.numbersip,
-        napikey: input.napikey,
-      });
+      const fetched = await nvoipFetchBalanceWithToken(tokens.access_token);
       balance = fetched.balance;
     } catch (balanceErr) {
       const balanceMsg = balanceErr instanceof Error ? balanceErr.message : "";
