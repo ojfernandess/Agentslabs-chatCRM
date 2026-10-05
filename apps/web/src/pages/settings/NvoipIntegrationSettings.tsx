@@ -88,7 +88,6 @@ export function NvoipIntegrationSettings() {
 
   const [numbersip, setNumbersip] = useState("");
   const [userToken, setUserToken] = useState("");
-  const [napikey, setNapikey] = useState("");
   const [defaultCaller, setDefaultCaller] = useState("");
   const [inboxId, setInboxId] = useState("");
   const [torpedoPhone, setTorpedoPhone] = useState("");
@@ -190,7 +189,6 @@ export function NvoipIntegrationSettings() {
           acc.recordingRetentionDays != null ? String(acc.recordingRetentionDays) : "",
         );
         setUserToken("");
-        setNapikey("");
       }
       if (whatsappEnabled) {
         try {
@@ -240,11 +238,9 @@ export function NvoipIntegrationSettings() {
           : null,
       };
       if (userToken.trim()) body.userToken = userToken.trim();
-      if (napikey.trim()) body.napikey = napikey.trim();
       const res = await api.put<{ account: AccountRow }>("/settings/nvoip/account", body);
       setAccount(res.account);
       setUserToken("");
-      setNapikey("");
     } catch (e) {
       setError(e instanceof ApiError ? mapNvoipCallErrorMessage(e.message, t) : t("nvoip.saveError"));
     } finally {
@@ -480,14 +476,20 @@ export function NvoipIntegrationSettings() {
                 {t("nvoip.sectionAccount")}
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">{t("nvoip.sectionAccountHint")}</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm sm:col-span-2">
+              <div className="mt-4 grid gap-3">
+                <label className="block text-sm">
                   <span className="font-medium">{t("nvoip.field.numbersip")}</span>
                   <input
                     value={numbersip}
                     onChange={(e) => setNumbersip(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="client_id"
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
                   />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">
+                    {t("nvoip.field.clientIdHint")}
+                  </p>
                 </label>
                 <label className="block text-sm">
                   <span className="font-medium">{t("nvoip.field.userToken")}</span>
@@ -495,19 +497,14 @@ export function NvoipIntegrationSettings() {
                     type="password"
                     value={userToken}
                     onChange={(e) => setUserToken(e.target.value)}
-                    placeholder={account ? t("nvoip.field.tokenPlaceholder") : undefined}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    placeholder={account ? t("nvoip.field.tokenPlaceholder") : "client_secret"}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
                   />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">{t("nvoip.field.napikey")}</span>
-                  <input
-                    type="password"
-                    value={napikey}
-                    onChange={(e) => setNapikey(e.target.value)}
-                    placeholder={t("nvoip.field.optional")}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
-                  />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">
+                    {t("nvoip.field.clientSecretHint")}
+                  </p>
                 </label>
               </div>
               <button

@@ -55,9 +55,9 @@ import type { NvoipPabxMode } from "../lib/nvoipPabxConfig.js";
 
 const upsertSchema = z.object({
   numbersip: z.string().min(1).max(64),
-  userToken: z.string().min(4).max(512).optional(),
-  napikey: z.string().max(512).optional(),
-  defaultCaller: z.string().min(1).max(32),
+  userToken: z.string().min(4).max(4096).optional(),
+  napikey: z.string().max(4096).optional(),
+  defaultCaller: z.string().max(32).optional(),
   inboxId: z.string().uuid().nullable().optional(),
   otpProvider: z.enum(["DISABLED", "NVOIP"]).optional(),
   otpDefaultChannel: z.enum(["sms", "voice", "email"]).optional(),
@@ -142,23 +142,29 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
     if (!existing && !userToken) {
       return reply.status(400).send({
         error: "Bad Request",
-        message: "user_token_required",
+        message: "client_secret_required",
         statusCode: 400,
       });
     }
 
-    const callerCheck = await validateNvoipOutboundCallerForOrg(
-      organizationId,
-      parsed.data.defaultCaller.trim(),
-      parsed.data.numbersip.trim(),
-      existing?.id,
-    );
-    if (!callerCheck.ok) {
-      return reply.status(400).send({
-        error: "Bad Request",
-        message: callerCheck.message,
-        statusCode: 400,
-      });
+    const defaultCaller =
+      parsed.data.defaultCaller !== undefined
+        ? parsed.data.defaultCaller.trim()
+        : (existing?.defaultCaller ?? "");
+    if (defaultCaller) {
+      const callerCheck = await validateNvoipOutboundCallerForOrg(
+        organizationId,
+        defaultCaller,
+        parsed.data.numbersip.trim(),
+        existing?.id,
+      );
+      if (!callerCheck.ok) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: callerCheck.message,
+          statusCode: 400,
+        });
+      }
     }
 
     let externalConfigPatch: Prisma.InputJsonValue | undefined;
@@ -201,7 +207,7 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
         where: { id: existing.id },
         data: {
           numbersip: parsed.data.numbersip.trim(),
-          defaultCaller: parsed.data.defaultCaller.trim(),
+          defaultCaller,
           inboxId: parsed.data.inboxId ?? null,
           ...(externalConfigPatch !== undefined ? { externalConfig: externalConfigPatch } : {}),
           ...(parsed.data.otpProvider !== undefined ? { otpProvider: parsed.data.otpProvider } : {}),
@@ -226,7 +232,7 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
           numbersip: parsed.data.numbersip.trim(),
           userTokenEnc: encryptNvoipSecret(userToken!),
           napikeyEnc: napikey ? encryptNvoipSecret(napikey) : null,
-          defaultCaller: parsed.data.defaultCaller.trim(),
+          defaultCaller,
           inboxId: parsed.data.inboxId ?? null,
           otpProvider: parsed.data.otpProvider ?? "DISABLED",
           otpDefaultChannel: parsed.data.otpDefaultChannel ?? "sms",

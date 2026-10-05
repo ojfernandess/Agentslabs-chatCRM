@@ -3421,7 +3421,7 @@ export const messages = {
     nvoip: {
       title: "Integração Nvoip",
       subtitle:
-        "Telefonia Nvoip (API v2): OAuth, click-to-call e estado da chamada por polling. Ative a funcionalidade no Super Admin antes de configurar.",
+        "Telefonia Nvoip (API v3): OAuth com client_id e client_secret, click-to-call e estado da chamada por polling. Ative a funcionalidade no Super Admin antes de configurar.",
       docsLink: "Documentação Nvoip API v2",
       panelLink: "Abrir painel Nvoip",
       loadError: "Não foi possível carregar a integração Nvoip.",
@@ -3430,7 +3430,7 @@ export const messages = {
       testErrorApiUnreachable:
         "A API Nvoip respondeu com HTML (bloqueio/rede). Verifique NVOIP_API_BASE_URL=https://api.nvoip.com.br/v3 e tente novamente.",
       testErrorForbidden:
-        "Credenciais Nvoip recusadas (Forbidden). Confirme o NumberSIP, o User Token no painel Nvoip e, se tiver, a NAPI Key. No servidor, verifique NVOIP_OAUTH_BASIC.",
+        "Credenciais Nvoip recusadas (Forbidden). Confirme o client_id e o client_secret no painel Nvoip (Configurações → API).",
       extensionSaveError: "Não foi possível guardar o ramal do agente.",
       extensionSave: "Guardar ramal",
       save: "Guardar",
@@ -3440,7 +3440,8 @@ export const messages = {
       balanceStale: "Saldo em cache (API indisponível no momento)",
       balanceRefresh: "Atualizar saldo",
       sectionAccount: "Conta e credenciais",
-      sectionAccountHint: "NumberSIP, User Token e NAPI Key do painel Nvoip.",
+      sectionAccountHint:
+        "client_id e client_secret em Configurações → API no painel Nvoip. O ramal de origem fica na seção de chamadas e pode ficar vazio ao guardar a conta.",
       sectionVoice: "Chamadas de voz",
       sectionVoiceHint: "Ramal de saída, caixa de entrada e teste de ligação.",
       sectionChannels: "Canais adicionais",
@@ -3581,15 +3582,19 @@ export const messages = {
       otpVoiceSeparateHint:
         "A flag OTP/2FA não altera as ligações de voz: continuam em modo click-to-call (toca o webphone/ramal Nvoip primeiro). O widget OTP serve só para validar telefone/código.",
       field: {
-        numbersip: "NumberSIP (conta)",
-        userToken: "User token (OAuth)",
+        numbersip: "Client ID",
+        userToken: "Client secret",
+        clientIdHint: "client_id gerado em Configurações → API no painel Nvoip.",
+        clientSecretHint:
+          "client_secret do mesmo painel. Obrigatório na primeira ligação; depois, deixe vazio para manter o atual.",
+        clientSecretRequired: "Informe o client_secret para ligar a conta Nvoip.",
         napikey: "NAPI Key (opcional)",
         defaultCaller: "Ramal de origem (caller)",
         defaultCallerHint:
           "Usuário SIP / ramal para POST /calls/ (ex.: 143087001 no PABX trunk, ou 1049 em ramais secundários). Deve coincidir com um ramal registado na Nvoip.",
         inbox: "Caixa para novas conversas",
         inboxNone: "Caixa predefinida",
-        tokenPlaceholder: "Deixe vazio para manter o token atual",
+        tokenPlaceholder: "Deixe vazio para manter o client secret atual",
         optional: "Opcional",
       },
       call: { tooltip: "Ligar via Nvoip" },
@@ -11135,7 +11140,7 @@ export const messages = {
     nvoip: {
       title: "Nvoip integration",
       subtitle:
-        "Nvoip telephony (API v2): OAuth, click-to-call, and call status via polling. Enable the feature in Super Admin first.",
+        "Nvoip telephony (API v3): OAuth with client_id and client_secret, click-to-call, and call status via polling. Enable the feature in Super Admin first.",
       docsLink: "Nvoip API v2 documentation",
       panelLink: "Open Nvoip dashboard",
       loadError: "Could not load Nvoip integration.",
@@ -11144,7 +11149,7 @@ export const messages = {
       testErrorApiUnreachable:
         "Nvoip API returned HTML (network/block). Verify NVOIP_API_BASE_URL=https://api.nvoip.com.br/v3 and retry.",
       testErrorForbidden:
-        "Nvoip credentials rejected (Forbidden). Confirm NumberSIP, User Token from the Nvoip dashboard, and NAPI Key if used. On the server, verify NVOIP_OAUTH_BASIC.",
+        "Nvoip credentials rejected (Forbidden). Confirm client_id and client_secret in the Nvoip dashboard (Settings → API).",
       extensionSaveError: "Could not save agent extension.",
       extensionSave: "Save extension",
       save: "Save",
@@ -11154,7 +11159,8 @@ export const messages = {
       balanceStale: "Cached balance (API temporarily unavailable)",
       balanceRefresh: "Refresh balance",
       sectionAccount: "Account & credentials",
-      sectionAccountHint: "NumberSIP, User Token, and NAPI Key from the Nvoip dashboard.",
+      sectionAccountHint:
+        "client_id and client_secret from Settings → API in the Nvoip dashboard. The outbound extension is in the calls section and can stay empty when saving the account.",
       sectionVoice: "Voice calls",
       sectionVoiceHint: "Outbound caller, inbox, and connection test.",
       sectionChannels: "Additional channels",
@@ -11295,15 +11301,19 @@ export const messages = {
       otpVoiceSeparateHint:
         "The OTP/2FA flag does not change voice calls: they remain click-to-call (your Nvoip webphone/extension rings first). The OTP widget is only for phone/code verification.",
       field: {
-        numbersip: "NumberSIP (account)",
-        userToken: "User token (OAuth)",
+        numbersip: "Client ID",
+        userToken: "Client secret",
+        clientIdHint: "client_id from Settings → API in the Nvoip dashboard.",
+        clientSecretHint:
+          "client_secret from the same screen. Required the first time you connect; leave blank later to keep the current secret.",
+        clientSecretRequired: "Enter the client_secret to connect the Nvoip account.",
         napikey: "NAPI Key (optional)",
         defaultCaller: "Source extension (caller)",
         defaultCallerHint:
           "SIP user / extension for POST /calls/ (e.g. 143087001 on PABX trunk, or 1049 for secondary extensions). Must match a registered Nvoip extension.",
         inbox: "Inbox for new conversations",
         inboxNone: "Default inbox",
-        tokenPlaceholder: "Leave blank to keep current token",
+        tokenPlaceholder: "Leave blank to keep the current client secret",
         optional: "Optional",
       },
       call: { tooltip: "Call via Nvoip" },

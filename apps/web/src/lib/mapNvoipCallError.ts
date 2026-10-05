@@ -6,6 +6,9 @@ export function mapNvoipCallErrorMessage(message: string, t: (key: string) => st
       return t("nvoip.voice.noCaller");
     case "nvoip_invalid_caller_use_ramal":
       return t("nvoip.voice.invalidCallerUseRamal");
+    case "client_secret_required":
+    case "user_token_required":
+      return t("nvoip.field.clientSecretRequired");
     case "sip_not_registered":
       return t("nvoip.sip.notRegistered");
     default:
