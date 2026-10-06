@@ -45,7 +45,6 @@ import { WavoipVoiceShell } from "@/components/wavoip/WavoipVoiceShell";
 import { ThreeCxVoiceShell } from "@/components/threecx/ThreeCxVoiceShell";
 import { NvoipVoiceShell } from "@/components/nvoip/NvoipVoiceShell";
 import { NvoipSipStatusBadge } from "@/components/nvoip/NvoipSipStatusBadge";
-import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 import { WorkspaceRealtime } from "@/components/WorkspaceRealtime";
 import { UserAvailabilitySync } from "@/components/UserAvailabilitySync";
 import { setUserAvailability, readLocalAvailability, type UserAvailability } from "@/lib/userAvailability";
@@ -166,9 +165,7 @@ function CollapsedLocalePicker({
 
 function NvoipSipSidebarStatus({ compact }: { compact: boolean }) {
   const { user } = useAuth();
-  const voice = useNvoipVoiceOptional();
   if (!user?.organizationFeatures?.nvoip_embedded_sip) return null;
-  if (user.organizationFeatures?.nvoip_voice && voice?.voiceMode !== "embedded_sip") return null;
   return (
     <div className={clsx("w-full", compact ? "flex justify-center px-1" : "px-1 pb-1")}>
       <NvoipSipStatusBadge compact={compact} />

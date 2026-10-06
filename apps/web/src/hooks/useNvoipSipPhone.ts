@@ -192,6 +192,7 @@ export function useNvoipSipPhone(enabled: boolean) {
         display_name: creds.displayName?.trim() || sipUser,
         registrar_server: `sip:${sipDomain}`,
         contact_uri: `sip:${sipUser}@${sipDomain};transport=ws`,
+        pcConfig: { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] },
         register: true,
         register_expires: 600,
         session_timers: false,

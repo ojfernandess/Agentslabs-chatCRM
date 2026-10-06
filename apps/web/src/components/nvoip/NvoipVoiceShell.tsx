@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { api } from "@/lib/api";
-import { NvoipVoiceProvider, useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
+import { NvoipVoiceProvider } from "@/contexts/NvoipVoiceContext";
 import { NvoipSipPhoneProvider } from "@/contexts/NvoipSipPhoneContext";
 import { NvoipActiveCallBar } from "@/components/nvoip/NvoipActiveCallBar";
 import { NvoipSoftphonePanel } from "@/components/nvoip/NvoipSoftphonePanel";
 import { NvoipTrunkPicker } from "@/components/nvoip/NvoipTrunkPicker";
 
-function StandaloneSipShell({ children }: { children: ReactNode }) {
+function SipPhoneGate({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const refresh = useCallback(async () => {
@@ -17,8 +17,8 @@ function StandaloneSipShell({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const creds = await api.get<{ wssUrl?: string }>("/sip/credentials");
-      setEnabled(Boolean(creds.wssUrl?.trim()));
+      const creds = await api.get<{ wssUrl?: string; sipDomain?: string }>("/sip/credentials");
+      setEnabled(Boolean(creds.wssUrl?.trim() && creds.sipDomain?.trim()));
     } catch {
       setEnabled(false);
     }
@@ -28,21 +28,14 @@ function StandaloneSipShell({ children }: { children: ReactNode }) {
     void refresh();
     const onRefresh = () => void refresh();
     window.addEventListener("openconduit:nvoip-sip-refresh", onRefresh);
-    return () => window.removeEventListener("openconduit:nvoip-sip-refresh", onRefresh);
+    window.addEventListener("openconduit:nvoip-session-refresh", onRefresh);
+    return () => {
+      window.removeEventListener("openconduit:nvoip-sip-refresh", onRefresh);
+      window.removeEventListener("openconduit:nvoip-session-refresh", onRefresh);
+    };
   }, [refresh]);
 
-  return (
-    <NvoipSipPhoneProvider enabled={enabled}>
-      {children}
-      <NvoipSoftphonePanel />
-    </NvoipSipPhoneProvider>
-  );
-}
-
-function NvoipEmbeddedSipGate({ children }: { children: ReactNode }) {
-  const voice = useNvoipVoiceOptional();
-  if (voice?.voiceMode !== "embedded_sip") return <>{children}</>;
-  return <NvoipSipPhoneProvider>{children}</NvoipSipPhoneProvider>;
+  return <NvoipSipPhoneProvider enabled={enabled}>{children}</NvoipSipPhoneProvider>;
 }
 
 export function NvoipVoiceShell({ children }: { children: ReactNode }) {
@@ -51,7 +44,12 @@ export function NvoipVoiceShell({ children }: { children: ReactNode }) {
   const embeddedEnabled = user?.organizationFeatures?.nvoip_embedded_sip ?? false;
 
   if (!nvoipEnabled && embeddedEnabled) {
-    return <StandaloneSipShell>{children}</StandaloneSipShell>;
+    return (
+      <SipPhoneGate>
+        {children}
+        <NvoipSoftphonePanel />
+      </SipPhoneGate>
+    );
   }
 
   if (!nvoipEnabled) return <>{children}</>;
@@ -67,7 +65,7 @@ export function NvoipVoiceShell({ children }: { children: ReactNode }) {
 
   return (
     <NvoipVoiceProvider>
-      <NvoipEmbeddedSipGate>{chrome}</NvoipEmbeddedSipGate>
+      {embeddedEnabled ? <SipPhoneGate>{chrome}</SipPhoneGate> : chrome}
     </NvoipVoiceProvider>
   );
 }
