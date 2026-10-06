@@ -85,6 +85,7 @@ import {
   initQueueInfrastructure,
   shutdownQueueInfrastructure,
   startBackgroundSchedulers,
+  startNvoipHistoryScheduler,
   startPresenceSweep,
 } from "./lib/backgroundWorkers.js";
 import { runsHttpApi, runsPresenceSweep } from "./lib/processRole.js";
@@ -314,6 +315,7 @@ try {
       purgeAutomationLogs: false,
     });
     startPresenceSweep(app);
+    startNvoipHistoryScheduler(app);
   }
 } catch (err) {
   app.log.error(err);

@@ -3451,7 +3451,7 @@ export const messages = {
       sipUsersTitle: "Ramais Nvoip (conta)",
       sipUsersHint: "Sincronize para ver os ramais secundários da conta Nvoip.",
       syncUsersForbidden:
-        "A Nvoip recusou a lista de ramais. A sincronização consulta a API v2 com o token da conta.",
+        "A Nvoip recusou a lista de ramais. No painel Nvoip, em Desenvolvedor, inclua a permissão de usuários no client OAuth.",
       sipUsersSync: "Sincronizar ramais",
       sipUsersSyncing: "A sincronizar…",
       sipUsersSyncedAt: "Última sincronização: {at}",
@@ -3661,7 +3661,7 @@ export const messages = {
       sip: {
         settingsTitle: "Ramal SIP (Nvoip)",
         settingsHint:
-          "Usuário e senha do ramal secundário Nvoip (Configurações → Ramais), não o NumberSIP trunk da conta. O trunk (ex.: 143087001) usa MicroSIP/UDP; o softphone no CRM usa WebRTC/WSS apenas com ramal secundário.",
+          "Usuário e senha do ramal secundário Nvoip (Configurações → Ramais), não o NumberSIP trunk da conta. O trunk (ex.: 143087001) usa MicroSIP/UDP; o softphone no CRM usa WebRTC/WSS apenas com ramal secundário. Os números que já tocam em ramais passam a tocar nos ramais salvos nos perfis. Deixe o CRM aberto com Ramal ativo.",
         trunkHint:
           "Com MicroSIP ou PABX externo registado, ligue pelo CRM em modo click-to-call — o status do trunk no MicroSIP é independente do badge SIP do CRM.",
         trunkUseClickToCall:
@@ -11198,7 +11198,7 @@ export const messages = {
       sipUsersTitle: "Nvoip extensions (account)",
       sipUsersHint: "Sync to see the secondary extensions on the Nvoip account.",
       syncUsersForbidden:
-        "Nvoip refused the extension list. Sync reads API v2 with the account token.",
+        "Nvoip refused the extension list. In the Nvoip panel, under Developer, add the users permission to the OAuth client.",
       sipUsersSync: "Sync extensions",
       sipUsersSyncing: "Syncing…",
       sipUsersSyncedAt: "Last sync: {at}",
@@ -11408,7 +11408,7 @@ export const messages = {
       sip: {
         settingsTitle: "SIP extension (Nvoip)",
         settingsHint:
-          "Secondary Nvoip extension username and password (Settings → Extensions), not the account NumberSIP trunk. The trunk (e.g. 143087001) uses MicroSIP/UDP; in-CRM softphone uses WebRTC/WSS with a secondary extension only.",
+          "Secondary Nvoip extension username and password (Settings → Extensions), not the account NumberSIP trunk. The trunk (e.g. 143087001) uses MicroSIP/UDP; in-CRM softphone uses WebRTC/WSS with a secondary extension only. Numbers that already ring extensions are pointed at the extensions saved on profiles. Keep the CRM open with the extension active.",
         trunkHint:
           "With MicroSIP or external PABX registered, place calls from the CRM in click-to-call mode — MicroSIP trunk status is separate from the CRM SIP badge.",
         trunkUseClickToCall:

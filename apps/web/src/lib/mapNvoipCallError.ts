@@ -6,6 +6,7 @@ export function mapNvoipCallErrorMessage(message: string, t: (key: string) => st
       return t("nvoip.voice.noCaller");
     case "nvoip_outbound_disabled":
       return t("nvoip.voice.outboundDisabled");
+    case "list_users_missing_scope":
     case "list_users_failed_403":
     case "list_users_failed_401":
       return t("nvoip.syncUsersForbidden");

@@ -134,11 +134,7 @@ export function startBackgroundSchedulers(app: FastifyInstance): void {
   }, wavoipStatusSyncMs);
   void runWavoipStatusSyncTick(app.log);
 
-  const nvoipHistorySyncMs = 90_000;
-  setInterval(() => {
-    void runNvoipHistorySyncTick(app.log);
-  }, nvoipHistorySyncMs);
-  void runNvoipHistorySyncTick(app.log);
+  startNvoipHistoryScheduler(app);
 
   const emailImapSyncMs = 60_000;
   setInterval(() => {
@@ -157,6 +153,15 @@ export function startBackgroundSchedulers(app: FastifyInstance): void {
       app.log.info({ count }, "Enabled wavoip_voice for organizations with existing Wavoip devices");
     }
   });
+}
+
+/** Histórico inbound da Nvoip. No papel `api` o worker pode estar parado, e a conversa não nasce. */
+export function startNvoipHistoryScheduler(app: FastifyInstance): void {
+  const nvoipHistorySyncMs = 90_000;
+  setInterval(() => {
+    void runNvoipHistorySyncTick(app.log);
+  }, nvoipHistorySyncMs);
+  void runNvoipHistorySyncTick(app.log);
 }
 
 export function startPresenceSweep(app: FastifyInstance): void {

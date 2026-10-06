@@ -57,6 +57,49 @@ function readRemoteParty(session: SipRtcSession): NvoipSipRemoteParty {
   return { number, name };
 }
 
+let incomingRingTimer: ReturnType<typeof setInterval> | null = null;
+let incomingRingCtx: AudioContext | null = null;
+
+function stopIncomingRing(): void {
+  if (incomingRingTimer != null) {
+    window.clearInterval(incomingRingTimer);
+    incomingRingTimer = null;
+  }
+  const ctx = incomingRingCtx;
+  incomingRingCtx = null;
+  void ctx?.close().catch(() => {});
+}
+
+function startIncomingRing(): void {
+  stopIncomingRing();
+  const Ctx = window.AudioContext;
+  if (!Ctx) return;
+  const ctx = new Ctx();
+  incomingRingCtx = ctx;
+  const beep = () => {
+    if (incomingRingCtx !== ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 440;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  };
+  void ctx.resume().then(beep).catch(() => {});
+  incomingRingTimer = setInterval(() => {
+    void ctx.resume().then(beep).catch(() => {});
+  }, 1600);
+}
+
+function publishInboundRoute(syncOnly = false): void {
+  void api.post("/sip/inbound-route", syncOnly ? { syncOnly: true } : undefined).catch(() => {});
+}
+
 function buildWssCandidates(creds: SipCredentials): string[] {
   const primary = creds.wssUrl?.trim() || `wss://${creds.sipDomain}:7443`;
   const alternates = creds.wssUrlAlternates ?? [];
@@ -148,10 +191,12 @@ export function useNvoipSipPhone(enabled: boolean) {
         register: true,
         register_expires: 600,
         session_timers: false,
-        use_preloaded_route: true,
       });
 
-      ua.on("registered", () => setStatusSafe("registered", null));
+      ua.on("registered", () => {
+        setStatusSafe("registered", null);
+        publishInboundRoute();
+      });
       ua.on("unregistered", () => setStatusSafe("unregistered", null));
       ua.on("registrationFailed", (e) => {
         const cause = String((e as { cause?: string }).cause ?? "unknown");
@@ -179,16 +224,20 @@ export function useNvoipSipPhone(enabled: boolean) {
         });
 
         session.on("ended", () => {
+          stopIncomingRing();
           sessionRef.current = null;
           setIncoming(null);
+          publishInboundRoute(true);
           setAnsweredAt(null);
           setAnswering(false);
           setStatusSafe(ua.isRegistered() ? "registered" : "unregistered", null);
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
         });
         session.on("failed", (ev: unknown) => {
+          stopIncomingRing();
           sessionRef.current = null;
           setIncoming(null);
+          publishInboundRoute(true);
           setAnsweredAt(null);
           setAnswering(false);
           const localEnd = localEndRef.current;
@@ -202,6 +251,7 @@ export function useNvoipSipPhone(enabled: boolean) {
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
         });
         session.on("confirmed", () => {
+          stopIncomingRing();
           setAnswering(false);
           setAnsweredAt(Date.now());
           setStatusSafe("in-call", null);
@@ -218,6 +268,8 @@ export function useNvoipSipPhone(enabled: boolean) {
         setAnsweredAt(null);
         setAnswering(false);
         setStatusSafe("ringing", null);
+        startIncomingRing();
+        publishInboundRoute(true);
       });
 
       ua.start();
@@ -250,6 +302,7 @@ export function useNvoipSipPhone(enabled: boolean) {
   }, [enabled, ensureLocalAudio, setStatusSafe, startUa]);
 
   const hangup = useCallback(() => {
+    stopIncomingRing();
     const session = sessionRef.current;
     localEndRef.current = true;
     sessionRef.current = null;
@@ -265,6 +318,7 @@ export function useNvoipSipPhone(enabled: boolean) {
   }, [setStatusSafe]);
 
   const reject = useCallback(() => {
+    stopIncomingRing();
     const session = sessionRef.current;
     localEndRef.current = true;
     sessionRef.current = null;
@@ -291,6 +345,7 @@ export function useNvoipSipPhone(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) {
+      stopIncomingRing();
       uaRef.current?.stop();
       uaRef.current = null;
       sessionRef.current = null;
@@ -325,6 +380,7 @@ export function useNvoipSipPhone(enabled: boolean) {
       window.removeEventListener("openconduit:nvoip-sip-outbound-leg-cancel", onOutboundLegClear);
       window.removeEventListener("openconduit:nvoip-call-ended", onOutboundLegClear);
       window.removeEventListener("openconduit:nvoip-sip-call-ended", onOutboundLegClear);
+      stopIncomingRing();
       uaRef.current?.stop();
       uaRef.current = null;
       localStreamRef.current?.getTracks().forEach((t) => t.stop());

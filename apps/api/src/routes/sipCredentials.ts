@@ -3,6 +3,9 @@ import { z } from "zod";
 import { authenticate } from "../middleware/auth.js";
 import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
+import { prisma } from "../db.js";
+import { syncNvoipInboundHistoryForAccount } from "../lib/nvoipInboundSync.js";
+import { routeNvoipDidsToProfileRamais } from "../lib/nvoipProfileDidRoute.js";
 import {
   getUserSipCredentialsForClient,
   upsertUserSipCredentials,
@@ -86,5 +89,31 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
     }
 
     return { ok: true };
+  });
+
+  app.post("/inbound-route", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+
+    const body = z.object({ syncOnly: z.boolean().optional() }).safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: body.error.message,
+        statusCode: 400,
+      });
+    }
+
+    const routed = body.data.syncOnly
+      ? { ramais: [] as string[], updated: [] as string[] }
+      : await routeNvoipDidsToProfileRamais(organizationId);
+    const account = await prisma.nvoipAccount.findFirst({
+      where: { organizationId, status: "CONNECTED" },
+    });
+    if (account) {
+      void syncNvoipInboundHistoryForAccount(account).catch(() => {});
+    }
+    return { ok: true, ...routed };
   });
 }

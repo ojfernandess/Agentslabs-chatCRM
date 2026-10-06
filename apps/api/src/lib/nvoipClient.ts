@@ -870,11 +870,6 @@ function normalizeDidList(data: unknown): NvoipDidItem[] {
   return [];
 }
 
-/** A listagem de ramais continua na API v2. O token v3 em `/v3/list/users` responde 403. */
-function nvoipUsersListUrl(): string {
-  return "https://api.nvoip.com.br/v2/list/users";
-}
-
 async function readSipUserList(res: Response): Promise<NvoipSipUserItem[] | null> {
   if (!res.ok) return null;
   let data: unknown;
@@ -896,27 +891,39 @@ function hasSipUserListKey(data: unknown): boolean {
   return ["users", "data", "items", "result", "list"].some((key) => Array.isArray(obj[key]));
 }
 
+async function fetchSipUserList(
+  url: string,
+  headers: Headers,
+): Promise<{ status: number; users: NvoipSipUserItem[] | null }> {
+  const res = await fetchWithRateLimitBackoff(url, { method: "GET", headers });
+  return { status: res.status, users: await readSipUserList(res) };
+}
+
+/** `GET /v3/users` é a lista da API atual. `/list/users` responde 403 sem o escopo de usuários. */
 export async function nvoipListUsers(account: NvoipAccount): Promise<NvoipSipUserItem[]> {
   const token = await getNvoipAccessToken(account);
-  const bearer = await fetchWithRateLimitBackoff(nvoipUsersListUrl(), {
-    method: "GET",
-    headers: nvoipRequestHeaders({ Authorization: `Bearer ${token}` }),
-  });
-  const fromBearer = await readSipUserList(bearer);
-  if (fromBearer !== null) return fromBearer;
+  const bearerHeaders = nvoipRequestHeaders({ Authorization: `Bearer ${token}` });
+  const urls = [apiUrl("/users"), apiUrl("/list/users"), "https://api.nvoip.com.br/v2/list/users"];
+  let lastStatus = 403;
+
+  for (const url of urls) {
+    const result = await fetchSipUserList(url, bearerHeaders);
+    if (result.users !== null) return result.users;
+    if (result.status) lastStatus = result.status;
+  }
 
   const napikey = decryptNvoipSecret(account.napikeyEnc);
   if (napikey) {
-    const url = `${nvoipUsersListUrl()}?napikey=${encodeURIComponent(napikey)}`;
-    const keyed = await fetchWithRateLimitBackoff(url, {
-      method: "GET",
-      headers: nvoipRequestHeaders(),
-    });
-    const fromKey = await readSipUserList(keyed);
-    if (fromKey !== null) return fromKey;
+    const keyed = await fetchSipUserList(
+      `https://api.nvoip.com.br/v2/list/users?napikey=${encodeURIComponent(napikey)}`,
+      nvoipRequestHeaders(),
+    );
+    if (keyed.users !== null) return keyed.users;
+    if (keyed.status) lastStatus = keyed.status;
   }
 
-  throw new Error(`list_users_failed_${bearer.status || 403}`);
+  if (lastStatus === 403) throw new Error("list_users_missing_scope");
+  throw new Error(`list_users_failed_${lastStatus}`);
 }
 
 export async function nvoipCreateSipUser(
