@@ -167,9 +167,8 @@ function CollapsedLocalePicker({
 function NvoipSipSidebarStatus({ compact }: { compact: boolean }) {
   const { user } = useAuth();
   const voice = useNvoipVoiceOptional();
-  if (!user?.organizationFeatures?.nvoip_voice) return null;
-  if (!user.organizationFeatures?.nvoip_embedded_sip) return null;
-  if (voice?.voiceMode !== "embedded_sip") return null;
+  if (!user?.organizationFeatures?.nvoip_embedded_sip) return null;
+  if (user.organizationFeatures?.nvoip_voice && voice?.voiceMode !== "embedded_sip") return null;
   return (
     <div className={clsx("w-full", compact ? "flex justify-center px-1" : "px-1 pb-1")}>
       <NvoipSipStatusBadge compact={compact} />

@@ -73,7 +73,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       "nvoip_embedded_sip",
     );
     const userSipCreds = embeddedSipEnabled
-      ? await getUserSipCredentialsForClient(request.user.id)
+      ? await getUserSipCredentialsForClient(request.user.id, organizationId)
       : null;
     const pabxMode = parseNvoipPabxMode(
       account.externalConfig != null &&

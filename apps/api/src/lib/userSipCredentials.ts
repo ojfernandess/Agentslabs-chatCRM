@@ -8,13 +8,45 @@ import {
   nvoipEmbeddedSipWssAlternates,
   type NvoipEmbeddedSipClientConfig,
 } from "./nvoipEmbeddedSipConfig.js";
+import { getOrgSipServer } from "./orgSipServer.js";
 
-export type UserSipCredentialsClient = NvoipEmbeddedSipClientConfig;
+export type UserSipCredentialsClient = NvoipEmbeddedSipClientConfig & {
+  /** nvoip mantém o servidor da conta. sip usa o domínio/WSS configurado na organização. */
+  sipProvider: "nvoip" | "sip";
+};
+
+export async function resolveOrganizationSipEndpoint(organizationId: string): Promise<{
+  sipProvider: "nvoip" | "sip";
+  sipDomain: string;
+  wssUrl: string;
+  wssUrlAlternates: string[];
+}> {
+  const account = await prisma.nvoipAccount.findFirst({
+    where: { organizationId, status: "CONNECTED" },
+    select: { id: true },
+  });
+  if (account) {
+    return {
+      sipProvider: "nvoip",
+      sipDomain: nvoipEmbeddedSipDomain(),
+      wssUrl: nvoipEmbeddedSipWssUrl(),
+      wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
+    };
+  }
+  const custom = await getOrgSipServer(organizationId);
+  return {
+    sipProvider: "sip",
+    sipDomain: custom?.sipDomain ?? "",
+    wssUrl: custom?.wssUrl ?? "",
+    wssUrlAlternates: [],
+  };
+}
 
 export { nvoipEmbeddedSipWssUrl as nvoipSipWssUrl };
 
 export async function getUserSipCredentialsForClient(
   userId: string,
+  organizationId?: string,
 ): Promise<UserSipCredentialsClient | null> {
   const row = await prisma.userSipCredentials.findUnique({
     where: { userId },
@@ -23,13 +55,22 @@ export async function getUserSipCredentialsForClient(
   if (!row) return null;
   const sipPassword = decrypt(row.sipPasswordEnc);
   if (!sipPassword?.trim()) return null;
+  const endpoint = organizationId
+    ? await resolveOrganizationSipEndpoint(organizationId)
+    : {
+        sipProvider: "nvoip" as const,
+        sipDomain: nvoipEmbeddedSipDomain(),
+        wssUrl: nvoipEmbeddedSipWssUrl(),
+        wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
+      };
   return {
     sipUser: row.sipUser.trim(),
     sipPassword,
     displayName: row.displayName?.trim() || null,
-    sipDomain: nvoipEmbeddedSipDomain(),
-    wssUrl: nvoipEmbeddedSipWssUrl(),
-    wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
+    sipDomain: endpoint.sipDomain,
+    wssUrl: endpoint.wssUrl,
+    wssUrlAlternates: endpoint.wssUrlAlternates,
+    sipProvider: endpoint.sipProvider,
   };
 }
 

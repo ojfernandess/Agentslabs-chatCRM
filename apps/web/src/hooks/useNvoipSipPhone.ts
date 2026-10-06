@@ -101,7 +101,8 @@ function publishInboundRoute(syncOnly = false): void {
 }
 
 function buildWssCandidates(creds: SipCredentials): string[] {
-  const primary = creds.wssUrl?.trim() || `wss://${creds.sipDomain}:7443`;
+  const primary = creds.wssUrl?.trim() ?? "";
+  if (!primary) return [];
   const alternates = creds.wssUrlAlternates ?? [];
   return [...new Set([primary, ...alternates.map((u) => u.trim()).filter(Boolean)])];
 }
@@ -301,7 +302,11 @@ export function useNvoipSipPhone(enabled: boolean) {
     void ensureLocalAudio();
 
     const candidates = buildWssCandidates(creds);
-    startUa(creds, candidates[0] ?? `wss://app.nvoip.com.br:7443`);
+    if (!candidates[0]) {
+      setStatusSafe("unregistered", "sip_server_not_configured");
+      return;
+    }
+    startUa(creds, candidates[0]);
   }, [enabled, ensureLocalAudio, setStatusSafe, startUa]);
 
   const hangup = useCallback(() => {

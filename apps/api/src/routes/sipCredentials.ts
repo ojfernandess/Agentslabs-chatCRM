@@ -8,8 +8,11 @@ import { syncNvoipInboundHistoryForAccount } from "../lib/nvoipInboundSync.js";
 import { routeNvoipDidsToProfileRamais } from "../lib/nvoipProfileDidRoute.js";
 import {
   getUserSipCredentialsForClient,
+  resolveOrganizationSipEndpoint,
   upsertUserSipCredentials,
 } from "../lib/userSipCredentials.js";
+import { getOrgSipServer, saveOrgSipServer } from "../lib/orgSipServer.js";
+import { isUserTenantAdmin } from "../lib/tenantAdmin.js";
 
 const upsertSchema = z.object({
   sipUser: z.string().min(1).max(64),
@@ -33,24 +36,73 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       });
       return false;
     }
-    const voice = await isOrganizationFeatureEnabled(organizationId, "nvoip_voice");
-    if (!voice) {
-      reply.status(403).send({
-        error: "Forbidden",
-        message: "nvoip_voice_disabled",
-        statusCode: 403,
-      });
-      return false;
-    }
     return true;
   }
+
+  app.get("/server", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const endpoint = await resolveOrganizationSipEndpoint(organizationId);
+    const stored = endpoint.sipProvider === "sip" ? await getOrgSipServer(organizationId) : null;
+    return {
+      sipProvider: endpoint.sipProvider,
+      configurable: endpoint.sipProvider === "sip",
+      sipDomain: stored?.sipDomain ?? endpoint.sipDomain,
+      wssUrl: stored?.wssUrl ?? endpoint.wssUrl,
+    };
+  });
+
+  app.put("/server", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    if (!(await isUserTenantAdmin(request.user))) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Admin access required",
+        statusCode: 403,
+      });
+    }
+    const endpoint = await resolveOrganizationSipEndpoint(organizationId);
+    if (endpoint.sipProvider === "nvoip") {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_server_managed_by_nvoip",
+        statusCode: 400,
+      });
+    }
+    const parsed = z
+      .object({
+        sipDomain: z.string().min(1).max(253),
+        wssUrl: z.string().min(8).max(300),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_server_invalid",
+        statusCode: 400,
+      });
+    }
+    try {
+      const saved = await saveOrgSipServer(organizationId, parsed.data);
+      return { ok: true, ...saved, sipProvider: "sip" as const, configurable: true };
+    } catch {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_server_invalid",
+        statusCode: 400,
+      });
+    }
+  });
 
   app.get("/credentials", async (request, reply) => {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     if (!(await requireEmbeddedSip(organizationId, reply))) return;
 
-    const creds = await getUserSipCredentialsForClient(request.user.id);
+    const creds = await getUserSipCredentialsForClient(request.user.id, organizationId);
     if (!creds) {
       return reply.status(404).send({
         error: "Not Found",

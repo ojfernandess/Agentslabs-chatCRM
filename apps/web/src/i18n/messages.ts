@@ -3662,7 +3662,16 @@ export const messages = {
         callFailed: "Não foi possível realizar a chamada.",
       },
       sip: {
-        settingsTitle: "Ramal SIP (Nvoip)",
+        settingsTitle: "Ramal SIP",
+        genericHint:
+          "O ramal fica neste perfil: usuário e senha SIP, como no MicroSIP. O servidor da organização é configurado pelo administrador. Deixe o CRM aberto com Ramal ativo.",
+        serverTitle: "Servidor SIP",
+        serverHint:
+          "O MicroSIP usa UDP na porta 5060. O navegador só fala SIP por WebSocket seguro. Informe o domínio e a URL wss:// do mesmo PABX (Asterisk, Kamailio ou Nvoip).",
+        fieldDomain: "Domínio SIP",
+        fieldWss: "WebSocket (WSS)",
+        saveServer: "Guardar servidor",
+        serverSaveError: "Não foi possível guardar o servidor SIP. Use um domínio e uma URL wss://.",
         settingsHint:
           "Usuário e senha do ramal secundário Nvoip (Configurações → Ramais), não o NumberSIP trunk da conta. O trunk (ex.: 143087001) usa MicroSIP/UDP; o softphone no CRM usa WebRTC/WSS apenas com ramal secundário. Os números que já tocam em ramais passam a tocar nos ramais salvos nos perfis. Deixe o CRM aberto com Ramal ativo.",
         trunkHint:
@@ -6942,7 +6951,7 @@ export const messages = {
         wavoip_voice: "Chamadas de voz Wavoip (WhatsApp)",
         threecx_voice: "Telefonia 3CX (PABX)",
         nvoip_voice: "Telefonia Nvoip (API v2)",
-        nvoip_embedded_sip: "Nvoip — softphone SIP no CRM (WebRTC)",
+        nvoip_embedded_sip: "Softphone SIP no CRM (WebRTC)",
         nvoip_sms: "SMS Nvoip (API v2)",
         nvoip_otp: "OTP/2FA Nvoip (API v2)",
         nvoip_whatsapp: "WhatsApp HSM Nvoip (API v2)",
@@ -11412,7 +11421,16 @@ export const messages = {
         callFailed: "The call could not be completed.",
       },
       sip: {
-        settingsTitle: "SIP extension (Nvoip)",
+        settingsTitle: "SIP extension",
+        genericHint:
+          "The extension stays on this profile: SIP username and password, the same way as MicroSIP. An administrator configures the organization server. Keep the CRM open with the extension active.",
+        serverTitle: "SIP server",
+        serverHint:
+          "MicroSIP uses UDP on port 5060. The browser only speaks SIP over secure WebSocket. Enter the domain and the wss:// URL of the same PBX (Asterisk, Kamailio, or Nvoip).",
+        fieldDomain: "SIP domain",
+        fieldWss: "WebSocket (WSS)",
+        saveServer: "Save server",
+        serverSaveError: "Could not save the SIP server. Use a domain and a wss:// URL.",
         settingsHint:
           "Secondary Nvoip extension username and password (Settings → Extensions), not the account NumberSIP trunk. The trunk (e.g. 143087001) uses MicroSIP/UDP; in-CRM softphone uses WebRTC/WSS with a secondary extension only. Numbers that already ring extensions are pointed at the extensions saved on profiles. Keep the CRM open with the extension active.",
         trunkHint:
@@ -14684,7 +14702,7 @@ export const messages = {
         wavoip_voice: "Wavoip voice calls (WhatsApp)",
         threecx_voice: "3CX telephony (PBX)",
         nvoip_voice: "Nvoip telephony (API v2)",
-        nvoip_embedded_sip: "Nvoip — embedded SIP softphone (WebRTC)",
+        nvoip_embedded_sip: "CRM SIP softphone (WebRTC)",
         nvoip_sms: "Nvoip SMS (API v2)",
         nvoip_otp: "Nvoip OTP/2FA (API v2)",
         nvoip_whatsapp: "Nvoip WhatsApp HSM (API v2)",

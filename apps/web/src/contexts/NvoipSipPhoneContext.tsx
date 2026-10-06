@@ -34,14 +34,21 @@ export function useNvoipSipPhoneOptional() {
   return useContext(NvoipSipPhoneContext);
 }
 
-export function NvoipSipPhoneProvider({ children }: { children: ReactNode }) {
+export function NvoipSipPhoneProvider({
+  children,
+  enabled,
+}: {
+  children: ReactNode;
+  enabled?: boolean;
+}) {
   const { user } = useAuth();
   const voice = useNvoipVoiceOptional();
-  const embeddedEnabled =
+  const fromNvoip =
     (user?.organizationFeatures?.nvoip_voice ?? false) &&
     (user?.organizationFeatures?.nvoip_embedded_sip ?? false) &&
     voice?.voiceMode === "embedded_sip" &&
     !(isSuperAdminRole(user?.role ?? "") && !user?.actingOrganizationId);
+  const embeddedEnabled = enabled ?? fromNvoip;
 
   const { status, error, hangup, answer, reject, incoming, answeredAt, answering, isInCall } =
     useNvoipSipPhone(embeddedEnabled);
