@@ -2,10 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import JsSIP from "jssip";
 import { api, ApiError } from "@/lib/api";
 
+const SIP_PC_CONFIG: RTCConfiguration = {
+  iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
+};
+
 type SipRtcSession = {
   answer: (options: {
     mediaConstraints: { audio: boolean; video: boolean };
     mediaStream?: MediaStream;
+    pcConfig?: RTCConfiguration;
   }) => void;
   terminate: (options?: { status_code?: number; reason_phrase?: string }) => void;
   direction?: string;
@@ -159,6 +164,7 @@ export function useNvoipSipPhone(enabled: boolean) {
       try {
         session.answer({
           mediaConstraints: { audio: true, video: false },
+          pcConfig: SIP_PC_CONFIG,
           ...(localStream ? { mediaStream: localStream } : {}),
         });
       } catch {
@@ -192,7 +198,6 @@ export function useNvoipSipPhone(enabled: boolean) {
         display_name: creds.displayName?.trim() || sipUser,
         registrar_server: `sip:${sipDomain}`,
         contact_uri: `sip:${sipUser}@${sipDomain};transport=ws`,
-        pcConfig: { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] },
         register: true,
         register_expires: 600,
         session_timers: false,
