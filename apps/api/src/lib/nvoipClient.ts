@@ -942,10 +942,10 @@ async function nvoipListUsersOnce(account: NvoipAccount): Promise<NvoipSipUserIt
     if (res.status === 403) throw new Error("list_users_missing_scope");
     if (!res.ok) throw new Error(`list_users_failed_${res.status}`);
     const data = await parseJson<unknown>(res);
-    const page = readNvoipUserDirectoryPage(data, pageSize);
-    if (!page.recognized) throw new Error("list_users_invalid");
-    users.push(...page.users);
-    if (!page.hasNext) break;
+    const directory = readNvoipUserDirectoryPage(data, pageSize);
+    if (!directory.recognized) throw new Error("list_users_invalid");
+    users.push(...directory.users);
+    if (!directory.hasNext) break;
   }
   return users;
 }
