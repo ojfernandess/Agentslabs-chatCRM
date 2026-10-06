@@ -179,7 +179,9 @@ export function useNvoipSipPhone(enabled: boolean) {
       const sipUser = creds.sipUser.trim();
 
       const socket = new JsSIP.WebSocketInterface(wssUrl);
-      socket.via_transport = "WSS";
+      // O Contact do JsSIP usa transport=ws. O Via precisa do mesmo transporte
+      // para a Nvoip devolver o INVITE no websocket, como o MicroSIP faz no UDP.
+      socket.via_transport = "WS";
 
       const ua = new JsSIP.UA({
         sockets: [socket],
@@ -188,6 +190,7 @@ export function useNvoipSipPhone(enabled: boolean) {
         password: creds.sipPassword,
         display_name: creds.displayName?.trim() || sipUser,
         registrar_server: `sip:${sipDomain}`,
+        contact_uri: `sip:${sipUser}@${sipDomain};transport=ws`,
         register: true,
         register_expires: 600,
         session_timers: false,

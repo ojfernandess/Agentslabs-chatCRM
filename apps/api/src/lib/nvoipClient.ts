@@ -193,7 +193,8 @@ export async function getNvoipAccessToken(account: NvoipAccount): Promise<string
 async function fetchWithRateLimitBackoff(url: string, init: RequestInit, maxAttempts = 4): Promise<Response> {
   let last: Response | null = null;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await fetch(url, init);
+    const signal = init.signal ?? AbortSignal.timeout(12_000);
+    const res = await fetch(url, { ...init, signal });
     if (res.status !== 429) return res;
     last = res;
     const retryAfter = Number(res.headers.get("retry-after"));
@@ -247,8 +248,12 @@ async function nvoipTelephonyFetch(
   init: RequestInit = {},
 ): Promise<Response> {
   if (decryptNvoipSecret(account.napikeyEnc)) {
-    const keyed = await nvoipApiKeyFetch(account, path, init);
-    if (keyed.ok || (keyed.status !== 401 && keyed.status !== 403)) return keyed;
+    try {
+      const keyed = await nvoipApiKeyFetch(account, path, init);
+      if (keyed.ok || (keyed.status !== 401 && keyed.status !== 403)) return keyed;
+    } catch {
+      /* a chave não respondeu; tenta o Bearer */
+    }
   }
   return nvoipAuthorizedFetch(account, path, init);
 }
@@ -497,21 +502,37 @@ function normalizeHistoryList(data: unknown): NvoipHistoryCallItem[] {
   return [];
 }
 
+/** A coleção v3 consulta o histórico com data civil (YYYY-MM-DD), não com today/yesterday. */
+function nvoipHistoryCalendarDate(date: NvoipHistoryDate): string {
+  const now = new Date();
+  const day = date === "yesterday" ? new Date(now.getTime() - 86_400_000) : now;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(day);
+}
+
 export async function nvoipGetCallHistory(
   account: NvoipAccount,
   type: NvoipHistoryType,
   date: NvoipHistoryDate,
 ): Promise<NvoipHistoryCallItem[]> {
-  const qs = new URLSearchParams({ type, date });
-  const res = await nvoipTelephonyFetch(account, `/calls/history?${qs.toString()}`, {
-    method: "GET",
-  });
-  const data = await parseJson<unknown>(res);
-  if (!res.ok) {
+  const dateValues = [nvoipHistoryCalendarDate(date), date];
+  let lastError = "call_history_failed";
+  for (const value of dateValues) {
+    const qs = new URLSearchParams({ type, date: value });
+    const res = await nvoipTelephonyFetch(account, `/calls/history?${qs.toString()}`, {
+      method: "GET",
+    });
+    const data = await parseJson<unknown>(res);
+    if (res.ok) return normalizeHistoryList(data);
     const err = data as { error?: string };
-    throw new Error(err?.error ?? `call_history_failed_${res.status}`);
+    lastError = err?.error ?? `call_history_failed_${res.status}`;
+    if (res.status !== 400 && res.status !== 422) break;
   }
-  return normalizeHistoryList(data);
+  throw new Error(lastError);
 }
 
 /** POST /calls/ uses success/ok for acceptance — reject live phases; accept hangup ack shapes. */
@@ -953,26 +974,19 @@ function normalizeDidList(data: unknown): NvoipDidItem[] {
   return [];
 }
 
-async function invalidateNvoipAccessToken(account: NvoipAccount): Promise<NvoipAccount> {
-  await prisma.nvoipAccount.update({
-    where: { id: account.id },
-    data: { accessTokenEnc: null, tokenExpiresAt: null },
-  });
-  return { ...account, accessTokenEnc: null, tokenExpiresAt: null };
-}
-
 /**
- * Lista usuários da conta com OAuth 2.0.
- * Contrato: GET /v3/users?page=&size= (página Spring `content`).
- * A chave de API v3 não autoriza este recurso.
+ * Lista usuários da conta.
+ * O contrato OAuth é GET /v3/users. Se o client não tiver o escopo, tenta a chave
+ * de API v3 no cabeçalho, sem descartar o token OAuth que já consulta o saldo.
  */
-async function nvoipListUsersOnce(account: NvoipAccount): Promise<NvoipSipUserItem[]> {
+async function nvoipListUsersWith(
+  account: NvoipAccount,
+  fetchPage: (path: string) => Promise<Response>,
+): Promise<NvoipSipUserItem[]> {
   const pageSize = 50;
   const users: NvoipSipUserItem[] = [];
   for (let page = 0; page < 20; page++) {
-    const res = await nvoipAuthorizedFetch(account, `/users?page=${page}&size=${pageSize}`, {
-      method: "GET",
-    });
+    const res = await fetchPage(`/users?page=${page}&size=${pageSize}`);
     if (res.status === 403) throw new Error("list_users_missing_scope");
     if (!res.ok) throw new Error(`list_users_failed_${res.status}`);
     const data = await parseJson<unknown>(res);
@@ -986,11 +1000,13 @@ async function nvoipListUsersOnce(account: NvoipAccount): Promise<NvoipSipUserIt
 
 export async function nvoipListUsers(account: NvoipAccount): Promise<NvoipSipUserItem[]> {
   try {
-    return await nvoipListUsersOnce(account);
+    return await nvoipListUsersWith(account, (path) =>
+      nvoipAuthorizedFetch(account, path, { method: "GET" }),
+    );
   } catch (err) {
     if (!(err instanceof Error) || err.message !== "list_users_missing_scope") throw err;
-    const fresh = await invalidateNvoipAccessToken(account);
-    return nvoipListUsersOnce(fresh);
+    if (!decryptNvoipSecret(account.napikeyEnc)) throw err;
+    return nvoipListUsersWith(account, (path) => nvoipApiKeyFetch(account, path, { method: "GET" }));
   }
 }
 
