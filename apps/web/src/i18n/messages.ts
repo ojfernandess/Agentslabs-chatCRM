@@ -3663,8 +3663,12 @@ export const messages = {
       },
       sip: {
         settingsTitle: "Ramal SIP",
+        profileHint:
+          "Usuário e senha SIP deste atendente, como no MicroSIP. O domínio e a URL wss:// ficam em Configurações da organização → Servidor SIP.",
         genericHint:
           "O ramal fica neste perfil: usuário e senha SIP, como no MicroSIP. O servidor da organização é configurado pelo administrador. Deixe o CRM aberto com Ramal ativo.",
+        serverNvoipActive:
+          "A conta Nvoip continua a registrar o softphone enquanto o domínio e o WSS forem os da Nvoip. Altere e guarde para usar outro servidor.",
         serverTitle: "Servidor SIP",
         serverHint:
           "O MicroSIP usa UDP na porta 5060. O navegador só fala SIP por WebSocket seguro. Informe o domínio e a URL wss:// do mesmo PABX (Asterisk, Kamailio ou Nvoip).",
@@ -5829,6 +5833,7 @@ export const messages = {
       sectionWavoip: "Integração Wavoip",
       sectionThreeCx: "Integração 3CX",
       sectionNvoip: "Integração Nvoip",
+      sectionSip: "Servidor SIP",
       sectionBilling: "Plano e faturação",
       whatsappPolicyTitle: "WhatsApp — Política de Mensagens",
       whatsappPolicySubtitle:
@@ -11422,8 +11427,12 @@ export const messages = {
       },
       sip: {
         settingsTitle: "SIP extension",
+        profileHint:
+          "SIP username and password for this agent, the same way as MicroSIP. The domain and wss:// URL are in Organization settings → SIP server.",
         genericHint:
           "The extension stays on this profile: SIP username and password, the same way as MicroSIP. An administrator configures the organization server. Keep the CRM open with the extension active.",
+        serverNvoipActive:
+          "The connected Nvoip account keeps registering the softphone while the domain and WSS are Nvoip's. Change them and save to use another server.",
         serverTitle: "SIP server",
         serverHint:
           "MicroSIP uses UDP on port 5060. The browser only speaks SIP over secure WebSocket. Enter the domain and the wss:// URL of the same PBX (Asterisk, Kamailio, or Nvoip).",
@@ -13584,6 +13593,7 @@ export const messages = {
       sectionWavoip: "Wavoip integration",
       sectionThreeCx: "3CX integration",
       sectionNvoip: "Nvoip integration",
+      sectionSip: "SIP server",
       sectionBilling: "Plan & billing",
       whatsappPolicyTitle: "WhatsApp — Message Policy",
       whatsappPolicySubtitle:

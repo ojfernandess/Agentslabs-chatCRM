@@ -21,19 +21,23 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
   wssUrl: string;
   wssUrlAlternates: string[];
 }> {
+  const custom = await getOrgSipServer(organizationId);
   const account = await prisma.nvoipAccount.findFirst({
     where: { organizationId, status: "CONNECTED" },
     select: { id: true },
   });
-  if (account) {
+  const nvoipDomain = nvoipEmbeddedSipDomain();
+  const nvoipWss = nvoipEmbeddedSipWssUrl();
+  const customIsNvoipDefault =
+    !!custom && custom.sipDomain === nvoipDomain && custom.wssUrl.replace(/\/+$/, "") === nvoipWss.replace(/\/+$/, "");
+  if (account && (!custom || customIsNvoipDefault)) {
     return {
       sipProvider: "nvoip",
-      sipDomain: nvoipEmbeddedSipDomain(),
-      wssUrl: nvoipEmbeddedSipWssUrl(),
+      sipDomain: nvoipDomain,
+      wssUrl: nvoipWss,
       wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
     };
   }
-  const custom = await getOrgSipServer(organizationId);
   return {
     sipProvider: "sip",
     sipDomain: custom?.sipDomain ?? "",

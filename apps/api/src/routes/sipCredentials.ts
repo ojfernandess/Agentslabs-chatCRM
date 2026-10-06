@@ -44,12 +44,12 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
     if (!organizationId) return;
     if (!(await requireEmbeddedSip(organizationId, reply))) return;
     const endpoint = await resolveOrganizationSipEndpoint(organizationId);
-    const stored = endpoint.sipProvider === "sip" ? await getOrgSipServer(organizationId) : null;
+    const stored = await getOrgSipServer(organizationId);
     return {
       sipProvider: endpoint.sipProvider,
-      configurable: endpoint.sipProvider === "sip",
-      sipDomain: stored?.sipDomain ?? endpoint.sipDomain,
-      wssUrl: stored?.wssUrl ?? endpoint.wssUrl,
+      configurable: true,
+      sipDomain: stored?.sipDomain || endpoint.sipDomain,
+      wssUrl: stored?.wssUrl || endpoint.wssUrl,
     };
   });
 
@@ -62,14 +62,6 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
         error: "Forbidden",
         message: "Admin access required",
         statusCode: 403,
-      });
-    }
-    const endpoint = await resolveOrganizationSipEndpoint(organizationId);
-    if (endpoint.sipProvider === "nvoip") {
-      return reply.status(400).send({
-        error: "Bad Request",
-        message: "sip_server_managed_by_nvoip",
-        statusCode: 400,
       });
     }
     const parsed = z

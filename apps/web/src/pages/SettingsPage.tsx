@@ -32,6 +32,7 @@ import { WhatsappOrgPolicyPanel } from "@/pages/settings/WhatsappOrgPolicyPanel"
 import { WavoipIntegrationSettings } from "@/pages/settings/WavoipIntegrationSettings";
 import { ThreeCxIntegrationSettings } from "@/pages/settings/ThreeCxIntegrationSettings";
 import { NvoipIntegrationSettings } from "@/pages/settings/NvoipIntegrationSettings";
+import { SipServerSettings } from "@/components/nvoip/SipServerSettings";
 import { NvoipAgent2faPanel } from "@/components/nvoip/NvoipAgent2faPanel";
 import { WhatsAppMessageTemplatesSection } from "@/components/settings/WhatsAppMessageTemplatesSection";
 import { WhatsAppProvidersSection } from "@/components/settings/whatsapp/WhatsAppProvidersSection";
@@ -109,6 +110,7 @@ type SettingsSection =
   | "wavoip"
   | "threecx"
   | "nvoip"
+  | "sip"
   | "billing";
 
 type CsatRatingType = "number" | "star" | "emoji";
@@ -248,6 +250,7 @@ export function SettingsPage() {
       Boolean(user?.organizationFeatures?.nvoip_otp) ||
       Boolean(user?.organizationFeatures?.nvoip_whatsapp)) &&
     isAdmin;
+  const showSipServer = Boolean(user?.organizationFeatures?.nvoip_embedded_sip) && isAdmin;
   const funnelEnabled = user?.organizationFeatures?.crm_kanban ?? true;
   const initialSection = searchParams.get("section");
   const [section, setSection] = useState<SettingsSection>(() => {
@@ -255,6 +258,7 @@ export function SettingsPage() {
     if (initialSection === "wavoip" && showWavoip) return "wavoip";
     if (initialSection === "threecx" && showThreeCx) return "threecx";
     if (initialSection === "nvoip" && showNvoip) return "nvoip";
+    if (initialSection === "sip" && showSipServer) return "sip";
     if (initialSection === "billing" && isAdmin) return "billing";
     if (initialSection === "helpdesk" && isAdmin) return "helpdesk";
     return "channel";
@@ -1333,6 +1337,7 @@ export function SettingsPage() {
                   ...(showWavoip ? ([["wavoip", t("settings.sectionWavoip"), Phone]] as const) : []),
                   ...(showThreeCx ? ([["threecx", t("settings.sectionThreeCx"), Phone]] as const) : []),
                   ...(showNvoip ? ([["nvoip", t("settings.sectionNvoip"), Phone]] as const) : []),
+                  ...(showSipServer ? ([["sip", t("settings.sectionSip"), Phone]] as const) : []),
                   ...(isAdmin ? ([["billing", t("settings.sectionBilling"), CreditCard]] as const) : []),
                   ...(isAdmin ? ([["helpdesk", t("settings.sectionHelpdesk"), LifeBuoy]] as const) : []),
                   ["templates", t("settings.sectionTemplates"), FileText],
@@ -3404,6 +3409,12 @@ export function SettingsPage() {
               {section === "nvoip" && showNvoip && (
                 <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
                   <NvoipIntegrationSettings />
+                </motion.div>
+              )}
+
+              {section === "sip" && showSipServer && (
+                <motion.div className="card-surface rounded-xl p-6" variants={staggerItem}>
+                  <SipServerSettings />
                 </motion.div>
               )}
             </motion.div>
