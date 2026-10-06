@@ -151,7 +151,7 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
     }
 
     const routed = body.data.syncOnly
-      ? { ramais: [] as string[], updated: [] as string[] }
+      ? { ramais: [] as string[], updated: [] as string[], warning: null as string | null }
       : await routeNvoipDidsToProfileRamais(organizationId);
     const account = await prisma.nvoipAccount.findFirst({
       where: { organizationId, status: "CONNECTED" },

@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useNvoipSipPhoneOptional } from "@/contexts/NvoipSipPhoneContext";
+import { useSipDiagnostics } from "@/lib/sipDiagnostics";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 type DialerTab = "keypad" | "contacts" | "history";
@@ -22,6 +23,7 @@ type HistoryRow = {
 export function SipDialer() {
   const { t } = useI18n();
   const sip = useNvoipSipPhoneOptional();
+  const diagnostics = useSipDiagnostics();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<DialerTab>("keypad");
   const [number, setNumber] = useState("");
@@ -76,8 +78,8 @@ export function SipDialer() {
 
   const registered = sip.status === "registered" || sip.status === "in-call" || sip.status === "ringing";
   const calling = sip.status === "ringing" || sip.status === "in-call";
-  const callError =
-    dialError ?? (sip.error?.startsWith("sip_call_failed") ? t("nvoip.softphone.callFailed") : null);
+  const sipCause = sip.error?.startsWith("sip_call_failed:") ? sip.error.slice("sip_call_failed:".length) : null;
+  const callError = dialError ?? (sipCause ? `${t("nvoip.softphone.callFailed")} (${sipCause})` : null);
 
   const dial = (raw: string) => {
     const target = raw.trim();
@@ -265,6 +267,23 @@ export function SipDialer() {
         )}
 
         {callError ? <p className="mt-3 text-center text-xs text-red-600">{callError}</p> : null}
+
+        <details className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-ink-950 dark:text-ink-400">
+          <summary className="cursor-pointer font-medium text-slate-600 dark:text-ink-300">
+            {t("nvoip.softphone.diagTitle")}
+          </summary>
+          {diagnostics.length === 0 ? (
+            <p className="mt-2">{t("nvoip.softphone.diagEmpty")}</p>
+          ) : (
+            <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto font-mono">
+              {diagnostics.slice(-8).map((row, index) => (
+                <li key={`${row.at}-${index}`}>
+                  {row.at} [{row.tag}] {row.message}
+                </li>
+              ))}
+            </ul>
+          )}
+        </details>
 
         {calling ? (
           <button

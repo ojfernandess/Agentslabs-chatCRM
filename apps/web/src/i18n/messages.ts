@@ -3674,6 +3674,8 @@ export const messages = {
         historyEmpty: "Nenhuma ligação recente.",
         historyIn: "Recebida",
         historyOut: "Efetuada",
+        diagTitle: "Diagnóstico",
+        diagEmpty: "Ainda sem eventos SIP. Feche o MicroSIP, recarregue o CRM e aguarde Ramal ativo.",
       },
       sip: {
         settingsTitle: "Ramal SIP",
@@ -11456,6 +11458,8 @@ export const messages = {
         historyEmpty: "No recent calls.",
         historyIn: "Incoming",
         historyOut: "Outgoing",
+        diagTitle: "Diagnostics",
+        diagEmpty: "No SIP events yet. Close MicroSIP, reload the CRM, and wait for the extension to register.",
       },
       sip: {
         settingsTitle: "SIP extension",

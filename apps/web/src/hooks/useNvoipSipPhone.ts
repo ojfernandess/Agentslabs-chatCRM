@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import JsSIP from "jssip";
 import { api, ApiError } from "@/lib/api";
+import { maskSipUser, sipDiag, sipDiagMessage } from "@/lib/sipDiagnostics";
 
 const SIP_PC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
@@ -103,7 +104,56 @@ function startIncomingRing(): void {
 }
 
 function publishInboundRoute(syncOnly = false): void {
-  void api.post("/sip/inbound-route", syncOnly ? { syncOnly: true } : undefined).catch(() => {});
+  void api
+    .post<{ warning?: string | null; updated?: string[] }>(
+      "/sip/inbound-route",
+      syncOnly ? { syncOnly: true } : undefined,
+    )
+    .then((res) => {
+      if (syncOnly) return;
+      if ((res.updated ?? []).length > 0) sipDiag("SIP", `DID updated ${res.updated?.length ?? 0}`);
+      else if (!res.warning) sipDiag("SIP", "DID unchanged");
+      if (res.warning) sipDiag("SIP", `DID ${res.warning}`);
+    })
+    .catch(() => sipDiag("SIP", "DID route failed"));
+}
+
+function watchIce(pc: RTCPeerConnection): void {
+  sipDiag("WEBRTC", "Creating PeerConnection");
+  sipDiag("ICE", pc.iceConnectionState);
+  pc.addEventListener("iceconnectionstatechange", () => {
+    sipDiag("ICE", pc.iceConnectionState);
+  });
+}
+
+function traceSocket(socket: InstanceType<typeof JsSIP.WebSocketInterface>, wssUrl: string): void {
+  sipDiag("WSS", `Connecting ${wssUrl}`);
+  const origConnect = socket.connect.bind(socket);
+  socket.connect = () => {
+    origConnect();
+    const ws = (socket as { _ws?: WebSocket })._ws;
+    if (!ws) return;
+    const prevOpen = ws.onopen;
+    ws.onopen = (ev) => {
+      sipDiag("WSS", "Connected");
+      if (typeof prevOpen === "function") prevOpen.call(ws, ev);
+    };
+    const prevClose = ws.onclose;
+    ws.onclose = (ev) => {
+      sipDiag("WSS", `Closed ${ev.code}`);
+      if (typeof prevClose === "function") prevClose.call(ws, ev);
+    };
+    const prevMessage = ws.onmessage;
+    ws.onmessage = (ev) => {
+      sipDiagMessage("in", ev.data);
+      if (typeof prevMessage === "function") prevMessage.call(ws, ev);
+    };
+  };
+  const origSend = socket.send.bind(socket);
+  socket.send = (message) => {
+    sipDiagMessage("out", message);
+    return origSend(message);
+  };
 }
 
 function beginSipCallLog(direction: "INCOMING" | "OUTGOING", phone: string): string {
@@ -183,7 +233,8 @@ export function useNvoipSipPhone(enabled: boolean) {
         audioRef.current.autoplay = true;
       }
       audioRef.current.srcObject = stream;
-      void audioRef.current.play().catch(() => {});
+      sipDiag("AUDIO", "Remote stream attached");
+      void audioRef.current.play().catch(() => sipDiag("AUDIO", "Autoplay blocked"));
     };
     peerconnection.addEventListener("track", (e) => {
       if (e.streams[0]) playStream(e.streams[0]);
@@ -224,6 +275,9 @@ export function useNvoipSipPhone(enabled: boolean) {
 
       const socket = new JsSIP.WebSocketInterface(wssUrl);
       socket.via_transport = "WS";
+      traceSocket(socket, wssUrl);
+      sipDiag("SOFTPHONE", "Inicializando");
+      sipDiag("SIP", `User ${maskSipUser(sipUser)} Contact ${sipContactUri(sipUser, sipDomain)}`);
 
       // O host do Contact não pode ser o domínio do PABX: o JsSIP copia esse host
       // para o Via e o servidor tenta entregar o INVITE nele mesmo, fora do websocket.
@@ -244,12 +298,18 @@ export function useNvoipSipPhone(enabled: boolean) {
       });
 
       ua.on("registered", () => {
+        sipDiag("SIP", "Registered");
         setStatusSafe("registered", null);
         publishInboundRoute();
       });
-      ua.on("unregistered", () => setStatusSafe("unregistered", null));
+      ua.on("unregistered", () => {
+        sipDiag("SIP", "Unregistered");
+        setStatusSafe("unregistered", null);
+      });
       ua.on("registrationFailed", (e) => {
         const cause = String((e as { cause?: string }).cause ?? "unknown");
+        const code = (e as { response?: { status_code?: number } }).response?.status_code;
+        sipDiag("SIP", `REGISTER failed${code ? ` ${code}` : ""} ${cause}`);
         const candidates = buildWssCandidates(creds);
         const nextIndex = wssIndexRef.current + 1;
         if (nextIndex < candidates.length && (cause === "Connection Error" || cause === "Request Timeout")) {
@@ -266,23 +326,18 @@ export function useNvoipSipPhone(enabled: boolean) {
         const outbound = payload.originator === "local";
         outboundLegRef.current = false;
         sessionRef.current = session;
-        if (session.connection) attachRemoteAudio(session.connection);
+        sipDiag("SIP", outbound ? "Outgoing INVITE" : "Incoming INVITE");
+        if (session.connection) {
+          watchIce(session.connection);
+          attachRemoteAudio(session.connection);
+        }
         setStatusSafe("ringing", null);
-
-        let iceReady = false;
-        session.on("icecandidate", (ev: unknown) => {
-          const ready = (ev as { ready?: () => void }).ready;
-          if (!ready || iceReady) return;
-          window.setTimeout(() => {
-            if (iceReady) return;
-            iceReady = true;
-            ready();
-          }, 1500);
-        });
 
         session.on("peerconnection", (ev: unknown) => {
           const peerconnection = (ev as { peerconnection?: RTCPeerConnection }).peerconnection;
-          if (peerconnection) attachRemoteAudio(peerconnection);
+          if (!peerconnection) return;
+          watchIce(peerconnection);
+          attachRemoteAudio(peerconnection);
         });
 
         session.on("ended", () => {
@@ -328,15 +383,20 @@ export function useNvoipSipPhone(enabled: boolean) {
           setAnsweredAt(null);
           setAnswering(false);
           localEndRef.current = false;
-          const cause = String((ev as { cause?: string }).cause ?? "unknown");
-          const quiet = localEnd || cause === "Canceled" || cause === "Rejected" || cause === "Terminated";
+          const failed = ev as { cause?: string; message?: { status_code?: number; reason_phrase?: string } };
+          const cause = String(failed.cause ?? "unknown");
+          const code = failed.message?.status_code;
+          const reason = failed.message?.reason_phrase?.trim();
+          const detail = [code, reason, cause].filter(Boolean).join(" ");
+          if (!localEnd) sipDiag("SIP", `Call failed ${detail}`);
           setStatusSafe(
             ua.isRegistered() ? "registered" : "unregistered",
-            quiet ? null : `sip_call_failed:${cause}`,
+            localEnd ? null : `sip_call_failed:${detail}`,
           );
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
         });
         session.on("confirmed", () => {
+          sipDiag("SIP", "Call confirmed");
           stopIncomingRing();
           if (callLogRef.current) callLogRef.current.answeredAt = Date.now();
           setAnswering(false);
@@ -398,7 +458,10 @@ export function useNvoipSipPhone(enabled: boolean) {
     const phone = rawNumber.replace(/[^\d+]/g, "");
     const creds = credsRef.current;
     const ua = uaRef.current;
-    if (!phone || !creds?.sipDomain || !ua?.isRegistered()) return false;
+    if (!phone || !creds?.sipDomain || !ua?.isRegistered()) {
+      sipDiag("SIP", "Call blocked: extension is not registered");
+      return false;
+    }
     outboundLegRef.current = true;
     const id = crypto.randomUUID();
     callLogRef.current = { id, answeredAt: null };
