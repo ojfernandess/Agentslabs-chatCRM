@@ -4,7 +4,9 @@ import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 export function NvoipTrunkPicker() {
   const { t } = useI18n();
   const voice = useNvoipVoiceOptional();
-  if (!voice?.canPlaceCalls || voice.trunks.length === 0 || voice.activeCall) return null;
+  if (!voice?.canPlaceCalls || voice.outboundCallsEnabled === false || voice.trunks.length === 0 || voice.activeCall) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 right-4 z-[110] flex items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur dark:border-ink-700 dark:bg-ink-900/95">

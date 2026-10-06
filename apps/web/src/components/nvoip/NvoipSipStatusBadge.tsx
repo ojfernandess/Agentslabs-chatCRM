@@ -17,7 +17,12 @@ export function NvoipSipStatusBadge({ compact }: { compact?: boolean }) {
   if (!sip.enabled) return null;
 
   const labelKey = `nvoip.sip.status.${sip.status}`;
-  const label = t(labelKey) === labelKey ? sip.status : t(labelKey);
+  const label =
+    sip.incoming && sip.status === "ringing"
+      ? t("nvoip.softphone.incoming")
+      : t(labelKey) === labelKey
+        ? sip.status
+        : t(labelKey);
 
   return (
     <span

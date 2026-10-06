@@ -17,7 +17,10 @@ export function useTelephonyProviders() {
   const threecxEnabled = user?.organizationFeatures?.threecx_voice ?? false;
 
   const wavoipCan = wavoipEnabled && (wavoipVoice?.canPlaceCalls ?? false);
-  const nvoipCan = nvoipEnabled && (nvoipVoice?.canPlaceCalls ?? false);
+  const nvoipCan =
+    nvoipEnabled &&
+    (nvoipVoice?.canPlaceCalls ?? false) &&
+    nvoipVoice?.outboundCallsEnabled !== false;
   const threecxCan = threecxEnabled && (threecxVoice?.canPlaceCalls ?? false);
 
   const providers = useMemo(() => {

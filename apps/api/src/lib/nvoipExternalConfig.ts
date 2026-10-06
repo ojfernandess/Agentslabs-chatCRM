@@ -34,6 +34,7 @@ export function readNvoipExternalConfig(externalConfig: unknown): {
   homologationLast: NvoipHomologationStored | null;
   pabxMode: NvoipPabxMode;
   trunkSipPasswordConfigured: boolean;
+  outboundCallsEnabled: boolean;
 } {
   const c = asRecord(externalConfig);
   const emailsRaw = c.balanceAlertEmails;
@@ -59,6 +60,7 @@ export function readNvoipExternalConfig(externalConfig: unknown): {
       typeof c.lastBalanceAlertEmailAt === "string" ? c.lastBalanceAlertEmailAt : null,
     homologationLast,
     pabxMode: parseNvoipPabxMode(c.pabxMode),
+    outboundCallsEnabled: c.outboundCallsEnabled !== false,
     trunkSipPasswordConfigured: Boolean(
       typeof c.trunkSipPasswordEnc === "string" && c.trunkSipPasswordEnc.trim(),
     ),
@@ -75,6 +77,7 @@ export function mergeNvoipExternalConfig(
     homologationLast?: NvoipHomologationStored | null;
     lastBalanceAlertEmailAt?: string | null;
     pabxMode?: NvoipPabxMode;
+    outboundCallsEnabled?: boolean;
     trunkSipPasswordEnc?: string | null;
     clearTrunkSipPassword?: boolean;
     callWebhookSecretEnc?: string | null;
@@ -107,6 +110,9 @@ export function mergeNvoipExternalConfig(
   }
   if (input.pabxMode !== undefined) {
     base.pabxMode = input.pabxMode;
+  }
+  if (input.outboundCallsEnabled !== undefined) {
+    base.outboundCallsEnabled = input.outboundCallsEnabled;
   }
   if (input.clearTrunkSipPassword) {
     delete base.trunkSipPasswordEnc;

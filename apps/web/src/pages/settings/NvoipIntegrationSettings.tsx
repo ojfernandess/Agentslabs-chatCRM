@@ -33,6 +33,7 @@ type AccountRow = {
   lowBalanceAlertBrl?: number | null;
   balanceAlertEmails?: string[];
   recordingRetentionDays?: number | null;
+  outboundCallsEnabled?: boolean;
   homologationLast?: {
     ranAt: string;
     pass: number;
@@ -128,6 +129,7 @@ export function NvoipIntegrationSettings() {
   const [lowBalanceAlertBrl, setLowBalanceAlertBrl] = useState("5");
   const [balanceAlertEmails, setBalanceAlertEmails] = useState("");
   const [recordingRetentionDays, setRecordingRetentionDays] = useState("");
+  const [outboundCallsEnabled, setOutboundCallsEnabled] = useState(true);
   const [balanceLow, setBalanceLow] = useState(false);
   const [balanceStale, setBalanceStale] = useState(false);
 
@@ -188,6 +190,7 @@ export function NvoipIntegrationSettings() {
         setRecordingRetentionDays(
           acc.recordingRetentionDays != null ? String(acc.recordingRetentionDays) : "",
         );
+        setOutboundCallsEnabled(acc.outboundCallsEnabled !== false);
         setUserToken("");
       }
       if (whatsappEnabled) {
@@ -236,11 +239,14 @@ export function NvoipIntegrationSettings() {
         recordingRetentionDays: recordingRetentionDays.trim()
           ? Number(recordingRetentionDays)
           : null,
+        outboundCallsEnabled,
       };
       if (userToken.trim()) body.userToken = userToken.trim();
       const res = await api.put<{ account: AccountRow }>("/settings/nvoip/account", body);
       setAccount(res.account);
       setUserToken("");
+      window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
+      await nvoipVoice?.refreshSession();
     } catch (e) {
       setError(e instanceof ApiError ? mapNvoipCallErrorMessage(e.message, t) : t("nvoip.saveError"));
     } finally {
@@ -280,7 +286,7 @@ export function NvoipIntegrationSettings() {
         void api.post("/settings/nvoip/users/sync").catch(() => {});
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
         await nvoipVoice?.refreshSession();
-        if (outboundTestPhone.trim()) {
+        if (outboundCallsEnabled && outboundTestPhone.trim()) {
           await placeOutboundTestCall();
         } else {
           window.setTimeout(() => outboundTestPhoneRef.current?.focus(), 50);
@@ -523,6 +529,20 @@ export function NvoipIntegrationSettings() {
                   {t("nvoip.sectionVoice")}
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">{t("nvoip.sectionVoiceHint")}</p>
+                <label className="mt-4 flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={outboundCallsEnabled}
+                    onChange={(e) => setOutboundCallsEnabled(e.target.checked)}
+                  />
+                  <span>
+                    <span className="font-medium">{t("nvoip.field.outboundCalls")}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500 dark:text-ink-400">
+                      {t("nvoip.field.outboundCallsHint")}
+                    </span>
+                  </span>
+                </label>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <label className="block text-sm">
                     <span className="font-medium">{t("nvoip.field.defaultCaller")}</span>
@@ -558,8 +578,16 @@ export function NvoipIntegrationSettings() {
                     </select>
                   </label>
                 </div>
+                <button
+                  type="button"
+                  className="btn-primary mt-4 text-sm"
+                  disabled={saving}
+                  onClick={() => void save()}
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t("nvoip.save")}
+                </button>
 
-                {(linked || showTestDialPanel) ? (
+                {outboundCallsEnabled && (linked || showTestDialPanel) ? (
                   <div className="mt-4 rounded-lg border border-orange-200/80 bg-orange-50/40 p-3 dark:border-orange-900/40 dark:bg-orange-950/20">
                     <p className="text-xs font-medium text-slate-700 dark:text-ink-200">
                       {t("nvoip.outboundTestTitle")}

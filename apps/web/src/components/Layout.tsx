@@ -164,9 +164,21 @@ function CollapsedLocalePicker({
   );
 }
 
+function NvoipSipSidebarStatus({ compact }: { compact: boolean }) {
+  const { user } = useAuth();
+  const voice = useNvoipVoiceOptional();
+  if (!user?.organizationFeatures?.nvoip_voice) return null;
+  if (!user.organizationFeatures?.nvoip_embedded_sip) return null;
+  if (voice?.voiceMode !== "embedded_sip") return null;
+  return (
+    <div className={clsx("w-full", compact ? "flex justify-center px-1" : "px-1 pb-1")}>
+      <NvoipSipStatusBadge compact={compact} />
+    </div>
+  );
+}
+
 export function Layout() {
   const { user, logout, exitUserImpersonation, refreshUser } = useAuth();
-  const nvoipVoice = useNvoipVoiceOptional();
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -785,18 +797,7 @@ export function Layout() {
           collapsed ? "flex flex-col items-center gap-2 p-2" : "space-y-2 p-3",
         )}
       >
-        {user?.organizationFeatures?.nvoip_voice &&
-        user?.organizationFeatures?.nvoip_embedded_sip &&
-        nvoipVoice?.voiceMode === "embedded_sip" ? (
-          <div
-            className={clsx(
-              "w-full",
-              collapsed ? "flex justify-center px-1" : "px-1 pb-1",
-            )}
-          >
-            <NvoipSipStatusBadge compact={collapsed} />
-          </div>
-        ) : null}
+        <NvoipSipSidebarStatus compact={collapsed} />
         <div className={clsx("flex w-full", collapsed ? "flex-col items-center gap-2" : "items-end gap-2")}>
           <ConversationNotifyBell
             badgeCount={badgeCount}

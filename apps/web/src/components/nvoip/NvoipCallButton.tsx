@@ -32,7 +32,9 @@ export function NvoipCallButton({
   const [error, setError] = useState<string | null>(null);
   const enabled = user?.organizationFeatures?.nvoip_voice ?? false;
 
-  if (!phone?.trim() || !enabled || !voice?.canPlaceCalls) return null;
+  if (!phone?.trim() || !enabled || !voice?.canPlaceCalls || voice.outboundCallsEnabled === false) {
+    return null;
+  }
 
   const dial = async (e?: React.MouseEvent) => {
     if (stopPropagation) {

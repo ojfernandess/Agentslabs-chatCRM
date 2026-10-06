@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion, backdropVariants, modalVariants } from "@/components/Motion";
+import { AnimatePresence, motion } from "@/components/Motion";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useAuth } from "@/hooks/useAuth";
@@ -67,7 +67,10 @@ function useTelephonyProviders() {
   const wavoipEnabled = user?.organizationFeatures?.wavoip_voice ?? false;
   const nvoipEnabled = user?.organizationFeatures?.nvoip_voice ?? false;
   const wavoipCan = wavoipEnabled && (wavoipVoice?.canPlaceCalls ?? false);
-  const nvoipCan = nvoipEnabled && (nvoipVoice?.canPlaceCalls ?? false);
+  const nvoipCan =
+    nvoipEnabled &&
+    (nvoipVoice?.canPlaceCalls ?? false) &&
+    nvoipVoice?.outboundCallsEnabled !== false;
   const providers = useMemo(() => {
     const list: TelephonyProvider[] = [];
     if (wavoipCan) list.push("wavoip");
@@ -281,48 +284,42 @@ export function TelephonyDialModal({ open, onClose }: Props) {
     [resolvedContext, digits],
   );
 
-  const callButtonClass =
-    activeProvider === "nvoip"
-      ? "bg-orange-500 hover:bg-orange-600"
-      : "bg-emerald-500 hover:bg-emerald-600";
-
   if (!open) return null;
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 dark:bg-black/60"
-          variants={backdropVariants}
-          initial="hidden"
-          animate="show"
-          exit="exit"
-          onClick={onClose}
+          className="fixed inset-y-0 right-0 z-[90] flex w-full max-w-[400px] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-xl dark:border-ink-700 dark:bg-ink-900 max-md:max-w-none"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          initial={{ opacity: 0, x: 28 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 28 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          role="dialog"
+          aria-label={t("nvoip.softphone.title")}
         >
-          <motion.div
-            className="w-full max-w-sm overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-ink-700 dark:bg-ink-900"
-            variants={modalVariants}
-            initial="hidden"
-            animate="show"
-            exit="exit"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-ink-800">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-ink-800">
               <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-brand-500" aria-hidden />
+                  <span className="text-sm font-semibold text-slate-900 dark:text-ink-50">
+                    {t("nvoip.softphone.title")}
+                  </span>
+                </div>
                 {providers.length > 1 ? (
-                  <div className="flex gap-1 rounded-full bg-gray-100 p-0.5 dark:bg-ink-800">
+                  <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-ink-800">
                     {providers.map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setProvider(p)}
                         className={clsx(
-                          "rounded-full px-3 py-1 text-xs font-semibold transition",
+                          "rounded-lg px-3 py-1 text-xs font-semibold transition",
                           activeProvider === p
-                            ? p === "nvoip"
-                              ? "bg-orange-500 text-white shadow-sm"
-                              : "bg-emerald-500 text-white shadow-sm"
-                            : "text-gray-500 dark:text-ink-400",
+                            ? "bg-white text-slate-900 shadow-sm dark:bg-ink-900 dark:text-ink-50"
+                            : "text-slate-500 dark:text-ink-400",
                         )}
                       >
                         {p === "wavoip" ? "Wavoip" : "Nvoip"}
@@ -330,15 +327,15 @@ export function TelephonyDialModal({ open, onClose }: Props) {
                     ))}
                   </div>
                 ) : null}
-                <div className="flex gap-1 rounded-full bg-gray-100 p-0.5 dark:bg-ink-800">
+                <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-ink-800">
                   <button
                     type="button"
                     onClick={() => setTab("dial")}
                     className={clsx(
-                      "rounded-full px-3 py-1 text-xs font-semibold transition",
+                      "flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition",
                       tab === "dial"
-                        ? "bg-white text-gray-900 shadow-sm dark:bg-ink-900 dark:text-ink-50"
-                        : "text-gray-500 dark:text-ink-400",
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-ink-900 dark:text-ink-50"
+                        : "text-slate-500 dark:text-ink-400",
                     )}
                   >
                     {t("wavoip.dial.tabDial")}
@@ -347,10 +344,10 @@ export function TelephonyDialModal({ open, onClose }: Props) {
                     type="button"
                     onClick={() => setTab("contacts")}
                     className={clsx(
-                      "inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition",
+                      "inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition",
                       tab === "contacts"
-                        ? "bg-white text-gray-900 shadow-sm dark:bg-ink-900 dark:text-ink-50"
-                        : "text-gray-500 dark:text-ink-400",
+                        ? "bg-white text-slate-900 shadow-sm dark:bg-ink-900 dark:text-ink-50"
+                        : "text-slate-500 dark:text-ink-400",
                     )}
                   >
                     <Users className="h-3.5 w-3.5" />
@@ -361,7 +358,7 @@ export function TelephonyDialModal({ open, onClose }: Props) {
               <button
                 type="button"
                 onClick={onClose}
-                className="ml-2 shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-ink-800 dark:hover:text-ink-200"
+                className="ml-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-ink-800 dark:hover:text-ink-200"
                 aria-label={t("common.close")}
               >
                 <X className="h-5 w-5" />
@@ -373,7 +370,7 @@ export function TelephonyDialModal({ open, onClose }: Props) {
                 {t("telephony.dial.noProviders")}
               </p>
             ) : tab === "dial" ? (
-              <div className="p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 <input
                   type="tel"
                   inputMode="tel"
@@ -463,8 +460,16 @@ export function TelephonyDialModal({ open, onClose }: Props) {
                   ))}
                 </div>
 
-                <div className="mt-5 flex items-center justify-center gap-6">
-                  <div className="w-10" />
+                <div className="mt-5 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={backspace}
+                    disabled={!digits.length}
+                    className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:text-ink-400 dark:hover:bg-ink-800"
+                    aria-label={t("wavoip.dial.backspace")}
+                  >
+                    <Delete className="h-5 w-5" />
+                  </button>
                   <button
                     type="button"
                     disabled={calling || hasActiveCall || !isValidDialLength(digits)}
@@ -474,27 +479,16 @@ export function TelephonyDialModal({ open, onClose }: Props) {
                         contactId: matchedContact?.id,
                       })
                     }
-                    className={clsx(
-                      "flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg transition active:scale-95 disabled:opacity-40",
-                      callButtonClass,
-                    )}
+                    className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-500 active:scale-[0.99] disabled:opacity-40"
                     aria-label={t("wavoip.voice.callButton")}
                   >
-                    {calling ? <Loader2 className="h-7 w-7 animate-spin" /> : <Phone className="h-7 w-7" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={backspace}
-                    disabled={!digits.length}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 dark:text-ink-400 dark:hover:bg-ink-800"
-                    aria-label={t("wavoip.dial.backspace")}
-                  >
-                    <Delete className="h-5 w-5" />
+                    {calling ? <Loader2 className="h-5 w-5 animate-spin" /> : <Phone className="h-5 w-5" />}
+                    {t("wavoip.voice.callButton")}
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="p-4">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -557,7 +551,7 @@ export function TelephonyDialModal({ open, onClose }: Props) {
                 {error}
               </p>
             ) : null}
-          </motion.div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

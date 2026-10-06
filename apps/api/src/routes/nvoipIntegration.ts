@@ -72,6 +72,7 @@ const upsertSchema = z.object({
   lowBalanceAlertBrl: z.number().positive().max(1_000_000).nullable().optional(),
   balanceAlertEmails: z.string().max(2000).optional(),
   recordingRetentionDays: z.number().int().min(1).max(3650).nullable().optional(),
+  outboundCallsEnabled: z.boolean().optional(),
 });
 
 const extensionSchema = z.object({
@@ -172,7 +173,8 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       parsed.data.incomingQueue !== undefined ||
       parsed.data.lowBalanceAlertBrl !== undefined ||
       parsed.data.balanceAlertEmails !== undefined ||
-      parsed.data.recordingRetentionDays !== undefined
+      parsed.data.recordingRetentionDays !== undefined ||
+      parsed.data.outboundCallsEnabled !== undefined
     ) {
       const base = existing?.externalConfig ?? {};
       const queue: NvoipIncomingQueueConfig | undefined =
@@ -198,6 +200,7 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
           parsed.data.recordingRetentionDays !== undefined
             ? parsed.data.recordingRetentionDays
             : undefined,
+        outboundCallsEnabled: parsed.data.outboundCallsEnabled,
       });
     }
 

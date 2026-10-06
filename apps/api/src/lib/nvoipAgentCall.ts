@@ -27,6 +27,7 @@ import { resolveNvoipCallContext } from "./nvoipCallContext.js";
 import { formatNvoipCalled, formatNvoipCaller, isValidNvoipOutboundCaller } from "./nvoipCallFormat.js";
 import { resolveNvoipOutboundCallerDetailed } from "./nvoipTrunks.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
+import { readNvoipExternalConfig } from "./nvoipExternalConfig.js";
 
 export async function startAgentOutboundCall(input: {
   organizationId: string;
@@ -53,6 +54,9 @@ export async function startAgentOutboundCall(input: {
     where: { organizationId: input.organizationId, status: "CONNECTED" },
   });
   if (!account) return { ok: false, message: "nvoip_not_configured" };
+  if (!readNvoipExternalConfig(account.externalConfig).outboundCallsEnabled) {
+    return { ok: false, message: "nvoip_outbound_disabled" };
+  }
 
   const callerResolution = await resolveNvoipOutboundCallerDetailed({
     organizationId: input.organizationId,

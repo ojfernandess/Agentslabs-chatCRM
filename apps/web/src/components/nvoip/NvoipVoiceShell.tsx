@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { NvoipVoiceProvider, useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
 import { NvoipSipPhoneProvider } from "@/contexts/NvoipSipPhoneContext";
 import { NvoipActiveCallBar } from "@/components/nvoip/NvoipActiveCallBar";
+import { NvoipSoftphonePanel } from "@/components/nvoip/NvoipSoftphonePanel";
 import { NvoipTrunkPicker } from "@/components/nvoip/NvoipTrunkPicker";
 
 function NvoipEmbeddedSipGate({ children }: { children: ReactNode }) {
@@ -22,6 +23,7 @@ export function NvoipVoiceShell({ children }: { children: ReactNode }) {
       {children}
       <NvoipTrunkPicker />
       <NvoipActiveCallBar />
+      <NvoipSoftphonePanel />
     </>
   );
 

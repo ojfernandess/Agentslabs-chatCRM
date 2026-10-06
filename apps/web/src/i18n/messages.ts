@@ -3311,9 +3311,9 @@ export const messages = {
       },
       dial: {
         openTooltip: "Discar chamada Wavoip",
-        tabDial: "Discar",
+        tabDial: "Teclado",
         tabContacts: "Contatos",
-        typePlaceholder: "Digite…",
+        typePlaceholder: "Digite um número ou pesquise...",
         newNumber: "Número novo — pode ligar ou cadastrar contato",
         registerContact: "Cadastrar contato",
         registerAndCall: "Cadastrar e ligar",
@@ -3589,6 +3589,9 @@ export const messages = {
           "client_secret do mesmo painel. Obrigatório na primeira ligação; depois, deixe vazio para manter o atual.",
         clientSecretRequired: "Informe o client_secret para ligar a conta Nvoip.",
         napikey: "NAPI Key (opcional)",
+        outboundCalls: "Botão Ligar nas conversas",
+        outboundCallsHint:
+          "Desligado, a organização só recebe ligações. O botão Ligar some das conversas e dos contatos.",
         defaultCaller: "Ramal de origem (caller)",
         defaultCallerHint:
           "Usuário SIP / ramal para POST /calls/ (ex.: 143087001 no PABX trunk, ou 1049 em ramais secundários). Deve coincidir com um ramal registado na Nvoip.",
@@ -3601,6 +3604,7 @@ export const messages = {
       voice: {
         notConfigured: "Nvoip não configurada para esta organização.",
         noCaller: "Sem ramal de origem — configure na integração Nvoip.",
+        outboundDisabled: "Ligações de saída desativadas nesta organização.",
         invalidCallerUseRamal:
           "Ramal inválido: use o usuário SIP registado na Nvoip (NumberSIP no PABX ou ramal secundário).",
         pabxTrunkNoWebphone:
@@ -3629,6 +3633,23 @@ export const messages = {
           BUSY: "Ocupado",
           FAILED: "Falhou",
         },
+      },
+      softphone: {
+        title: "Telefone",
+        incoming: "Chamada recebida",
+        inCall: "Em chamada",
+        connecting: "Conectando",
+        ended: "Chamada encerrada",
+        answer: "Atender",
+        reject: "Recusar",
+        endCall: "Encerrar chamada",
+        minimize: "Minimizar",
+        contactInfo: "Informações do contato",
+        viewConversation: "Ver conversa",
+        duration: "Duração: {time}",
+        done: "Concluir",
+        expand: "Expandir telefone",
+        callFailed: "Não foi possível realizar a chamada.",
       },
       sip: {
         settingsTitle: "Ramal SIP (Nvoip)",
@@ -11031,9 +11052,9 @@ export const messages = {
       },
       dial: {
         openTooltip: "Open Wavoip dialer",
-        tabDial: "Dial",
+        tabDial: "Keypad",
         tabContacts: "Contacts",
-        typePlaceholder: "Type…",
+        typePlaceholder: "Type a number or search...",
         newNumber: "New number — call now or save as contact",
         registerContact: "Register contact",
         registerAndCall: "Register and call",
@@ -11308,6 +11329,9 @@ export const messages = {
           "client_secret from the same screen. Required the first time you connect; leave blank later to keep the current secret.",
         clientSecretRequired: "Enter the client_secret to connect the Nvoip account.",
         napikey: "NAPI Key (optional)",
+        outboundCalls: "Call button in conversations",
+        outboundCallsHint:
+          "When off, the organization only receives calls. The Call button is hidden from conversations and contacts.",
         defaultCaller: "Source extension (caller)",
         defaultCallerHint:
           "SIP user / extension for POST /calls/ (e.g. 143087001 on PABX trunk, or 1049 for secondary extensions). Must match a registered Nvoip extension.",
@@ -11320,6 +11344,7 @@ export const messages = {
       voice: {
         notConfigured: "Nvoip is not configured for this organization.",
         noCaller: "No source extension — configure in Nvoip integration settings.",
+        outboundDisabled: "Outbound calls are turned off for this organization.",
         invalidCallerUseRamal:
           "Invalid extension: use a registered Nvoip SIP user (NumberSIP on PABX trunk or secondary extension).",
         pabxTrunkNoWebphone:
@@ -11348,6 +11373,23 @@ export const messages = {
           BUSY: "Busy",
           FAILED: "Failed",
         },
+      },
+      softphone: {
+        title: "Phone",
+        incoming: "Incoming call",
+        inCall: "On call",
+        connecting: "Connecting",
+        ended: "Call ended",
+        answer: "Answer",
+        reject: "Decline",
+        endCall: "End call",
+        minimize: "Minimize",
+        contactInfo: "Contact details",
+        viewConversation: "View conversation",
+        duration: "Duration: {time}",
+        done: "Done",
+        expand: "Expand phone",
+        callFailed: "The call could not be completed.",
       },
       sip: {
         settingsTitle: "SIP extension (Nvoip)",

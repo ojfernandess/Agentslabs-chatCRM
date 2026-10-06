@@ -7,10 +7,13 @@ type SipRtcSession = {
     mediaConstraints: { audio: boolean; video: boolean };
     mediaStream?: MediaStream;
   }) => void;
-  terminate: () => void;
+  terminate: (options?: { status_code?: number; reason_phrase?: string }) => void;
   direction?: string;
+  remote_identity?: { display_name?: string; uri?: { user?: string } };
   on: (event: string, handler: (...args: unknown[]) => void) => void;
 };
+
+export type NvoipSipRemoteParty = { number: string; name: string };
 
 export type NvoipSipCallStatus =
   | "unregistered"
@@ -47,6 +50,13 @@ async function acquireLocalAudio(existing: MediaStream | null): Promise<MediaStr
   }
 }
 
+function readRemoteParty(session: SipRtcSession): NvoipSipRemoteParty {
+  const number = String(session.remote_identity?.uri?.user ?? "").trim();
+  const rawName = String(session.remote_identity?.display_name ?? "").trim();
+  const name = rawName && rawName !== number ? rawName : "";
+  return { number, name };
+}
+
 function buildWssCandidates(creds: SipCredentials): string[] {
   const primary = creds.wssUrl?.trim() || `wss://${creds.sipDomain}:7443`;
   const alternates = creds.wssUrlAlternates ?? [];
@@ -60,8 +70,13 @@ export function useNvoipSipPhone(enabled: boolean) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const wssIndexRef = useRef(0);
 
+  const outboundLegRef = useRef(false);
+  const localEndRef = useRef(false);
   const [status, setStatus] = useState<NvoipSipCallStatus>("unregistered");
   const [error, setError] = useState<string | null>(null);
+  const [incoming, setIncoming] = useState<NvoipSipRemoteParty | null>(null);
+  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
+  const [answering, setAnswering] = useState(false);
 
   const setStatusSafe = useCallback((next: NvoipSipCallStatus, err: string | null = null) => {
     setStatus(next);
@@ -88,6 +103,27 @@ export function useNvoipSipPhone(enabled: boolean) {
       if (e.streams[0]) playStream(e.streams[0]);
     });
   }, []);
+
+  const answerSession = useCallback(
+    async (session: SipRtcSession) => {
+      setAnswering(true);
+      const localStream = await ensureLocalAudio();
+      if (sessionRef.current !== session) {
+        setAnswering(false);
+        return;
+      }
+      try {
+        session.answer({
+          mediaConstraints: { audio: true, video: false },
+          ...(localStream ? { mediaStream: localStream } : {}),
+        });
+      } catch {
+        setAnswering(false);
+        setStatusSafe("error", "sip_answer_failed");
+      }
+    },
+    [ensureLocalAudio, setStatusSafe],
+  );
 
   const startUa = useCallback(
     (creds: SipCredentials, wssUrl: string) => {
@@ -144,40 +180,50 @@ export function useNvoipSipPhone(enabled: boolean) {
 
         session.on("ended", () => {
           sessionRef.current = null;
+          setIncoming(null);
+          setAnsweredAt(null);
+          setAnswering(false);
           setStatusSafe(ua.isRegistered() ? "registered" : "unregistered", null);
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
         });
         session.on("failed", (ev: unknown) => {
           sessionRef.current = null;
+          setIncoming(null);
+          setAnsweredAt(null);
+          setAnswering(false);
+          const localEnd = localEndRef.current;
+          localEndRef.current = false;
           const cause = String((ev as { cause?: string }).cause ?? "unknown");
+          const quiet = localEnd || cause === "Canceled" || cause === "Rejected" || cause === "Terminated";
           setStatusSafe(
             ua.isRegistered() ? "registered" : "unregistered",
-            cause !== "Canceled" ? `sip_call_failed:${cause}` : null,
+            quiet ? null : `sip_call_failed:${cause}`,
           );
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
         });
         session.on("confirmed", () => {
+          setAnswering(false);
+          setAnsweredAt(Date.now());
           setStatusSafe("in-call", null);
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-active"));
         });
 
-        void (async () => {
-          const localStream = await ensureLocalAudio();
-          try {
-            session.answer({
-              mediaConstraints: { audio: true, video: false },
-              ...(localStream ? { mediaStream: localStream } : {}),
-            });
-          } catch {
-            setStatusSafe("error", "sip_answer_failed");
-          }
-        })();
+        if (outboundLegRef.current) {
+          setIncoming(null);
+          void answerSession(session);
+          return;
+        }
+
+        setIncoming(readRemoteParty(session));
+        setAnsweredAt(null);
+        setAnswering(false);
+        setStatusSafe("ringing", null);
       });
 
       ua.start();
       uaRef.current = ua;
     },
-    [attachRemoteAudio, ensureLocalAudio, setStatusSafe],
+    [answerSession, attachRemoteAudio, setStatusSafe],
   );
 
   const register = useCallback(async () => {
@@ -204,10 +250,44 @@ export function useNvoipSipPhone(enabled: boolean) {
   }, [enabled, ensureLocalAudio, setStatusSafe, startUa]);
 
   const hangup = useCallback(() => {
-    sessionRef.current?.terminate();
+    const session = sessionRef.current;
+    localEndRef.current = true;
     sessionRef.current = null;
+    setIncoming(null);
+    setAnsweredAt(null);
+    setAnswering(false);
+    try {
+      session?.terminate();
+    } catch {
+      /* session already gone */
+    }
     setStatusSafe(uaRef.current?.isRegistered() ? "registered" : "unregistered", null);
   }, [setStatusSafe]);
+
+  const reject = useCallback(() => {
+    const session = sessionRef.current;
+    localEndRef.current = true;
+    sessionRef.current = null;
+    setIncoming(null);
+    setAnsweredAt(null);
+    setAnswering(false);
+    try {
+      session?.terminate({ status_code: 486, reason_phrase: "Busy Here" });
+    } catch {
+      try {
+        session?.terminate();
+      } catch {
+        /* session already gone */
+      }
+    }
+    setStatusSafe(uaRef.current?.isRegistered() ? "registered" : "unregistered", null);
+  }, [setStatusSafe]);
+
+  const answer = useCallback(async () => {
+    const session = sessionRef.current;
+    if (!session || answering) return;
+    await answerSession(session);
+  }, [answerSession, answering]);
 
   useEffect(() => {
     if (!enabled) {
@@ -228,9 +308,23 @@ export function useNvoipSipPhone(enabled: boolean) {
     };
     window.addEventListener("openconduit:nvoip-sip-refresh", onRefresh);
     window.addEventListener("openconduit:nvoip-sip-prepare-media", onPrepareMedia);
+    const onOutboundLeg = () => {
+      outboundLegRef.current = true;
+    };
+    const onOutboundLegClear = () => {
+      outboundLegRef.current = false;
+    };
+    window.addEventListener("openconduit:nvoip-sip-outbound-leg", onOutboundLeg);
+    window.addEventListener("openconduit:nvoip-sip-outbound-leg-cancel", onOutboundLegClear);
+    window.addEventListener("openconduit:nvoip-call-ended", onOutboundLegClear);
+    window.addEventListener("openconduit:nvoip-sip-call-ended", onOutboundLegClear);
     return () => {
       window.removeEventListener("openconduit:nvoip-sip-refresh", onRefresh);
       window.removeEventListener("openconduit:nvoip-sip-prepare-media", onPrepareMedia);
+      window.removeEventListener("openconduit:nvoip-sip-outbound-leg", onOutboundLeg);
+      window.removeEventListener("openconduit:nvoip-sip-outbound-leg-cancel", onOutboundLegClear);
+      window.removeEventListener("openconduit:nvoip-call-ended", onOutboundLegClear);
+      window.removeEventListener("openconduit:nvoip-sip-call-ended", onOutboundLegClear);
       uaRef.current?.stop();
       uaRef.current = null;
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -242,5 +336,16 @@ export function useNvoipSipPhone(enabled: boolean) {
     };
   }, [enabled, ensureLocalAudio, register, setStatusSafe]);
 
-  return { status, error, register, hangup, isInCall: status === "in-call" || status === "ringing" };
+  return {
+    status,
+    error,
+    incoming,
+    answeredAt,
+    answering,
+    register,
+    hangup,
+    answer,
+    reject,
+    isInCall: status === "in-call" || status === "ringing",
+  };
 }

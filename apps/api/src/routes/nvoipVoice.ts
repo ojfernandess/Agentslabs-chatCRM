@@ -6,6 +6,7 @@ import { resolveTenantOrganizationId } from "../lib/tenantContext.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
 import { listNvoipTrunks, listNvoipWebphoneUsers, resolveNvoipOutboundCallerDetailed } from "../lib/nvoipTrunks.js";
 import { parseNvoipPabxMode } from "../lib/nvoipPabxConfig.js";
+import { readNvoipExternalConfig } from "../lib/nvoipExternalConfig.js";
 import {
   claimNvoipCallAgent,
   completeAgentOutboundCall,
@@ -49,7 +50,13 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (!account || account.status !== "CONNECTED") {
-      return { ready: true, canPlaceCalls: false, caller: null, balance: null };
+      return {
+        ready: true,
+        canPlaceCalls: false,
+        caller: null,
+        balance: null,
+        outboundCallsEnabled: true,
+      };
     }
 
     const resolution = await resolveNvoipOutboundCallerDetailed({
@@ -86,6 +93,7 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     return {
       ready: true,
       canPlaceCalls: Boolean(caller?.trim()),
+      outboundCallsEnabled: readNvoipExternalConfig(account.externalConfig).outboundCallsEnabled,
       caller: caller || null,
       balance: account.lastBalance,
       accountId: account.id,

@@ -24,6 +24,7 @@ export type NvoipAccountClientRow = {
   lowBalanceAlertBrl: number | null;
   balanceAlertEmails: string[];
   recordingRetentionDays: number | null;
+  outboundCallsEnabled: boolean;
   homologationLast: {
     ranAt: string;
     pass: number;
@@ -71,6 +72,7 @@ export function accountToClientRow(
     lowBalanceAlertBrl: ext.lowBalanceAlertBrl,
     balanceAlertEmails: ext.balanceAlertEmails,
     recordingRetentionDays: ext.recordingRetentionDays,
+    outboundCallsEnabled: ext.outboundCallsEnabled,
     homologationLast: ext.homologationLast,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

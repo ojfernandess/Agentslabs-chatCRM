@@ -17,6 +17,7 @@ type TrunkRow = { id: string; name: string; defaultCaller: string; isDefault: bo
 type SessionPayload = {
   ready: boolean;
   canPlaceCalls: boolean;
+  outboundCallsEnabled?: boolean;
   caller: string | null;
   balance: string | null;
   trunks?: TrunkRow[];
@@ -51,6 +52,7 @@ type OutboundResult =
 type NvoipVoiceContextValue = {
   ready: boolean;
   canPlaceCalls: boolean;
+  outboundCallsEnabled: boolean;
   caller: string | null;
   callerHasWebphone: boolean;
   callerWarning: "pabx_trunk_not_webphone" | "no_webphone_users" | null;
@@ -93,6 +95,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [ready, setReady] = useState(false);
   const [canPlaceCalls, setCanPlaceCalls] = useState(false);
+  const [outboundCallsEnabled, setOutboundCallsEnabled] = useState(true);
   const [caller, setCaller] = useState<string | null>(null);
   const [callerHasWebphone, setCallerHasWebphone] = useState(false);
   const [callerWarning, setCallerWarning] = useState<
@@ -151,6 +154,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     try {
       const res = await api.get<SessionPayload>("/nvoip/session");
       setCanPlaceCalls(!!res.canPlaceCalls);
+      setOutboundCallsEnabled(res.outboundCallsEnabled !== false);
       setVoiceMode(res.voiceMode === "embedded_sip" ? "embedded_sip" : "click_to_call");
       setPabxMode(res.pabxMode === "external_pabx_trunk" ? "external_pabx_trunk" : "platform_webphone");
       setEmbeddedSipEnabled(!!res.embeddedSipEnabled);
@@ -366,12 +370,16 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
       contactId?: string | null;
       conversationId?: string | null;
     }): Promise<OutboundResult> => {
+      if (!outboundCallsEnabled) {
+        return { ok: false, message: "nvoip_outbound_disabled" };
+      }
       if (voiceMode === "embedded_sip" && sipStatusRef.current !== "registered") {
         return { ok: false, message: "sip_not_registered" };
       }
 
       if (voiceMode === "embedded_sip") {
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-prepare-media"));
+        window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-outbound-leg"));
       }
 
       const clientCallId = crypto.randomUUID();
@@ -393,6 +401,9 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           trunkId: selectedTrunkId,
         });
         if (!res.ok || !res.callId) {
+          if (voiceMode === "embedded_sip") {
+            window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-outbound-leg-cancel"));
+          }
           return { ok: false, message: res.message ?? "call_failed" };
         }
         const initialStatus = res.initialStatus?.trim() || "CALLING_ORIGIN";
@@ -419,10 +430,13 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
           conversationId: res.conversationId ?? null,
         };
       } catch (e) {
+        if (voiceMode === "embedded_sip") {
+          window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-outbound-leg-cancel"));
+        }
         return { ok: false, message: e instanceof Error ? e.message : "call_failed" };
       }
     },
-    [caller, selectedTrunkId, voiceMode],
+    [caller, outboundCallsEnabled, selectedTrunkId, voiceMode],
   );
 
   const endActiveCall = useCallback(async () => {
@@ -477,6 +491,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       ready,
       canPlaceCalls,
+      outboundCallsEnabled,
       caller,
       callerHasWebphone,
       callerWarning,
@@ -498,6 +513,7 @@ export function NvoipVoiceProvider({ children }: { children: ReactNode }) {
     [
       ready,
       canPlaceCalls,
+      outboundCallsEnabled,
       caller,
       callerHasWebphone,
       callerWarning,
