@@ -48,7 +48,7 @@ async function acquireLocalAudio(existing: MediaStream | null): Promise<MediaStr
 }
 
 function buildWssCandidates(creds: SipCredentials): string[] {
-  const primary = creds.wssUrl?.trim() || `wss://${creds.sipDomain}:6443`;
+  const primary = creds.wssUrl?.trim() || `wss://${creds.sipDomain}:7443`;
   const alternates = creds.wssUrlAlternates ?? [];
   return [...new Set([primary, ...alternates.map((u) => u.trim()).filter(Boolean)])];
 }
@@ -200,7 +200,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     void ensureLocalAudio();
 
     const candidates = buildWssCandidates(creds);
-    startUa(creds, candidates[0] ?? `wss://app.nvoip.com.br:6443`);
+    startUa(creds, candidates[0] ?? `wss://app.nvoip.com.br:7443`);
   }, [enabled, ensureLocalAudio, setStatusSafe, startUa]);
 
   const hangup = useCallback(() => {

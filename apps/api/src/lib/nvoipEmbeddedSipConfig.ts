@@ -9,14 +9,14 @@ export function nvoipEmbeddedSipDomain(): string {
 export function nvoipEmbeddedSipWssUrl(): string {
   const explicit = config.nvoipSipWssUrl.trim();
   if (explicit) return explicit.replace(/\/+$/, "");
-  const port = config.nvoipSipWssPort.trim() || "6443";
+  const port = config.nvoipSipWssPort.trim() || "7443";
   return `wss://${nvoipEmbeddedSipDomain()}:${port}`;
 }
 
 /** URLs WSS alternativas (fallback) quando a primária falha. */
 export function nvoipEmbeddedSipWssAlternates(): string[] {
   const primary = nvoipEmbeddedSipWssUrl();
-  const port = config.nvoipSipWssPort.trim() || "6443";
+  const port = config.nvoipSipWssPort.trim() || "7443";
   const domain = nvoipEmbeddedSipDomain();
   const candidates = [
     `wss://app.nvoip.com.br:${port}`,
