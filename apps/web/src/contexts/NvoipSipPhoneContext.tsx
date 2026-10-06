@@ -10,6 +10,7 @@ type NvoipSipPhoneContextValue = {
   hangup: () => void;
   answer: () => Promise<void>;
   reject: () => void;
+  placeCall: (number: string) => boolean;
   incoming: NvoipSipRemoteParty | null;
   answeredAt: number | null;
   answering: boolean;
@@ -23,6 +24,7 @@ const NvoipSipPhoneContext = createContext<NvoipSipPhoneContextValue>({
   hangup: () => {},
   answer: async () => {},
   reject: () => {},
+  placeCall: () => false,
   incoming: null,
   answeredAt: null,
   answering: false,
@@ -50,7 +52,7 @@ export function NvoipSipPhoneProvider({
     !(isSuperAdminRole(user?.role ?? "") && !user?.actingOrganizationId);
   const embeddedEnabled = enabled ?? fromNvoip;
 
-  const { status, error, hangup, answer, reject, incoming, answeredAt, answering, isInCall } =
+  const { status, error, hangup, answer, reject, placeCall, incoming, answeredAt, answering, isInCall } =
     useNvoipSipPhone(embeddedEnabled);
 
   useEffect(() => {
@@ -68,6 +70,7 @@ export function NvoipSipPhoneProvider({
         hangup,
         answer,
         reject,
+        placeCall,
         incoming,
         answeredAt,
         answering,

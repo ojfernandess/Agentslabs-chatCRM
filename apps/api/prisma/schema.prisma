@@ -260,6 +260,7 @@ model Organization {
   aiCreditPurchases            AiCreditPurchase[]
   nvoipAgentExtensions           NvoipAgentExtension[]
   nvoipCallLogs                  NvoipCallLog[]
+  sipCallLogs                    SipCallLog[]
   nvoipIntegrationLogs           NvoipIntegrationLog[]
   nvoipTorpedoDispatches         NvoipTorpedoDispatch[]
   nvoipScheduledTorpedos         NvoipScheduledTorpedo[]
@@ -611,6 +612,7 @@ model User {
   threeCxCallsInitiated        ThreeCxCallLog[]              @relation("ThreeCxCallInitiator")
   nvoipAgentExtensions         NvoipAgentExtension[]
   nvoipCallsInitiated          NvoipCallLog[]                @relation("NvoipCallInitiator")
+  sipCallsInitiated            SipCallLog[]                  @relation("SipCallInitiator")
   nvoipOtpChallenges           NvoipOtpChallenge[]
   sipCredentials               UserSipCredentials?
   mcpAccessTokens              McpAccessToken[]
@@ -806,6 +808,7 @@ model Contact {
   wavoipCallLogs      WavoipCallLog[]
   threeCxCallLogs     ThreeCxCallLog[]
   nvoipCallLogs          NvoipCallLog[]
+  sipCallLogs            SipCallLog[]
   nvoipTorpedoDispatches NvoipTorpedoDispatch[]
   nvoipOtpChallenges     NvoipOtpChallenge[]
 
@@ -1213,6 +1216,7 @@ model Conversation {
   wavoipCallLogs         WavoipCallLog[]
   threeCxCallLogs        ThreeCxCallLog[]
   nvoipCallLogs          NvoipCallLog[]
+  sipCallLogs            SipCallLog[]
   reminders              Reminder[]
   intelligentTagSuggestions IntelligentTagSuggestion[]
   intelligentTaggingRuns    IntelligentTaggingRun[]
@@ -3089,6 +3093,37 @@ model NvoipCallLog {
   @@index([nvoipAccountId])
   @@index([initiatedByUserId])
   @@map("nvoip_call_logs")
+}
+
+/// Chamada do softphone SIP no CRM (WebRTC), sem conta Nvoip nem rota 3CX.
+model SipCallLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  clientCallId String   @unique @map("client_call_id") @db.VarChar(128)
+  direction   String    @db.VarChar(16)
+  caller      String    @db.VarChar(32)
+  receiver    String    @db.VarChar(32)
+  status      String    @db.VarChar(64)
+  durationSec Int?      @map("duration_sec")
+  startedAt   DateTime? @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  contactId String?  @map("contact_id") @db.Uuid
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  conversationId String?       @map("conversation_id") @db.Uuid
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  initiatedByUserId String? @map("initiated_by_user_id") @db.Uuid
+  initiatedByUser   User?   @relation("SipCallInitiator", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([initiatedByUserId])
+  @@map("sip_call_logs")
 }
 
 model NvoipIntegrationLog {

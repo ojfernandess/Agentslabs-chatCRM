@@ -6,6 +6,7 @@ import { NvoipVoiceProvider } from "@/contexts/NvoipVoiceContext";
 import { NvoipSipPhoneProvider } from "@/contexts/NvoipSipPhoneContext";
 import { NvoipActiveCallBar } from "@/components/nvoip/NvoipActiveCallBar";
 import { NvoipSoftphonePanel } from "@/components/nvoip/NvoipSoftphonePanel";
+import { SipDialer } from "@/components/nvoip/SipDialer";
 import { NvoipTrunkPicker } from "@/components/nvoip/NvoipTrunkPicker";
 
 function SipPhoneGate({ children }: { children: ReactNode }) {
@@ -48,6 +49,7 @@ export function NvoipVoiceShell({ children }: { children: ReactNode }) {
       <SipPhoneGate>
         {children}
         <NvoipSoftphonePanel />
+        <SipDialer />
       </SipPhoneGate>
     );
   }
@@ -60,6 +62,7 @@ export function NvoipVoiceShell({ children }: { children: ReactNode }) {
       <NvoipTrunkPicker />
       <NvoipActiveCallBar />
       <NvoipSoftphonePanel />
+      <SipDialer />
     </>
   );
 

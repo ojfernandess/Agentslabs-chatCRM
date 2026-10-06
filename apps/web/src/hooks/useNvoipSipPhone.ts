@@ -105,6 +105,18 @@ function publishInboundRoute(syncOnly = false): void {
   void api.post("/sip/inbound-route", syncOnly ? { syncOnly: true } : undefined).catch(() => {});
 }
 
+function beginSipCallLog(direction: "INCOMING" | "OUTGOING", phone: string): string {
+  const id = crypto.randomUUID();
+  void api.post("/sip/calls", { clientCallId: id, direction, phone }).catch(() => {});
+  return id;
+}
+
+function finishSipCallLog(id: string, status: string, durationSec: number): void {
+  void api
+    .post("/sip/calls/complete", { clientCallId: id, status, durationSec })
+    .catch(() => {});
+}
+
 function buildWssCandidates(creds: SipCredentials): string[] {
   const primary = creds.wssUrl?.trim() ?? "";
   if (!primary) return [];
@@ -118,6 +130,8 @@ export function useNvoipSipPhone(enabled: boolean) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const wssIndexRef = useRef(0);
+  const credsRef = useRef<SipCredentials | null>(null);
+  const callLogRef = useRef<{ id: string; answeredAt: number | null } | null>(null);
 
   const outboundLegRef = useRef(false);
   const localEndRef = useRef(false);
@@ -235,6 +249,14 @@ export function useNvoipSipPhone(enabled: boolean) {
 
         session.on("ended", () => {
           stopIncomingRing();
+          const log = callLogRef.current;
+          callLogRef.current = null;
+          if (log) {
+            const durationSec = log.answeredAt
+              ? Math.max(0, Math.floor((Date.now() - log.answeredAt) / 1000))
+              : 0;
+            finishSipCallLog(log.id, log.answeredAt ? "ENDED" : "MISSED", durationSec);
+          }
           sessionRef.current = null;
           setIncoming(null);
           publishInboundRoute(true);
@@ -245,12 +267,28 @@ export function useNvoipSipPhone(enabled: boolean) {
         });
         session.on("failed", (ev: unknown) => {
           stopIncomingRing();
+          const log = callLogRef.current;
+          callLogRef.current = null;
+          const localEnd = localEndRef.current;
+          if (log) {
+            const durationSec = log.answeredAt
+              ? Math.max(0, Math.floor((Date.now() - log.answeredAt) / 1000))
+              : 0;
+            const cause = String((ev as { cause?: string }).cause ?? "");
+            const status = log.answeredAt
+              ? "ENDED"
+              : localEnd
+                ? "REJECTED"
+                : cause === "Canceled" || cause === "Busy"
+                  ? "MISSED"
+                  : "FAILED";
+            finishSipCallLog(log.id, status, durationSec);
+          }
           sessionRef.current = null;
           setIncoming(null);
           publishInboundRoute(true);
           setAnsweredAt(null);
           setAnswering(false);
-          const localEnd = localEndRef.current;
           localEndRef.current = false;
           const cause = String((ev as { cause?: string }).cause ?? "unknown");
           const quiet = localEnd || cause === "Canceled" || cause === "Rejected" || cause === "Terminated";
@@ -262,6 +300,7 @@ export function useNvoipSipPhone(enabled: boolean) {
         });
         session.on("confirmed", () => {
           stopIncomingRing();
+          if (callLogRef.current) callLogRef.current.answeredAt = Date.now();
           setAnswering(false);
           setAnsweredAt(Date.now());
           setStatusSafe("in-call", null);
@@ -280,6 +319,8 @@ export function useNvoipSipPhone(enabled: boolean) {
         setStatusSafe("ringing", null);
         startIncomingRing();
         publishInboundRoute(true);
+        const remote = readRemoteParty(session).number || "inbound";
+        callLogRef.current = { id: beginSipCallLog("INCOMING", remote), answeredAt: null };
       });
 
       ua.start();
@@ -296,6 +337,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     let creds: SipCredentials;
     try {
       creds = await api.get<SipCredentials>("/sip/credentials");
+      credsRef.current = creds;
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
         setStatusSafe("unregistered", "sip_credentials_not_configured");
@@ -314,6 +356,22 @@ export function useNvoipSipPhone(enabled: boolean) {
     }
     startUa(creds, candidates[0]);
   }, [enabled, ensureLocalAudio, setStatusSafe, startUa]);
+
+  const placeCall = useCallback((rawNumber: string) => {
+    const phone = rawNumber.replace(/[^\d+]/g, "");
+    const creds = credsRef.current;
+    const ua = uaRef.current;
+    if (!phone || !creds?.sipDomain || !ua?.isRegistered()) return false;
+    outboundLegRef.current = true;
+    const id = crypto.randomUUID();
+    callLogRef.current = { id, answeredAt: null };
+    void api.post("/sip/calls", { clientCallId: id, direction: "OUTGOING", phone }).catch(() => {});
+    ua.call(`sip:${phone.replace(/^\+/, "")}@${creds.sipDomain}`, {
+      mediaConstraints: { audio: true, video: false },
+      pcConfig: SIP_PC_CONFIG,
+    });
+    return true;
+  }, []);
 
   const hangup = useCallback(() => {
     stopIncomingRing();
@@ -416,6 +474,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     hangup,
     answer,
     reject,
+    placeCall,
     isInCall: status === "in-call" || status === "ringing",
   };
 }

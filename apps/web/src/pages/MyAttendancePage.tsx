@@ -36,7 +36,7 @@ interface Row {
 
 interface RecentCallRow {
   id: string;
-  provider: "wavoip" | "nvoip";
+  provider: "wavoip" | "nvoip" | "sip";
   direction: string;
   status: string;
   durationSec: number | null;
@@ -44,6 +44,8 @@ interface RecentCallRow {
   endedAt: string | null;
   contact: { id: string; name: string; phone: string } | null;
   conversationId: string | null;
+  caller?: string;
+  receiver?: string;
 }
 
 export function MyAttendancePage() {
@@ -77,8 +79,9 @@ export function MyAttendancePage() {
       try {
         const wavoipEnabled = user?.organizationFeatures?.wavoip_voice ?? false;
         const nvoipEnabled = user?.organizationFeatures?.nvoip_voice ?? false;
+        const sipEnabled = user?.organizationFeatures?.nvoip_embedded_sip ?? false;
 
-        const [attendanceRes, wavoipCalls, nvoipCalls] = await Promise.all([
+        const [attendanceRes, wavoipCalls, nvoipCalls, sipCalls] = await Promise.all([
           api.get<{
             data: Row[];
             total: number;
@@ -94,11 +97,17 @@ export function MyAttendancePage() {
                 .get<{ data: Omit<RecentCallRow, "provider">[] }>("/nvoip/calls/my-recent")
                 .catch(() => ({ data: [] }))
             : Promise.resolve({ data: [] }),
+          sipEnabled
+            ? api
+                .get<{ data: Omit<RecentCallRow, "provider">[] }>("/sip/calls/my-recent")
+                .catch(() => ({ data: [] }))
+            : Promise.resolve({ data: [] }),
         ]);
 
         const merged: RecentCallRow[] = [
           ...(wavoipCalls.data ?? []).map((c) => ({ ...c, provider: "wavoip" as const })),
           ...(nvoipCalls.data ?? []).map((c) => ({ ...c, provider: "nvoip" as const })),
+          ...(sipCalls.data ?? []).map((c) => ({ ...c, provider: "sip" as const })),
         ].sort(
           (a, b) =>
             new Date(b.endedAt ?? b.createdAt).getTime() - new Date(a.endedAt ?? a.createdAt).getTime(),
@@ -122,7 +131,7 @@ export function MyAttendancePage() {
       }
     }
     void load();
-  }, [user?.organizationFeatures?.nvoip_voice, user?.organizationFeatures?.wavoip_voice]);
+  }, [user?.organizationFeatures?.nvoip_voice, user?.organizationFeatures?.wavoip_voice, user?.organizationFeatures?.nvoip_embedded_sip]);
 
   useEffect(() => {
     if (!dealsEnabled) {
@@ -255,7 +264,11 @@ export function MyAttendancePage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-medium text-gray-900 dark:text-ink-50">
-                              {call.contact?.name ?? call.contact?.phone ?? "—"}
+                              {call.contact?.name ??
+                                (call.direction === "OUTBOUND" || call.direction === "OUTGOING"
+                                  ? call.receiver
+                                  : call.caller) ??
+                                "—"}
                             </span>
                             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
                               {dirLabel}

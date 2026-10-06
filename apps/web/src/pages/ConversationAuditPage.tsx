@@ -25,7 +25,7 @@ interface LeadTypeRow {
 }
 
 interface AuditRow {
-  recordType?: "closure" | "wavoip_call" | "threecx_call" | "nvoip_call";
+  recordType?: "closure" | "wavoip_call" | "threecx_call" | "nvoip_call" | "sip_call";
   id: string;
   conversationId: string | null;
   sessionIndex?: number;
@@ -138,7 +138,8 @@ export function ConversationAuditPage() {
   const isCallRow = (r: AuditRow) =>
     r.recordType === "wavoip_call" ||
     r.recordType === "threecx_call" ||
-    r.recordType === "nvoip_call";
+    r.recordType === "nvoip_call" ||
+    r.recordType === "sip_call";
 
   const closureRows = rows.filter((r) => !isCallRow(r));
   const callRows = rows.filter((r) => isCallRow(r));
@@ -332,7 +333,9 @@ export function ConversationAuditPage() {
                             ? t("audit.statusThreeCxCall")
                             : r.recordType === "nvoip_call"
                               ? t("audit.statusNvoipCall")
-                              : t("audit.statusWavoipCall")}{" "}
+                              : r.recordType === "sip_call"
+                                ? t("audit.statusSipCall")
+                                : t("audit.statusWavoipCall")}{" "}
                           · {r.status}
                         </span>
                       ) : (

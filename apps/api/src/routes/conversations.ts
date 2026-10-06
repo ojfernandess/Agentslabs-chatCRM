@@ -925,15 +925,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const callWhere: Prisma.WavoipCallLogWhereInput = { organizationId };
     const threeCxCallWhere: Prisma.ThreeCxCallLogWhereInput = { organizationId };
     const nvoipCallWhere: Prisma.NvoipCallLogWhereInput = { organizationId };
+    const sipCallWhere: Prisma.SipCallLogWhereInput = { organizationId };
     if (query.assignedToId) {
       callWhere.initiatedByUserId = query.assignedToId;
       threeCxCallWhere.initiatedByUserId = query.assignedToId;
       nvoipCallWhere.initiatedByUserId = query.assignedToId;
+      sipCallWhere.initiatedByUserId = query.assignedToId;
     }
     if (query.inboxId) {
       callWhere.conversation = { inboxId: query.inboxId };
       threeCxCallWhere.conversation = { inboxId: query.inboxId };
       nvoipCallWhere.conversation = { inboxId: query.inboxId };
+      sipCallWhere.conversation = { inboxId: query.inboxId };
     }
     if (query.resolvedFrom || query.resolvedTo) {
       const range: Prisma.DateTimeFilter = {};
@@ -950,6 +953,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         callWhere.OR = rangeOr;
         threeCxCallWhere.OR = rangeOr;
         nvoipCallWhere.OR = rangeOr;
+        sipCallWhere.OR = rangeOr;
       }
     }
 
@@ -962,6 +966,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       threeCxTotal,
       nvoipLogs,
       nvoipTotal,
+      sipLogs,
+      sipTotal,
     ] = await Promise.all([
       prisma.conversationClosureRecord.findMany({
         where,
@@ -1026,6 +1032,21 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         take: fetchLimit,
       }),
       prisma.nvoipCallLog.count({ where: nvoipCallWhere }),
+      prisma.sipCallLog.findMany({
+        where: sipCallWhere,
+        include: {
+          contact: { select: contactAuditSelect },
+          conversation: {
+            include: {
+              inbox: { select: { id: true, name: true, isDefault: true, channelType: true } },
+            },
+          },
+          initiatedByUser: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: [{ endedAt: "desc" }, { createdAt: "desc" }],
+        take: fetchLimit,
+      }),
+      prisma.sipCallLog.count({ where: sipCallWhere }),
     ]);
 
     const triageByInbox = await buildAgentBotTriageMapForInboxes(
@@ -1034,7 +1055,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     );
 
     type AuditEntry = {
-      recordType: "closure" | "wavoip_call" | "threecx_call" | "nvoip_call";
+      recordType: "closure" | "wavoip_call" | "threecx_call" | "nvoip_call" | "sip_call";
       id: string;
       occurredAt: string;
       conversationId: string | null;
@@ -1154,13 +1175,34 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       };
     });
 
-    const merged = [...closureEntries, ...callEntries, ...threeCxEntries, ...nvoipEntries]
+    const sipEntries: AuditEntry[] = sipLogs.map((row) => {
+      const occurred = row.endedAt ?? row.createdAt;
+      return {
+        recordType: "sip_call" as const,
+        id: row.id,
+        conversationId: row.conversationId,
+        status: row.status,
+        updatedAt: occurred.toISOString(),
+        occurredAt: occurred.toISOString(),
+        contact: row.contact,
+        assignedTo: row.initiatedByUser,
+        initiatedBy: row.initiatedByUser,
+        inbox: row.conversation?.inbox ?? null,
+        direction: row.direction,
+        durationSec: row.durationSec,
+        caller: row.caller,
+        receiver: row.receiver,
+        deviceName: "SIP",
+      };
+    });
+
+    const merged = [...closureEntries, ...callEntries, ...threeCxEntries, ...nvoipEntries, ...sipEntries]
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
       .slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
 
     return {
       data: merged,
-      total: closureTotal + callTotal + threeCxTotal + nvoipTotal,
+      total: closureTotal + callTotal + threeCxTotal + nvoipTotal + sipTotal,
       page: query.page,
       pageSize: query.pageSize,
     };

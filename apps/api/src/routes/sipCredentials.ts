@@ -13,6 +13,7 @@ import {
 } from "../lib/userSipCredentials.js";
 import { getOrgSipServer, saveOrgSipServer } from "../lib/orgSipServer.js";
 import { isUserTenantAdmin } from "../lib/tenantAdmin.js";
+import { completeSipCallLog, startSipCallLog } from "../lib/sipCallLog.js";
 
 const upsertSchema = z.object({
   sipUser: z.string().min(1).max(64),
@@ -159,5 +160,91 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       void syncNvoipInboundHistoryForAccount(account).catch(() => {});
     }
     return { ok: true, ...routed };
+  });
+
+  app.post("/calls", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const parsed = z
+      .object({
+        clientCallId: z.string().uuid(),
+        direction: z.enum(["INCOMING", "OUTGOING"]),
+        phone: z.string().min(1).max(32),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_call_invalid",
+        statusCode: 400,
+      });
+    }
+    await startSipCallLog({
+      organizationId,
+      userId: request.user.id,
+      ...parsed.data,
+    });
+    return { ok: true };
+  });
+
+  app.post("/calls/complete", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const parsed = z
+      .object({
+        clientCallId: z.string().uuid(),
+        status: z.string().min(1).max(64),
+        durationSec: z.number().int().min(0).max(86_400).nullable().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_call_invalid",
+        statusCode: 400,
+      });
+    }
+    await completeSipCallLog({
+      organizationId,
+      userId: request.user.id,
+      clientCallId: parsed.data.clientCallId,
+      status: parsed.data.status,
+      durationSec: parsed.data.durationSec ?? null,
+    });
+    return { ok: true };
+  });
+
+  app.get("/calls/my-recent", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const logs = await prisma.sipCallLog.findMany({
+      where: { organizationId, initiatedByUserId: request.user.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        contact: { select: { id: true, name: true, phone: true } },
+        initiatedByUser: { select: { id: true, name: true } },
+      },
+    });
+    return {
+      data: logs.map((log) => ({
+        id: log.id,
+        externalCallId: log.clientCallId,
+        direction: log.direction,
+        status: log.status,
+        durationSec: log.durationSec,
+        caller: log.caller,
+        receiver: log.receiver,
+        recordUrl: null,
+        createdAt: log.createdAt.toISOString(),
+        endedAt: log.endedAt?.toISOString() ?? null,
+        contact: log.contact,
+        conversationId: log.conversationId,
+        agent: log.initiatedByUser,
+      })),
+    };
   });
 }

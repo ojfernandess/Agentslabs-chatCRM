@@ -44,16 +44,25 @@ export function NvoipSipStatusBadge({ compact }: { compact?: boolean }) {
 
   if (compact) {
     return (
-      <span className="inline-flex" title={problem ?? `${t("nvoip.softphone.title")} · ${label}`}>
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent("openconduit:sip-dialer-open"))}
+        className="inline-flex"
+        title={problem ?? `${t("nvoip.softphone.title")} · ${label}`}
+        aria-label={t("nvoip.softphone.title")}
+      >
         {phoneMark}
-      </span>
+      </button>
     );
   }
 
   return (
-    <span
-      className="inline-flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 dark:border-ink-700 dark:bg-ink-900"
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new CustomEvent("openconduit:sip-dialer-open"))}
+      className="inline-flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left dark:border-ink-700 dark:bg-ink-900"
       title={problem ?? undefined}
+      aria-label={t("nvoip.softphone.title")}
     >
       {phoneMark}
       <span className="min-w-0">
@@ -66,6 +75,6 @@ export function NvoipSipStatusBadge({ compact }: { compact?: boolean }) {
         </span>
         {problem ? <span className="block truncate text-xs text-red-600">{problem}</span> : null}
       </span>
-    </span>
+    </button>
   );
 }

@@ -134,7 +134,7 @@ interface ReportsPayload {
   };
 }
 
-type TelephonyProvider = "wavoip" | "nvoip" | "threecx";
+type TelephonyProvider = "wavoip" | "nvoip" | "threecx" | "sip";
 
 interface TelephonyReports {
   enabled: boolean;
@@ -428,6 +428,7 @@ export function ReportsPage() {
   const providerLabel = (p: TelephonyProvider) => {
     if (p === "wavoip") return t("reportsPage.providerWavoip");
     if (p === "nvoip") return t("reportsPage.providerNvoip");
+    if (p === "sip") return t("reportsPage.providerSip");
     return t("reportsPage.providerThreecx");
   };
 
@@ -928,6 +929,7 @@ export function ReportsPage() {
                           ["wavoip", data.telephony.providers.wavoip],
                           ["nvoip", data.telephony.providers.nvoip],
                           ["threecx", data.telephony.providers.threecx],
+                          ["sip", data.telephony.providers.sip],
                         ] as const
                       )
                         .filter(([, p]) => p.enabled)

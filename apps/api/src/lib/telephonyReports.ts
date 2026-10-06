@@ -3,7 +3,7 @@ import { isNvoipCallStatusActive } from "./nvoipCallTimeline.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 import { isWavoipCallStatusActive } from "./wavoipCallTimeline.js";
 
-export type TelephonyProvider = "wavoip" | "nvoip" | "threecx";
+export type TelephonyProvider = "wavoip" | "nvoip" | "threecx" | "sip";
 type Granularity = "day" | "week" | "month";
 type CallOutcome = "answered" | "missed" | "in_progress" | "other";
 
@@ -36,7 +36,8 @@ function classifyCallOutcome(call: NormalizedCall): CallOutcome {
       (call.provider === "wavoip" && isWavoipCallStatusActive(s, dir)) ||
       (call.provider === "nvoip" && isNvoipCallStatusActive(s, dir)) ||
       (call.provider === "threecx" &&
-        (s === "RINGING" || s === "ACTIVE" || s === "DIALING" || s === "CALLING"))
+        (s === "RINGING" || s === "ACTIVE" || s === "DIALING" || s === "CALLING")) ||
+      (call.provider === "sip" && (s === "RINGING" || s === "ACTIVE"))
     ) {
       return "in_progress";
     }
@@ -136,10 +137,11 @@ export async function buildTelephonyReports(input: {
 }): Promise<TelephonyReportsPayload> {
   const { organizationId, from, to, granularity } = input;
 
-  const [wavoipEnabled, nvoipEnabled, threeCxEnabled] = await Promise.all([
+  const [wavoipEnabled, nvoipEnabled, threeCxEnabled, sipEnabled] = await Promise.all([
     isOrganizationFeatureEnabled(organizationId, "wavoip_voice"),
     isOrganizationFeatureEnabled(organizationId, "nvoip_voice"),
     isOrganizationFeatureEnabled(organizationId, "threecx_voice"),
+    isOrganizationFeatureEnabled(organizationId, "nvoip_embedded_sip"),
   ]);
 
   const dateWhere = callOccurredInRange(from, to);
@@ -154,7 +156,7 @@ export async function buildTelephonyReports(input: {
     createdAt: true,
   } as const;
 
-  const [wavoipLogs, nvoipLogs, threeCxLogs, agentUsers] = await Promise.all([
+  const [wavoipLogs, nvoipLogs, threeCxLogs, sipLogs, agentUsers] = await Promise.all([
     wavoipEnabled
       ? prisma.wavoipCallLog.findMany({
           where: {
@@ -174,6 +176,20 @@ export async function buildTelephonyReports(input: {
       ? prisma.threeCxCallLog.findMany({
           where: { organizationId, ...dateWhere },
           select: callSelect,
+        })
+      : Promise.resolve([]),
+    sipEnabled
+      ? prisma.sipCallLog.findMany({
+          where: { organizationId, ...dateWhere },
+          select: {
+            direction: true,
+            status: true,
+            durationSec: true,
+            endedAt: true,
+            initiatedByUserId: true,
+            startedAt: true,
+            createdAt: true,
+          },
         })
       : Promise.resolve([]),
     prisma.user.findMany({
@@ -214,6 +230,16 @@ export async function buildTelephonyReports(input: {
       durationSec: r.durationSec,
       endedAt: r.endedAt,
       recordUrl: r.recordUrl,
+      initiatedByUserId: r.initiatedByUserId,
+      callAt: r.startedAt ?? r.createdAt,
+    })),
+    ...sipLogs.map((r) => ({
+      provider: "sip" as const,
+      direction: r.direction,
+      status: r.status,
+      durationSec: r.durationSec,
+      endedAt: r.endedAt,
+      recordUrl: null,
       initiatedByUserId: r.initiatedByUserId,
       callAt: r.startedAt ?? r.createdAt,
     })),
@@ -371,7 +397,7 @@ export async function buildTelephonyReports(input: {
     inboundTerminal > 0 ? round2((inboundMissed / inboundTerminal) * 100) : null;
   const avgTalkTimeSec = talkTimeN > 0 ? round2(totalTalkTimeSec / talkTimeN) : null;
 
-  const enabled = wavoipEnabled || nvoipEnabled || threeCxEnabled;
+  const enabled = wavoipEnabled || nvoipEnabled || threeCxEnabled || sipEnabled;
 
   return {
     enabled,
@@ -379,6 +405,7 @@ export async function buildTelephonyReports(input: {
       wavoip: { enabled: wavoipEnabled, hasData: wavoipLogs.length > 0 },
       nvoip: { enabled: nvoipEnabled, hasData: nvoipLogs.length > 0 },
       threecx: { enabled: threeCxEnabled, hasData: threeCxLogs.length > 0 },
+      sip: { enabled: sipEnabled, hasData: sipLogs.length > 0 },
     },
     summary: {
       totalCalls,
@@ -396,7 +423,7 @@ export async function buildTelephonyReports(input: {
       recordingsCount,
     },
     timeSeries: Array.from(tsMerge.values()).sort((a, b) => a.bucket.localeCompare(b.bucket)),
-    byProvider: (["wavoip", "nvoip", "threecx"] as TelephonyProvider[])
+    byProvider: (["wavoip", "nvoip", "threecx", "sip"] as TelephonyProvider[])
       .filter((p) => providerStats.has(p))
       .map((provider) => {
         const p = providerStats.get(provider)!;
