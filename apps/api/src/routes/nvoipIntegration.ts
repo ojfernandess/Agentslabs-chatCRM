@@ -135,8 +135,11 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
       parsed.data.userToken?.trim() && parsed.data.userToken !== MASKED_NVOIP_SECRET
         ? parsed.data.userToken.trim()
         : null;
+    const napikeyProvided = parsed.data.napikey !== undefined;
     const napikey =
-      parsed.data.napikey?.trim() && parsed.data.napikey !== MASKED_NVOIP_SECRET
+      napikeyProvided &&
+      parsed.data.napikey?.trim() &&
+      parsed.data.napikey !== MASKED_NVOIP_SECRET
         ? parsed.data.napikey.trim()
         : null;
 
@@ -224,7 +227,7 @@ export async function nvoipIntegrationRoutes(app: FastifyInstance): Promise<void
             ? { waDefaultLanguage: parsed.data.waDefaultLanguage.trim() || "pt_BR" }
             : {}),
           ...(userToken ? { userTokenEnc: encryptNvoipSecret(userToken) } : {}),
-          ...(napikey !== undefined ? { napikeyEnc: napikey ? encryptNvoipSecret(napikey) : null } : {}),
+          ...(napikeyProvided ? { napikeyEnc: napikey ? encryptNvoipSecret(napikey) : null } : {}),
         },
         include: { inbox: { select: { name: true } } },
       });

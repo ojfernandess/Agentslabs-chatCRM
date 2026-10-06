@@ -219,6 +219,40 @@ export async function nvoipAuthorizedFetch(
   return fetchWithRateLimitBackoff(apiUrl(path), { ...init, headers });
 }
 
+const NVOIP_API_KEY_HEADER = "X-Nvoip-Api-Key";
+
+/**
+ * Chave de API v3 no lugar da napikey.
+ * Vai só no cabeçalho X-Nvoip-Api-Key, sem troca por token OAuth.
+ */
+export async function nvoipApiKeyFetch(
+  account: NvoipAccount,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const apiKey = decryptNvoipSecret(account.napikeyEnc);
+  if (!apiKey) throw new Error("nvoip_api_key_missing");
+  const headers = nvoipRequestHeaders(init.headers);
+  headers.set(NVOIP_API_KEY_HEADER, apiKey);
+  if (!headers.has("Content-Type") && init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetchWithRateLimitBackoff(apiUrl(path), { ...init, headers });
+}
+
+/** Ligações e DIDs: a chave de API v3 primeiro; o Bearer OAuth fica como reserva. */
+async function nvoipTelephonyFetch(
+  account: NvoipAccount,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  if (decryptNvoipSecret(account.napikeyEnc)) {
+    const keyed = await nvoipApiKeyFetch(account, path, init);
+    if (keyed.ok || (keyed.status !== 401 && keyed.status !== 403)) return keyed;
+  }
+  return nvoipAuthorizedFetch(account, path, init);
+}
+
 function parseBalanceResponse(text: string, res: Response): { balance: string } | null {
   if (isLikelyHtmlBody(text)) return null;
   let data: { balance?: string | number; saldo?: string | number; error?: string };
@@ -253,7 +287,7 @@ export async function nvoipCreateCall(
   caller: string,
   called: string,
 ): Promise<{ callId: string; state: string }> {
-  const res = await nvoipAuthorizedFetch(account, "/calls/", {
+  const res = await nvoipTelephonyFetch(account, "/calls/", {
     method: "POST",
     body: JSON.stringify({ caller: caller.trim(), called: called.trim() }),
   });
@@ -453,7 +487,7 @@ function normalizeHistoryList(data: unknown): NvoipHistoryCallItem[] {
   }
   if (data && typeof data === "object") {
     const obj = data as Record<string, unknown>;
-    for (const key of ["calls", "data", "history", "items", "result", "records"]) {
+    for (const key of ["content", "calls", "data", "history", "items", "result", "records"]) {
       const nested = obj[key];
       if (Array.isArray(nested)) {
         return nested.map(parseHistoryCallItem).filter((x): x is NvoipHistoryCallItem => x != null);
@@ -469,7 +503,7 @@ export async function nvoipGetCallHistory(
   date: NvoipHistoryDate,
 ): Promise<NvoipHistoryCallItem[]> {
   const qs = new URLSearchParams({ type, date });
-  const res = await nvoipAuthorizedFetch(account, `/calls/history?${qs.toString()}`, {
+  const res = await nvoipTelephonyFetch(account, `/calls/history?${qs.toString()}`, {
     method: "GET",
   });
   const data = await parseJson<unknown>(res);
@@ -1070,14 +1104,10 @@ export async function nvoipUpdateSipUser(
     if (lastError !== "Server error") break;
   }
 
-  const napikey = decryptNvoipSecret(account.napikeyEnc);
-  if (napikey && lastError === "Server error") {
-    const body = buildBody({});
-    const qs = `numbersip=${encodeURIComponent(account.numbersip)}&napikey=${encodeURIComponent(napikey)}`;
-    const res = await fetchWithRateLimitBackoff(apiUrl(`/update/users?${qs}`), {
+  if (decryptNvoipSecret(account.napikeyEnc) && lastError === "Server error") {
+    const res = await nvoipApiKeyFetch(account, "/update/users", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(buildBody({})),
     });
     const data = await parseJson<Record<string, unknown>>(res);
     if (res.ok) return data;
@@ -1124,7 +1154,7 @@ export async function nvoipUpdateDid(
   account: NvoipAccount,
   input: { number: string; destination: string },
 ): Promise<Record<string, unknown>> {
-  const res = await nvoipAuthorizedFetch(account, "/update/dids", {
+  const res = await nvoipTelephonyFetch(account, "/update/dids", {
     method: "PUT",
     body: JSON.stringify({
       number: input.number.trim(),
@@ -1143,7 +1173,7 @@ export async function nvoipUpdateDid(
 }
 
 export async function nvoipListDids(account: NvoipAccount): Promise<NvoipDidItem[]> {
-  const res = await nvoipAuthorizedFetch(account, "/list/dids", { method: "GET" });
+  const res = await nvoipTelephonyFetch(account, "/list/dids", { method: "GET" });
   const data = await parseJson<unknown>(res);
   if (!res.ok) {
     const err = data as { error?: string };
@@ -1468,11 +1498,7 @@ async function nvoipFetchWithNapikey(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const napikey = decryptNvoipSecret(account.napikeyEnc);
-  if (!napikey) throw new Error("napikey_missing");
-  const sep = path.includes("?") ? "&" : "?";
-  const url = `${path}${sep}numbersip=${encodeURIComponent(account.numbersip)}&napikey=${encodeURIComponent(napikey)}`;
-  return fetch(apiUrl(url), { ...init, headers: init.headers ?? {} });
+  return nvoipApiKeyFetch(account, path, init);
 }
 
 async function nvoipFetchPreferOAuth(

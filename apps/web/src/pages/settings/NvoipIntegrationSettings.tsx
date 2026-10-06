@@ -29,6 +29,7 @@ type AccountRow = {
   otpDefaultChannel?: string;
   waInstance?: string | null;
   waDefaultLanguage?: string;
+  hasNapikey?: boolean;
   incomingQueue?: { mode: string; teamId: string | null };
   lowBalanceAlertBrl?: number | null;
   balanceAlertEmails?: string[];
@@ -89,6 +90,7 @@ export function NvoipIntegrationSettings() {
 
   const [numbersip, setNumbersip] = useState("");
   const [userToken, setUserToken] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [defaultCaller, setDefaultCaller] = useState("");
   const [inboxId, setInboxId] = useState("");
   const [torpedoPhone, setTorpedoPhone] = useState("");
@@ -242,9 +244,11 @@ export function NvoipIntegrationSettings() {
         outboundCallsEnabled,
       };
       if (userToken.trim()) body.userToken = userToken.trim();
+      if (apiKey.trim()) body.napikey = apiKey.trim();
       const res = await api.put<{ account: AccountRow }>("/settings/nvoip/account", body);
       setAccount(res.account);
       setUserToken("");
+      setApiKey("");
       window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
       await nvoipVoice?.refreshSession();
     } catch (e) {
@@ -510,6 +514,23 @@ export function NvoipIntegrationSettings() {
                   />
                   <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">
                     {t("nvoip.field.clientSecretHint")}
+                  </p>
+                </label>
+                <label className="block text-sm">
+                  <span className="font-medium">{t("nvoip.field.napikey")}</span>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    placeholder={
+                      account?.hasNapikey ? t("nvoip.field.apiKeyPlaceholder") : t("nvoip.field.napikey")
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 dark:border-ink-700 dark:bg-ink-950"
+                  />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-ink-400">
+                    {t("nvoip.field.apiKeyHint")}
                   </p>
                 </label>
               </div>

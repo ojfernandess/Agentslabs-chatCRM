@@ -3441,7 +3441,7 @@ export const messages = {
       balanceRefresh: "Atualizar saldo",
       sectionAccount: "Conta e credenciais",
       sectionAccountHint:
-        "client_id e client_secret em Configurações → API no painel Nvoip. O ramal de origem fica na seção de chamadas e pode ficar vazio ao guardar a conta.",
+        "OAuth 2.0 e a chave de API v3 ficam em Configurações → API no painel Nvoip. O histórico de ligações usa a chave no cabeçalho X-Nvoip-Api-Key.",
       sectionVoice: "Chamadas de voz",
       sectionVoiceHint: "Ramal de saída, caixa de entrada e teste de ligação.",
       sectionChannels: "Canais adicionais",
@@ -3590,7 +3590,10 @@ export const messages = {
         clientSecretHint:
           "client_secret do mesmo painel. Obrigatório na primeira ligação; depois, deixe vazio para manter o atual.",
         clientSecretRequired: "Informe o client_secret para ligar a conta Nvoip.",
-        napikey: "NAPI Key (opcional)",
+        napikey: "Chave de API v3",
+        apiKeyHint:
+          "Substitui a napikey. A chave vai só no cabeçalho X-Nvoip-Api-Key, sem troca por token OAuth. Deixe vazio para manter a atual.",
+        apiKeyPlaceholder: "Deixe vazio para manter a chave atual",
         outboundCalls: "Botão Ligar nas conversas",
         outboundCallsHint:
           "Desligado, a organização só recebe ligações. O botão Ligar some das conversas e dos contatos.",
@@ -11188,7 +11191,7 @@ export const messages = {
       balanceRefresh: "Refresh balance",
       sectionAccount: "Account & credentials",
       sectionAccountHint:
-        "client_id and client_secret from Settings → API in the Nvoip dashboard. The outbound extension is in the calls section and can stay empty when saving the account.",
+        "OAuth 2.0 and the API v3 key are in Settings → API in the Nvoip dashboard. Call history uses the key in the X-Nvoip-Api-Key header.",
       sectionVoice: "Voice calls",
       sectionVoiceHint: "Outbound caller, inbox, and connection test.",
       sectionChannels: "Additional channels",
@@ -11337,7 +11340,10 @@ export const messages = {
         clientSecretHint:
           "client_secret from the same screen. Required the first time you connect; leave blank later to keep the current secret.",
         clientSecretRequired: "Enter the client_secret to connect the Nvoip account.",
-        napikey: "NAPI Key (optional)",
+        napikey: "API v3 key",
+        apiKeyHint:
+          "Replaces the napikey. The key is sent only in the X-Nvoip-Api-Key header and is not exchanged for an OAuth token. Leave blank to keep the current key.",
+        apiKeyPlaceholder: "Leave blank to keep the current key",
         outboundCalls: "Call button in conversations",
         outboundCallsHint:
           "When off, the organization only receives calls. The Call button is hidden from conversations and contacts.",
