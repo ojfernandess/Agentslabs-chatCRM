@@ -3449,7 +3449,9 @@ export const messages = {
       extensionsHint:
         "Selecione o ramal Nvoip, confirme o número SIP (caller) e clique em «Guardar ramal». Caso vazio, usa o ramal predefinido da conta.",
       sipUsersTitle: "Ramais Nvoip (conta)",
-      sipUsersHint: "Sincronize com GET /list/users para ver utilizadores secundários e ramais na Nvoip.",
+      sipUsersHint: "Sincronize para ver os ramais secundários da conta Nvoip.",
+      syncUsersForbidden:
+        "A Nvoip recusou a lista de ramais. A sincronização consulta a API v2 com o token da conta.",
       sipUsersSync: "Sincronizar ramais",
       sipUsersSyncing: "A sincronizar…",
       sipUsersSyncedAt: "Última sincronização: {at}",
@@ -11189,7 +11191,9 @@ export const messages = {
       extensionsHint:
         "Pick the Nvoip extension, confirm the SIP caller id, and click «Save extension». If empty, the account default caller is used.",
       sipUsersTitle: "Nvoip extensions (account)",
-      sipUsersHint: "Sync via GET /list/users to see secondary users and extensions from Nvoip.",
+      sipUsersHint: "Sync to see the secondary extensions on the Nvoip account.",
+      syncUsersForbidden:
+        "Nvoip refused the extension list. Sync reads API v2 with the account token.",
       sipUsersSync: "Sync extensions",
       sipUsersSyncing: "Syncing…",
       sipUsersSyncedAt: "Last sync: {at}",

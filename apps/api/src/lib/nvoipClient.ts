@@ -870,14 +870,53 @@ function normalizeDidList(data: unknown): NvoipDidItem[] {
   return [];
 }
 
-export async function nvoipListUsers(account: NvoipAccount): Promise<NvoipSipUserItem[]> {
-  const res = await nvoipAuthorizedFetch(account, "/list/users", { method: "GET" });
-  const data = await parseJson<unknown>(res);
-  if (!res.ok) {
-    const err = data as { error?: string };
-    throw new Error(err?.error ?? `list_users_failed_${res.status}`);
+/** A listagem de ramais continua na API v2. O token v3 em `/v3/list/users` responde 403. */
+function nvoipUsersListUrl(): string {
+  return "https://api.nvoip.com.br/v2/list/users";
+}
+
+async function readSipUserList(res: Response): Promise<NvoipSipUserItem[] | null> {
+  if (!res.ok) return null;
+  let data: unknown;
+  try {
+    data = await parseJson<unknown>(res);
+  } catch {
+    return null;
   }
+  if (Array.isArray(data)) {
+    return data.map(parseSipUser).filter((x): x is NvoipSipUserItem => x != null);
+  }
+  if (!hasSipUserListKey(data)) return null;
   return normalizeSipUserList(data);
+}
+
+function hasSipUserListKey(data: unknown): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const obj = data as Record<string, unknown>;
+  return ["users", "data", "items", "result", "list"].some((key) => Array.isArray(obj[key]));
+}
+
+export async function nvoipListUsers(account: NvoipAccount): Promise<NvoipSipUserItem[]> {
+  const token = await getNvoipAccessToken(account);
+  const bearer = await fetchWithRateLimitBackoff(nvoipUsersListUrl(), {
+    method: "GET",
+    headers: nvoipRequestHeaders({ Authorization: `Bearer ${token}` }),
+  });
+  const fromBearer = await readSipUserList(bearer);
+  if (fromBearer !== null) return fromBearer;
+
+  const napikey = decryptNvoipSecret(account.napikeyEnc);
+  if (napikey) {
+    const url = `${nvoipUsersListUrl()}?napikey=${encodeURIComponent(napikey)}`;
+    const keyed = await fetchWithRateLimitBackoff(url, {
+      method: "GET",
+      headers: nvoipRequestHeaders(),
+    });
+    const fromKey = await readSipUserList(keyed);
+    if (fromKey !== null) return fromKey;
+  }
+
+  throw new Error(`list_users_failed_${bearer.status || 403}`);
 }
 
 export async function nvoipCreateSipUser(

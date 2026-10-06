@@ -332,7 +332,7 @@ export function NvoipIntegrationSettings() {
       if (latest) setDirectorySyncedAt(latest);
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("nvoip.loadError"));
+      setError(e instanceof ApiError ? mapNvoipCallErrorMessage(e.message, t) : t("nvoip.loadError"));
     } finally {
       setSyncingUsers(false);
     }
