@@ -1,7 +1,13 @@
 import type { NvoipAccount } from "@prisma/client";
 import { prisma } from "../db.js";
-import { decrypt } from "./encryption.js";
-import { nvoipListDids, nvoipUpdateDid, nvoipUpdateSipUser } from "./nvoipClient.js";
+import {
+  nvoipGetSipUser,
+  nvoipListDids,
+  nvoipListUsers,
+  nvoipSameNumbersip,
+  nvoipSetUserPanelAccess,
+  nvoipUpdateDid,
+} from "./nvoipClient.js";
 import { writeNvoipIntegrationLog } from "./nvoipIntegrationLog.js";
 import { parseNvoipPabxMode } from "./nvoipPabxConfig.js";
 import {
@@ -10,45 +16,85 @@ import {
   shouldRouteDidToProfileRamais,
 } from "./nvoipProfileRamais.js";
 
-type ProfileRamal = { numbersip: string; sipPassword: string };
-
-async function listProfileRamais(organizationId: string): Promise<ProfileRamal[]> {
+async function listProfileRamais(organizationId: string): Promise<string[]> {
   const rows = await prisma.userSipCredentials.findMany({
     where: {
       user: {
         OR: [{ organizationId }, { memberships: { some: { organizationId } } }],
       },
     },
-    select: { sipUser: true, sipPasswordEnc: true },
+    select: { sipUser: true },
   });
 
-  const byRamal = new Map<string, ProfileRamal>();
+  const ramais = new Set<string>();
   for (const row of rows) {
     const numbersip = row.sipUser.replace(/\D/g, "");
-    if (numbersip.length < 3 || numbersip.length > 16 || byRamal.has(numbersip)) continue;
-    let sipPassword = "";
-    try {
-      sipPassword = decrypt(row.sipPasswordEnc)?.trim() ?? "";
-    } catch {
-      sipPassword = "";
-    }
-    byRamal.set(numbersip, { numbersip, sipPassword });
+    if (numbersip.length < 3 || numbersip.length > 16) continue;
+    ramais.add(numbersip);
   }
-  return [...byRamal.values()].sort((a, b) => a.numbersip.localeCompare(b.numbersip));
+  return [...ramais].sort((a, b) => a.localeCompare(b));
 }
 
-/** Tira o webphone do painel Nvoip do caminho para o INVITE cair no softphone do CRM. */
+/**
+ * Bloqueia o login do painel Nvoip nos ramais do perfil.
+ * PUT /users/{id}/panel-access-status não altera a conta SIP.
+ */
 async function releaseProfileRamaisFromPanelWebphone(
   account: NvoipAccount,
-  ramais: ProfileRamal[],
+  ramais: string[],
 ): Promise<void> {
+  let users;
+  try {
+    users = await nvoipListUsers(account);
+  } catch (err) {
+    await writeNvoipIntegrationLog({
+      organizationId: account.organizationId,
+      nvoipAccountId: account.id,
+      level: "warn",
+      eventType: "profile_ramal_webphone_release_failed",
+      message: err instanceof Error ? err.message : "profile_ramal_webphone_release_failed",
+      payload: { ramais },
+    }).catch(() => {});
+    return;
+  }
+
   await Promise.all(
-    ramais.map(async (ramal) => {
+    ramais.map(async (numbersip) => {
+      const match = users.find(
+        (user) =>
+          nvoipSameNumbersip(user.numbersip, numbersip) ||
+          nvoipSameNumbersip(user.caller, numbersip),
+      );
+      if (!match?.id) {
+        await writeNvoipIntegrationLog({
+          organizationId: account.organizationId,
+          nvoipAccountId: account.id,
+          level: "warn",
+          eventType: "profile_ramal_webphone_release_failed",
+          message: "profile_ramal_user_not_found",
+          payload: { numbersip },
+        }).catch(() => {});
+        return;
+      }
+      if (match.webphone === false) return;
       try {
-        await nvoipUpdateSipUser(account, {
-          numbersip: ramal.numbersip,
-          ...(ramal.sipPassword ? { sipPassword: ramal.sipPassword } : {}),
-          webphone: false,
+        const detail = await nvoipGetSipUser(account, match.id);
+        if (detail.user.webphone !== true) return;
+        if (!detail.etag) {
+          await writeNvoipIntegrationLog({
+            organizationId: account.organizationId,
+            nvoipAccountId: account.id,
+            level: "warn",
+            eventType: "profile_ramal_webphone_release_failed",
+            message: "panel_access_missing_etag",
+            payload: { numbersip, userId: match.id },
+          }).catch(() => {});
+          return;
+        }
+        await nvoipSetUserPanelAccess(account, {
+          userId: match.id,
+          etag: detail.etag,
+          status: "INACTIVE",
         });
       } catch (err) {
         await writeNvoipIntegrationLog({
@@ -57,7 +103,7 @@ async function releaseProfileRamaisFromPanelWebphone(
           level: "warn",
           eventType: "profile_ramal_webphone_release_failed",
           message: err instanceof Error ? err.message : "profile_ramal_webphone_release_failed",
-          payload: { numbersip: ramal.numbersip },
+          payload: { numbersip, userId: match.id },
         }).catch(() => {});
       }
     }),
@@ -87,7 +133,7 @@ export async function routeNvoipDidsToProfileRamais(organizationId: string): Pro
   if (pabxMode === "external_pabx_trunk") return { ramais: [], updated: [] };
 
   const ramais = await listProfileRamais(organizationId);
-  const destination = buildProfileDidDestination(ramais.map((ramal) => ramal.numbersip));
+  const destination = buildProfileDidDestination(ramais);
   if (!destination) return { ramais: [], updated: [] };
 
   await releaseProfileRamaisFromPanelWebphone(account, ramais);

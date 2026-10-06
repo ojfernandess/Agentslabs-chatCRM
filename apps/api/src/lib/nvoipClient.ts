@@ -777,10 +777,12 @@ export async function nvoipDeleteScheduledTorpedo(
 }
 
 export type NvoipSipUserItem = {
+  id: string;
   numbersip: string;
   name: string;
   caller: string;
   blocked: boolean;
+  /** Acesso ao painel Nvoip (webphone). null quando a API não informa o estado. */
   webphone: boolean | null;
   raw: Record<string, unknown>;
 };
@@ -802,45 +804,92 @@ function pickBool(obj: Record<string, unknown>, keys: string[]): boolean {
   return false;
 }
 
+function panelAccessToWebphone(raw: string): boolean | null {
+  const status = raw.trim().toUpperCase();
+  if (status === "ACTIVE" || status === "ENABLED") return true;
+  if (status === "INACTIVE" || status === "DISABLED" || status === "BLOCKED") return false;
+  return null;
+}
+
 function parseSipUser(raw: unknown): NvoipSipUserItem | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
-  const numbersip = pickString(obj, ["numbersip", "numberSip", "number_sip", "username", "user"]);
+  const extension = pickString(obj, ["extension", "ramal"]);
+  const numbersip =
+    pickString(obj, ["numbersip", "numberSip", "number_sip", "username", "user"]) || extension;
   if (!numbersip) return null;
-  const caller = pickString(obj, ["caller", "ramal", "extension", "sip", "dn", "callerid"]);
+  const caller = pickString(obj, ["caller", "sip", "dn", "callerid"]) || extension;
   const name = pickString(obj, ["name", "nome", "displayName", "display_name"]);
+  const panel = panelAccessToWebphone(
+    pickString(obj, ["panelAccessStatus", "panel_access_status"]),
+  );
+  let webphone: boolean | null = panel;
+  if (webphone == null) {
+    for (const key of ["webphone", "webPhone", "web_phone"]) {
+      const v = obj[key];
+      if (typeof v === "boolean") {
+        webphone = v;
+        break;
+      }
+      if (v === "true" || v === 1 || v === "1") {
+        webphone = true;
+        break;
+      }
+      if (v === "false" || v === 0 || v === "0") {
+        webphone = false;
+        break;
+      }
+    }
+  }
   return {
+    id: pickString(obj, ["id", "userId", "user_id"]),
     numbersip,
     name,
     caller,
     blocked: pickBool(obj, ["blocked", "block", "isBlocked"]),
-    webphone: (() => {
-      for (const key of ["webphone", "webPhone", "web_phone"]) {
-        const v = obj[key];
-        if (typeof v === "boolean") return v;
-        if (v === "true" || v === 1 || v === "1") return true;
-        if (v === "false" || v === 0 || v === "0") return false;
-      }
-      return null;
-    })(),
+    webphone,
     raw: obj,
   };
 }
 
+function sipUserPageItems(data: unknown): unknown[] | null {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  for (const key of ["content", "users", "data", "items", "result", "list", "records"]) {
+    if (Array.isArray(obj[key])) return obj[key] as unknown[];
+  }
+  return null;
+}
+
+function sipUserPageHasNext(data: unknown, batchLength: number, pageSize: number): boolean {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const obj = data as Record<string, unknown>;
+  if (obj.last === true) return false;
+  if (typeof obj.totalPages === "number" && typeof obj.number === "number") {
+    return obj.number + 1 < obj.totalPages;
+  }
+  return batchLength >= pageSize;
+}
+
 function normalizeSipUserList(data: unknown): NvoipSipUserItem[] {
-  if (Array.isArray(data)) {
-    return data.map(parseSipUser).filter((x): x is NvoipSipUserItem => x != null);
-  }
-  if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-    for (const key of ["users", "data", "items", "result", "list"]) {
-      const nested = obj[key];
-      if (Array.isArray(nested)) {
-        return nested.map(parseSipUser).filter((x): x is NvoipSipUserItem => x != null);
-      }
-    }
-  }
-  return [];
+  const items = sipUserPageItems(data);
+  if (!items) return [];
+  return items.map(parseSipUser).filter((x): x is NvoipSipUserItem => x != null);
+}
+
+/** Página de GET /v3/users. `recognized` é false quando o JSON não é uma lista. */
+export function readNvoipUserDirectoryPage(
+  data: unknown,
+  pageSize = 50,
+): { recognized: boolean; users: NvoipSipUserItem[]; hasNext: boolean } {
+  const recognized = sipUserPageItems(data) != null;
+  const users = normalizeSipUserList(data);
+  return {
+    recognized,
+    users,
+    hasNext: sipUserPageHasNext(data, users.length, pageSize),
+  };
 }
 
 function parseDidItem(raw: unknown): NvoipDidItem | null {
@@ -870,60 +919,82 @@ function normalizeDidList(data: unknown): NvoipDidItem[] {
   return [];
 }
 
-async function readSipUserList(res: Response): Promise<NvoipSipUserItem[] | null> {
-  if (!res.ok) return null;
-  let data: unknown;
-  try {
-    data = await parseJson<unknown>(res);
-  } catch {
-    return null;
+async function invalidateNvoipAccessToken(account: NvoipAccount): Promise<NvoipAccount> {
+  await prisma.nvoipAccount.update({
+    where: { id: account.id },
+    data: { accessTokenEnc: null, tokenExpiresAt: null },
+  });
+  return { ...account, accessTokenEnc: null, tokenExpiresAt: null };
+}
+
+/**
+ * Lista usuários da conta com OAuth 2.0.
+ * Contrato: GET /v3/users?page=&size= (página Spring `content`).
+ * A chave de API v3 não autoriza este recurso.
+ */
+async function nvoipListUsersOnce(account: NvoipAccount): Promise<NvoipSipUserItem[]> {
+  const pageSize = 50;
+  const users: NvoipSipUserItem[] = [];
+  for (let page = 0; page < 20; page++) {
+    const res = await nvoipAuthorizedFetch(account, `/users?page=${page}&size=${pageSize}`, {
+      method: "GET",
+    });
+    if (res.status === 403) throw new Error("list_users_missing_scope");
+    if (!res.ok) throw new Error(`list_users_failed_${res.status}`);
+    const data = await parseJson<unknown>(res);
+    const page = readNvoipUserDirectoryPage(data, pageSize);
+    if (!page.recognized) throw new Error("list_users_invalid");
+    users.push(...page.users);
+    if (!page.hasNext) break;
   }
-  if (Array.isArray(data)) {
-    return data.map(parseSipUser).filter((x): x is NvoipSipUserItem => x != null);
-  }
-  if (!hasSipUserListKey(data)) return null;
-  return normalizeSipUserList(data);
+  return users;
 }
 
-function hasSipUserListKey(data: unknown): boolean {
-  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
-  const obj = data as Record<string, unknown>;
-  return ["users", "data", "items", "result", "list"].some((key) => Array.isArray(obj[key]));
-}
-
-async function fetchSipUserList(
-  url: string,
-  headers: Headers,
-): Promise<{ status: number; users: NvoipSipUserItem[] | null }> {
-  const res = await fetchWithRateLimitBackoff(url, { method: "GET", headers });
-  return { status: res.status, users: await readSipUserList(res) };
-}
-
-/** `GET /v3/users` é a lista da API atual. `/list/users` responde 403 sem o escopo de usuários. */
 export async function nvoipListUsers(account: NvoipAccount): Promise<NvoipSipUserItem[]> {
-  const token = await getNvoipAccessToken(account);
-  const bearerHeaders = nvoipRequestHeaders({ Authorization: `Bearer ${token}` });
-  const urls = [apiUrl("/users"), apiUrl("/list/users"), "https://api.nvoip.com.br/v2/list/users"];
-  let lastStatus = 403;
-
-  for (const url of urls) {
-    const result = await fetchSipUserList(url, bearerHeaders);
-    if (result.users !== null) return result.users;
-    if (result.status) lastStatus = result.status;
+  try {
+    return await nvoipListUsersOnce(account);
+  } catch (err) {
+    if (!(err instanceof Error) || err.message !== "list_users_missing_scope") throw err;
+    const fresh = await invalidateNvoipAccessToken(account);
+    return nvoipListUsersOnce(fresh);
   }
+}
 
-  const napikey = decryptNvoipSecret(account.napikeyEnc);
-  if (napikey) {
-    const keyed = await fetchSipUserList(
-      `https://api.nvoip.com.br/v2/list/users?napikey=${encodeURIComponent(napikey)}`,
-      nvoipRequestHeaders(),
-    );
-    if (keyed.users !== null) return keyed.users;
-    if (keyed.status) lastStatus = keyed.status;
-  }
+/** GET /v3/users/{id}. O ETag alimenta o If-Match do acesso ao painel. */
+export async function nvoipGetSipUser(
+  account: NvoipAccount,
+  userId: string,
+): Promise<{ user: NvoipSipUserItem; etag: string | null }> {
+  const res = await nvoipAuthorizedFetch(account, `/users/${encodeURIComponent(userId)}`, {
+    method: "GET",
+  });
+  if (res.status === 403) throw new Error("get_user_missing_scope");
+  if (!res.ok) throw new Error(`get_user_failed_${res.status}`);
+  const data = await parseJson<unknown>(res);
+  const user = parseSipUser(data);
+  if (!user) throw new Error("get_user_invalid");
+  return { user, etag: res.headers.get("etag") };
+}
 
-  if (lastStatus === 403) throw new Error("list_users_missing_scope");
-  throw new Error(`list_users_failed_${lastStatus}`);
+/**
+ * PUT /v3/users/{id}/panel-access-status.
+ * Bloqueia o login do painel (webphone) sem alterar a conta SIP.
+ */
+export async function nvoipSetUserPanelAccess(
+  account: NvoipAccount,
+  input: { userId: string; etag: string; status: "ACTIVE" | "INACTIVE" },
+): Promise<void> {
+  const res = await nvoipAuthorizedFetch(
+    account,
+    `/users/${encodeURIComponent(input.userId)}/panel-access-status`,
+    {
+      method: "PUT",
+      headers: { "If-Match": input.etag },
+      body: JSON.stringify({ status: input.status }),
+    },
+  );
+  if (res.status === 403) throw new Error("panel_access_missing_scope");
+  if (!res.ok) throw new Error(`panel_access_failed_${res.status}`);
 }
 
 export async function nvoipCreateSipUser(

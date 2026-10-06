@@ -3451,7 +3451,7 @@ export const messages = {
       sipUsersTitle: "Ramais Nvoip (conta)",
       sipUsersHint: "Sincronize para ver os ramais secundários da conta Nvoip.",
       syncUsersForbidden:
-        "A Nvoip recusou a lista de ramais. No painel Nvoip, em Desenvolvedor, inclua a permissão de usuários no client OAuth.",
+        "A lista de ramais usa o OAuth 2.0 da Nvoip. A chave de API v3 não autoriza usuários. Em Nvoip API v3 (OAuth 2.0), inclua a permissão de usuários no client e reconecte a conta.",
       sipUsersSync: "Sincronizar ramais",
       sipUsersSyncing: "A sincronizar…",
       sipUsersSyncedAt: "Última sincronização: {at}",
@@ -11198,7 +11198,7 @@ export const messages = {
       sipUsersTitle: "Nvoip extensions (account)",
       sipUsersHint: "Sync to see the secondary extensions on the Nvoip account.",
       syncUsersForbidden:
-        "Nvoip refused the extension list. In the Nvoip panel, under Developer, add the users permission to the OAuth client.",
+        "The extension list uses Nvoip OAuth 2.0. An API v3 key cannot access users. In Nvoip API v3 (OAuth 2.0), add the users permission to the client and reconnect the account.",
       sipUsersSync: "Sync extensions",
       sipUsersSyncing: "Syncing…",
       sipUsersSyncedAt: "Last sync: {at}",
