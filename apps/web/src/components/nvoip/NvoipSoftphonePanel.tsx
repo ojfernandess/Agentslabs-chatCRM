@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { differenceInHours } from "date-fns";
 import { ChevronUp, Loader2, Minus, Phone, PhoneOff, User } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useNvoipSipPhoneOptional } from "@/contexts/NvoipSipPhoneContext";
 import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
+import { ComposerTemplatePickerModal } from "@/components/ComposerTemplatePickerModal";
+import { TemplateSendModal, type TemplateSendModalTemplate } from "@/components/TemplateSendModal";
 
 type ResolvedContact = {
   dialPhone: string;
@@ -31,6 +34,174 @@ function formatElapsed(total: number): string {
   const mm = Math.floor(Math.max(0, total) / 60);
   const ss = String(Math.max(0, total) % 60).padStart(2, "0");
   return `${mm}:${ss}`;
+}
+
+type ConversationWindow = {
+  id: string;
+  contactId: string;
+  inboxId: string | null;
+  outsideWindow: boolean;
+};
+
+function applies24hSessionPolicy(provider: string | null): boolean {
+  return provider === "meta" || provider === "360dialog" || provider === "twilio" || provider == null;
+}
+
+function StartConversationAction({
+  phone,
+  contactId,
+  conversationId,
+  compact = false,
+}: {
+  phone: string;
+  contactId: string | null;
+  conversationId: string | null;
+  compact?: boolean;
+}) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [offer, setOffer] = useState<ConversationWindow | null>(null);
+  const [templates, setTemplates] = useState<TemplateSendModalTemplate[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [template, setTemplate] = useState<TemplateSendModalTemplate | null>(null);
+
+  const openConversation = (id: string) => {
+    navigate(`/conversations/${id}`);
+  };
+
+  const start = async () => {
+    const trimmed = phone.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError("");
+    setOffer(null);
+    try {
+      let nextConversationId = conversationId;
+      let nextContactId = contactId;
+      if (!nextConversationId) {
+        const ctx = await api.get<ResolvedContact>(
+          `/nvoip/calls/resolve-context?phone=${encodeURIComponent(trimmed)}`,
+        );
+        nextConversationId = ctx.conversationId;
+        nextContactId = ctx.contact?.id ?? nextContactId;
+      }
+      if (!nextConversationId || !nextContactId) {
+        setError(t("nvoip.softphone.noConversation"));
+        return;
+      }
+
+      const conversation = await api.get<{
+        id: string;
+        inbox?: { id: string; channelType?: string } | null;
+        messages?: { direction: string; createdAt: string }[];
+      }>(`/conversations/${nextConversationId}`);
+      const inboxId = conversation.inbox?.id ?? null;
+      let provider: string | null = null;
+      if (inboxId) {
+        try {
+          const channel = await api.get<{ whatsappProvider?: string | null }>(
+            `/settings/channel?inboxId=${encodeURIComponent(inboxId)}`,
+          );
+          provider = channel.whatsappProvider ?? null;
+        } catch {
+          provider = null;
+        }
+      }
+      const inbound = [...(conversation.messages ?? [])]
+        .filter((message) => message.direction === "INBOUND" && message.createdAt)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      const lastInbound = inbound.at(-1);
+      const outsideWindow =
+        conversation.inbox?.channelType !== "EMAIL" &&
+        applies24hSessionPolicy(provider) &&
+        (lastInbound ? differenceInHours(new Date(), new Date(lastInbound.createdAt)) > 24 : true);
+
+      if (!outsideWindow) {
+        openConversation(nextConversationId);
+        return;
+      }
+
+      let list: Array<TemplateSendModalTemplate & { providerTemplateId?: string | null }> = [];
+      try {
+        const query = inboxId ? `?inboxId=${encodeURIComponent(inboxId)}` : "";
+        const rows = await api.get<Array<TemplateSendModalTemplate & { providerTemplateId?: string | null }>>(
+          `/templates${query}`,
+        );
+        list = (Array.isArray(rows) ? rows : []).map((row) => ({
+          ...row,
+          bodyVariableCount: typeof row.bodyVariableCount === "number" ? row.bodyVariableCount : 0,
+        }));
+        if (provider === "evolution" || provider === "evolution_go") {
+          list = list.filter((row) => !row.providerTemplateId?.trim());
+        } else if (provider === "meta" || provider === "360dialog") {
+          list = list.filter((row) => Boolean(row.metaCategory?.trim() || row.providerTemplateId?.trim()));
+        }
+      } catch {
+        list = [];
+      }
+      setTemplates(list);
+      setOffer({
+        id: nextConversationId,
+        contactId: nextContactId,
+        inboxId,
+        outsideWindow: true,
+      });
+    } catch {
+      setError(t("nvoip.softphone.startFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={compact ? "mt-2 w-full" : "mt-4 w-full"}>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void start()}
+        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-100 dark:hover:bg-ink-800"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+        {t("nvoip.softphone.startConversation")}
+      </button>
+      {offer ? (
+        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-3 dark:bg-ink-950">
+          <p className="text-xs text-slate-500 dark:text-ink-400">{t("nvoip.softphone.windowClosed")}</p>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="mt-2 text-sm font-semibold text-brand-600 hover:text-brand-500"
+          >
+            {t("nvoip.softphone.sendTemplate")}
+          </button>
+        </div>
+      ) : null}
+      {error ? <p className="mt-2 text-center text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+      <ComposerTemplatePickerModal
+        open={pickerOpen}
+        templates={templates}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(selected) => {
+          setPickerOpen(false);
+          setTemplate(selected);
+        }}
+      />
+      <TemplateSendModal
+        open={template !== null}
+        template={template}
+        contactId={offer?.contactId ?? contactId ?? ""}
+        conversationId={offer?.id ?? conversationId ?? undefined}
+        inboxId={offer?.inboxId ?? undefined}
+        onClose={() => setTemplate(null)}
+        onSent={() => {
+          const id = offer?.id ?? conversationId;
+          if (id) openConversation(id);
+        }}
+      />
+    </div>
+  );
 }
 
 export function NvoipSoftphonePanel() {
@@ -118,35 +289,45 @@ export function NvoipSoftphonePanel() {
   if (minimized && inboundLive) {
     return (
       <div
-        className="fixed bottom-4 right-4 z-[120] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg dark:border-ink-700 dark:bg-ink-900"
+        className="fixed bottom-4 right-4 z-[120] flex max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-slate-200 bg-white p-2 shadow-lg dark:border-ink-700 dark:bg-ink-900"
         style={{ marginBottom: "env(safe-area-inset-bottom)" }}
       >
-        <button
-          type="button"
-          onClick={() => setMinimized(false)}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left"
-          aria-label={t("nvoip.softphone.expand")}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white">
-            {initials(displayName)}
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-slate-900 dark:text-ink-50">{displayName}</span>
-            <span className="block text-xs text-slate-500 dark:text-ink-400">
-              {t("nvoip.softphone.inCall")} · {formatElapsed(elapsed)}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMinimized(false)}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1 text-left"
+            aria-label={t("nvoip.softphone.expand")}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white">
+              {initials(displayName)}
             </span>
-          </span>
-          <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label={t("nvoip.voice.hangUp")}
-          title={t("nvoip.voice.hangUp")}
-          onClick={() => sip.hangup()}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-500"
-        >
-          <PhoneOff className="h-5 w-5" />
-        </button>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-slate-900 dark:text-ink-50">{displayName}</span>
+              <span className="block text-xs text-slate-500 dark:text-ink-400">
+                {t("nvoip.softphone.inCall")} · {formatElapsed(elapsed)}
+              </span>
+            </span>
+            <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={t("nvoip.voice.hangUp")}
+            title={t("nvoip.voice.hangUp")}
+            onClick={() => sip.hangup()}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-500"
+          >
+            <PhoneOff className="h-5 w-5" />
+          </button>
+        </div>
+        {displayPhone ? (
+          <StartConversationAction
+            compact
+            phone={displayPhone}
+            contactId={contact?.contact?.id ?? null}
+            conversationId={conversationId}
+          />
+        ) : null}
       </div>
     );
   }
@@ -228,6 +409,14 @@ export function NvoipSoftphonePanel() {
               {contact.contact.phone}
             </p>
           </div>
+        ) : null}
+
+        {displayPhone ? (
+          <StartConversationAction
+            phone={displayPhone}
+            contactId={contact?.contact?.id ?? null}
+            conversationId={conversationId}
+          />
         ) : null}
 
         {conversationId ? (
