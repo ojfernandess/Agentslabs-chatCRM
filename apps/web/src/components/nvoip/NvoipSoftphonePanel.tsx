@@ -30,15 +30,6 @@ function initials(name: string): string {
   return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
-const STATUS_DOT: Record<string, string> = {
-  registered: "bg-emerald-500",
-  unregistered: "bg-slate-400",
-  ringing: "bg-amber-400",
-  "in-call": "bg-sky-500",
-  ended: "bg-slate-400",
-  error: "bg-red-500",
-};
-
 function formatElapsed(total: number): string {
   const mm = Math.floor(Math.max(0, total) / 60);
   const ss = String(Math.max(0, total) % 60).padStart(2, "0");
@@ -291,42 +282,7 @@ export function NvoipSoftphonePanel() {
     setMinimized(false);
   }, [inboundLive, sip.status]);
 
-  if (!sip.enabled) return null;
-
-  if (!visible) {
-    const statusKey = `nvoip.sip.status.${sip.status}`;
-    const statusLabel = t(statusKey) === statusKey ? sip.status : t(statusKey);
-    const problem =
-      sip.error === "sip_server_not_configured"
-        ? t("nvoip.sip.serverNotConfigured")
-        : sip.error === "sip_credentials_not_configured"
-          ? t("nvoip.sip.notRegistered")
-          : sip.error?.startsWith("sip_registration_failed")
-            ? t("nvoip.sip.registrationFailed")
-            : sip.error
-              ? t("nvoip.sip.errorHint")
-              : null;
-    return (
-      <div
-        className="fixed bottom-4 right-4 z-[120] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-lg dark:border-ink-700 dark:bg-ink-900"
-        style={{ marginBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white">
-          <Phone className="h-4 w-4" aria-hidden />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-slate-900 dark:text-ink-50">
-            {t("nvoip.softphone.title")}
-          </span>
-          <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-ink-400">
-            <span className={clsx("h-2 w-2 rounded-full", STATUS_DOT[sip.status] ?? "bg-slate-400")} />
-            {statusLabel}
-          </span>
-          {problem ? <span className="block truncate text-xs text-red-600">{problem}</span> : null}
-        </span>
-      </div>
-    );
-  }
+  if (!sip.enabled || !visible) return null;
 
   const elapsedLabel = formatElapsed(inboundLive ? elapsed : (ended?.seconds ?? 0));
 
