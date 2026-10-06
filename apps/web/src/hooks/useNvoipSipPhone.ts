@@ -14,6 +14,7 @@ type SipRtcSession = {
   }) => void;
   terminate: (options?: { status_code?: number; reason_phrase?: string }) => void;
   direction?: string;
+  connection?: RTCPeerConnection | null;
   remote_identity?: { display_name?: string; uri?: { user?: string } };
   on: (event: string, handler: (...args: unknown[]) => void) => void;
 };
@@ -117,6 +118,28 @@ function finishSipCallLog(id: string, status: string, durationSec: number): void
     .catch(() => {});
 }
 
+function stableSipInstanceId(sipUser: string, sipDomain: string): string {
+  const input = `${sipUser}@${sipDomain}`;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ c, 0x811c9dc5);
+  }
+  const part = (n: number) => (n >>> 0).toString(16).padStart(8, "0");
+  const chars = (part(h1) + part(h2) + part(h1 ^ h2) + part(Math.imul(h1, h2))).slice(0, 32).split("");
+  chars[12] = "4";
+  chars[16] = "8";
+  const s = chars.join("");
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20, 32)}`;
+}
+
+function sipContactUri(sipUser: string, sipDomain: string): string {
+  const host = `${stableSipInstanceId(sipUser, sipDomain).replace(/-/g, "").slice(0, 12)}.invalid`;
+  return `sip:${sipUser}@${host};transport=ws;ob`;
+}
+
 function buildWssCandidates(creds: SipCredentials): string[] {
   const primary = creds.wssUrl?.trim() ?? "";
   if (!primary) return [];
@@ -200,10 +223,12 @@ export function useNvoipSipPhone(enabled: boolean) {
       const sipUser = creds.sipUser.trim();
 
       const socket = new JsSIP.WebSocketInterface(wssUrl);
-      // O Contact do JsSIP usa transport=ws. O Via precisa do mesmo transporte
-      // para a Nvoip devolver o INVITE no websocket, como o MicroSIP faz no UDP.
       socket.via_transport = "WS";
 
+      // O host do Contact não pode ser o domínio do PABX: o JsSIP copia esse host
+      // para o Via e o servidor tenta entregar o INVITE nele mesmo, fora do websocket.
+      // Host .invalid + ;ob faz o PABX devolver a chamada na conexão WebSocket.
+      // O instance id estável substitui o registro anterior do mesmo ramal.
       const ua = new JsSIP.UA({
         sockets: [socket],
         uri: `sip:${sipUser}@${sipDomain}`,
@@ -211,7 +236,8 @@ export function useNvoipSipPhone(enabled: boolean) {
         password: creds.sipPassword,
         display_name: creds.displayName?.trim() || sipUser,
         registrar_server: `sip:${sipDomain}`,
-        contact_uri: `sip:${sipUser}@${sipDomain};transport=ws`,
+        contact_uri: sipContactUri(sipUser, sipDomain),
+        instance_id: stableSipInstanceId(sipUser, sipDomain),
         register: true,
         register_expires: 600,
         session_timers: false,
@@ -236,11 +262,23 @@ export function useNvoipSipPhone(enabled: boolean) {
 
       ua.on("newRTCSession", (data: unknown) => {
         const payload = data as { originator?: string; session: SipRtcSession };
-        if (payload.originator && payload.originator !== "remote") return;
-
         const session = payload.session;
+        const outbound = payload.originator === "local";
+        outboundLegRef.current = false;
         sessionRef.current = session;
+        if (session.connection) attachRemoteAudio(session.connection);
         setStatusSafe("ringing", null);
+
+        let iceReady = false;
+        session.on("icecandidate", (ev: unknown) => {
+          const ready = (ev as { ready?: () => void }).ready;
+          if (!ready || iceReady) return;
+          window.setTimeout(() => {
+            if (iceReady) return;
+            iceReady = true;
+            ready();
+          }, 1500);
+        });
 
         session.on("peerconnection", (ev: unknown) => {
           const peerconnection = (ev as { peerconnection?: RTCPeerConnection }).peerconnection;
@@ -307,9 +345,8 @@ export function useNvoipSipPhone(enabled: boolean) {
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-active"));
         });
 
-        if (outboundLegRef.current) {
+        if (outbound) {
           setIncoming(null);
-          void answerSession(session);
           return;
         }
 
@@ -326,7 +363,7 @@ export function useNvoipSipPhone(enabled: boolean) {
       ua.start();
       uaRef.current = ua;
     },
-    [answerSession, attachRemoteAudio, setStatusSafe],
+    [attachRemoteAudio, setStatusSafe],
   );
 
   const register = useCallback(async () => {
@@ -366,12 +403,21 @@ export function useNvoipSipPhone(enabled: boolean) {
     const id = crypto.randomUUID();
     callLogRef.current = { id, answeredAt: null };
     void api.post("/sip/calls", { clientCallId: id, direction: "OUTGOING", phone }).catch(() => {});
-    ua.call(`sip:${phone.replace(/^\+/, "")}@${creds.sipDomain}`, {
-      mediaConstraints: { audio: true, video: false },
-      pcConfig: SIP_PC_CONFIG,
-    });
+    const localStream = localStreamRef.current;
+    try {
+      ua.call(`sip:${phone.replace(/^\+/, "")}@${creds.sipDomain}`, {
+        mediaConstraints: { audio: true, video: false },
+        pcConfig: SIP_PC_CONFIG,
+        ...(localStream ? { mediaStream: localStream } : {}),
+      });
+    } catch {
+      outboundLegRef.current = false;
+      callLogRef.current = null;
+      setStatusSafe(ua.isRegistered() ? "registered" : "unregistered", "sip_call_failed:setup");
+      return false;
+    }
     return true;
-  }, []);
+  }, [setStatusSafe]);
 
   const hangup = useCallback(() => {
     stopIncomingRing();
