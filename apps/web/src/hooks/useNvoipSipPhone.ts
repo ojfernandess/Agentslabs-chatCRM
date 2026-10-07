@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import JsSIP from "jssip";
 import { api, ApiError } from "@/lib/api";
-import { maskSipUser, sipDiag, sipDiagMessage } from "@/lib/sipDiagnostics";
+import { maskSipUser, sipDiag, sipDiagMessage, sipFrames } from "@/lib/sipDiagnostics";
 
 const SIP_PC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
@@ -78,6 +78,14 @@ function stopIncomingRing(): void {
 }
 
 function startIncomingRing(): void {
+  try {
+    startIncomingRingUnsafe();
+  } catch {
+    sipDiag("AUDIO", "Ring unavailable");
+  }
+}
+
+function startIncomingRingUnsafe(): void {
   stopIncomingRing();
   const Ctx = window.AudioContext;
   if (!Ctx) return;
@@ -146,8 +154,12 @@ function traceSocket(socket: InstanceType<typeof JsSIP.WebSocketInterface>, wssU
     };
     const prevMessage = ws.onmessage;
     ws.onmessage = (ev) => {
-      sipDiagMessage("in", ev.data);
-      if (typeof prevMessage === "function") prevMessage.call(ws, ev);
+      const frames = sipFrames(ev.data);
+      if (frames.length === 0) return;
+      for (const frame of frames) {
+        sipDiagMessage("in", frame);
+        if (typeof prevMessage === "function") prevMessage.call(ws, { data: frame });
+      }
     };
   };
   const origSend = socket.send.bind(socket);
@@ -327,7 +339,8 @@ export function useNvoipSipPhone(enabled: boolean) {
         const outbound = payload.originator === "local";
         outboundLegRef.current = false;
         sessionRef.current = session;
-        sipDiag("SIP", outbound ? "Outgoing INVITE" : "Incoming INVITE");
+        sipDiag("SIP", outbound ? "Outgoing session" : "Ringing");
+        try {
         if (session.connection) {
           watchIce(session.connection);
           attachRemoteAudio(session.connection);
@@ -419,6 +432,9 @@ export function useNvoipSipPhone(enabled: boolean) {
         publishInboundRoute(true);
         const remote = readRemoteParty(session).number || "inbound";
         callLogRef.current = { id: beginSipCallLog("INCOMING", remote), answeredAt: null };
+        } catch {
+          sipDiag("SIP", "Session handler error");
+        }
       });
 
       ua.start();

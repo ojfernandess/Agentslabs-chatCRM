@@ -275,8 +275,8 @@ export function SipDialer() {
           {diagnostics.length === 0 ? (
             <p className="mt-2">{t("nvoip.softphone.diagEmpty")}</p>
           ) : (
-            <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto font-mono">
-              {diagnostics.slice(-8).map((row, index) => (
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono">
+              {diagnostics.slice(-16).map((row, index) => (
                 <li key={`${row.at}-${index}`}>
                   {row.at} [{row.tag}] {row.message}
                 </li>

@@ -54,9 +54,56 @@ export function sipDiag(tag: string, message: string): void {
   emit();
 }
 
+export function decodeSipPayload(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (raw instanceof ArrayBuffer) return new TextDecoder().decode(raw);
+  if (ArrayBuffer.isView(raw)) {
+    const view = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+    return new TextDecoder().decode(view);
+  }
+  return "";
+}
+
+/** Separa um quadro WebSocket em mensagens SIP completas. */
+export function sipFrames(raw: unknown): string[] {
+  let text = decodeSipPayload(raw).replace(/^\uFEFF/, "");
+  if (!text) return [];
+  if (!text.includes("\r\n") && text.includes("\n")) text = text.replace(/\n/g, "\r\n");
+  const stripped = text.replace(/^(?:\r\n)+/, "");
+  if (!stripped) return [text];
+
+  const frames: string[] = [];
+  let rest = stripped;
+  while (rest.length > 0) {
+    rest = rest.replace(/^(?:\r\n)+/, "");
+    if (!rest) break;
+    const sep = rest.indexOf("\r\n\r\n");
+    if (sep === -1) {
+      frames.push(rest);
+      break;
+    }
+    const headers = rest.slice(0, sep);
+    const match = /(?:^|\r\n)content-length:\s*(\d+)/i.exec(headers);
+    if (!match) {
+      frames.push(rest);
+      break;
+    }
+    const length = Number(match[1]);
+    const end = sep + 4 + (Number.isFinite(length) ? length : 0);
+    if (end > rest.length) {
+      frames.push(rest);
+      break;
+    }
+    frames.push(rest.slice(0, end));
+    rest = rest.slice(end);
+  }
+  return frames;
+}
+
 export function sipDiagMessage(direction: "in" | "out", raw: unknown): void {
-  if (typeof raw !== "string" || !raw.trim()) return;
-  const summary = summarizeSip(direction, raw);
+  const text = typeof raw === "string" ? raw : decodeSipPayload(raw);
+  if (!text.trim()) return;
+  const summary = summarizeSip(direction, text);
   if (!summary) return;
   sipDiag("SIP", summary);
 }
