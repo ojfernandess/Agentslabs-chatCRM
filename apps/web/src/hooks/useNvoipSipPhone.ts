@@ -152,7 +152,9 @@ function traceSocket(socket: InstanceType<typeof JsSIP.WebSocketInterface>, wssU
       sipDiag("WSS", `Closed ${ev.code}`);
       if (typeof prevClose === "function") prevClose.call(ws, ev);
     };
-    const prevMessage = ws.onmessage;
+    const prevMessage = ws.onmessage as
+      | ((this: WebSocket, event: { data: unknown }) => void)
+      | null;
     ws.onmessage = (ev) => {
       const frames = sipFrames(ev.data);
       if (frames.length === 0) return;
