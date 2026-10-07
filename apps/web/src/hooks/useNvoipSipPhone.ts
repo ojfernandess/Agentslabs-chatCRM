@@ -105,12 +105,13 @@ function startIncomingRing(): void {
 
 function publishInboundRoute(syncOnly = false): void {
   void api
-    .post<{ warning?: string | null; updated?: string[] }>(
+    .post<{ warning?: string | null; updated?: string[]; webphoneReleased?: boolean }>(
       "/sip/inbound-route",
       syncOnly ? { syncOnly: true } : undefined,
     )
     .then((res) => {
       if (syncOnly) return;
+      if (res.webphoneReleased) sipDiag("SIP", "Panel webphone off");
       if ((res.updated ?? []).length > 0) sipDiag("SIP", `DID updated ${res.updated?.length ?? 0}`);
       else if (!res.warning) sipDiag("SIP", "DID unchanged");
       if (res.warning) sipDiag("SIP", `DID ${res.warning}`);

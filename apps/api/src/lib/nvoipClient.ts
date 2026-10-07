@@ -1010,12 +1010,30 @@ export async function nvoipListUsers(account: NvoipAccount): Promise<NvoipSipUse
   }
 }
 
+async function nvoipUserFetch(
+  account: NvoipAccount,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let res: Response;
+  try {
+    res = await nvoipAuthorizedFetch(account, path, init);
+  } catch (err) {
+    if (!decryptNvoipSecret(account.napikeyEnc)) throw err;
+    return nvoipApiKeyFetch(account, path, init);
+  }
+  if (res.status === 403 && decryptNvoipSecret(account.napikeyEnc)) {
+    return nvoipApiKeyFetch(account, path, init);
+  }
+  return res;
+}
+
 /** GET /v3/users/{id}. O ETag alimenta o If-Match do acesso ao painel. */
 export async function nvoipGetSipUser(
   account: NvoipAccount,
   userId: string,
 ): Promise<{ user: NvoipSipUserItem; etag: string | null }> {
-  const res = await nvoipAuthorizedFetch(account, `/users/${encodeURIComponent(userId)}`, {
+  const res = await nvoipUserFetch(account, `/users/${encodeURIComponent(userId)}`, {
     method: "GET",
   });
   if (res.status === 403) throw new Error("get_user_missing_scope");
@@ -1034,7 +1052,7 @@ export async function nvoipSetUserPanelAccess(
   account: NvoipAccount,
   input: { userId: string; etag: string; status: "ACTIVE" | "INACTIVE" },
 ): Promise<void> {
-  const res = await nvoipAuthorizedFetch(
+  const res = await nvoipUserFetch(
     account,
     `/users/${encodeURIComponent(input.userId)}/panel-access-status`,
     {
@@ -1069,6 +1087,27 @@ export async function nvoipCreateSipUser(
     );
   }
   return data;
+}
+
+/** Tira o ramal do webphone do painel para o INVITE da ligação seguir o registro SIP. */
+export async function nvoipDisableUserWebphone(account: NvoipAccount, numbersip: string): Promise<void> {
+  const id = numbersip.trim();
+  const bodies = [
+    { numbersip: id, webphone: false },
+    { numbersip: id, numberSip: id, webphone: 0 },
+  ];
+  let lastError = "webphone_disable_failed";
+  for (const body of bodies) {
+    const res = await nvoipTelephonyFetch(account, "/update/users", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return;
+    const data = await parseJson<Record<string, unknown>>(res);
+    lastError = nvoipExtractApiError(data, `webphone_disable_failed_${res.status}`);
+    if (res.status !== 400 && res.status !== 422) break;
+  }
+  throw new Error(lastError);
 }
 
 export async function nvoipUpdateSipUser(

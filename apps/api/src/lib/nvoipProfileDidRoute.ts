@@ -1,6 +1,7 @@
 import type { NvoipAccount } from "@prisma/client";
 import { prisma } from "../db.js";
 import {
+  nvoipDisableUserWebphone,
   nvoipGetSipUser,
   nvoipListDids,
   nvoipListUsers,
@@ -118,6 +119,26 @@ async function releaseProfileRamaisFromPanelWebphone(
   return warnings.find((warning) => warning) ?? null;
 }
 
+async function disableProfileRamalWebphones(account: NvoipAccount, ramais: string[]): Promise<string | null> {
+  const warnings: string[] = [];
+  for (const numbersip of ramais) {
+    try {
+      await nvoipDisableUserWebphone(account, numbersip);
+    } catch (err) {
+      await writeNvoipIntegrationLog({
+        organizationId: account.organizationId,
+        nvoipAccountId: account.id,
+        level: "warn",
+        eventType: "profile_ramal_webphone_release_failed",
+        message: err instanceof Error ? err.message : "webphone_disable_failed",
+        payload: { numbersip },
+      }).catch(() => {});
+      warnings.push(routeWarning(err, "webphone_disable_failed"));
+    }
+  }
+  return warnings[0] ?? null;
+}
+
 /**
  * Aponta os números que já tocam em ramais para os ramais salvos nos perfis
  * e libera o registro SIP do CRM.
@@ -126,11 +147,12 @@ export async function routeNvoipDidsToProfileRamais(organizationId: string): Pro
   ramais: string[];
   updated: string[];
   warning: string | null;
+  webphoneReleased: boolean;
 }> {
   const account = await prisma.nvoipAccount.findFirst({
     where: { organizationId, status: "CONNECTED" },
   });
-  if (!account) return { ramais: [], updated: [], warning: "nvoip_account_not_connected" };
+  if (!account) return { ramais: [], updated: [], warning: "nvoip_account_not_connected", webphoneReleased: false };
 
   const pabxMode = parseNvoipPabxMode(
     account.externalConfig != null &&
@@ -139,13 +161,18 @@ export async function routeNvoipDidsToProfileRamais(organizationId: string): Pro
       ? (account.externalConfig as Record<string, unknown>).pabxMode
       : undefined,
   );
-  if (pabxMode === "external_pabx_trunk") return { ramais: [], updated: [], warning: "external_pabx_trunk" };
+  if (pabxMode === "external_pabx_trunk") {
+    return { ramais: [], updated: [], warning: "external_pabx_trunk", webphoneReleased: false };
+  }
 
   const ramais = await listProfileRamais(organizationId);
   const destination = buildProfileDidDestination(ramais);
-  if (!destination) return { ramais: [], updated: [], warning: "no_profile_ramais" };
+  if (!destination) return { ramais: [], updated: [], warning: "no_profile_ramais", webphoneReleased: false };
 
   const releaseWarning = await releaseProfileRamaisFromPanelWebphone(account, ramais);
+  const disableWarning = await disableProfileRamalWebphones(account, ramais);
+  const webphoneReleased = disableWarning == null || releaseWarning == null;
+  const warningFromRelease = disableWarning == null ? null : (releaseWarning ?? disableWarning);
 
   let dids;
   try {
@@ -161,7 +188,8 @@ export async function routeNvoipDidsToProfileRamais(organizationId: string): Pro
     return {
       ramais: destination.split(","),
       updated: [],
-      warning: releaseWarning ?? routeWarning(err, "profile_ramal_did_list_failed"),
+      warning: warningFromRelease ?? routeWarning(err, "profile_ramal_did_list_failed"),
+      webphoneReleased,
     };
   }
 
@@ -200,7 +228,7 @@ export async function routeNvoipDidsToProfileRamais(organizationId: string): Pro
   }
 
   const warning =
-    releaseWarning ??
+    warningFromRelease ??
     (updateFailed ? "did_update_failed" : eligible === 0 ? "did_destination_not_extension" : null);
-  return { ramais: destination.split(","), updated, warning };
+  return { ramais: destination.split(","), updated, warning, webphoneReleased };
 }
