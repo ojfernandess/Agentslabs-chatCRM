@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import JsSIP from "jssip";
 import { api, ApiError } from "@/lib/api";
 import { maskSipUser, sipDiag, sipDiagMessage, sipFrames } from "@/lib/sipDiagnostics";
+import { repairInvite } from "@/lib/sipInviteNormalize";
 
 const SIP_PC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
@@ -135,7 +136,12 @@ function watchIce(pc: RTCPeerConnection): void {
   });
 }
 
-function traceSocket(socket: InstanceType<typeof JsSIP.WebSocketInterface>, wssUrl: string): void {
+function traceSocket(
+  socket: InstanceType<typeof JsSIP.WebSocketInterface>,
+  wssUrl: string,
+  sipUser: string,
+  inviteGate: { accepted: boolean },
+): void {
   sipDiag("WSS", `Connecting ${wssUrl}`);
   const origConnect = socket.connect.bind(socket);
   socket.connect = () => {
@@ -159,8 +165,17 @@ function traceSocket(socket: InstanceType<typeof JsSIP.WebSocketInterface>, wssU
       const frames = sipFrames(ev.data);
       if (frames.length === 0) return;
       for (const frame of frames) {
-        sipDiagMessage("in", frame);
-        if (typeof prevMessage === "function") prevMessage.call(ws, { data: frame });
+        const prepared = repairInvite(frame, sipUser);
+        if (prepared.note) sipDiag("SIP", `INVITE fixed ${prepared.note}`);
+        sipDiagMessage("in", prepared.message);
+        const incomingInvite = /^INVITE\s/i.test(prepared.message);
+        if (incomingInvite) inviteGate.accepted = false;
+        try {
+          if (typeof prevMessage === "function") prevMessage.call(ws, { data: prepared.message });
+        } catch {
+          if (incomingInvite) sipDiag("SIP", "INVITE error");
+        }
+        if (incomingInvite && !inviteGate.accepted) sipDiag("SIP", "INVITE dropped");
       }
     };
   };
@@ -290,7 +305,8 @@ export function useNvoipSipPhone(enabled: boolean) {
 
       const socket = new JsSIP.WebSocketInterface(wssUrl);
       socket.via_transport = "WS";
-      traceSocket(socket, wssUrl);
+      const inviteGate = { accepted: false };
+      traceSocket(socket, wssUrl, sipUser, inviteGate);
       sipDiag("SOFTPHONE", "Inicializando");
       sipDiag("SIP", `User ${maskSipUser(sipUser)} Contact ${sipContactUri(sipUser, sipDomain)}`);
 
@@ -341,6 +357,7 @@ export function useNvoipSipPhone(enabled: boolean) {
         const outbound = payload.originator === "local";
         outboundLegRef.current = false;
         sessionRef.current = session;
+        if (!outbound) inviteGate.accepted = true;
         sipDiag("SIP", outbound ? "Outgoing session" : "Ringing");
         try {
         if (session.connection) {
@@ -404,10 +421,11 @@ export function useNvoipSipPhone(enabled: boolean) {
           const code = failed.message?.status_code;
           const reason = failed.message?.reason_phrase?.trim();
           const detail = [code, reason, cause].filter(Boolean).join(" ");
-          if (!localEnd) sipDiag("SIP", `Call failed ${detail}`);
+          const noBalance = code === 402 || code === 480;
+          if (!localEnd) sipDiag("SIP", noBalance ? "No balance" : `Call failed ${detail}`);
           setStatusSafe(
             ua.isRegistered() ? "registered" : "unregistered",
-            localEnd ? null : `sip_call_failed:${detail}`,
+            localEnd ? null : noBalance ? "sip_no_balance" : `sip_call_failed:${detail}`,
           );
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
         });

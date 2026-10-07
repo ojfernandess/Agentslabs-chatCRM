@@ -67,8 +67,8 @@ export function decodeSipPayload(raw: unknown): string {
 /** Separa um quadro WebSocket em mensagens SIP completas. */
 export function sipFrames(raw: unknown): string[] {
   let text = decodeSipPayload(raw).replace(/^\uFEFF/, "");
-  if (!text) return [];
-  if (!text.includes("\r\n") && text.includes("\n")) text = text.replace(/\n/g, "\r\n");
+  if (!text.trim()) return [];
+  text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/^\n+/, "").replace(/\n/g, "\r\n");
   const stripped = text.replace(/^(?:\r\n)+/, "");
   if (!stripped) return [text];
 

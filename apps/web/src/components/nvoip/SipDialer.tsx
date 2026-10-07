@@ -79,7 +79,13 @@ export function SipDialer() {
   const registered = sip.status === "registered" || sip.status === "in-call" || sip.status === "ringing";
   const calling = sip.status === "ringing" || sip.status === "in-call";
   const sipCause = sip.error?.startsWith("sip_call_failed:") ? sip.error.slice("sip_call_failed:".length) : null;
-  const callError = dialError ?? (sipCause ? `${t("nvoip.softphone.callFailed")} (${sipCause})` : null);
+  const callError =
+    dialError ??
+    (sip.error === "sip_no_balance"
+      ? t("nvoip.softphone.noBalance")
+      : sipCause
+        ? `${t("nvoip.softphone.callFailed")} (${sipCause})`
+        : null);
 
   const dial = (raw: string) => {
     const target = raw.trim();

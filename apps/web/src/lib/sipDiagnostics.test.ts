@@ -14,6 +14,11 @@ test("sipFrames drops a leading keepalive stuck to an INVITE", () => {
   assert.deepEqual(sipFrames(`\r\n\r\n${invite}`), [invite]);
 });
 
+test("sipFrames strips a leading line feed before a CRLF INVITE", () => {
+  const invite = "INVITE sip:0001@app.nvoip.com.br SIP/2.0\r\nContent-Length: 0\r\n\r\n";
+  assert.deepEqual(sipFrames(`\n${invite}`), [invite]);
+});
+
 test("sipFrames turns LF-only messages into CRLF", () => {
   const raw = "INVITE sip:0001@app.nvoip.com.br SIP/2.0\nContent-Length: 0\n\n";
   const frame = sipFrames(raw)[0] ?? "";
