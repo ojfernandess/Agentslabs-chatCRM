@@ -33,7 +33,7 @@ export function summarizeSip(direction: "in" | "out", raw: string): string | nul
   const start = lines[0] ?? "";
   if (!start || start === "\\r\\n" || start === "") return null;
   const cseq = lines.find((line) => /^CSeq:/i.test(line)) ?? "";
-  const method = cseq.split(/\s+/)[1] ?? "";
+  const method = cseq.split(/\s+/)[2] ?? "";
   if (/^SIP\/2\.0\s+(\d+)/i.test(start)) {
     const code = start.replace(/^SIP\/2\.0\s+/i, "").slice(0, 32);
     return method ? `${method} → ${code}` : code;
