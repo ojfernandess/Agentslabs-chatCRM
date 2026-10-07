@@ -45,10 +45,15 @@ export function summarizeSip(direction: "in" | "out", raw: string): string | nul
   return null;
 }
 
+export function sipClock(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 export function sipDiag(tag: string, message: string): void {
   const safe = redactSip(message).replace(/\s+/g, " ").trim().slice(0, 180);
   if (!safe) return;
-  const at = new Date().toISOString().slice(11, 19);
+  const at = sipClock(new Date());
   events = [...events, { at, tag, message: safe }].slice(-MAX_EVENTS);
   console.info(`[${tag}] ${safe}`);
   emit();

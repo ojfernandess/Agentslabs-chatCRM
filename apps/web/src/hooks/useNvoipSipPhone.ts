@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import JsSIP from "jssip";
 import { api, ApiError } from "@/lib/api";
 import { maskSipUser, sipDiag, sipDiagMessage, sipFrames } from "@/lib/sipDiagnostics";
-import { repairInvite } from "@/lib/sipInviteNormalize";
+import { inviteFault, repairInvite } from "@/lib/sipInviteNormalize";
 
 const SIP_PC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
@@ -175,7 +175,10 @@ function traceSocket(
         } catch {
           if (incomingInvite) sipDiag("SIP", "INVITE error");
         }
-        if (incomingInvite && !inviteGate.accepted) sipDiag("SIP", "INVITE dropped");
+        if (incomingInvite && !inviteGate.accepted) {
+          const fault = inviteFault(prepared.message);
+          sipDiag("SIP", fault ? `INVITE dropped ${fault}` : "INVITE dropped");
+        }
       }
     };
   };

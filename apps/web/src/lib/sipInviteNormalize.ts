@@ -103,26 +103,60 @@ export function repairInvite(message: string, sipUser: string): { message: strin
     const name = line.slice(0, colon).trim();
     const lower = name.toLowerCase();
     const rule = HEADER_RULE[lower];
-    const value = line.slice(colon + 1).trim();
-    if (!rule || headerParses(value, rule)) {
-      out.push(line);
+    const value = line.slice(colon + 1).trim().replace(/\u00a0/g, "");
+    const cleanLine = `${name}: ${value}`;
+    if ((lower === "content-type" || lower === "c") && value.toLowerCase().startsWith("application/sdp")) {
+      if (value.toLowerCase() !== "application/sdp") notes.push(name);
+      out.push(`${name}: application/sdp`);
       continue;
     }
-    if (DROP_IF_BROKEN.has(lower)) {
-      notes.push(name);
+    if (!rule || headerParses(value, rule)) {
+      out.push(cleanLine);
+      continue;
+    }
+    notes.push(name);
+    if (lower === "via" || lower === "v") {
+      const branch = value.match(/branch=([^;\s]+)/i)?.[1] ?? "z9hG4bKopenconduit";
+      const sentBy = value.match(/SIP\/2\.0\/\S+\s+([^;\s]+)/i)?.[1] ?? "invalid.invalid";
+      const via = `SIP/2.0/WSS ${sentBy};branch=${branch}`;
+      out.push(`${name}: ${headerParses(via, "Via") ? via : "SIP/2.0/WSS invalid.invalid;branch=z9hG4bKopenconduit"}`);
       continue;
     }
     if (REWRITE_IF_BROKEN.has(lower)) {
-      const rewritten = rewriteNameAddr(name, value);
-      if (rewritten) {
-        notes.push(name);
-        out.push(rewritten);
-        continue;
-      }
+      const tag = value.match(/;\s*tag=([^;\s]+)/i)?.[1];
+      const rewritten =
+        rewriteNameAddr(name, value) ??
+        `${name}: <sip:anonymous@anonymous.invalid>${lower === "contact" || lower === "m" || !tag ? "" : `;tag=${tag}`}`;
+      out.push(rewritten);
+      continue;
     }
-    notes.push(name);
-    out.push(line);
+  }
+
+  const first = out[0] ?? "";
+  if (!headerParses(first, "Request_Line")) {
+    const user = sipUser.trim() || first.match(/^INVITE\s+sip:([^@;\s>]+)@/i)?.[1] || "user";
+    const host = first.match(/@([^;:\s>]+)/i)?.[1] || "invalid.invalid";
+    out[0] = `INVITE sip:${user}@${host} SIP/2.0`;
+    notes.push("line");
   }
 
   return { message: `${out.join("\r\n")}${retargeted.message.slice(sep)}`, note: notes.join(",") };
+}
+
+/** Primeiro trecho do INVITE que o JsSIP ainda recusaria. */
+export function inviteFault(message: string): string {
+  const sep = message.indexOf("\r\n\r\n");
+  const head = sep === -1 ? message : message.slice(0, sep);
+  const lines = head.split("\r\n").filter(Boolean);
+  const first = lines[0] ?? "";
+  if (!headerParses(first, "Request_Line")) return "line";
+  for (const line of lines.slice(1)) {
+    const colon = line.indexOf(":");
+    if (colon <= 0) return "header";
+    const name = line.slice(0, colon).trim();
+    const rule = HEADER_RULE[name.toLowerCase()];
+    if (!rule) continue;
+    if (!headerParses(line.slice(colon + 1).trim(), rule)) return name;
+  }
+  return "";
 }

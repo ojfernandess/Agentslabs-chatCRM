@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sipFrames } from "./sipDiagnostics.js";
+import { sipClock, sipFrames } from "./sipDiagnostics.js";
 
 const options =
   "OPTIONS sip:0001@app.nvoip.com.br SIP/2.0\r\nVia: SIP/2.0/WSS app.nvoip.com.br\r\nContent-Length: 0\r\n\r\n";
+
+test("sipClock uses the local hour", () => {
+  assert.equal(sipClock(new Date(2026, 9, 7, 9, 57, 18)), "09:57:18");
+});
 
 test("sipFrames keeps a complete OPTIONS message", () => {
   assert.deepEqual(sipFrames(options), [options]);
