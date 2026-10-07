@@ -6998,7 +6998,7 @@ export const messages = {
       whatsappInsightsModeSuperDesc:
         "O painel não aparece no tenant; consulte abaixo nesta página.",
       whatsappInsightsAlertBillable:
-        "Enviar e-mail aos administradores do tenant quando houver mensagens cobráveis no mês (uma vez por mês; requer Resend configurado).",
+        "Enviar e-mail aos administradores do tenant quando houver mensagens cobráveis no mês e quando a franquia Service chegar a 80% ou a 100% (uma vez por aviso e por mês; requer Resend configurado).",
       whatsappInsightsAlertRecipients: "Administradores que recebem o e-mail",
       whatsappInsightsAlertRecipientsNone: "Esta organização não tem administradores com e-mail.",
       whatsappInsightsAlertRecipientsEmpty:
@@ -14773,7 +14773,7 @@ export const messages = {
       whatsappInsightsModeSuper: "Super admin only",
       whatsappInsightsModeSuperDesc: "Hidden from the tenant; use the panel below on this page.",
       whatsappInsightsAlertBillable:
-        "Email tenant admins when billable WhatsApp messages appear in the month (once per month; requires Resend).",
+        "Email tenant admins when billable WhatsApp messages appear in the month and when the Service allowance reaches 80% or 100% (once per notice and month; requires Resend).",
       whatsappInsightsAlertRecipients: "Administrators who receive the email",
       whatsappInsightsAlertRecipientsNone: "This organization has no administrators with an email address.",
       whatsappInsightsAlertRecipientsEmpty: "No administrator selected. The alert will not be sent.",

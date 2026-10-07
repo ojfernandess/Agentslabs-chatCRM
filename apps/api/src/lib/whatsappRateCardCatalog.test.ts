@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  findEmbeddedWhatsappRate,
   getWhatsappRateCardCatalog,
   listWhatsappRateCardCatalogs,
   validateWhatsappRateCardImport,
@@ -32,5 +33,34 @@ describe("whatsappRateCardCatalog", () => {
     });
     assert.ok(valid);
     assert.equal(validateWhatsappRateCardImport({ bad: true }), null);
+  });
+
+  it("uses the October USD card for Service after 2026-10-01", () => {
+    const rate = findEmbeddedWhatsappRate({
+      phoneDigits: "5511999999999",
+      category: "SERVICE",
+      at: new Date("2026-10-07T12:00:00.000Z"),
+    });
+    assert.equal(rate?.price, 0.0068);
+    assert.equal(rate?.currency, "USD");
+    assert.equal(rate?.version, "2026-10");
+  });
+
+  it("prefers the BRL card when two cards start on the same day", () => {
+    const july = findEmbeddedWhatsappRate({
+      phoneDigits: "5511999999999",
+      category: "MARKETING",
+      at: new Date("2026-07-15T12:00:00.000Z"),
+    });
+    assert.equal(july?.price, 0.3217);
+    assert.equal(july?.currency, "BRL");
+
+    const september = findEmbeddedWhatsappRate({
+      phoneDigits: "5511999999999",
+      category: "MARKETING",
+      at: new Date("2026-09-15T12:00:00.000Z"),
+    });
+    assert.equal(september?.currency, "BRL");
+    assert.equal(september?.price, 0.3217);
   });
 });

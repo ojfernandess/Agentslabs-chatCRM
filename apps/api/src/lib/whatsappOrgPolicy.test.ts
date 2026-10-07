@@ -10,6 +10,7 @@ const {
   resolveServiceFreeQuotaForDisplay,
   resolveServiceQuotaUsed,
 } = await import("./whatsappOrgPolicy.js");
+const { quotaAlertToSend } = await import("./whatsappConsumptionInsights.js");
 
 describe("resolveConsumptionRange", () => {
   const now = new Date("2026-09-16T15:00:00.000Z");
@@ -54,6 +55,30 @@ describe("buildServiceQuotaAlerts", () => {
     assert.deepEqual(
       full.map((a) => a.threshold),
       [80, 100],
+    );
+  });
+});
+
+describe("quotaAlertToSend", () => {
+  const monthKey = "2026-10";
+
+  it("sends 80 once, then 100, and skips a late 80 after 100", () => {
+    const both = [
+      { threshold: 80 as const },
+      { threshold: 100 as const },
+    ];
+    assert.equal(
+      quotaAlertToSend([{ threshold: 80 }], { monthKey, sent80: null, sent100: null }),
+      80,
+    );
+    assert.equal(quotaAlertToSend(both, { monthKey, sent80: null, sent100: null }), 100);
+    assert.equal(
+      quotaAlertToSend(both, { monthKey, sent80: monthKey, sent100: null }),
+      100,
+    );
+    assert.equal(
+      quotaAlertToSend(both, { monthKey, sent80: monthKey, sent100: monthKey }),
+      null,
     );
   });
 });

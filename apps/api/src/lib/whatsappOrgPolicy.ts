@@ -13,7 +13,10 @@ import {
 } from "./messageBillingLedger.js";
 import type { MessageCategory } from "./messagePolicyEngine.js";
 import type { MetaPolicyVersions } from "./metaPolicyConfig.js";
-import { maybeNotifyWhatsappBillableStarted } from "./whatsappConsumptionInsights.js";
+import {
+  maybeNotifyWhatsappBillableStarted,
+  maybeNotifyWhatsappServiceQuota,
+} from "./whatsappConsumptionInsights.js";
 
 export const WHATSAPP_CONSUMPTION_CATEGORIES = [
   "SERVICE",
@@ -114,6 +117,19 @@ type LedgerAggRow = {
 
 function toNumber(value: unknown): number | null {
   if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (
+    typeof value === "object" &&
+    "toNumber" in value &&
+    typeof (value as { toNumber?: unknown }).toNumber === "function"
+  ) {
+    const n = (value as { toNumber: () => number }).toNumber();
+    return Number.isFinite(n) ? n : null;
+  }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -349,6 +365,8 @@ export async function getWhatsappPolicyOverview(organizationId: string): Promise
   }
   const remaining =
     quota != null && serviceUsed != null ? Math.max(0, quota - serviceUsed) : null;
+  const alerts = buildServiceQuotaAlerts(serviceUsed, quota);
+  void maybeNotifyWhatsappServiceQuota({ organizationId, alerts }).catch(() => {});
   return {
     customerServiceWindowHours: WHATSAPP_SESSION_WINDOW_HOURS,
     serviceFreeMessagesPerNumberPerMonth: quota,
@@ -359,6 +377,6 @@ export async function getWhatsappPolicyOverview(organizationId: string): Promise
     periodStart: from.toISOString(),
     periodEnd: to.toISOString(),
     source: versions.source || null,
-    alerts: buildServiceQuotaAlerts(serviceUsed, quota),
+    alerts,
   };
 }

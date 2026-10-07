@@ -2,7 +2,10 @@ import { prisma } from "../db.js";
 import { isOrganizationFeatureEnabled } from "./featureFlags.js";
 import { reconcileWhatsappLedgerBillabilityForRange } from "./messageBillingLedger.js";
 import { getResendEmailConfigFromDb } from "./resendEmailSettings.js";
-import { sendWhatsappBillableAlertEmail } from "./sendWhatsappBillableAlertEmail.js";
+import {
+  sendWhatsappBillableAlertEmail,
+  sendWhatsappQuotaAlertEmail,
+} from "./sendWhatsappBillableAlertEmail.js";
 
 export const WHATSAPP_CONSUMPTION_DASHBOARD_FLAG = "whatsapp_consumption_dashboard" as const;
 
@@ -20,6 +23,8 @@ export type WhatsappConsumptionInsightsOrgConfig = {
   /** `null` = todos os administradores (comportamento anterior). Lista vazia = ninguém. */
   billableAlertRecipientUserIds: string[] | null;
   lastBillableAlertMonth: string | null;
+  lastQuotaAlert80Month: string | null;
+  lastQuotaAlert100Month: string | null;
 };
 
 const PLATFORM_SETTING_KEY = "whatsapp_consumption_insights_by_org";
@@ -29,6 +34,8 @@ const DEFAULT_CONFIG: WhatsappConsumptionInsightsOrgConfig = {
   alertAdminOnBillable: false,
   billableAlertRecipientUserIds: null,
   lastBillableAlertMonth: null,
+  lastQuotaAlert80Month: null,
+  lastQuotaAlert100Month: null,
 };
 
 type ConfigMap = Record<string, WhatsappConsumptionInsightsOrgConfig>;
@@ -48,7 +55,23 @@ function normalizeOrgConfig(raw: unknown): WhatsappConsumptionInsightsOrgConfig 
     billableAlertRecipientUserIds,
     lastBillableAlertMonth:
       typeof o.lastBillableAlertMonth === "string" ? o.lastBillableAlertMonth : null,
+    lastQuotaAlert80Month:
+      typeof o.lastQuotaAlert80Month === "string" ? o.lastQuotaAlert80Month : null,
+    lastQuotaAlert100Month:
+      typeof o.lastQuotaAlert100Month === "string" ? o.lastQuotaAlert100Month : null,
   };
+}
+
+/** Um e-mail por mês: 100% tem prioridade se os dois limiares ainda não foram avisados. */
+export function quotaAlertToSend(
+  alerts: Array<{ threshold: 80 | 100 }>,
+  state: { monthKey: string; sent80: string | null; sent100: string | null },
+): 80 | 100 | null {
+  const need100 = alerts.some((alert) => alert.threshold === 100) && state.sent100 !== state.monthKey;
+  const need80 = alerts.some((alert) => alert.threshold === 80) && state.sent80 !== state.monthKey;
+  if (need100) return 100;
+  if (need80) return 80;
+  return null;
 }
 
 async function loadConfigMap(): Promise<ConfigMap> {
@@ -238,5 +261,66 @@ export async function maybeNotifyWhatsappBillableStarted(organizationId: string)
   const map = await loadConfigMap();
   const current = map[organizationId] ?? { ...DEFAULT_CONFIG };
   map[organizationId] = { ...current, lastBillableAlertMonth: monthKey };
+  await saveConfigMap(map);
+}
+
+/**
+ * Avisa os administradores selecionados quando a franquia Service do mês
+ * cruza 80% e, depois, quando chega a 100%. Uma vez por limiar e por mês.
+ */
+export async function maybeNotifyWhatsappServiceQuota(params: {
+  organizationId: string;
+  alerts: Array<{ threshold: 80 | 100; percent: number }>;
+}): Promise<void> {
+  if (params.alerts.length === 0) return;
+  const enabled = await isWhatsappConsumptionDashboardEnabled(params.organizationId);
+  if (!enabled) return;
+
+  const cfg = await getWhatsappConsumptionInsightsConfig(params.organizationId);
+  if (cfg.visibility !== "super_admin_only" || !cfg.alertAdminOnBillable) return;
+
+  const { monthKey } = currentCalendarMonth();
+  const threshold = quotaAlertToSend(params.alerts, {
+    monthKey,
+    sent80: cfg.lastQuotaAlert80Month,
+    sent100: cfg.lastQuotaAlert100Month,
+  });
+  if (threshold == null) return;
+
+  const alert = params.alerts.find((row) => row.threshold === threshold);
+  if (!alert) return;
+
+  const org = await prisma.organization.findUnique({
+    where: { id: params.organizationId },
+    select: { name: true },
+  });
+  if (!org) return;
+
+  const recipients = await resolveBillableAlertRecipientEmails(
+    params.organizationId,
+    cfg.billableAlertRecipientUserIds,
+  );
+  const cfgResend = await getResendEmailConfigFromDb();
+  if (!cfgResend || recipients.length === 0) return;
+
+  let sent = false;
+  for (const toEmail of recipients) {
+    const result = await sendWhatsappQuotaAlertEmail(cfgResend, toEmail, {
+      organizationName: org.name,
+      threshold,
+      percent: alert.percent,
+      monthKey,
+    });
+    if (result.ok) sent = true;
+  }
+  if (!sent) return;
+
+  const map = await loadConfigMap();
+  const current = map[params.organizationId] ?? { ...DEFAULT_CONFIG };
+  map[params.organizationId] = {
+    ...current,
+    lastQuotaAlert80Month: monthKey,
+    lastQuotaAlert100Month: threshold === 100 ? monthKey : current.lastQuotaAlert100Month,
+  };
   await saveConfigMap(map);
 }

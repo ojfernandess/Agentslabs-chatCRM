@@ -18,6 +18,7 @@ import {
   countPriorServiceMessagesThisMonth,
   resolveVolumeTierDiscount,
 } from "./whatsappVolumeTierService.js";
+import { findEmbeddedWhatsappRate } from "./whatsappRateCardCatalog.js";
 
 /**
  * Message Ledger (Cost Policy) — registo de metadados de cobrança por mensagem.
@@ -81,12 +82,25 @@ async function lookupPricingRule(params: {
     take: 200,
   });
   const best = pickBestPricingRule(rules, phone);
-  if (!best) return null;
+  if (best) {
+    return {
+      price: best.price,
+      currency: best.currency,
+      version: best.version ?? null,
+      market: best.market,
+    };
+  }
+  const embedded = findEmbeddedWhatsappRate({
+    phoneDigits: phone,
+    category: params.category,
+    at,
+  });
+  if (!embedded) return null;
   return {
-    price: best.price,
-    currency: best.currency,
-    version: best.version ?? null,
-    market: best.market,
+    price: new Prisma.Decimal(embedded.price),
+    currency: embedded.currency,
+    version: embedded.version,
+    market: embedded.market,
   };
 }
 
