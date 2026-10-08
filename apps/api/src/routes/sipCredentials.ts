@@ -14,6 +14,7 @@ import {
 import { getOrgSipServer, normalizeOrgSipRingtone, saveOrgSipServer } from "../lib/orgSipServer.js";
 import { isUserTenantAdmin } from "../lib/tenantAdmin.js";
 import { completeSipCallLog, startSipCallLog } from "../lib/sipCallLog.js";
+import { claimSipCallDistribution, completeSipCallDistribution, touchSipAgentPresence } from "../lib/sipCallDistributionService.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
 
 const upsertSchema = z.object({
@@ -53,6 +54,7 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       sipDomain: stored?.sipDomain || endpoint.sipDomain,
       wssUrl: stored?.wssUrl || endpoint.wssUrl,
       ringTone: stored?.ringTone ?? endpoint.ringTone,
+      callDistribution: stored?.callDistribution === true,
     };
   });
 
@@ -72,6 +74,7 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
         sipDomain: z.string().min(1).max(253),
         wssUrl: z.string().min(8).max(300),
         ringTone: z.string().max(32).optional(),
+        callDistribution: z.boolean().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -85,6 +88,7 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       const saved = await saveOrgSipServer(organizationId, {
         ...parsed.data,
         ringTone: parsed.data.ringTone ? normalizeOrgSipRingtone(parsed.data.ringTone) : undefined,
+        callDistribution: parsed.data.callDistribution,
       });
       return { ok: true, ...saved, sipProvider: "sip" as const, configurable: true };
     } catch {
@@ -190,6 +194,79 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       organizationId,
       userId: request.user.id,
       ...parsed.data,
+    });
+    return { ok: true };
+  });
+
+  app.post("/presence", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const parsed = z
+      .object({ state: z.enum(["registered", "busy", "offline"]) })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_presence_invalid",
+        statusCode: 400,
+      });
+    }
+    await touchSipAgentPresence({
+      userId: request.user.id,
+      organizationId,
+      state: parsed.data.state,
+    });
+    return { ok: true };
+  });
+
+  app.post("/distribution/claim", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const parsed = z
+      .object({
+        sipCallId: z.string().min(8).max(256),
+        caller: z.string().max(32).optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_call_invalid",
+        statusCode: 400,
+      });
+    }
+    return claimSipCallDistribution({
+      organizationId,
+      userId: request.user.id,
+      sipCallId: parsed.data.sipCallId,
+      caller: parsed.data.caller ?? "",
+    });
+  });
+
+  app.post("/distribution/result", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const parsed = z
+      .object({
+        distributionId: z.string().uuid(),
+        status: z.enum(["ANSWERED", "REJECTED", "MISSED", "ENDED"]),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_call_invalid",
+        statusCode: 400,
+      });
+    }
+    await completeSipCallDistribution({
+      organizationId,
+      userId: request.user.id,
+      distributionId: parsed.data.distributionId,
+      status: parsed.data.status,
     });
     return { ok: true };
   });

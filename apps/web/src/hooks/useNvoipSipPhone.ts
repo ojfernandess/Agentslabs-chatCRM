@@ -66,6 +66,7 @@ type SipCredentials = {
   wssUrl: string;
   wssUrlAlternates?: string[];
   ringTone?: string;
+  callDistribution?: boolean;
 };
 
 function emitSipStatus(status: NvoipSipCallStatus, error: string | null): void {
@@ -341,11 +342,14 @@ export function useNvoipSipPhone(enabled: boolean) {
   const answeredElsewhereIdsRef = useRef(new Set<string>());
   const announcedCallsRef = useRef(new Set<string>());
   const publishTakenRef = useRef<(session: SipRtcSession, kind: "answer" | "end") => void>(() => {});
+  const callDistributionRef = useRef(false);
+  const distributionBySessionRef = useRef(new WeakMap<SipRtcSession, string>());
 
   const outboundLegRef = useRef(false);
   const localEndRef = useRef(false);
   const answeredElsewhereRef = useRef(false);
   const [status, setStatus] = useState<NvoipSipCallStatus>("unregistered");
+  const [distributionEnabled, setDistributionEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<NvoipSipRemoteParty | null>(null);
   const [queue, setQueue] = useState<NvoipSipQueuedCall[]>([]);
@@ -607,6 +611,12 @@ export function useNvoipSipPhone(enabled: boolean) {
           const id = rememberId(session);
           const localEnd = localEndIdsRef.current.has(id) || (active && localEndRef.current);
           localEndIdsRef.current.delete(id);
+          const distributionId = distributionBySessionRef.current.get(session);
+          if (distributionId) {
+            distributionBySessionRef.current.delete(session);
+            const distributionStatus = log?.answeredAt ? "ENDED" : localEnd ? "REJECTED" : "MISSED";
+            void api.post("/sip/distribution/result", { distributionId, status: distributionStatus }).catch(() => {});
+          }
           const answeredElsewhere =
             answeredElsewhereIdsRef.current.has(id) || (active && answeredElsewhereRef.current);
           answeredElsewhereIdsRef.current.delete(id);
@@ -673,9 +683,17 @@ export function useNvoipSipPhone(enabled: boolean) {
             attachRemoteAudio(peerconnection);
           });
           const announceAnswered = () => publishTakenRef.current(session, "answer");
+          const reportDistributionAnswered = () => {
+            const distributionId = distributionBySessionRef.current.get(session);
+            if (!distributionId) return;
+            void api.post("/sip/distribution/result", { distributionId, status: "ANSWERED" }).catch(() => {});
+          };
           session.on("ended", () => closeSession("ended"));
           session.on("failed", (ev: unknown) => closeSession("failed", ev));
-          session.on("accepted", () => announceAnswered());
+          session.on("accepted", () => {
+            announceAnswered();
+            reportDistributionAnswered();
+          });
           session.on("confirmed", () => {
             announceAnswered();
             if (sessionRef.current !== session) return;
@@ -691,6 +709,7 @@ export function useNvoipSipPhone(enabled: boolean) {
           });
         };
 
+        const deliverSession = () => {
         const current = sessionRef.current;
         if (outbound && current && current !== session && sipSessionOccupiesLine(current)) {
           sipDiag("SIP", "Line busy");
@@ -766,6 +785,36 @@ export function useNvoipSipPhone(enabled: boolean) {
         } catch {
           sipDiag("SIP", "Session handler error");
         }
+        };
+
+        if (!outbound && callDistributionRef.current) {
+          const party = readRemoteParty(session);
+          const sipCallId = (session._request?.call_id || session.id || crypto.randomUUID()).slice(0, 256);
+          const postedId = sipCallId.length >= 8 ? sipCallId : `dist-${sipCallId}`.padEnd(8, "0").slice(0, 256);
+          void api
+            .post<{ ring: boolean; distributionId: string | null }>("/sip/distribution/claim", {
+              sipCallId: postedId,
+              caller: (party.number || "").slice(0, 32),
+            })
+            .then((decision) => {
+              if (session.isEnded()) return;
+              if (!decision.ring) {
+                try {
+                  session.terminate({ status_code: 480, reason_phrase: "Temporarily Unavailable" });
+                } catch {
+                  /* a perna já encerrou */
+                }
+                return;
+              }
+              if (decision.distributionId) distributionBySessionRef.current.set(session, decision.distributionId);
+              deliverSession();
+            })
+            .catch(() => {
+              if (!session.isEnded()) deliverSession();
+            });
+          return;
+        }
+        deliverSession();
       });
 
       ua.start();
@@ -783,6 +832,8 @@ export function useNvoipSipPhone(enabled: boolean) {
     try {
       creds = await api.get<SipCredentials>("/sip/credentials");
       incomingRingTone = normalizeSipRingtone(creds.ringTone);
+      callDistributionRef.current = creds.callDistribution === true;
+      setDistributionEnabled(creds.callDistribution === true);
       credsRef.current = creds;
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
@@ -802,6 +853,18 @@ export function useNvoipSipPhone(enabled: boolean) {
     }
     startUa(creds, candidates[0]);
   }, [enabled, ensureLocalAudio, setStatusSafe, startUa]);
+
+  useEffect(() => {
+    if (!distributionEnabled) return;
+    const state = status === "in-call" || status === "ringing" ? "busy" : status === "registered" ? "registered" : "offline";
+    void api.post("/sip/presence", { state }).catch(() => {});
+    if (state === "offline") return;
+    const timer = window.setInterval(() => {
+      const next = status === "in-call" || status === "ringing" ? "busy" : "registered";
+      void api.post("/sip/presence", { state: next }).catch(() => {});
+    }, 12_000);
+    return () => window.clearInterval(timer);
+  }, [distributionEnabled, status]);
 
   const placeCall = useCallback((rawNumber: string) => {
     const phone = rawNumber.replace(/[^\d+]/g, "");

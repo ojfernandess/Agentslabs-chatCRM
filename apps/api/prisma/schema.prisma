@@ -261,6 +261,8 @@ model Organization {
   nvoipAgentExtensions           NvoipAgentExtension[]
   nvoipCallLogs                  NvoipCallLog[]
   sipCallLogs                    SipCallLog[]
+  sipAgentPresences              SipAgentPresence[]
+  sipCallDistributions           SipCallDistribution[]
   nvoipIntegrationLogs           NvoipIntegrationLog[]
   nvoipTorpedoDispatches         NvoipTorpedoDispatch[]
   nvoipScheduledTorpedos         NvoipScheduledTorpedo[]
@@ -615,6 +617,8 @@ model User {
   sipCallsInitiated            SipCallLog[]                  @relation("SipCallInitiator")
   nvoipOtpChallenges           NvoipOtpChallenge[]
   sipCredentials               UserSipCredentials?
+  sipAgentPresence             SipAgentPresence?
+  sipCallDistributions         SipCallDistribution[]
   mcpAccessTokens              McpAccessToken[]
   mcpAuditLogs                 McpAuditLog[]
   intelligentTagSuggestionsReviewed IntelligentTagSuggestion[] @relation("IntelligentTagSuggestionReviewer")
@@ -3124,6 +3128,44 @@ model SipCallLog {
   @@index([organizationId])
   @@index([initiatedByUserId])
   @@map("sip_call_logs")
+}
+
+/// Softphone registrado agora. Não substitui o heartbeat de presença do CRM.
+model SipAgentPresence {
+  userId         String   @id @map("user_id") @db.Uuid
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String   @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  state          String   @db.VarChar(16)
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId, state, updatedAt])
+  @@map("sip_agent_presence")
+}
+
+/// Oferta de uma chamada recebida a um atendente. O histórico permanece na virada do dia.
+model SipCallDistribution {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String    @map("user_id") @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  callerDigits   String    @map("caller_digits") @db.VarChar(32)
+  sipCallId      String    @map("sip_call_id") @db.VarChar(256)
+  status         String    @db.VarChar(16)
+  reason         String    @db.VarChar(32)
+  offeredCount   Int       @map("offered_count")
+  attempt        Int       @default(1)
+  offeredAt      DateTime  @default(now()) @map("offered_at")
+  answeredAt     DateTime? @map("answered_at")
+  endedAt        DateTime? @map("ended_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([organizationId, callerDigits, offeredAt])
+  @@index([organizationId, userId, offeredAt])
+  @@index([organizationId, status])
+  @@map("sip_call_distributions")
 }
 
 model NvoipIntegrationLog {

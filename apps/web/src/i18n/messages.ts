@@ -3703,6 +3703,13 @@ export const messages = {
         fieldRingTone: "Toque do softphone",
         ringToneHint: "Som das chamadas que chegam neste CRM. Padrão mantém o toque atual.",
         ringTonePreview: "Ouvir",
+        distributionTitle: "Distribuição de chamadas",
+        distributionToggle: "Ativar distribuição inteligente",
+        distributionHint:
+          "Quando ativada, cada ligação toca para um único atendente disponível, priorizando quem recebeu menos chamadas. Empate é sorteio.",
+        distributionOff: "Desativada: as ligações continuam tocando para todos os atendentes.",
+        distributionOn:
+          "Estratégia: menor número de chamadas e sorteio. Um atendente por tentativa. Balanceamento diário. Se ninguém estiver disponível, o toque atual é mantido.",
         ringTone: {
           classic: "Padrão",
           bright: "Agudo",
@@ -11510,6 +11517,13 @@ export const messages = {
         fieldRingTone: "Softphone ringtone",
         ringToneHint: "Sound for calls arriving in this CRM. Default keeps the current tone.",
         ringTonePreview: "Preview",
+        distributionTitle: "Call distribution",
+        distributionToggle: "Enable smart distribution",
+        distributionHint:
+          "When enabled, each call rings for one available agent, preferring whoever has received fewer calls. Ties are drawn at random.",
+        distributionOff: "Off: calls keep ringing for every agent.",
+        distributionOn:
+          "Strategy: fewest calls, then a draw. One agent per attempt. Balanced each day. If nobody is available, the current ring is kept.",
         ringTone: {
           classic: "Default",
           bright: "Bright",

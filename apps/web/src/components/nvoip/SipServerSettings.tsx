@@ -11,6 +11,7 @@ type SipServer = {
   sipDomain: string;
   wssUrl: string;
   ringTone?: string;
+  callDistribution?: boolean;
 };
 
 export function SipServerSettings() {
@@ -18,6 +19,7 @@ export function SipServerSettings() {
   const [sipDomain, setSipDomain] = useState("");
   const [wssUrl, setWssUrl] = useState("");
   const [ringTone, setRingTone] = useState<SipRingtoneId>("classic");
+  const [callDistribution, setCallDistribution] = useState(false);
   const [provider, setProvider] = useState<SipServer["sipProvider"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -32,6 +34,7 @@ export function SipServerSettings() {
       setSipDomain(server.sipDomain ?? "");
       setWssUrl(server.wssUrl ?? "");
       setRingTone(normalizeSipRingtone(server.ringTone));
+      setCallDistribution(server.callDistribution === true);
       setProvider(server.sipProvider);
     } catch {
       setError(t("nvoip.sip.loadError"));
@@ -54,10 +57,12 @@ export function SipServerSettings() {
         sipDomain: sipDomain.trim(),
         wssUrl: wssUrl.trim(),
         ringTone,
+        callDistribution,
       });
       setSipDomain(savedServer.sipDomain ?? "");
       setWssUrl(savedServer.wssUrl ?? "");
       setRingTone(normalizeSipRingtone(savedServer.ringTone));
+      setCallDistribution(savedServer.callDistribution === true);
       setProvider(savedServer.sipProvider);
       setSaved(true);
       window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-refresh"));
@@ -125,6 +130,21 @@ export function SipServerSettings() {
             </span>
           </label>
           <p className="text-xs text-ink-500">{t("nvoip.sip.ringToneHint")}</p>
+          <section className="rounded-lg border border-ink-200 p-3 dark:border-ink-700">
+            <h3 className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("nvoip.sip.distributionTitle")}</h3>
+            <label className="mt-2 flex items-center gap-2 text-sm text-ink-800 dark:text-ink-100">
+              <input
+                type="checkbox"
+                checked={callDistribution}
+                onChange={(e) => setCallDistribution(e.target.checked)}
+              />
+              {t("nvoip.sip.distributionToggle")}
+            </label>
+            <p className="mt-2 text-xs text-ink-500">{t("nvoip.sip.distributionHint")}</p>
+            <p className="mt-2 text-xs text-ink-500">
+              {callDistribution ? t("nvoip.sip.distributionOn") : t("nvoip.sip.distributionOff")}
+            </p>
+          </section>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
             type="button"

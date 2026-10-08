@@ -14,6 +14,7 @@ export type UserSipCredentialsClient = NvoipEmbeddedSipClientConfig & {
   /** nvoip mantém o servidor da conta. sip usa o domínio/WSS configurado na organização. */
   sipProvider: "nvoip" | "sip";
   ringTone: OrgSipRingtone;
+  callDistribution: boolean;
 };
 
 export async function resolveOrganizationSipEndpoint(organizationId: string): Promise<{
@@ -22,6 +23,7 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
   wssUrl: string;
   wssUrlAlternates: string[];
   ringTone: OrgSipRingtone;
+  callDistribution: boolean;
 }> {
   const custom = await getOrgSipServer(organizationId);
   const account = await prisma.nvoipAccount.findFirst({
@@ -33,6 +35,7 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
   const customIsNvoipDefault =
     !!custom && custom.sipDomain === nvoipDomain && custom.wssUrl.replace(/\/+$/, "") === nvoipWss.replace(/\/+$/, "");
   const ringTone = custom?.ringTone ?? "classic";
+  const callDistribution = custom?.callDistribution === true;
   if (account && (!custom || customIsNvoipDefault)) {
     return {
       sipProvider: "nvoip",
@@ -40,6 +43,7 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
       wssUrl: nvoipWss,
       wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
       ringTone,
+      callDistribution,
     };
   }
   return {
@@ -48,6 +52,7 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
     wssUrl: custom?.wssUrl ?? "",
     wssUrlAlternates: [],
     ringTone,
+    callDistribution,
   };
 }
 
@@ -72,6 +77,7 @@ export async function getUserSipCredentialsForClient(
         wssUrl: nvoipEmbeddedSipWssUrl(),
         wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
         ringTone: "classic" as const,
+        callDistribution: false,
       };
   return {
     sipUser: row.sipUser.trim(),
@@ -82,6 +88,7 @@ export async function getUserSipCredentialsForClient(
     wssUrlAlternates: endpoint.wssUrlAlternates,
     sipProvider: endpoint.sipProvider,
     ringTone: endpoint.ringTone,
+    callDistribution: endpoint.callDistribution,
   };
 }
 

@@ -8,6 +8,7 @@ export type OrgSipServerConfig = {
   sipDomain: string;
   wssUrl: string;
   ringTone: OrgSipRingtone;
+  callDistribution: boolean;
 };
 
 function settingKey(organizationId: string): string {
@@ -33,7 +34,12 @@ export function parseOrgSipServer(value: unknown): OrgSipServerConfig | null {
   const sipDomain = cleanDomain(typeof row.sipDomain === "string" ? row.sipDomain : "");
   const wssUrl = typeof row.wssUrl === "string" ? row.wssUrl.trim().replace(/\/+$/, "") : "";
   if (!sipDomain || !wssUrl.toLowerCase().startsWith("wss://")) return null;
-  return { sipDomain, wssUrl, ringTone: normalizeOrgSipRingtone(row.ringTone) };
+  return {
+    sipDomain,
+    wssUrl,
+    ringTone: normalizeOrgSipRingtone(row.ringTone),
+    callDistribution: row.callDistribution === true,
+  };
 }
 
 export async function getOrgSipServer(organizationId: string): Promise<OrgSipServerConfig | null> {
@@ -46,13 +52,14 @@ export async function getOrgSipServer(organizationId: string): Promise<OrgSipSer
 
 export async function saveOrgSipServer(
   organizationId: string,
-  input: { sipDomain: string; wssUrl: string; ringTone?: string },
+  input: { sipDomain: string; wssUrl: string; ringTone?: string; callDistribution?: boolean },
 ): Promise<OrgSipServerConfig> {
   const current = await getOrgSipServer(organizationId);
   const parsed = parseOrgSipServer({
     sipDomain: input.sipDomain,
     wssUrl: input.wssUrl,
     ringTone: input.ringTone ?? current?.ringTone ?? "classic",
+    callDistribution: input.callDistribution ?? current?.callDistribution ?? false,
   });
   if (!parsed) throw new Error("sip_server_invalid");
   await prisma.platformSetting.upsert({
