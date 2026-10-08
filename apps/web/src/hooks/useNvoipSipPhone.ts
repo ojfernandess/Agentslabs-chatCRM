@@ -19,7 +19,7 @@ type SipRtcSession = {
     mediaStream?: MediaStream;
     pcConfig?: RTCConfiguration;
   }) => void;
-  terminate: (options?: { status_code?: number; reason_phrase?: string }) => void;
+  terminate: (options?: { status_code?: number; reason_phrase?: string; cause?: string }) => void;
   sendRequest: (method: string) => void;
   mute: (options?: { audio?: boolean; video?: boolean }) => void;
   unmute: (options?: { audio?: boolean; video?: boolean }) => void;
@@ -164,21 +164,34 @@ function publishInboundRoute(syncOnly = false): void {
 
 const STATUS_WAITING_FOR_ACK = 6;
 
-/** O 200 já abriu o áudio. Sem o ACK, o JsSIP derruba a chamada em 32s. */
+/** O 200 já abriu o áudio. Sem o ACK, o JsSIP reenvia o 200 e, aos 32s, manda BYE. */
 function keepAnsweredCall(session: SipRtcSession): void {
   const timers = (session as SipRtcSession & {
     _timers?: { ackTimer: number | null; invite2xxTimer: number | null };
   })._timers;
   if (!timers) return;
-  if (timers.ackTimer != null) window.clearTimeout(timers.ackTimer);
-  timers.ackTimer = window.setTimeout(() => {
-    if (session.isEnded() || session.status !== STATUS_WAITING_FOR_ACK) return;
-    if (timers.invite2xxTimer != null) {
-      window.clearTimeout(timers.invite2xxTimer);
-      timers.invite2xxTimer = null;
-    }
+  if (timers.ackTimer != null) {
+    window.clearTimeout(timers.ackTimer);
     timers.ackTimer = null;
-  }, 32_000);
+  }
+  if (timers.invite2xxTimer != null) {
+    window.clearTimeout(timers.invite2xxTimer);
+    timers.invite2xxTimer = null;
+  }
+}
+
+/** O JsSIP encerra a chamada se o ICE passar por failed, mesmo com áudio. */
+function ignoreIceHangup(session: SipRtcSession): void {
+  const end = session.terminate.bind(session);
+  session.terminate = (options) => {
+    const reason = options?.reason_phrase ?? "";
+    const cause = options?.cause ?? "";
+    if (reason === "RTP Timeout" || cause === "RTP Timeout") {
+      sipDiag("SIP", "Ignored ICE failure");
+      return;
+    }
+    end(options);
+  };
 }
 
 const remoteClosing = new WeakSet<SipRtcSession>();
@@ -205,19 +218,12 @@ function setOutboundAudioEnabled(session: SipRtcSession, enabled: boolean, fallb
   }
 }
 
-function watchIce(pc: RTCPeerConnection, session: SipRtcSession): void {
+function watchIce(pc: RTCPeerConnection): void {
   sipDiag("WEBRTC", "Creating PeerConnection");
   sipDiag("ICE", pc.iceConnectionState);
-  const finishIfDead = () => {
+  pc.addEventListener("iceconnectionstatechange", () => {
     sipDiag("ICE", pc.iceConnectionState);
-    const ice = pc.iceConnectionState;
-    const conn = pc.connectionState;
-    if (ice === "failed" || ice === "closed" || conn === "failed" || conn === "closed") {
-      endSessionFromRemote(session);
-    }
-  };
-  pc.addEventListener("iceconnectionstatechange", finishIfDead);
-  pc.addEventListener("connectionstatechange", finishIfDead);
+  });
 }
 
 function traceSocket(
@@ -654,6 +660,7 @@ export function useNvoipSipPhone(enabled: boolean) {
       ua.on("newRTCSession", (data: unknown) => {
         const payload = data as { originator?: string; session: SipRtcSession };
         const session = payload.session;
+        ignoreIceHangup(session);
         const outbound = payload.originator === "local";
         if (!outbound) inviteGate.accepted = true;
 
@@ -739,13 +746,13 @@ export function useNvoipSipPhone(enabled: boolean) {
 
         const watchSession = () => {
           if (session.connection) {
-            watchIce(session.connection, session);
+            watchIce(session.connection);
             attachRemoteAudio(session.connection);
           }
           session.on("peerconnection", (ev: unknown) => {
             const peerconnection = (ev as { peerconnection?: RTCPeerConnection }).peerconnection;
             if (!peerconnection) return;
-            watchIce(peerconnection, session);
+            watchIce(peerconnection);
             attachRemoteAudio(peerconnection);
           });
           const announceAnswered = () => publishTakenRef.current(session, "answer");
