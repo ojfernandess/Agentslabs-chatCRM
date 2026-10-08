@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useNvoipSipPhoneOptional } from "@/contexts/NvoipSipPhoneContext";
 import { useSipDiagnostics } from "@/lib/sipDiagnostics";
+import { StartConversationAction } from "@/components/nvoip/NvoipSoftphonePanel";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 type DialerTab = "keypad" | "contacts" | "history";
@@ -17,6 +18,7 @@ type HistoryRow = {
   caller: string;
   receiver: string;
   createdAt: string;
+  conversationId?: string | null;
   contact: { id: string; name: string; phone: string | null } | null;
 };
 
@@ -245,12 +247,13 @@ export function SipDialer() {
                 const outgoing = row.direction === "OUTGOING";
                 const phone = outgoing ? row.receiver : row.caller;
                 const label = row.contact?.name?.trim() || phone;
+                const dialable = phone.replace(/\D/g, "").length >= 8;
                 return (
-                  <li key={row.id}>
+                  <li key={row.id} className="flex items-center gap-1 rounded-xl hover:bg-slate-50 dark:hover:bg-ink-800">
                     <button
                       type="button"
                       onClick={() => phone && dial(phone)}
-                      className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-slate-50 dark:hover:bg-ink-800"
+                      className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
                     >
                       {outgoing ? (
                         <PhoneOutgoing className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
@@ -260,12 +263,21 @@ export function SipDialer() {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-slate-900 dark:text-ink-50">{label}</span>
                         <span className="block truncate text-xs text-slate-500 dark:text-ink-400">
+                          {phone && phone !== label ? `${phone} · ` : ""}
                           {outgoing ? t("nvoip.softphone.historyOut") : t("nvoip.softphone.historyIn")}
                           {" · "}
                           {new Date(row.createdAt).toLocaleString()}
                         </span>
                       </span>
                     </button>
+                    {dialable ? (
+                      <StartConversationAction
+                        inline
+                        phone={phone}
+                        contactId={row.contact?.id ?? null}
+                        conversationId={row.conversationId ?? null}
+                      />
+                    ) : null}
                   </li>
                 );
               })

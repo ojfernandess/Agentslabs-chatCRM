@@ -1,8 +1,13 @@
 import { prisma } from "../db.js";
 
+const RINGTONE_IDS = ["classic", "bright", "soft", "pulse"] as const;
+
+export type OrgSipRingtone = (typeof RINGTONE_IDS)[number];
+
 export type OrgSipServerConfig = {
   sipDomain: string;
   wssUrl: string;
+  ringTone: OrgSipRingtone;
 };
 
 function settingKey(organizationId: string): string {
@@ -18,13 +23,17 @@ function cleanDomain(value: string): string {
     .toLowerCase();
 }
 
+export function normalizeOrgSipRingtone(value: unknown): OrgSipRingtone {
+  return RINGTONE_IDS.includes(value as OrgSipRingtone) ? (value as OrgSipRingtone) : "classic";
+}
+
 export function parseOrgSipServer(value: unknown): OrgSipServerConfig | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
   const sipDomain = cleanDomain(typeof row.sipDomain === "string" ? row.sipDomain : "");
   const wssUrl = typeof row.wssUrl === "string" ? row.wssUrl.trim().replace(/\/+$/, "") : "";
   if (!sipDomain || !wssUrl.toLowerCase().startsWith("wss://")) return null;
-  return { sipDomain, wssUrl };
+  return { sipDomain, wssUrl, ringTone: normalizeOrgSipRingtone(row.ringTone) };
 }
 
 export async function getOrgSipServer(organizationId: string): Promise<OrgSipServerConfig | null> {
@@ -37,9 +46,14 @@ export async function getOrgSipServer(organizationId: string): Promise<OrgSipSer
 
 export async function saveOrgSipServer(
   organizationId: string,
-  input: { sipDomain: string; wssUrl: string },
+  input: { sipDomain: string; wssUrl: string; ringTone?: string },
 ): Promise<OrgSipServerConfig> {
-  const parsed = parseOrgSipServer(input);
+  const current = await getOrgSipServer(organizationId);
+  const parsed = parseOrgSipServer({
+    sipDomain: input.sipDomain,
+    wssUrl: input.wssUrl,
+    ringTone: input.ringTone ?? current?.ringTone ?? "classic",
+  });
   if (!parsed) throw new Error("sip_server_invalid");
   await prisma.platformSetting.upsert({
     where: { key: settingKey(organizationId) },

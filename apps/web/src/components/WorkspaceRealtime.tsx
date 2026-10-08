@@ -164,6 +164,7 @@ export function WorkspaceRealtime() {
       linkedPhone?: string | null;
       targetUserIds?: string[] | null;
       userId?: string;
+      sipCallId?: string;
       presenceConnected?: boolean;
       effectiveAvailabilityStatus?: string;
       message?: ConversationMessagePushPayload;
@@ -359,6 +360,12 @@ export function WorkspaceRealtime() {
             }),
           );
         }
+      } else if (data.type === "sip.call.answered" && typeof data.sipCallId === "string") {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:sip-call-answered", {
+            detail: { sipCallId: data.sipCallId, userId: data.userId },
+          }),
+        );
       } else if (data.type === "nvoip.call.ended") {
         window.dispatchEvent(new CustomEvent("openconduit:nvoip-call-ended", { detail: data }));
         if (typeof data.conversationId === "string" && data.conversationId) {

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { isSuperAdminRole } from "@/lib/authRole";
 import { useNvoipVoiceOptional } from "@/contexts/NvoipVoiceContext";
-import { useNvoipSipPhone, type NvoipSipCallStatus, type NvoipSipRemoteParty } from "@/hooks/useNvoipSipPhone";
+import { useNvoipSipPhone, type NvoipSipCallStatus, type NvoipSipQueuedCall, type NvoipSipRemoteParty } from "@/hooks/useNvoipSipPhone";
 
 type NvoipSipPhoneContextValue = {
   status: NvoipSipCallStatus;
@@ -12,6 +12,7 @@ type NvoipSipPhoneContextValue = {
   reject: () => void;
   placeCall: (number: string) => boolean;
   incoming: NvoipSipRemoteParty | null;
+  queue: NvoipSipQueuedCall[];
   answeredAt: number | null;
   answering: boolean;
   muted: boolean;
@@ -20,6 +21,9 @@ type NvoipSipPhoneContextValue = {
   toggleMute: () => void;
   sendDtmf: (tone: string) => void;
   requestCallAlerts: () => Promise<void>;
+  answerQueued: (callId: string) => Promise<void>;
+  rejectQueued: (callId: string) => void;
+  resumeQueued: (callId: string) => Promise<void>;
 };
 
 const NvoipSipPhoneContext = createContext<NvoipSipPhoneContextValue>({
@@ -30,6 +34,7 @@ const NvoipSipPhoneContext = createContext<NvoipSipPhoneContextValue>({
   reject: () => {},
   placeCall: () => false,
   incoming: null,
+  queue: [],
   answeredAt: null,
   answering: false,
   muted: false,
@@ -38,6 +43,9 @@ const NvoipSipPhoneContext = createContext<NvoipSipPhoneContextValue>({
   toggleMute: () => {},
   sendDtmf: () => {},
   requestCallAlerts: async () => {},
+  answerQueued: async () => {},
+  rejectQueued: () => {},
+  resumeQueued: async () => {},
 });
 
 export function useNvoipSipPhoneOptional() {
@@ -68,6 +76,7 @@ export function NvoipSipPhoneProvider({
     reject,
     placeCall,
     incoming,
+    queue,
     answeredAt,
     answering,
     muted,
@@ -75,6 +84,7 @@ export function NvoipSipPhoneProvider({
     toggleMute,
     sendDtmf,
     requestCallAlerts,
+    resumeQueued,
   } = useNvoipSipPhone(embeddedEnabled);
 
   useEffect(() => {
@@ -94,6 +104,7 @@ export function NvoipSipPhoneProvider({
         reject,
         placeCall,
         incoming,
+        queue,
         answeredAt,
         answering,
         muted,
@@ -102,6 +113,9 @@ export function NvoipSipPhoneProvider({
         toggleMute,
         sendDtmf,
         requestCallAlerts,
+        answerQueued: answer,
+        rejectQueued: reject,
+        resumeQueued,
       }}
     >
       {children}

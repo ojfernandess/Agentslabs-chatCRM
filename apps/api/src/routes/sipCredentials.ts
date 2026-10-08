@@ -11,9 +11,10 @@ import {
   resolveOrganizationSipEndpoint,
   upsertUserSipCredentials,
 } from "../lib/userSipCredentials.js";
-import { getOrgSipServer, saveOrgSipServer } from "../lib/orgSipServer.js";
+import { getOrgSipServer, normalizeOrgSipRingtone, saveOrgSipServer } from "../lib/orgSipServer.js";
 import { isUserTenantAdmin } from "../lib/tenantAdmin.js";
 import { completeSipCallLog, startSipCallLog } from "../lib/sipCallLog.js";
+import { broadcastToOrganization } from "../lib/workspaceHub.js";
 
 const upsertSchema = z.object({
   sipUser: z.string().min(1).max(64),
@@ -51,6 +52,7 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       configurable: true,
       sipDomain: stored?.sipDomain || endpoint.sipDomain,
       wssUrl: stored?.wssUrl || endpoint.wssUrl,
+      ringTone: stored?.ringTone ?? endpoint.ringTone,
     };
   });
 
@@ -69,6 +71,7 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       .object({
         sipDomain: z.string().min(1).max(253),
         wssUrl: z.string().min(8).max(300),
+        ringTone: z.string().max(32).optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -79,7 +82,10 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       });
     }
     try {
-      const saved = await saveOrgSipServer(organizationId, parsed.data);
+      const saved = await saveOrgSipServer(organizationId, {
+        ...parsed.data,
+        ringTone: parsed.data.ringTone ? normalizeOrgSipRingtone(parsed.data.ringTone) : undefined,
+      });
       return { ok: true, ...saved, sipProvider: "sip" as const, configurable: true };
     } catch {
       return reply.status(400).send({
@@ -184,6 +190,30 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       organizationId,
       userId: request.user.id,
       ...parsed.data,
+    });
+    return { ok: true };
+  });
+
+  app.post("/calls/answered", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    const parsed = z
+      .object({
+        sipCallId: z.string().min(8).max(256),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "sip_call_invalid",
+        statusCode: 400,
+      });
+    }
+    broadcastToOrganization(organizationId, {
+      type: "sip.call.answered",
+      sipCallId: parsed.data.sipCallId,
+      userId: request.user.id,
     });
     return { ok: true };
   });

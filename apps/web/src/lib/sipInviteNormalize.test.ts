@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inviteFault, repairInvite } from "./sipInviteNormalize.js";
+import { inviteFault, repairInvite, callerFromInvite } from "./sipInviteNormalize.js";
 
 test("repairInvite retargets a DID request URI to the extension", () => {
   const message = "INVITE sip:551123880408@app.nvoip.com.br SIP/2.0\r\nContent-Length: 0\r\n\r\n";
@@ -36,4 +36,26 @@ test("repairInvite rewrites a From header JsSIP cannot parse", () => {
   const repaired = repairInvite(message, "110937011");
   assert.match(repaired.message, /From: <sip:551123880408@app\.nvoip\.com\.br>;tag=abc/);
   assert.match(repaired.note, /From/);
+});
+
+test("callerFromInvite uses the asserted number when From is anonymous", () => {
+  const message = [
+    "INVITE sip:110937011@app.nvoip.com.br SIP/2.0",
+    "From: \"Anonymous\" <sip:anonymous@anonymous.invalid>;tag=abc",
+    "P-Asserted-Identity: <sip:+5511988776655@app.nvoip.com.br>",
+    "Call-ID: call-1",
+    "",
+    "",
+  ].join("\r\n");
+  assert.deepEqual(callerFromInvite(message), { number: "+5511988776655", name: "" });
+});
+
+test("callerFromInvite reads a phone number shown only in the display name", () => {
+  const message = [
+    "INVITE sip:110937011@app.nvoip.com.br SIP/2.0",
+    "From: \"5511912345678\" <sip:anonymous@anonymous.invalid>;tag=abc",
+    "",
+    "",
+  ].join("\r\n");
+  assert.deepEqual(callerFromInvite(message), { number: "5511912345678", name: "" });
 });

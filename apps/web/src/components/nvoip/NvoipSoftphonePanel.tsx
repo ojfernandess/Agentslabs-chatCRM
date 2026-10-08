@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { differenceInHours } from "date-fns";
-import { ChevronUp, Keyboard, Loader2, Mic, MicOff, Minus, Phone, PhoneOff, User } from "lucide-react";
+import { ChevronUp, Keyboard, Loader2, MessageSquare, Mic, MicOff, Minus, Phone, PhoneOff, User } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -49,16 +49,18 @@ function applies24hSessionPolicy(provider: string | null): boolean {
   return provider === "meta" || provider === "360dialog" || provider === "twilio" || provider == null;
 }
 
-function StartConversationAction({
+export function StartConversationAction({
   phone,
   contactId,
   conversationId,
   compact = false,
+  inline = false,
 }: {
   phone: string;
   contactId: string | null;
   conversationId: string | null;
   compact?: boolean;
+  inline?: boolean;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -158,18 +160,33 @@ function StartConversationAction({
   };
 
   return (
-    <div className={compact ? "mt-2 w-full" : "mt-4 w-full"}>
+    <div className={inline ? "relative shrink-0" : compact ? "mt-2 w-full" : "mt-4 w-full"}>
       <button
         type="button"
         disabled={busy}
-        onClick={() => void start()}
-        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-100 dark:hover:bg-ink-800"
+        title={t("nvoip.softphone.startConversation")}
+        aria-label={t("nvoip.softphone.startConversation")}
+        onClick={(event) => {
+          event.stopPropagation();
+          void start();
+        }}
+        className={
+          inline
+            ? "inline-flex h-9 w-9 items-center justify-center rounded-xl text-brand-600 hover:bg-brand-50 disabled:opacity-50 dark:text-brand-300 dark:hover:bg-ink-800"
+            : "inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-100 dark:hover:bg-ink-800"
+        }
       >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {t("nvoip.softphone.startConversation")}
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : inline ? <MessageSquare className="h-4 w-4" /> : null}
+        {inline ? null : t("nvoip.softphone.startConversation")}
       </button>
       {offer ? (
-        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-3 dark:bg-ink-950">
+        <div
+          className={
+            inline
+              ? "absolute right-0 top-10 z-20 w-56 rounded-xl bg-white px-3 py-3 text-left shadow-lg ring-1 ring-slate-200 dark:bg-ink-900 dark:ring-ink-700"
+              : "mt-3 rounded-xl bg-slate-50 px-3 py-3 dark:bg-ink-950"
+          }
+        >
           <p className="text-xs text-slate-500 dark:text-ink-400">{t("nvoip.softphone.windowClosed")}</p>
           <button
             type="button"
@@ -180,7 +197,17 @@ function StartConversationAction({
           </button>
         </div>
       ) : null}
-      {error ? <p className="mt-2 text-center text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+      {error ? (
+        <p
+          className={
+            inline
+              ? "absolute right-0 top-10 z-20 w-56 rounded-xl bg-white px-3 py-2 text-left text-xs text-red-600 shadow-lg ring-1 ring-slate-200 dark:bg-ink-900 dark:text-red-400 dark:ring-ink-700"
+              : "mt-2 text-center text-xs text-red-600 dark:text-red-400"
+          }
+        >
+          {error}
+        </p>
+      ) : null}
       <ComposerTemplatePickerModal
         open={pickerOpen}
         templates={templates}
@@ -225,7 +252,13 @@ export function NvoipSoftphonePanel() {
 
   const inboundRinging = sip.status === "ringing" && !!sip.incoming && !voice?.activeCall;
   const inboundLive = sip.status === "in-call" && !voice?.activeCall;
-  const visible = inboundRinging || inboundLive || !!ended;
+  const visible = inboundRinging || inboundLive || !!ended || sip.queue.length > 0;
+
+  useEffect(() => {
+    if (sip.queue.length === 0) return;
+    setMinimized(false);
+    setEnded(null);
+  }, [sip.queue.length]);
 
   useEffect(() => {
     if (!inboundRinging) return;
@@ -313,9 +346,12 @@ export function NvoipSoftphonePanel() {
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold text-slate-900 dark:text-ink-50">{displayName}</span>
-              <span className="block text-xs text-slate-500 dark:text-ink-400">
-                {t("nvoip.softphone.inCall")} · {formatElapsed(elapsed)}
-              </span>
+            <span className="block text-xs text-slate-500 dark:text-ink-400">
+              {t("nvoip.softphone.inCall")} · {formatElapsed(elapsed)}
+              {sip.queue.length > 0
+                ? ` · ${t("nvoip.softphone.queueCount").replace("{count}", String(sip.queue.length))}`
+                : ""}
+            </span>
             </span>
             <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
           </button>
@@ -378,6 +414,9 @@ export function NvoipSoftphonePanel() {
               : inboundRinging
                 ? t("nvoip.softphone.incoming")
                 : t("nvoip.softphone.inCall")}
+            {!ended && sip.queue.length > 0
+              ? ` · ${t("nvoip.softphone.queueCount").replace("{count}", String(sip.queue.length))}`
+              : ""}
           </p>
         </div>
         {inboundLive ? (
@@ -450,6 +489,60 @@ export function NvoipSoftphonePanel() {
           >
             {t("nvoip.softphone.viewConversation")}
           </Link>
+        ) : null}
+
+        {sip.queue.length > 0 ? (
+          <div className="mt-5 w-full">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {t("nvoip.softphone.queueTitle")}
+            </p>
+            <ul className="mt-2 space-y-2">
+              {sip.queue.map((call) => {
+                const label = call.name || call.number || t("nvoip.voice.unknownCaller");
+                return (
+                  <li
+                    key={call.id}
+                    className="flex items-center gap-2 rounded-xl bg-slate-50 p-2 dark:bg-ink-950"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-900 dark:text-ink-50">
+                        {label}
+                      </span>
+                      <span className="block truncate text-xs text-slate-500 dark:text-ink-400">
+                        {call.held
+                          ? t("nvoip.softphone.queueHeld")
+                          : call.number || t("nvoip.softphone.queueWaiting")}
+                      </span>
+                    </span>
+                    {call.held ? (
+                      <button
+                        type="button"
+                        onClick={() => void sip.resumeQueued(call.id)}
+                        className="h-9 shrink-0 rounded-lg bg-brand-600 px-2.5 text-xs font-semibold text-white"
+                      >
+                        {t("nvoip.softphone.queueResume")}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void sip.answerQueued(call.id)}
+                        className="h-9 shrink-0 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white"
+                      >
+                        {t("nvoip.softphone.answer")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => sip.rejectQueued(call.id)}
+                      className="h-9 shrink-0 rounded-lg bg-red-600 px-2.5 text-xs font-semibold text-white"
+                    >
+                      {call.held ? t("nvoip.softphone.endCall") : t("nvoip.softphone.reject")}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         ) : null}
 
         {sip.error ? (

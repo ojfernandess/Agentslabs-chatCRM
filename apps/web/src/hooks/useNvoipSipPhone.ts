@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import JsSIP from "jssip";
 import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
 import { maskSipUser, sipDiag, sipDiagMessage, sipFrames } from "@/lib/sipDiagnostics";
-import { sipEndAction } from "@/lib/sipCallControls";
-import { inviteFault, repairInvite } from "@/lib/sipInviteNormalize";
+import { shouldDropSipLegAnsweredElsewhere, shouldQueueIncomingCall, sipEndAction, sipSessionOccupiesLine } from "@/lib/sipCallControls";
+import { normalizeSipRingtone, previewSipRingtone, startSipRingtone, stopSipRingtone, type SipRingtoneId } from "@/lib/sipRingtone";
+import { callerFromInvite, callIdFromSip, inviteFault, lookupInviteCaller, rememberInviteCaller, repairInvite } from "@/lib/sipInviteNormalize";
 import { canClaimSipTab, parseSipTabOwner } from "@/lib/sipTabOwner";
 
 const SIP_PC_CONFIG: RTCConfiguration = {
@@ -18,25 +20,35 @@ type SipRtcSession = {
     pcConfig?: RTCConfiguration;
   }) => void;
   terminate: (options?: { status_code?: number; reason_phrase?: string }) => void;
+  sendRequest: (method: string) => void;
   mute: (options?: { audio?: boolean; video?: boolean }) => void;
   unmute: (options?: { audio?: boolean; video?: boolean }) => void;
   isMuted: () => { audio: boolean; video: boolean };
   isEnded: () => boolean;
   isEstablished: () => boolean;
   sendDTMF: (tones: string) => void;
+  id?: string;
   status: number;
   direction?: string;
   connection?: RTCPeerConnection | null;
   remote_identity?: { display_name?: string; uri?: { user?: string } };
+  _request?: { call_id?: string };
   on: (event: string, handler: (...args: unknown[]) => void) => void;
 };
 
 const SIP_TAB_OWNER_KEY = "openconduit:sip-tab-owner";
 const SIP_NOTIFY_ASKED_KEY = "openconduit:sip-notify-asked";
 
-type SipTabCommand = "answer" | "reject" | "hangup" | "mute" | "dial" | "dtmf";
+type SipTabCommand = "answer" | "reject" | "hangup" | "mute" | "dial" | "dtmf" | "resume";
 
 export type NvoipSipRemoteParty = { number: string; name: string };
+
+export type NvoipSipQueuedCall = {
+  id: string;
+  number: string;
+  name: string;
+  held: boolean;
+};
 
 export type NvoipSipCallStatus =
   | "unregistered"
@@ -53,12 +65,22 @@ type SipCredentials = {
   sipDomain: string;
   wssUrl: string;
   wssUrlAlternates?: string[];
+  ringTone?: string;
 };
 
 function emitSipStatus(status: NvoipSipCallStatus, error: string | null): void {
   window.dispatchEvent(
     new CustomEvent("openconduit:nvoip-sip-status", { detail: { status, error } }),
   );
+}
+
+function cloneAudioStream(stream: MediaStream | null): MediaStream | null {
+  if (!stream) return null;
+  const next = new MediaStream();
+  for (const track of stream.getAudioTracks()) {
+    if (track.readyState === "live") next.addTrack(track.clone());
+  }
+  return next.getAudioTracks().length > 0 ? next : null;
 }
 
 async function acquireLocalAudio(existing: MediaStream | null): Promise<MediaStream | null> {
@@ -73,58 +95,37 @@ async function acquireLocalAudio(existing: MediaStream | null): Promise<MediaStr
   }
 }
 
+function hiddenCaller(value: string): boolean {
+  return /^(anonymous|unavailable|restricted|unknown|hidden|private)$/i.test(value.trim());
+}
+
 function readRemoteParty(session: SipRtcSession): NvoipSipRemoteParty {
   const number = String(session.remote_identity?.uri?.user ?? "").trim();
   const rawName = String(session.remote_identity?.display_name ?? "").trim();
-  const name = rawName && rawName !== number ? rawName : "";
-  return { number, name };
+  const remembered = session._request?.call_id ? lookupInviteCaller(session._request.call_id) : null;
+  const visibleNumber = !number || hiddenCaller(number) ? remembered?.number || "" : number;
+  const rememberedName = remembered?.name && !hiddenCaller(remembered.name) ? remembered.name : "";
+  const name =
+    rawName && !hiddenCaller(rawName) && rawName !== visibleNumber
+      ? rawName
+      : rememberedName && rememberedName !== visibleNumber
+        ? rememberedName
+        : "";
+  return { number: visibleNumber, name };
 }
 
-let incomingRingTimer: ReturnType<typeof setInterval> | null = null;
-let incomingRingCtx: AudioContext | null = null;
+let incomingRingTone: SipRingtoneId = "classic";
 
 function stopIncomingRing(): void {
-  if (incomingRingTimer != null) {
-    window.clearInterval(incomingRingTimer);
-    incomingRingTimer = null;
-  }
-  const ctx = incomingRingCtx;
-  incomingRingCtx = null;
-  void ctx?.close().catch(() => {});
+  stopSipRingtone();
 }
 
 function startIncomingRing(): void {
   try {
-    startIncomingRingUnsafe();
+    startSipRingtone(incomingRingTone);
   } catch {
     sipDiag("AUDIO", "Ring unavailable");
   }
-}
-
-function startIncomingRingUnsafe(): void {
-  stopIncomingRing();
-  const Ctx = window.AudioContext;
-  if (!Ctx) return;
-  const ctx = new Ctx();
-  incomingRingCtx = ctx;
-  const beep = () => {
-    if (incomingRingCtx !== ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 440;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.4);
-  };
-  void ctx.resume().then(beep).catch(() => {});
-  incomingRingTimer = setInterval(() => {
-    void ctx.resume().then(beep).catch(() => {});
-  }, 1600);
 }
 
 function publishInboundRoute(syncOnly = false): void {
@@ -176,10 +177,13 @@ function traceSocket(
     const prevMessage = ws.onmessage as
       | ((this: WebSocket, event: { data: unknown }) => void)
       | null;
-    ws.onmessage = (ev) => {
-      const frames = sipFrames(ev.data);
+    const deliver = (data: unknown) => {
+      const frames = sipFrames(data);
       if (frames.length === 0) return;
       for (const frame of frames) {
+        if (/^INVITE\s/i.test(frame)) {
+          rememberInviteCaller(callIdFromSip(frame), callerFromInvite(frame));
+        }
         const prepared = repairInvite(frame, sipUser);
         if (prepared.note) sipDiag("SIP", `INVITE fixed ${prepared.note}`);
         sipDiagMessage("in", prepared.message);
@@ -195,6 +199,16 @@ function traceSocket(
           sipDiag("SIP", fault ? `INVITE dropped ${fault}` : "INVITE dropped");
         }
       }
+    };
+    ws.onmessage = (ev) => {
+      const data = ev.data;
+      if (typeof Blob !== "undefined" && data instanceof Blob) {
+        void data.text().then((text) => deliver(text)).catch(() => {
+          sipDiag("SIP", "Frame unreadable");
+        });
+        return;
+      }
+      deliver(data);
     };
   };
   const origSend = socket.send.bind(socket);
@@ -276,8 +290,20 @@ function buildWssCandidates(creds: SipCredentials): string[] {
   return [...new Set([primary, ...alternates.map((u) => u.trim()).filter(Boolean)])];
 }
 
+type SipCallSlot = {
+  id: string;
+  session: SipRtcSession;
+  party: NvoipSipRemoteParty;
+  logId: string;
+  answeredAt: number | null;
+  inbound: boolean;
+};
+
 export function useNvoipSipPhone(enabled: boolean) {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = user?.id ?? null;
   const uaRef = useRef<InstanceType<typeof JsSIP.UA> | null>(null);
   const sessionRef = useRef<SipRtcSession | null>(null);
   const tabIdRef = useRef(crypto.randomUUID());
@@ -288,12 +314,20 @@ export function useNvoipSipPhone(enabled: boolean) {
   const wssIndexRef = useRef(0);
   const credsRef = useRef<SipCredentials | null>(null);
   const callLogRef = useRef<{ id: string; answeredAt: number | null } | null>(null);
+  const waitingRef = useRef<SipCallSlot[]>([]);
+  const heldRef = useRef<SipCallSlot[]>([]);
+  const activeSlotRef = useRef<SipCallSlot | null>(null);
+  const slotIdsRef = useRef(new WeakMap<SipRtcSession, string>());
+  const localEndIdsRef = useRef(new Set<string>());
+  const answeredElsewhereIdsRef = useRef(new Set<string>());
 
   const outboundLegRef = useRef(false);
   const localEndRef = useRef(false);
+  const answeredElsewhereRef = useRef(false);
   const [status, setStatus] = useState<NvoipSipCallStatus>("unregistered");
   const [error, setError] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<NvoipSipRemoteParty | null>(null);
+  const [queue, setQueue] = useState<NvoipSipQueuedCall[]>([]);
   const [answeredAt, setAnsweredAt] = useState<number | null>(null);
   const [answering, setAnswering] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -338,6 +372,38 @@ export function useNvoipSipPhone(enabled: boolean) {
     });
   }, []);
 
+  const publishQueue = useCallback(() => {
+    const held = heldRef.current.map((slot) => ({
+      id: slot.id,
+      number: slot.party.number,
+      name: slot.party.name,
+      held: true,
+    }));
+    const waiting = waitingRef.current.map((slot) => ({
+      id: slot.id,
+      number: slot.party.number,
+      name: slot.party.name,
+      held: false,
+    }));
+    setQueue([...held, ...waiting]);
+  }, []);
+
+  const playSessionAudio = useCallback((session: SipRtcSession) => {
+    const pc = session.connection;
+    if (!pc) return;
+    const tracks = pc
+      .getReceivers()
+      .map((receiver) => receiver.track)
+      .filter((track) => track && track.kind === "audio" && track.readyState === "live");
+    if (!tracks.length) return;
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+      audioRef.current.autoplay = true;
+    }
+    audioRef.current.srcObject = new MediaStream(tracks);
+    void audioRef.current.play().catch(() => sipDiag("AUDIO", "Autoplay blocked"));
+  }, []);
+
   const answerSession = useCallback(
     async (session: SipRtcSession) => {
       setAnswering(true);
@@ -346,11 +412,13 @@ export function useNvoipSipPhone(enabled: boolean) {
         setAnswering(false);
         return;
       }
+      const sharing = heldRef.current.some((slot) => !slot.session.isEnded());
+      const media = sharing ? cloneAudioStream(localStream) ?? localStream : localStream;
       try {
         session.answer({
           mediaConstraints: { audio: true, video: false },
           pcConfig: SIP_PC_CONFIG,
-          ...(localStream ? { mediaStream: localStream } : {}),
+          ...(media ? { mediaStream: media } : {}),
         });
       } catch {
         setAnswering(false);
@@ -418,108 +486,237 @@ export function useNvoipSipPhone(enabled: boolean) {
         setStatusSafe("error", `sip_registration_failed:${cause}`);
       });
 
+      const rememberId = (session: SipRtcSession) => {
+        const known = session.id || slotIdsRef.current.get(session);
+        if (known) return known;
+        const created = crypto.randomUUID();
+        slotIdsRef.current.set(session, created);
+        return created;
+      };
+
+      const promoteNextCall = () => {
+        const nextHeld = heldRef.current.find((slot) => !slot.session.isEnded());
+        if (nextHeld) {
+          heldRef.current = heldRef.current.filter((slot) => slot !== nextHeld);
+          sessionRef.current = nextHeld.session;
+          activeSlotRef.current = nextHeld;
+          callLogRef.current = { id: nextHeld.logId, answeredAt: nextHeld.answeredAt };
+          try {
+            nextHeld.session.unmute({ audio: true, video: false });
+          } catch {
+            /* o áudio local desta chamada já foi liberado */
+          }
+          playSessionAudio(nextHeld.session);
+          setIncoming(nextHeld.party);
+          setAnsweredAt(nextHeld.answeredAt);
+          setAnswering(false);
+          setMuted(false);
+          setStatusSafe("in-call", null);
+          publishQueue();
+          return true;
+        }
+        const nextWait = waitingRef.current.find((slot) => !slot.session.isEnded());
+        if (nextWait) {
+          waitingRef.current = waitingRef.current.filter((slot) => slot !== nextWait);
+          sessionRef.current = nextWait.session;
+          activeSlotRef.current = nextWait;
+          callLogRef.current = { id: nextWait.logId, answeredAt: null };
+          const audio = audioRef.current;
+          if (audio) {
+            audio.pause();
+            audio.srcObject = null;
+          }
+          setIncoming(nextWait.party);
+          setAnsweredAt(null);
+          setAnswering(false);
+          setMuted(false);
+          setStatusSafe("ringing", null);
+          startIncomingRing();
+          publishQueue();
+          return true;
+        }
+        return false;
+      };
+
       ua.on("newRTCSession", (data: unknown) => {
         const payload = data as { originator?: string; session: SipRtcSession };
         const session = payload.session;
         const outbound = payload.originator === "local";
-        outboundLegRef.current = false;
-        sessionRef.current = session;
         if (!outbound) inviteGate.accepted = true;
-        sipDiag("SIP", outbound ? "Outgoing session" : "Ringing");
-        try {
-        if (session.connection) {
-          watchIce(session.connection);
-          attachRemoteAudio(session.connection);
-        }
-        setStatusSafe("ringing", null);
 
-        session.on("peerconnection", (ev: unknown) => {
-          const peerconnection = (ev as { peerconnection?: RTCPeerConnection }).peerconnection;
-          if (!peerconnection) return;
-          watchIce(peerconnection);
-          attachRemoteAudio(peerconnection);
-        });
-
-        session.on("ended", () => {
-          releaseCallMedia();
-          localEndRef.current = false;
-          const log = callLogRef.current;
-          callLogRef.current = null;
-          if (log) {
-            const durationSec = log.answeredAt
-              ? Math.max(0, Math.floor((Date.now() - log.answeredAt) / 1000))
-              : 0;
-            finishSipCallLog(log.id, log.answeredAt ? "ENDED" : "MISSED", durationSec);
+        const closeSession = (kind: "ended" | "failed", ev?: unknown) => {
+          const slot =
+            activeSlotRef.current?.session === session
+              ? activeSlotRef.current
+              : waitingRef.current.find((item) => item.session === session) ??
+                heldRef.current.find((item) => item.session === session) ??
+                null;
+          const active = sessionRef.current === session;
+          waitingRef.current = waitingRef.current.filter((item) => item.session !== session);
+          heldRef.current = heldRef.current.filter((item) => item.session !== session);
+          if (activeSlotRef.current?.session === session) activeSlotRef.current = null;
+          const log = active
+            ? callLogRef.current
+            : slot
+              ? { id: slot.logId, answeredAt: slot.answeredAt }
+              : null;
+          if (active) callLogRef.current = null;
+          const id = rememberId(session);
+          const localEnd = localEndIdsRef.current.has(id) || (active && localEndRef.current);
+          localEndIdsRef.current.delete(id);
+          const answeredElsewhere =
+            answeredElsewhereIdsRef.current.has(id) || (active && answeredElsewhereRef.current);
+          answeredElsewhereIdsRef.current.delete(id);
+          if (active) {
+            answeredElsewhereRef.current = false;
+            localEndRef.current = false;
           }
-          sessionRef.current = null;
-          setIncoming(null);
-          publishInboundRoute(true);
-          setAnsweredAt(null);
-          setAnswering(false);
-          setStatusSafe(ua.isRegistered() ? "registered" : "unregistered", null);
-          window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
-        });
-        session.on("failed", (ev: unknown) => {
-          releaseCallMedia();
-          const log = callLogRef.current;
-          callLogRef.current = null;
-          const localEnd = localEndRef.current;
+          const failed = ev as { cause?: string; message?: { status_code?: number; reason_phrase?: string } } | undefined;
+          const cause = String(failed?.cause ?? (kind === "ended" ? "" : "unknown"));
+          const code = failed?.message?.status_code;
           if (log) {
             const durationSec = log.answeredAt
               ? Math.max(0, Math.floor((Date.now() - log.answeredAt) / 1000))
               : 0;
-            const cause = String((ev as { cause?: string }).cause ?? "");
-            const status = log.answeredAt
+            const logStatus = log.answeredAt
               ? "ENDED"
-              : localEnd
-                ? "REJECTED"
-                : cause === "Canceled" || cause === "Busy"
-                  ? "MISSED"
-                  : "FAILED";
-            finishSipCallLog(log.id, status, durationSec);
+              : answeredElsewhere || cause === "Canceled" || cause === "Busy" || code === 487
+                ? "MISSED"
+                : localEnd
+                  ? "REJECTED"
+                  : kind === "ended"
+                    ? "MISSED"
+                    : "FAILED";
+            finishSipCallLog(log.id, logStatus, durationSec);
+          }
+          if (!active) {
+            publishQueue();
+            const focused = sessionRef.current;
+            const focusedRinging = !!focused && !focused.isEnded() && !focused.isEstablished();
+            if (!focusedRinging && waitingRef.current.length === 0) stopIncomingRing();
+            return;
           }
           sessionRef.current = null;
+          if (promoteNextCall()) return;
+          releaseCallMedia();
           setIncoming(null);
           publishInboundRoute(true);
           setAnsweredAt(null);
           setAnswering(false);
-          localEndRef.current = false;
-          const failed = ev as { cause?: string; message?: { status_code?: number; reason_phrase?: string } };
-          const cause = String(failed.cause ?? "unknown");
-          const code = failed.message?.status_code;
-          const reason = failed.message?.reason_phrase?.trim();
+          publishQueue();
+          const reason = failed?.message?.reason_phrase?.trim();
           const detail = [code, reason, cause].filter(Boolean).join(" ");
-          const noBalance = code === 402 || code === 480;
-          if (!localEnd) sipDiag("SIP", noBalance ? "No balance" : `Call failed ${detail}`);
+          const taken = answeredElsewhere || cause === "Canceled" || cause === "Busy" || code === 487;
+          const noBalance = kind === "failed" && !taken && (code === 402 || code === 480);
+          if (kind === "failed" && !localEnd && !taken) {
+            sipDiag("SIP", noBalance ? "No balance" : `Call failed ${detail}`);
+          }
           setStatusSafe(
             ua.isRegistered() ? "registered" : "unregistered",
-            localEnd ? null : noBalance ? "sip_no_balance" : `sip_call_failed:${detail}`,
+            kind === "ended" || localEnd || taken ? null : noBalance ? "sip_no_balance" : `sip_call_failed:${detail}`,
           );
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
-        });
-        session.on("confirmed", () => {
-          sipDiag("SIP", "Call confirmed");
-          stopIncomingRing();
-          if (callLogRef.current) callLogRef.current.answeredAt = Date.now();
-          setAnswering(false);
-          setAnsweredAt(Date.now());
-          setStatusSafe("in-call", null);
-          window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-active"));
-        });
+        };
 
-        if (outbound) {
-          setIncoming(null);
+        const watchSession = () => {
+          if (session.connection) {
+            watchIce(session.connection);
+            attachRemoteAudio(session.connection);
+          }
+          session.on("peerconnection", (ev: unknown) => {
+            const peerconnection = (ev as { peerconnection?: RTCPeerConnection }).peerconnection;
+            if (!peerconnection) return;
+            watchIce(peerconnection);
+            attachRemoteAudio(peerconnection);
+          });
+          session.on("ended", () => closeSession("ended"));
+          session.on("failed", (ev: unknown) => closeSession("failed", ev));
+          session.on("confirmed", () => {
+            if (sessionRef.current !== session) return;
+            sipDiag("SIP", "Call confirmed");
+            stopIncomingRing();
+            const at = Date.now();
+            if (activeSlotRef.current?.session === session) activeSlotRef.current.answeredAt = at;
+            if (callLogRef.current) callLogRef.current.answeredAt = at;
+            setAnswering(false);
+            setAnsweredAt(at);
+            setStatusSafe("in-call", null);
+            window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-active"));
+            if (!outbound && session.id) {
+              void api.post("/sip/calls/answered", { sipCallId: session.id }).catch(() => {});
+            }
+          });
+        };
+
+        const current = sessionRef.current;
+        if (outbound && current && current !== session && sipSessionOccupiesLine(current)) {
+          sipDiag("SIP", "Line busy");
+          try {
+            session.terminate();
+          } catch {
+            /* a segunda perna já encerrou */
+          }
+          return;
+        }
+        if (!outbound && shouldQueueIncomingCall(current) && current !== session) {
+          sipDiag("SIP", "Queued call");
+          try {
+            const party = readRemoteParty(session);
+            const slot: SipCallSlot = {
+              id: rememberId(session),
+              session,
+              party,
+              logId: beginSipCallLog("INCOMING", party.number || "inbound"),
+              answeredAt: null,
+              inbound: true,
+            };
+            waitingRef.current = [...waitingRef.current, slot];
+            watchSession();
+            publishQueue();
+            if (current?.isEstablished()) previewSipRingtone(incomingRingTone);
+            publishInboundRoute(true);
+          } catch {
+            sipDiag("SIP", "Session handler error");
+          }
           return;
         }
 
-        setIncoming(readRemoteParty(session));
-        setAnsweredAt(null);
-        setAnswering(false);
-        setStatusSafe("ringing", null);
-        startIncomingRing();
-        publishInboundRoute(true);
-        const remote = readRemoteParty(session).number || "inbound";
-        callLogRef.current = { id: beginSipCallLog("INCOMING", remote), answeredAt: null };
+        outboundLegRef.current = false;
+        sessionRef.current = session;
+        sipDiag("SIP", outbound ? "Outgoing session" : "Ringing");
+        try {
+          watchSession();
+          if (outbound) {
+            const party = readRemoteParty(session);
+            activeSlotRef.current = {
+              id: rememberId(session),
+              session,
+              party,
+              logId: callLogRef.current?.id ?? beginSipCallLog("OUTGOING", party.number || "outbound"),
+              answeredAt: null,
+              inbound: false,
+            };
+            setIncoming(null);
+            setStatusSafe("ringing", null);
+            return;
+          }
+          const party = readRemoteParty(session);
+          const logId = beginSipCallLog("INCOMING", party.number || "inbound");
+          activeSlotRef.current = {
+            id: rememberId(session),
+            session,
+            party,
+            logId,
+            answeredAt: null,
+            inbound: true,
+          };
+          callLogRef.current = { id: logId, answeredAt: null };
+          setIncoming(party);
+          setAnsweredAt(null);
+          setAnswering(false);
+          setStatusSafe("ringing", null);
+          startIncomingRing();
+          publishInboundRoute(true);
         } catch {
           sipDiag("SIP", "Session handler error");
         }
@@ -528,7 +725,7 @@ export function useNvoipSipPhone(enabled: boolean) {
       ua.start();
       uaRef.current = ua;
     },
-    [attachRemoteAudio, releaseCallMedia, setStatusSafe],
+    [attachRemoteAudio, playSessionAudio, publishQueue, releaseCallMedia, setStatusSafe],
   );
 
   const register = useCallback(async () => {
@@ -539,6 +736,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     let creds: SipCredentials;
     try {
       creds = await api.get<SipCredentials>("/sip/credentials");
+      incomingRingTone = normalizeSipRingtone(creds.ringTone);
       credsRef.current = creds;
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
@@ -572,6 +770,15 @@ export function useNvoipSipPhone(enabled: boolean) {
       sipDiag("SIP", "Call blocked: extension is not registered");
       return false;
     }
+    const live = sessionRef.current;
+    if (
+      (live && sipSessionOccupiesLine(live)) ||
+      waitingRef.current.length > 0 ||
+      heldRef.current.length > 0
+    ) {
+      sipDiag("SIP", "Line busy");
+      return false;
+    }
     outboundLegRef.current = true;
     const id = crypto.randomUUID();
     callLogRef.current = { id, answeredAt: null };
@@ -592,29 +799,42 @@ export function useNvoipSipPhone(enabled: boolean) {
     return true;
   }, [setStatusSafe]);
 
-  const postCommand = useCallback((cmd: SipTabCommand, extra?: { number?: string; tone?: string }) => {
+  const postCommand = useCallback((cmd: SipTabCommand, extra?: { number?: string; tone?: string; callId?: string }) => {
     channelRef.current?.postMessage({ type: "cmd", tabId: tabIdRef.current, cmd, ...extra });
   }, []);
 
-  const endLiveSession = useCallback((mode: "hangup" | "reject") => {
-    if (!leaderRef.current) {
+  const endLiveSession = useCallback((mode: "hangup" | "reject", target?: SipRtcSession) => {
+    if (!leaderRef.current && !target) {
       postCommand(mode);
       return;
     }
-    stopIncomingRing();
-    const session = sessionRef.current;
-    localEndRef.current = true;
+    const session = target ?? sessionRef.current;
+    const endingFocused = !target || target === sessionRef.current;
+    if (endingFocused) stopIncomingRing();
     if (!session) {
       setAnswering(false);
       return;
     }
+    const id = session.id || slotIdsRef.current.get(session);
+    if (id) localEndIdsRef.current.add(id);
+    if (endingFocused) localEndRef.current = true;
     const action = mode === "reject" && !session.isEstablished() ? "reject" : sipEndAction(session);
     if (action === "ignore") return;
     try {
       if (action === "reject") session.terminate({ status_code: 486, reason_phrase: "Busy Here" });
-      else session.terminate();
+      else if (action === "bye") {
+        sipDiag("SIP", "Sending BYE");
+        if (session.status === 6) {
+          try {
+            session.sendRequest("BYE");
+          } catch {
+            sipDiag("SIP", "BYE request failed");
+          }
+        }
+        if (!session.isEnded()) session.terminate();
+      } else session.terminate();
     } catch {
-      /* a sessão já encerrou ou o JsSIP recusou o estado */
+      sipDiag("SIP", "Hangup failed");
     }
   }, [postCommand]);
 
@@ -622,19 +842,94 @@ export function useNvoipSipPhone(enabled: boolean) {
     endLiveSession("hangup");
   }, [endLiveSession]);
 
-  const reject = useCallback(() => {
-    endLiveSession("reject");
-  }, [endLiveSession]);
-
-  const answer = useCallback(async () => {
-    if (!leaderRef.current) {
-      postCommand("answer");
+  const focusSlot = useCallback(async (slot: SipCallSlot) => {
+    const current = sessionRef.current;
+    const active = activeSlotRef.current;
+    if (current && active && current !== slot.session && !current.isEnded()) {
+      const parked = { ...active, answeredAt: callLogRef.current?.answeredAt ?? active.answeredAt };
+      if (current.isEstablished()) {
+        try {
+          current.mute({ audio: true, video: false });
+        } catch {
+          /* a chamada atual não aceitou mudo */
+        }
+        heldRef.current = [...heldRef.current.filter((item) => item.id !== parked.id), parked];
+      } else {
+        waitingRef.current = [parked, ...waitingRef.current.filter((item) => item.id !== parked.id)];
+      }
+    }
+    waitingRef.current = waitingRef.current.filter((item) => item.id !== slot.id);
+    heldRef.current = heldRef.current.filter((item) => item.id !== slot.id);
+    sessionRef.current = slot.session;
+    activeSlotRef.current = slot;
+    callLogRef.current = { id: slot.logId, answeredAt: slot.answeredAt };
+    setIncoming(slot.party);
+    setMuted(false);
+    publishQueue();
+    if (slot.session.isEstablished()) {
+      try {
+        slot.session.unmute({ audio: true, video: false });
+      } catch {
+        /* a chamada em espera segue muda */
+      }
+      playSessionAudio(slot.session);
+      setAnswering(false);
+      setAnsweredAt(slot.answeredAt);
+      setStatusSafe("in-call", null);
+      if (waitingRef.current.length === 0) stopIncomingRing();
       return;
     }
+    setAnsweredAt(null);
+    setStatusSafe("ringing", null);
+    await answerSession(slot.session);
+  }, [answerSession, playSessionAudio, publishQueue, setStatusSafe]);
+
+  const reject = useCallback((callId?: string) => {
+    if (!leaderRef.current) {
+      postCommand("reject", callId ? { callId } : undefined);
+      return;
+    }
+    if (callId) {
+      const held = heldRef.current.find((item) => item.id === callId);
+      const waiting = waitingRef.current.find((item) => item.id === callId);
+      const slot = held ?? waiting;
+      if (slot) {
+        endLiveSession(held ? "hangup" : "reject", slot.session);
+        return;
+      }
+    }
+    endLiveSession("reject");
+  }, [endLiveSession, postCommand]);
+
+  const answer = useCallback(async (callId?: string) => {
+    if (!leaderRef.current) {
+      postCommand("answer", callId ? { callId } : undefined);
+      return;
+    }
+    if (answering) return;
+    if (callId) {
+      const slot =
+        waitingRef.current.find((item) => item.id === callId) ??
+        heldRef.current.find((item) => item.id === callId);
+      if (slot) {
+        await focusSlot(slot);
+        return;
+      }
+    }
     const session = sessionRef.current;
-    if (!session || answering) return;
+    if (!session) return;
     await answerSession(session);
-  }, [answerSession, answering, postCommand]);
+  }, [answerSession, answering, focusSlot, postCommand]);
+
+  const resumeQueued = useCallback(async (callId: string) => {
+    if (!leaderRef.current) {
+      postCommand("resume", { callId });
+      return;
+    }
+    const slot = heldRef.current.find((item) => item.id === callId);
+    if (!slot || answering) return;
+    await focusSlot(slot);
+  }, [answering, focusSlot, postCommand]);
 
   const toggleMute = useCallback(() => {
     if (!leaderRef.current) {
@@ -685,16 +980,17 @@ export function useNvoipSipPhone(enabled: boolean) {
   }, []);
 
   const controlsRef = useRef({
-    answer: async () => {},
-    reject: () => {},
+    answer: async (_callId?: string) => {},
+    reject: (_callId?: string) => {},
     hangup: () => {},
     toggleMute: () => {},
     placeCall: (_number: string) => false as boolean,
     sendDtmf: (_tone: string) => {},
+    resume: async (_callId: string) => {},
   });
-  controlsRef.current = { answer, reject, hangup, toggleMute, placeCall, sendDtmf };
-  const snapshotRef = useRef({ status, error, incoming, answeredAt, answering, muted });
-  snapshotRef.current = { status, error, incoming, answeredAt, answering, muted };
+  controlsRef.current = { answer, reject, hangup, toggleMute, placeCall, sendDtmf, resume: resumeQueued };
+  const snapshotRef = useRef({ status, error, incoming, answeredAt, answering, muted, queue });
+  snapshotRef.current = { status, error, incoming, answeredAt, answering, muted, queue };
 
   useEffect(() => {
     if (!leaderRef.current) return;
@@ -707,8 +1003,9 @@ export function useNvoipSipPhone(enabled: boolean) {
       answeredAt,
       answering,
       muted,
+      queue,
     });
-  }, [answeredAt, answering, error, incoming, muted, status]);
+  }, [answeredAt, answering, error, incoming, muted, queue, status]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -719,13 +1016,57 @@ export function useNvoipSipPhone(enabled: boolean) {
   }, []);
 
   useEffect(() => {
-    if (status !== "ringing" || !incoming || !leaderRef.current) {
+    const onAnsweredElsewhere = (event: Event) => {
+      const detail = (event as CustomEvent<{ sipCallId?: string; userId?: string }>).detail;
+      const ringing = [
+        ...(activeSlotRef.current && sessionRef.current && !sessionRef.current.isEstablished()
+          ? [activeSlotRef.current]
+          : []),
+        ...waitingRef.current,
+      ];
+      for (const slot of ringing) {
+        if (
+          !shouldDropSipLegAnsweredElsewhere({
+            localUserId: userIdRef.current,
+            answeredByUserId: detail?.userId,
+            localDialogId: slot.session.id ?? null,
+            answeredDialogId: detail?.sipCallId,
+            localStatus: slot.session.status,
+          })
+        ) {
+          continue;
+        }
+        answeredElsewhereIdsRef.current.add(slot.id);
+        localEndIdsRef.current.add(slot.id);
+        if (slot.session === sessionRef.current) {
+          answeredElsewhereRef.current = true;
+          localEndRef.current = true;
+          stopIncomingRing();
+          closeIncomingNotice();
+        }
+        try {
+          if (!slot.session.isEnded()) {
+            slot.session.terminate({ status_code: 487, reason_phrase: "Request Terminated" });
+          }
+        } catch {
+          /* a perna já foi cancelada */
+        }
+      }
+    };
+    window.addEventListener("openconduit:sip-call-answered", onAnsweredElsewhere);
+    return () => window.removeEventListener("openconduit:sip-call-answered", onAnsweredElsewhere);
+  }, []);
+
+  useEffect(() => {
+    const waiting = queue.filter((item) => !item.held);
+    const caller = status === "ringing" && incoming ? incoming : waiting[waiting.length - 1];
+    if (!caller || !leaderRef.current) {
       closeIncomingNotice();
       return;
     }
     if (document.visibilityState === "visible") return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const body = [incoming.name, incoming.number].filter(Boolean).join("\n");
+    const body = [caller.name, caller.number].filter(Boolean).join("\n");
     const notice = new Notification(t("nvoip.softphone.notifyTitle"), {
       body,
       tag: "openconduit-sip-call",
@@ -737,7 +1078,7 @@ export function useNvoipSipPhone(enabled: boolean) {
       notice.close();
     };
     return () => notice.close();
-  }, [incoming, status, t]);
+  }, [incoming, queue, status, t]);
 
   useEffect(() => {
     if (!enabled) {
@@ -746,6 +1087,10 @@ export function useNvoipSipPhone(enabled: boolean) {
       uaRef.current?.stop();
       uaRef.current = null;
       sessionRef.current = null;
+      waitingRef.current = [];
+      heldRef.current = [];
+      activeSlotRef.current = null;
+      setQueue([]);
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
       setStatusSafe("unregistered", null);
@@ -786,9 +1131,11 @@ export function useNvoipSipPhone(enabled: boolean) {
         cmd?: SipTabCommand;
         number?: string;
         tone?: string;
+        callId?: string;
         status?: NvoipSipCallStatus;
         error?: string | null;
         incoming?: NvoipSipRemoteParty | null;
+        queue?: NvoipSipQueuedCall[];
         answeredAt?: number | null;
         answering?: boolean;
         muted?: boolean;
@@ -799,17 +1146,19 @@ export function useNvoipSipPhone(enabled: boolean) {
         return;
       }
       if (data.type === "cmd" && leaderRef.current) {
-        if (data.cmd === "answer") void controlsRef.current.answer();
-        else if (data.cmd === "reject") controlsRef.current.reject();
+        if (data.cmd === "answer") void controlsRef.current.answer(data.callId);
+        else if (data.cmd === "reject") controlsRef.current.reject(data.callId);
         else if (data.cmd === "hangup") controlsRef.current.hangup();
         else if (data.cmd === "mute") controlsRef.current.toggleMute();
         else if (data.cmd === "dial" && data.number) controlsRef.current.placeCall(data.number);
         else if (data.cmd === "dtmf" && data.tone) controlsRef.current.sendDtmf(data.tone);
+        else if (data.cmd === "resume" && data.callId) void controlsRef.current.resume(data.callId);
         return;
       }
       if (data.type === "state" && !leaderRef.current && data.status) {
         setStatusSafe(data.status, data.error ?? null);
         setIncoming(data.incoming ?? null);
+        setQueue(data.queue ?? []);
         setAnsweredAt(data.answeredAt ?? null);
         setAnswering(data.answering === true);
         setMuted(data.muted === true);
@@ -851,6 +1200,10 @@ export function useNvoipSipPhone(enabled: boolean) {
       stopIncomingRing();
       uaRef.current?.stop();
       uaRef.current = null;
+      sessionRef.current = null;
+      waitingRef.current = [];
+      heldRef.current = [];
+      activeSlotRef.current = null;
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
       if (audioRef.current) {
@@ -864,6 +1217,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     status,
     error,
     incoming,
+    queue,
     answeredAt,
     answering,
     muted,
@@ -871,6 +1225,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     hangup,
     answer,
     reject,
+    resumeQueued,
     toggleMute,
     sendDtmf,
     requestCallAlerts,

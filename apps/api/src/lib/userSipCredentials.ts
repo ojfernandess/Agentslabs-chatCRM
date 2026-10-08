@@ -8,11 +8,12 @@ import {
   nvoipEmbeddedSipWssAlternates,
   type NvoipEmbeddedSipClientConfig,
 } from "./nvoipEmbeddedSipConfig.js";
-import { getOrgSipServer } from "./orgSipServer.js";
+import { getOrgSipServer, type OrgSipRingtone } from "./orgSipServer.js";
 
 export type UserSipCredentialsClient = NvoipEmbeddedSipClientConfig & {
   /** nvoip mantém o servidor da conta. sip usa o domínio/WSS configurado na organização. */
   sipProvider: "nvoip" | "sip";
+  ringTone: OrgSipRingtone;
 };
 
 export async function resolveOrganizationSipEndpoint(organizationId: string): Promise<{
@@ -20,6 +21,7 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
   sipDomain: string;
   wssUrl: string;
   wssUrlAlternates: string[];
+  ringTone: OrgSipRingtone;
 }> {
   const custom = await getOrgSipServer(organizationId);
   const account = await prisma.nvoipAccount.findFirst({
@@ -30,12 +32,14 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
   const nvoipWss = nvoipEmbeddedSipWssUrl();
   const customIsNvoipDefault =
     !!custom && custom.sipDomain === nvoipDomain && custom.wssUrl.replace(/\/+$/, "") === nvoipWss.replace(/\/+$/, "");
+  const ringTone = custom?.ringTone ?? "classic";
   if (account && (!custom || customIsNvoipDefault)) {
     return {
       sipProvider: "nvoip",
       sipDomain: nvoipDomain,
       wssUrl: nvoipWss,
       wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
+      ringTone,
     };
   }
   return {
@@ -43,6 +47,7 @@ export async function resolveOrganizationSipEndpoint(organizationId: string): Pr
     sipDomain: custom?.sipDomain ?? "",
     wssUrl: custom?.wssUrl ?? "",
     wssUrlAlternates: [],
+    ringTone,
   };
 }
 
@@ -66,6 +71,7 @@ export async function getUserSipCredentialsForClient(
         sipDomain: nvoipEmbeddedSipDomain(),
         wssUrl: nvoipEmbeddedSipWssUrl(),
         wssUrlAlternates: nvoipEmbeddedSipWssAlternates(),
+        ringTone: "classic" as const,
       };
   return {
     sipUser: row.sipUser.trim(),
@@ -75,6 +81,7 @@ export async function getUserSipCredentialsForClient(
     wssUrl: endpoint.wssUrl,
     wssUrlAlternates: endpoint.wssUrlAlternates,
     sipProvider: endpoint.sipProvider,
+    ringTone: endpoint.ringTone,
   };
 }
 

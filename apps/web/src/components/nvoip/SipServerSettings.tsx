@@ -3,18 +3,21 @@ import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { settingsInput, settingsLabel, settingsSubtitle, settingsTitle } from "@/components/settings/settingsUi";
+import { previewSipRingtone, SIP_RINGTONE_IDS, normalizeSipRingtone, type SipRingtoneId } from "@/lib/sipRingtone";
 
 type SipServer = {
   sipProvider: "nvoip" | "sip";
   configurable: boolean;
   sipDomain: string;
   wssUrl: string;
+  ringTone?: string;
 };
 
 export function SipServerSettings() {
   const { t } = useI18n();
   const [sipDomain, setSipDomain] = useState("");
   const [wssUrl, setWssUrl] = useState("");
+  const [ringTone, setRingTone] = useState<SipRingtoneId>("classic");
   const [provider, setProvider] = useState<SipServer["sipProvider"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,6 +31,7 @@ export function SipServerSettings() {
       const server = await api.get<SipServer>("/sip/server");
       setSipDomain(server.sipDomain ?? "");
       setWssUrl(server.wssUrl ?? "");
+      setRingTone(normalizeSipRingtone(server.ringTone));
       setProvider(server.sipProvider);
     } catch {
       setError(t("nvoip.sip.loadError"));
@@ -49,9 +53,11 @@ export function SipServerSettings() {
       const savedServer = await api.put<SipServer>("/sip/server", {
         sipDomain: sipDomain.trim(),
         wssUrl: wssUrl.trim(),
+        ringTone,
       });
       setSipDomain(savedServer.sipDomain ?? "");
       setWssUrl(savedServer.wssUrl ?? "");
+      setRingTone(normalizeSipRingtone(savedServer.ringTone));
       setProvider(savedServer.sipProvider);
       setSaved(true);
       window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-refresh"));
@@ -95,6 +101,30 @@ export function SipServerSettings() {
               className={settingsInput}
             />
           </label>
+          <label className={settingsLabel}>
+            {t("nvoip.sip.fieldRingTone")}
+            <span className="mt-1 flex gap-2">
+              <select
+                value={ringTone}
+                onChange={(e) => setRingTone(normalizeSipRingtone(e.target.value))}
+                className="input-field min-w-0 flex-1"
+              >
+                {SIP_RINGTONE_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {t(`nvoip.sip.ringTone.${id}`)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => previewSipRingtone(ringTone)}
+                className="shrink-0 rounded-lg border border-ink-200 px-3 py-2 text-sm text-ink-700 dark:border-ink-700 dark:text-ink-200"
+              >
+                {t("nvoip.sip.ringTonePreview")}
+              </button>
+            </span>
+          </label>
+          <p className="text-xs text-ink-500">{t("nvoip.sip.ringToneHint")}</p>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
             type="button"

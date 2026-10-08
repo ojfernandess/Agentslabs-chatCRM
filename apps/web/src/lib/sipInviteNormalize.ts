@@ -59,6 +59,80 @@ function sipUri(value: string): string | null {
   return match?.[0] ?? null;
 }
 
+const HIDDEN_CALLER = /^(anonymous|unavailable|restricted|unknown|hidden|private)$/i;
+
+function headerValue(message: string, names: string[]): string {
+  const sep = message.indexOf("\r\n\r\n");
+  const head = sep === -1 ? message : message.slice(0, sep);
+  for (const line of head.split("\r\n").slice(1)) {
+    const colon = line.indexOf(":");
+    if (colon <= 0) continue;
+    const name = line.slice(0, colon).trim().toLowerCase();
+    if (names.includes(name)) return line.slice(colon + 1).trim();
+  }
+  return "";
+}
+
+function phoneToken(value: string): string {
+  const decoded = value.replace(/^"(.*)"$/, "$1").trim();
+  if (!decoded || HIDDEN_CALLER.test(decoded)) return "";
+  const digits = decoded.replace(/[^\d]/g, "");
+  if (digits.length < 8 || digits.length > 15) return "";
+  return decoded.trim().startsWith("+") ? `+${digits}` : digits;
+}
+
+function identityFromHeader(value: string): { number: string; name: string } | null {
+  if (!value.trim()) return null;
+  const quoted = value.match(/^\s*"([^"]*)"/)?.[1]?.trim() ?? "";
+  const bare = quoted || value.match(/^\s*([^<"]+?)\s*</)?.[1]?.trim() || "";
+  const uriUser = value.match(/(?:sips?|tel):([^@;\s>]+)/i)?.[1] ?? "";
+  let user = uriUser;
+  try {
+    user = decodeURIComponent(uriUser);
+  } catch {
+    user = uriUser;
+  }
+  const number = phoneToken(user) || phoneToken(bare);
+  const name = bare && !HIDDEN_CALLER.test(bare) && phoneToken(bare) !== number ? bare : "";
+  if (!number && !name) return null;
+  return { number, name };
+}
+
+/** Número visível do INVITE. From anônimo cede o lugar a P-Asserted-Identity e equivalentes. */
+export function callerFromInvite(message: string): { number: string; name: string } {
+  const preferred = [
+    headerValue(message, ["p-asserted-identity"]),
+    headerValue(message, ["p-preferred-identity"]),
+    headerValue(message, ["remote-party-id"]),
+  ];
+  for (const value of preferred) {
+    const parsed = identityFromHeader(value);
+    if (parsed?.number) return parsed;
+  }
+  return identityFromHeader(headerValue(message, ["from", "f"])) ?? { number: "", name: "" };
+}
+
+export function callIdFromSip(message: string): string {
+  return headerValue(message, ["call-id", "i"]);
+}
+
+const inviteCallers = new Map<string, { number: string; name: string }>();
+
+export function rememberInviteCaller(callId: string, party: { number: string; name: string }): void {
+  const id = callId.trim();
+  if (!id || !party.number) return;
+  inviteCallers.set(id, party);
+  while (inviteCallers.size > 40) {
+    const oldest = inviteCallers.keys().next().value;
+    if (!oldest) break;
+    inviteCallers.delete(oldest);
+  }
+}
+
+export function lookupInviteCaller(callId: string): { number: string; name: string } | null {
+  return inviteCallers.get(callId.trim()) ?? null;
+}
+
 function rewriteNameAddr(name: string, value: string): string | null {
   const uri = sipUri(value);
   if (!uri) return null;
@@ -124,9 +198,21 @@ export function repairInvite(message: string, sipUser: string): { message: strin
     }
     if (REWRITE_IF_BROKEN.has(lower)) {
       const tag = value.match(/;\s*tag=([^;\s]+)/i)?.[1];
+      const tagSuffix = lower === "contact" || lower === "m" || !tag ? "" : `;tag=${tag}`;
+      const uri = sipUri(value);
+      let user = uri?.match(/^sips?:([^@;>]+)/i)?.[1] ?? "";
+      try {
+        user = decodeURIComponent(user);
+      } catch {
+        /* mantém o usuário como veio */
+      }
+      const host = uri?.match(/@([^;>]+)/i)?.[1] || "anonymous.invalid";
+      const kept = user && !HIDDEN_CALLER.test(user) ? `<sip:${user}@${host}>${tagSuffix}` : "";
       const rewritten =
         rewriteNameAddr(name, value) ??
-        `${name}: <sip:anonymous@anonymous.invalid>${lower === "contact" || lower === "m" || !tag ? "" : `;tag=${tag}`}`;
+        (kept && headerParses(kept, HEADER_RULE[lower] ?? "From")
+          ? `${name}: ${kept}`
+          : `${name}: <sip:anonymous@anonymous.invalid>${tagSuffix}`);
       out.push(rewritten);
       continue;
     }
