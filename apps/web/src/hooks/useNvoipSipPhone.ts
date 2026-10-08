@@ -162,6 +162,25 @@ function publishInboundRoute(syncOnly = false): void {
     .catch(() => sipDiag("SIP", "DID route failed"));
 }
 
+const STATUS_WAITING_FOR_ACK = 6;
+
+/** O 200 já abriu o áudio. Sem o ACK, o JsSIP derruba a chamada em 32s. */
+function keepAnsweredCall(session: SipRtcSession): void {
+  const timers = (session as SipRtcSession & {
+    _timers?: { ackTimer: number | null; invite2xxTimer: number | null };
+  })._timers;
+  if (!timers) return;
+  if (timers.ackTimer != null) window.clearTimeout(timers.ackTimer);
+  timers.ackTimer = window.setTimeout(() => {
+    if (session.isEnded() || session.status !== STATUS_WAITING_FOR_ACK) return;
+    if (timers.invite2xxTimer != null) {
+      window.clearTimeout(timers.invite2xxTimer);
+      timers.invite2xxTimer = null;
+    }
+    timers.ackTimer = null;
+  }, 32_000);
+}
+
 const remoteClosing = new WeakSet<SipRtcSession>();
 
 function endSessionFromRemote(session: SipRtcSession): void {
@@ -246,8 +265,9 @@ function traceSocket(
         }
         if (/^(BYE|CANCEL)\s/i.test(prepared.message)) {
           const callId = callIdFromSip(prepared.message);
+          const method = /^CANCEL\s/i.test(prepared.message) ? "CANCEL" : "BYE";
           if (callId) {
-            window.dispatchEvent(new CustomEvent("openconduit:sip-remote-end", { detail: { callId } }));
+            window.dispatchEvent(new CustomEvent("openconduit:sip-remote-end", { detail: { callId, method } }));
           }
         }
         if (incomingInvite && !inviteGate.accepted) {
@@ -753,6 +773,7 @@ export function useNvoipSipPhone(enabled: boolean) {
           session.on("accepted", () => {
             announceAnswered();
             reportDistributionAnswered();
+            keepAnsweredCall(session);
             sipDiag("SIP", "Call accepted");
             markLive();
           });
@@ -1182,7 +1203,8 @@ export function useNvoipSipPhone(enabled: boolean) {
 
   useEffect(() => {
     const onRemoteEnd = (event: Event) => {
-      const callId = (event as CustomEvent<{ callId?: string }>).detail?.callId?.trim();
+      const detail = (event as CustomEvent<{ callId?: string; method?: string }>).detail;
+      const callId = detail?.callId?.trim();
       if (!callId) return;
       const sessions = [
         sessionRef.current,
@@ -1191,6 +1213,7 @@ export function useNvoipSipPhone(enabled: boolean) {
       ];
       for (const session of sessions) {
         if (!session || session._request?.call_id !== callId) continue;
+        if (detail?.method === "CANCEL" && (session.isEstablished() || session.status === STATUS_WAITING_FOR_ACK)) continue;
         endSessionFromRemote(session);
       }
     };
