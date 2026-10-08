@@ -44,6 +44,7 @@ function classifyCallOutcome(call: NormalizedCall): CallOutcome {
   }
 
   if (MISSED_STATUSES.has(s)) return "missed";
+  if (call.provider === "sip" && (s === "ENDED" || s === "ANSWERED")) return "answered";
   if (call.durationSec != null && call.durationSec > 0) return "answered";
   if (s === "ENDED" || s === "ANSWERED") {
     return dir === "INCOMING" && (call.durationSec == null || call.durationSec === 0)
@@ -193,7 +194,9 @@ export async function buildTelephonyReports(input: {
         })
       : Promise.resolve([]),
     prisma.user.findMany({
-      where: { organizationId },
+      where: {
+        OR: [{ organizationId }, { memberships: { some: { organizationId } } }],
+      },
       select: { id: true, name: true, displayName: true },
     }),
   ]);

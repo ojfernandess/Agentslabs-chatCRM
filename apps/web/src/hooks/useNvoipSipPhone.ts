@@ -162,12 +162,43 @@ function publishInboundRoute(syncOnly = false): void {
     .catch(() => sipDiag("SIP", "DID route failed"));
 }
 
-function watchIce(pc: RTCPeerConnection): void {
+const remoteClosing = new WeakSet<SipRtcSession>();
+
+function endSessionFromRemote(session: SipRtcSession): void {
+  if (session.isEnded() || remoteClosing.has(session)) return;
+  remoteClosing.add(session);
+  try {
+    session.terminate();
+  } catch {
+    /* a sessão já estava encerrando */
+  }
+}
+
+function setOutboundAudioEnabled(session: SipRtcSession, enabled: boolean, fallback?: MediaStream | null): void {
+  const senderTracks =
+    session.connection
+      ?.getSenders()
+      .map((sender) => sender.track)
+      .filter((track): track is MediaStreamTrack => !!track && track.kind === "audio") ?? [];
+  const tracks = senderTracks.length > 0 ? senderTracks : (fallback?.getAudioTracks() ?? []);
+  for (const track of tracks) {
+    if (track.readyState === "live") track.enabled = enabled;
+  }
+}
+
+function watchIce(pc: RTCPeerConnection, session: SipRtcSession): void {
   sipDiag("WEBRTC", "Creating PeerConnection");
   sipDiag("ICE", pc.iceConnectionState);
-  pc.addEventListener("iceconnectionstatechange", () => {
+  const finishIfDead = () => {
     sipDiag("ICE", pc.iceConnectionState);
-  });
+    const ice = pc.iceConnectionState;
+    const conn = pc.connectionState;
+    if (ice === "failed" || ice === "closed" || conn === "failed" || conn === "closed") {
+      endSessionFromRemote(session);
+    }
+  };
+  pc.addEventListener("iceconnectionstatechange", finishIfDead);
+  pc.addEventListener("connectionstatechange", finishIfDead);
 }
 
 function traceSocket(
@@ -212,6 +243,12 @@ function traceSocket(
           if (typeof prevMessage === "function") prevMessage.call(ws, { data: prepared.message });
         } catch {
           if (incomingInvite) sipDiag("SIP", "INVITE error");
+        }
+        if (/^(BYE|CANCEL)\s/i.test(prepared.message)) {
+          const callId = callIdFromSip(prepared.message);
+          if (callId) {
+            window.dispatchEvent(new CustomEvent("openconduit:sip-remote-end", { detail: { callId } }));
+          }
         }
         if (incomingInvite && !inviteGate.accepted) {
           const fault = inviteFault(prepared.message);
@@ -356,6 +393,11 @@ export function useNvoipSipPhone(enabled: boolean) {
   const [answeredAt, setAnsweredAt] = useState<number | null>(null);
   const [answering, setAnswering] = useState(false);
   const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  const setMutedSafe = useCallback((value: boolean) => {
+    mutedRef.current = value;
+    setMuted(value);
+  }, []);
 
   const setStatusSafe = useCallback((next: NvoipSipCallStatus, err: string | null = null) => {
     setStatus(next);
@@ -394,7 +436,7 @@ export function useNvoipSipPhone(enabled: boolean) {
   const releaseCallMedia = useCallback(() => {
     stopIncomingRing();
     closeIncomingNotice();
-    setMuted(false);
+    setMutedSafe(false);
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -402,7 +444,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     }
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
-  }, []);
+  }, [setMutedSafe]);
 
   const attachRemoteAudio = useCallback((peerconnection: RTCPeerConnection) => {
     const playStream = (stream: MediaStream) => {
@@ -454,9 +496,12 @@ export function useNvoipSipPhone(enabled: boolean) {
   const answerSession = useCallback(
     async (session: SipRtcSession) => {
       setAnswering(true);
+      stopIncomingRing();
       const localStream = await ensureLocalAudio();
       if (localEndRef.current || sessionRef.current !== session) {
         setAnswering(false);
+        const current = sessionRef.current;
+        if (current && current !== session && !current.isEnded() && !current.isEstablished()) startIncomingRing();
         return;
       }
       const sharing = heldRef.current.some((slot) => !slot.session.isEnded());
@@ -469,6 +514,7 @@ export function useNvoipSipPhone(enabled: boolean) {
         });
       } catch {
         setAnswering(false);
+        if (!session.isEnded() && !session.isEstablished() && sessionRef.current === session) startIncomingRing();
         setStatusSafe("error", "sip_answer_failed");
       }
     },
@@ -557,7 +603,7 @@ export function useNvoipSipPhone(enabled: boolean) {
           setIncoming(nextHeld.party);
           setAnsweredAt(nextHeld.answeredAt);
           setAnswering(false);
-          setMuted(false);
+          setMutedSafe(false);
           setStatusSafe("in-call", null);
           publishQueue();
           return true;
@@ -576,7 +622,7 @@ export function useNvoipSipPhone(enabled: boolean) {
           setIncoming(nextWait.party);
           setAnsweredAt(null);
           setAnswering(false);
-          setMuted(false);
+          setMutedSafe(false);
           setStatusSafe("ringing", null);
           startIncomingRing();
           publishQueue();
@@ -673,13 +719,13 @@ export function useNvoipSipPhone(enabled: boolean) {
 
         const watchSession = () => {
           if (session.connection) {
-            watchIce(session.connection);
+            watchIce(session.connection, session);
             attachRemoteAudio(session.connection);
           }
           session.on("peerconnection", (ev: unknown) => {
             const peerconnection = (ev as { peerconnection?: RTCPeerConnection }).peerconnection;
             if (!peerconnection) return;
-            watchIce(peerconnection);
+            watchIce(peerconnection, session);
             attachRemoteAudio(peerconnection);
           });
           const announceAnswered = () => publishTakenRef.current(session, "answer");
@@ -688,24 +734,32 @@ export function useNvoipSipPhone(enabled: boolean) {
             if (!distributionId) return;
             void api.post("/sip/distribution/result", { distributionId, status: "ANSWERED" }).catch(() => {});
           };
-          session.on("ended", () => closeSession("ended"));
-          session.on("failed", (ev: unknown) => closeSession("failed", ev));
-          session.on("accepted", () => {
-            announceAnswered();
-            reportDistributionAnswered();
-          });
-          session.on("confirmed", () => {
-            announceAnswered();
+          const markLive = () => {
             if (sessionRef.current !== session) return;
-            sipDiag("SIP", "Call confirmed");
             stopIncomingRing();
-            const at = Date.now();
+            const at =
+              (activeSlotRef.current?.session === session ? activeSlotRef.current.answeredAt : null) ??
+              callLogRef.current?.answeredAt ??
+              Date.now();
             if (activeSlotRef.current?.session === session) activeSlotRef.current.answeredAt = at;
             if (callLogRef.current) callLogRef.current.answeredAt = at;
             setAnswering(false);
             setAnsweredAt(at);
             setStatusSafe("in-call", null);
             window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-active"));
+          };
+          session.on("ended", () => closeSession("ended"));
+          session.on("failed", (ev: unknown) => closeSession("failed", ev));
+          session.on("accepted", () => {
+            announceAnswered();
+            reportDistributionAnswered();
+            sipDiag("SIP", "Call accepted");
+            markLive();
+          });
+          session.on("confirmed", () => {
+            announceAnswered();
+            sipDiag("SIP", "Call confirmed");
+            markLive();
           });
         };
 
@@ -974,7 +1028,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     activeSlotRef.current = slot;
     callLogRef.current = { id: slot.logId, answeredAt: slot.answeredAt };
     setIncoming(slot.party);
-    setMuted(false);
+    setMutedSafe(false);
     publishQueue();
     if (slot.session.isEstablished()) {
       try {
@@ -1047,16 +1101,17 @@ export function useNvoipSipPhone(enabled: boolean) {
       return;
     }
     const session = sessionRef.current;
-    if (!session?.connection || session.isEnded()) return;
+    if (!session || session.isEnded()) return;
+    const nextMuted = !mutedRef.current;
     try {
-      const audioMuted = session.isMuted().audio;
-      if (audioMuted) session.unmute({ audio: true, video: false });
-      else session.mute({ audio: true, video: false });
-      setMuted(!audioMuted);
+      if (nextMuted) session.mute({ audio: true, video: false });
+      else session.unmute({ audio: true, video: false });
     } catch {
       sipDiag("AUDIO", "Mute unavailable");
     }
-  }, [postCommand]);
+    setOutboundAudioEnabled(session, !nextMuted, localStreamRef.current);
+    setMutedSafe(nextMuted);
+  }, [postCommand, setMutedSafe]);
 
   const sendDtmf = useCallback((tone: string) => {
     const digit = tone.trim();
@@ -1123,6 +1178,24 @@ export function useNvoipSipPhone(enabled: boolean) {
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
+  useEffect(() => {
+    const onRemoteEnd = (event: Event) => {
+      const callId = (event as CustomEvent<{ callId?: string }>).detail?.callId?.trim();
+      if (!callId) return;
+      const sessions = [
+        sessionRef.current,
+        ...waitingRef.current.map((slot) => slot.session),
+        ...heldRef.current.map((slot) => slot.session),
+      ];
+      for (const session of sessions) {
+        if (!session || session._request?.call_id !== callId) continue;
+        endSessionFromRemote(session);
+      }
+    };
+    window.addEventListener("openconduit:sip-remote-end", onRemoteEnd);
+    return () => window.removeEventListener("openconduit:sip-remote-end", onRemoteEnd);
   }, []);
 
   useEffect(() => {
@@ -1281,7 +1354,7 @@ export function useNvoipSipPhone(enabled: boolean) {
         setQueue(data.queue ?? []);
         setAnsweredAt(data.answeredAt ?? null);
         setAnswering(data.answering === true);
-        setMuted(data.muted === true);
+        setMutedSafe(data.muted === true);
       }
     };
     channel?.addEventListener("message", onChannel);
