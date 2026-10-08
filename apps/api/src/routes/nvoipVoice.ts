@@ -15,6 +15,7 @@ import {
   syncNvoipCallFromApi,
 } from "../lib/nvoipAgentCall.js";
 import { resolveNvoipCallContext } from "../lib/nvoipCallContext.js";
+import { findContactByInboundPhone } from "../lib/contactPhoneMatch.js";
 import { nvoipEndCall } from "../lib/nvoipClient.js";
 import { writeNvoipIntegrationLog } from "../lib/nvoipIntegrationLog.js";
 import { getUserSipCredentialsForClient } from "../lib/userSipCredentials.js";
@@ -25,13 +26,17 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
     const enabled = await isOrganizationFeatureEnabled(organizationId, "nvoip_voice");
-    if (!enabled) {
-      return reply.status(403).send({
-        error: "Forbidden",
-        message: "nvoip_voice_disabled",
-        statusCode: 403,
-      });
+    if (enabled) return;
+    const path = request.url.split("?")[0] ?? "";
+    if (request.method === "GET" && path.endsWith("/calls/resolve-context")) {
+      const sip = await isOrganizationFeatureEnabled(organizationId, "nvoip_embedded_sip");
+      if (sip) return;
     }
+    return reply.status(403).send({
+      error: "Forbidden",
+      message: "nvoip_voice_disabled",
+      statusCode: 403,
+    });
   });
 
   app.get("/session", async (request, reply) => {
@@ -359,7 +364,26 @@ export async function nvoipVoiceRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true },
     });
     if (!account) {
-      return reply.status(400).send({ error: "Bad Request", message: "nvoip_not_configured", statusCode: 400 });
+      const sip = await isOrganizationFeatureEnabled(organizationId, "nvoip_embedded_sip");
+      if (!sip) {
+        return reply.status(400).send({ error: "Bad Request", message: "nvoip_not_configured", statusCode: 400 });
+      }
+      const dialPhone = parsed.data.phone.replace(/\D/g, "") || parsed.data.phone.trim();
+      const found = dialPhone
+        ? await findContactByInboundPhone(prisma, organizationId, dialPhone)
+        : null;
+      const conversation = found
+        ? await prisma.conversation.findFirst({
+            where: { organizationId, contactId: found.id },
+            orderBy: { updatedAt: "desc" },
+            select: { id: true },
+          })
+        : null;
+      return {
+        dialPhone,
+        contact: found ? { id: found.id, name: found.name, phone: found.phone } : null,
+        conversationId: conversation?.id ?? null,
+      };
     }
 
     const ctx = await resolveNvoipCallContext({
