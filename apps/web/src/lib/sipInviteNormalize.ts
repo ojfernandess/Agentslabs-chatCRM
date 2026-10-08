@@ -81,35 +81,63 @@ function phoneToken(value: string): string {
   return decoded.trim().startsWith("+") ? `+${digits}` : digits;
 }
 
-function identityFromHeader(value: string): { number: string; name: string } | null {
-  if (!value.trim()) return null;
+function sameExtension(number: string, localUser: string): boolean {
+  const digits = number.replace(/\D/g, "");
+  const local = localUser.replace(/\D/g, "");
+  return digits.length > 0 && local.length > 0 && digits === local;
+}
+
+function headerParts(value: string): { uriUser: string; display: string } {
   const quoted = value.match(/^\s*"([^"]*)"/)?.[1]?.trim() ?? "";
-  const bare = quoted || value.match(/^\s*([^<"]+?)\s*</)?.[1]?.trim() || "";
-  const uriUser = value.match(/(?:sips?|tel):([^@;\s>]+)/i)?.[1] ?? "";
-  let user = uriUser;
+  const display = quoted || value.match(/^\s*([^<"]+?)\s*</)?.[1]?.trim() || "";
+  const uriUserRaw = value.match(/(?:sips?|tel):([^@;\s>]+)/i)?.[1] ?? "";
+  let uriUser = uriUserRaw;
   try {
-    user = decodeURIComponent(uriUser);
+    uriUser = decodeURIComponent(uriUserRaw);
   } catch {
-    user = uriUser;
+    uriUser = uriUserRaw;
   }
-  const number = phoneToken(user) || phoneToken(bare);
-  const name = bare && !HIDDEN_CALLER.test(bare) && phoneToken(bare) !== number ? bare : "";
+  return { uriUser, display };
+}
+
+function pickCallerNumber(uriUser: string, display: string, localUser: string): string {
+  const uriPhone = phoneToken(uriUser);
+  const namePhone = phoneToken(display);
+  const nameLonger = namePhone.replace(/\D/g, "").length > uriPhone.replace(/\D/g, "").length;
+  if (namePhone && !sameExtension(namePhone, localUser) && (!uriPhone || sameExtension(uriPhone, localUser) || nameLonger)) {
+    return namePhone;
+  }
+  if (uriPhone && !sameExtension(uriPhone, localUser)) return uriPhone;
+  if (namePhone && !sameExtension(namePhone, localUser)) return namePhone;
+  return "";
+}
+
+function partyFromHeader(value: string, localUser: string): { number: string; name: string } | null {
+  if (!value.trim()) return null;
+  const { uriUser, display } = headerParts(value);
+  const number = pickCallerNumber(uriUser, display, localUser);
+  const name = display && !HIDDEN_CALLER.test(display) && phoneToken(display) !== number ? display : "";
   if (!number && !name) return null;
   return { number, name };
 }
 
-/** Número visível do INVITE. From anônimo cede o lugar a P-Asserted-Identity e equivalentes. */
-export function callerFromInvite(message: string): { number: string; name: string } {
+/** Número de quem liga. O ramal local e o From anônimo não escondem o telefone do cliente. */
+export function callerFromInvite(message: string, localUser = ""): { number: string; name: string } {
+  const from = partyFromHeader(headerValue(message, ["from", "f"]), localUser);
+  if (from?.number) return from;
   const preferred = [
     headerValue(message, ["p-asserted-identity"]),
     headerValue(message, ["p-preferred-identity"]),
     headerValue(message, ["remote-party-id"]),
   ];
   for (const value of preferred) {
-    const parsed = identityFromHeader(value);
-    if (parsed?.number) return parsed;
+    const parsed = partyFromHeader(value, localUser);
+    if (parsed?.number) return { number: parsed.number, name: parsed.name || from?.name || "" };
   }
-  return identityFromHeader(headerValue(message, ["from", "f"])) ?? { number: "", name: "" };
+  const requestUser = message.match(/^INVITE\s+sip:([^@;\s>]+)@/i)?.[1] ?? "";
+  const requested = pickCallerNumber(requestUser, "", localUser);
+  if (requested) return { number: requested, name: from?.name || "" };
+  return { number: "", name: from?.name || "" };
 }
 
 export function callIdFromSip(message: string): string {

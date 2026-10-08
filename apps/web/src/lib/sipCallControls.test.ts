@@ -41,6 +41,44 @@ test("shouldDropSipLegAnsweredElsewhere clears only the other agents still ringi
   assert.equal(shouldDropSipLegAnsweredElsewhere({ ...base, answeredByUserId: "agent-b", localUserId: "agent-b" }), false);
   assert.equal(shouldDropSipLegAnsweredElsewhere({ ...base, localDialogId: "call-2" }), false);
   assert.equal(shouldDropSipLegAnsweredElsewhere({ ...base, localStatus: 9 }), false);
+  assert.equal(shouldDropSipLegAnsweredElsewhere({ ...base, localStatus: 5 }), false);
+});
+
+test("shouldDropSipLegAnsweredElsewhere matches another fork by Call-ID", () => {
+  const callId = "abc1234567890def";
+  assert.equal(
+    shouldDropSipLegAnsweredElsewhere({
+      localUserId: "agent-b",
+      answeredByUserId: "agent-a",
+      localDialogId: `${callId}tag-b`,
+      localCallId: callId,
+      answeredDialogId: callId,
+      localStatus: 4,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDropSipLegAnsweredElsewhere({
+      localUserId: "agent-b",
+      answeredByUserId: "agent-a",
+      localDialogId: `${callId}tag-b`,
+      localCallId: callId,
+      answeredDialogId: `${callId}tag-a`,
+      localStatus: 4,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldDropSipLegAnsweredElsewhere({
+      localUserId: "agent-b",
+      answeredByUserId: "agent-a",
+      localDialogId: "zzzzzzzzzzzzzzzz",
+      localCallId: "zzzzzzzzzzzzzzzz",
+      answeredDialogId: callId,
+      localStatus: 4,
+    }),
+    false,
+  );
 });
 
 test("shouldQueueIncomingCall keeps the live session and lines the next call up", () => {

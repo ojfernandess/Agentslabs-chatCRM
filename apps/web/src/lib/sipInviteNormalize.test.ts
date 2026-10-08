@@ -59,3 +59,25 @@ test("callerFromInvite reads a phone number shown only in the display name", () 
   ].join("\r\n");
   assert.deepEqual(callerFromInvite(message), { number: "5511912345678", name: "" });
 });
+
+test("callerFromInvite prefers the customer number over the agent extension", () => {
+  const message = [
+    "INVITE sip:551123880408@app.nvoip.com.br SIP/2.0",
+    "From: \"5511988776655\" <sip:110937011@app.nvoip.com.br>;tag=abc",
+    "P-Asserted-Identity: <sip:110937011@app.nvoip.com.br>",
+    "",
+    "",
+  ].join("\r\n");
+  assert.deepEqual(callerFromInvite(message, "110937011"), { number: "5511988776655", name: "" });
+});
+
+test("callerFromInvite keeps a customer From when the asserted identity is the extension", () => {
+  const message = [
+    "INVITE sip:110937011@app.nvoip.com.br SIP/2.0",
+    "From: <sip:5511988776655@app.nvoip.com.br>;tag=abc",
+    "P-Asserted-Identity: <sip:110937011@app.nvoip.com.br>",
+    "",
+    "",
+  ].join("\r\n");
+  assert.deepEqual(callerFromInvite(message, "110937011"), { number: "5511988776655", name: "" });
+});

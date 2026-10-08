@@ -1,25 +1,57 @@
-export const SIP_RINGTONE_IDS = ["classic", "bright", "soft", "pulse"] as const;
+export const SIP_RINGTONE_IDS = ["classic", "bright", "soft", "pulse", "bell", "digital", "chime", "urgent"] as const;
 
 export type SipRingtoneId = (typeof SIP_RINGTONE_IDS)[number];
 
 type SipTone = { frequency: number; start: number; duration: number; gain: number };
 
 const PATTERNS: Record<SipRingtoneId, { intervalMs: number; tones: SipTone[] }> = {
-  classic: { intervalMs: 1600, tones: [{ frequency: 440, start: 0, duration: 0.35, gain: 0.05 }] },
+  classic: { intervalMs: 1600, tones: [{ frequency: 440, start: 0, duration: 0.35, gain: 0.32 }] },
   bright: {
     intervalMs: 1800,
     tones: [
-      { frequency: 880, start: 0, duration: 0.18, gain: 0.05 },
-      { frequency: 988, start: 0.24, duration: 0.18, gain: 0.05 },
+      { frequency: 880, start: 0, duration: 0.18, gain: 0.34 },
+      { frequency: 988, start: 0.24, duration: 0.18, gain: 0.34 },
     ],
   },
-  soft: { intervalMs: 2000, tones: [{ frequency: 523, start: 0, duration: 0.5, gain: 0.03 }] },
+  soft: { intervalMs: 2000, tones: [{ frequency: 523, start: 0, duration: 0.5, gain: 0.2 }] },
   pulse: {
     intervalMs: 1400,
     tones: [
-      { frequency: 660, start: 0, duration: 0.12, gain: 0.05 },
-      { frequency: 660, start: 0.2, duration: 0.12, gain: 0.05 },
-      { frequency: 660, start: 0.4, duration: 0.12, gain: 0.05 },
+      { frequency: 660, start: 0, duration: 0.12, gain: 0.34 },
+      { frequency: 660, start: 0.2, duration: 0.12, gain: 0.34 },
+      { frequency: 660, start: 0.4, duration: 0.12, gain: 0.34 },
+    ],
+  },
+  bell: {
+    intervalMs: 2200,
+    tones: [
+      { frequency: 480, start: 0, duration: 0.9, gain: 0.26 },
+      { frequency: 620, start: 0, duration: 0.9, gain: 0.26 },
+    ],
+  },
+  digital: {
+    intervalMs: 1500,
+    tones: [
+      { frequency: 740, start: 0, duration: 0.14, gain: 0.36 },
+      { frequency: 880, start: 0.2, duration: 0.14, gain: 0.36 },
+      { frequency: 740, start: 0.4, duration: 0.14, gain: 0.36 },
+    ],
+  },
+  chime: {
+    intervalMs: 2400,
+    tones: [
+      { frequency: 523, start: 0, duration: 0.22, gain: 0.3 },
+      { frequency: 659, start: 0.2, duration: 0.22, gain: 0.3 },
+      { frequency: 784, start: 0.4, duration: 0.32, gain: 0.3 },
+    ],
+  },
+  urgent: {
+    intervalMs: 1000,
+    tones: [
+      { frequency: 988, start: 0, duration: 0.1, gain: 0.38 },
+      { frequency: 988, start: 0.16, duration: 0.1, gain: 0.38 },
+      { frequency: 988, start: 0.32, duration: 0.1, gain: 0.38 },
+      { frequency: 784, start: 0.48, duration: 0.16, gain: 0.38 },
     ],
   },
 };

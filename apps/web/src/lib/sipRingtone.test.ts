@@ -7,4 +7,6 @@ test("normalizeSipRingtone keeps the current beep unless a known tone is selecte
   assert.equal(normalizeSipRingtone("nope"), "classic");
   assert.equal(normalizeSipRingtone("bright"), "bright");
   assert.equal(normalizeSipRingtone("pulse"), "pulse");
+  assert.equal(normalizeSipRingtone("bell"), "bell");
+  assert.equal(normalizeSipRingtone("urgent"), "urgent");
 });

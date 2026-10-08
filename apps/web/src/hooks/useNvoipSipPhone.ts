@@ -99,14 +99,31 @@ function hiddenCaller(value: string): boolean {
   return /^(anonymous|unavailable|restricted|unknown|hidden|private)$/i.test(value.trim());
 }
 
+let localSipUser = "";
+
+function isAgentExtension(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  const local = localSipUser.replace(/\D/g, "");
+  return digits.length > 0 && local.length > 0 && digits === local;
+}
+
+function phoneFromLabel(value: string): string {
+  if (!value || hiddenCaller(value)) return "";
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 8 || digits.length > 15) return "";
+  return value.trim().startsWith("+") ? `+${digits}` : digits;
+}
+
 function readRemoteParty(session: SipRtcSession): NvoipSipRemoteParty {
   const number = String(session.remote_identity?.uri?.user ?? "").trim();
   const rawName = String(session.remote_identity?.display_name ?? "").trim();
   const remembered = session._request?.call_id ? lookupInviteCaller(session._request.call_id) : null;
-  const visibleNumber = !number || hiddenCaller(number) ? remembered?.number || "" : number;
+  const usable = (value: string) => !!value && !hiddenCaller(value) && !isAgentExtension(value);
+  const visibleNumber =
+    [remembered?.number ?? "", phoneFromLabel(rawName), number].find((value) => usable(value)) ?? "";
   const rememberedName = remembered?.name && !hiddenCaller(remembered.name) ? remembered.name : "";
   const name =
-    rawName && !hiddenCaller(rawName) && rawName !== visibleNumber
+    rawName && !hiddenCaller(rawName) && rawName !== visibleNumber && phoneFromLabel(rawName) !== visibleNumber
       ? rawName
       : rememberedName && rememberedName !== visibleNumber
         ? rememberedName
@@ -158,6 +175,7 @@ function traceSocket(
   sipUser: string,
   inviteGate: { accepted: boolean },
 ): void {
+  localSipUser = sipUser;
   sipDiag("WSS", `Connecting ${wssUrl}`);
   const origConnect = socket.connect.bind(socket);
   socket.connect = () => {
@@ -182,7 +200,7 @@ function traceSocket(
       if (frames.length === 0) return;
       for (const frame of frames) {
         if (/^INVITE\s/i.test(frame)) {
-          rememberInviteCaller(callIdFromSip(frame), callerFromInvite(frame));
+          rememberInviteCaller(callIdFromSip(frame), callerFromInvite(frame, sipUser));
         }
         const prepared = repairInvite(frame, sipUser);
         if (prepared.note) sipDiag("SIP", `INVITE fixed ${prepared.note}`);
@@ -320,6 +338,7 @@ export function useNvoipSipPhone(enabled: boolean) {
   const slotIdsRef = useRef(new WeakMap<SipRtcSession, string>());
   const localEndIdsRef = useRef(new Set<string>());
   const answeredElsewhereIdsRef = useRef(new Set<string>());
+  const announcedCallsRef = useRef(new Set<string>());
 
   const outboundLegRef = useRef(false);
   const localEndRef = useRef(false);
@@ -629,9 +648,18 @@ export function useNvoipSipPhone(enabled: boolean) {
             watchIce(peerconnection);
             attachRemoteAudio(peerconnection);
           });
+          const announceAnswered = () => {
+            if (outbound) return;
+            const callId = session._request?.call_id || session.id || "";
+            if (callId.length < 8 || announcedCallsRef.current.has(callId)) return;
+            announcedCallsRef.current.add(callId);
+            void api.post("/sip/calls/answered", { sipCallId: callId }).catch(() => {});
+          };
           session.on("ended", () => closeSession("ended"));
           session.on("failed", (ev: unknown) => closeSession("failed", ev));
+          session.on("accepted", () => announceAnswered());
           session.on("confirmed", () => {
+            announceAnswered();
             if (sessionRef.current !== session) return;
             sipDiag("SIP", "Call confirmed");
             stopIncomingRing();
@@ -642,9 +670,6 @@ export function useNvoipSipPhone(enabled: boolean) {
             setAnsweredAt(at);
             setStatusSafe("in-call", null);
             window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-active"));
-            if (!outbound && session.id) {
-              void api.post("/sip/calls/answered", { sipCallId: session.id }).catch(() => {});
-            }
           });
         };
 
@@ -1030,6 +1055,7 @@ export function useNvoipSipPhone(enabled: boolean) {
             localUserId: userIdRef.current,
             answeredByUserId: detail?.userId,
             localDialogId: slot.session.id ?? null,
+            localCallId: slot.session._request?.call_id ?? null,
             answeredDialogId: detail?.sipCallId,
             localStatus: slot.session.status,
           })

@@ -37,11 +37,47 @@ export function shouldDropSipLegAnsweredElsewhere(input: {
   localUserId: string | null;
   answeredByUserId: string | undefined;
   localDialogId: string | null;
+  localCallId?: string | null;
   answeredDialogId: string | undefined;
   localStatus: number;
 }): boolean {
-  if (!input.answeredDialogId || input.answeredDialogId !== input.localDialogId) return false;
+  if (!input.answeredDialogId) return false;
+  if (!sameAnsweredCall(input.localDialogId, input.localCallId, input.answeredDialogId)) return false;
   if (input.localUserId && input.answeredByUserId === input.localUserId) return false;
-  if (input.localStatus === STATUS_WAITING_FOR_ACK || input.localStatus === STATUS_CONFIRMED) return false;
+  if (
+    input.localStatus === STATUS_ANSWERED ||
+    input.localStatus === STATUS_WAITING_FOR_ACK ||
+    input.localStatus === STATUS_CONFIRMED
+  ) {
+    return false;
+  }
   return true;
+}
+
+/** O mesmo INVITE chega em cada ramal com o mesmo Call-ID e uma tag From diferente. O id do JsSIP junta os dois. */
+function sameAnsweredCall(
+  localDialogId: string | null,
+  localCallId: string | null | undefined,
+  answeredId: string,
+): boolean {
+  if (localDialogId && localDialogId === answeredId) return true;
+  if (localCallId && localCallId === answeredId) return true;
+  if (
+    localCallId &&
+    localCallId.length >= 8 &&
+    answeredId.startsWith(localCallId) &&
+    answeredId.length > localCallId.length
+  ) {
+    return true;
+  }
+  if (
+    !localCallId &&
+    localDialogId &&
+    answeredId.length >= 8 &&
+    localDialogId.startsWith(answeredId) &&
+    localDialogId.length > answeredId.length
+  ) {
+    return true;
+  }
+  return false;
 }

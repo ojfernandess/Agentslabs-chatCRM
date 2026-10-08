@@ -1,6 +1,6 @@
 import { prisma } from "../db.js";
 
-const RINGTONE_IDS = ["classic", "bright", "soft", "pulse"] as const;
+const RINGTONE_IDS = ["classic", "bright", "soft", "pulse", "bell", "digital", "chime", "urgent"] as const;
 
 export type OrgSipRingtone = (typeof RINGTONE_IDS)[number];
 
