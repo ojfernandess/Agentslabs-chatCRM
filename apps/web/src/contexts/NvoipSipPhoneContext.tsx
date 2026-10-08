@@ -14,8 +14,12 @@ type NvoipSipPhoneContextValue = {
   incoming: NvoipSipRemoteParty | null;
   answeredAt: number | null;
   answering: boolean;
+  muted: boolean;
   isInCall: boolean;
   enabled: boolean;
+  toggleMute: () => void;
+  sendDtmf: (tone: string) => void;
+  requestCallAlerts: () => Promise<void>;
 };
 
 const NvoipSipPhoneContext = createContext<NvoipSipPhoneContextValue>({
@@ -28,8 +32,12 @@ const NvoipSipPhoneContext = createContext<NvoipSipPhoneContextValue>({
   incoming: null,
   answeredAt: null,
   answering: false,
+  muted: false,
   isInCall: false,
   enabled: false,
+  toggleMute: () => {},
+  sendDtmf: () => {},
+  requestCallAlerts: async () => {},
 });
 
 export function useNvoipSipPhoneOptional() {
@@ -52,8 +60,22 @@ export function NvoipSipPhoneProvider({
     !(isSuperAdminRole(user?.role ?? "") && !user?.actingOrganizationId);
   const embeddedEnabled = enabled ?? fromNvoip;
 
-  const { status, error, hangup, answer, reject, placeCall, incoming, answeredAt, answering, isInCall } =
-    useNvoipSipPhone(embeddedEnabled);
+  const {
+    status,
+    error,
+    hangup,
+    answer,
+    reject,
+    placeCall,
+    incoming,
+    answeredAt,
+    answering,
+    muted,
+    isInCall,
+    toggleMute,
+    sendDtmf,
+    requestCallAlerts,
+  } = useNvoipSipPhone(embeddedEnabled);
 
   useEffect(() => {
     if (!embeddedEnabled) return;
@@ -74,8 +96,12 @@ export function NvoipSipPhoneProvider({
         incoming,
         answeredAt,
         answering,
+        muted,
         isInCall,
         enabled: embeddedEnabled,
+        toggleMute,
+        sendDtmf,
+        requestCallAlerts,
       }}
     >
       {children}

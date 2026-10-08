@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { differenceInHours } from "date-fns";
-import { ChevronUp, Loader2, Minus, Phone, PhoneOff, User } from "lucide-react";
+import { ChevronUp, Keyboard, Loader2, Mic, MicOff, Minus, Phone, PhoneOff, User } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -29,6 +29,8 @@ function initials(name: string): string {
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
+
+const DTMF_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 
 function formatElapsed(total: number): string {
   const mm = Math.floor(Math.max(0, total) / 60);
@@ -212,7 +214,14 @@ export function NvoipSoftphonePanel() {
   const [minimized, setMinimized] = useState(false);
   const [ended, setEnded] = useState<EndedSummary | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [showPad, setShowPad] = useState(false);
   const liveRef = useRef<EndedSummary | null>(null);
+
+  useEffect(() => {
+    const onFocus = () => setMinimized(false);
+    window.addEventListener("openconduit:nvoip-sip-focus", onFocus);
+    return () => window.removeEventListener("openconduit:nvoip-sip-focus", onFocus);
+  }, []);
 
   const inboundRinging = sip.status === "ringing" && !!sip.incoming && !voice?.activeCall;
   const inboundLive = sip.status === "in-call" && !voice?.activeCall;
@@ -309,6 +318,21 @@ export function NvoipSoftphonePanel() {
               </span>
             </span>
             <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={sip.muted ? t("nvoip.softphone.unmute") : t("nvoip.softphone.mute")}
+            aria-pressed={sip.muted}
+            title={sip.muted ? t("nvoip.softphone.unmute") : t("nvoip.softphone.mute")}
+            onClick={() => sip.toggleMute()}
+            className={clsx(
+              "inline-flex h-11 w-11 items-center justify-center rounded-xl",
+              sip.muted
+                ? "bg-amber-500 text-white"
+                : "bg-slate-100 text-slate-700 dark:bg-ink-800 dark:text-ink-100",
+            )}
+          >
+            {sip.muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
           <button
             type="button"
@@ -442,36 +466,79 @@ export function NvoipSoftphonePanel() {
           >
             {t("nvoip.softphone.done")}
           </button>
-        ) : inboundRinging ? (
+        ) : inboundRinging && !sip.answering ? (
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
-              disabled={sip.answering}
               onClick={() => sip.reject()}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-500"
             >
               <PhoneOff className="h-5 w-5" />
               {t("nvoip.softphone.reject")}
             </button>
             <button
               type="button"
-              disabled={sip.answering}
               onClick={() => void sip.answer()}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-500"
             >
-              {sip.answering ? <Loader2 className="h-5 w-5 animate-spin" /> : <Phone className="h-5 w-5" />}
+              <Phone className="h-5 w-5" />
               {t("nvoip.softphone.answer")}
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => sip.hangup()}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-500"
-          >
-            <PhoneOff className="h-5 w-5" />
-            {t("nvoip.softphone.endCall")}
-          </button>
+          <div className="space-y-3">
+            <div className="grid grid-cols-[3.5rem_3.5rem_1fr] gap-2">
+              <button
+                type="button"
+                disabled={sip.status !== "in-call"}
+                aria-pressed={sip.muted}
+                aria-label={sip.muted ? t("nvoip.softphone.unmute") : t("nvoip.softphone.mute")}
+                title={sip.muted ? t("nvoip.softphone.unmute") : t("nvoip.softphone.mute")}
+                onClick={() => sip.toggleMute()}
+                className={clsx(
+                  "inline-flex h-12 items-center justify-center rounded-xl disabled:opacity-50",
+                  sip.muted
+                    ? "bg-amber-500 text-white"
+                    : "bg-slate-100 text-slate-800 dark:bg-ink-800 dark:text-ink-100",
+                )}
+              >
+                {sip.muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                disabled={sip.status !== "in-call"}
+                aria-pressed={showPad}
+                aria-label={t("nvoip.softphone.keypad")}
+                title={t("nvoip.softphone.keypad")}
+                onClick={() => setShowPad((open) => !open)}
+                className="inline-flex h-12 items-center justify-center rounded-xl bg-slate-100 text-slate-800 disabled:opacity-50 dark:bg-ink-800 dark:text-ink-100"
+              >
+                <Keyboard className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => sip.hangup()}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-semibold text-white hover:bg-red-500"
+              >
+                {sip.answering ? <Loader2 className="h-5 w-5 animate-spin" /> : <PhoneOff className="h-5 w-5" />}
+                {t("nvoip.softphone.endCall")}
+              </button>
+            </div>
+            {showPad && sip.status === "in-call" ? (
+              <div className="grid grid-cols-3 gap-2">
+                {DTMF_KEYS.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => sip.sendDtmf(key)}
+                    className="h-11 rounded-xl bg-slate-50 text-base font-semibold text-slate-900 hover:bg-slate-100 dark:bg-ink-950 dark:text-ink-50 dark:hover:bg-ink-800"
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         )}
       </footer>
     </section>

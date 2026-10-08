@@ -37,10 +37,11 @@ export function SipDialer() {
       setOpen(true);
       setDialError(null);
       setTab("keypad");
+      void sip.requestCallAlerts();
     };
     window.addEventListener("openconduit:sip-dialer-open", onOpen);
     return () => window.removeEventListener("openconduit:sip-dialer-open", onOpen);
-  }, []);
+  }, [sip.requestCallAlerts]);
 
   const loadContacts = useCallback(async (term: string) => {
     try {
