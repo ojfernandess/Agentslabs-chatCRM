@@ -32,17 +32,39 @@ export function sipEndAction(session: {
   return "cancel";
 }
 
-/** Outro usuário atendeu o mesmo INVITE. A perna local ainda tocando deve sair. */
+/** Os INVITEs do mesmo toque chegam com poucos segundos de diferença. */
+const SAME_RING_WINDOW_MS = 45_000;
+
+export function sameCallerDigits(left?: string | null, right?: string | null): boolean {
+  const a = (left ?? "").replace(/\D/g, "");
+  const b = (right ?? "").replace(/\D/g, "");
+  if (a.length < 8 || b.length < 8) return false;
+  if (a === b) return true;
+  const short = a.length <= b.length ? a : b;
+  const long = a.length <= b.length ? b : a;
+  return long.endsWith(short);
+}
+
+/** Outro usuário atendeu ou encerrou o mesmo toque. A perna local ainda tocando deve sair. */
 export function shouldDropSipLegAnsweredElsewhere(input: {
   localUserId: string | null;
   answeredByUserId: string | undefined;
   localDialogId: string | null;
   localCallId?: string | null;
   answeredDialogId: string | undefined;
+  localCaller?: string | null;
+  answeredCaller?: string | null;
+  localStartedAt?: number | null;
+  answeredStartedAt?: number | null;
   localStatus: number;
 }): boolean {
-  if (!input.answeredDialogId) return false;
-  if (!sameAnsweredCall(input.localDialogId, input.localCallId, input.answeredDialogId)) return false;
+  const sameCall = !!input.answeredDialogId && sameAnsweredCall(input.localDialogId, input.localCallId, input.answeredDialogId);
+  const sameRing =
+    sameCallerDigits(input.localCaller, input.answeredCaller) &&
+    typeof input.localStartedAt === "number" &&
+    typeof input.answeredStartedAt === "number" &&
+    Math.abs(input.localStartedAt - input.answeredStartedAt) <= SAME_RING_WINDOW_MS;
+  if (!sameCall && !sameRing) return false;
   if (input.localUserId && input.answeredByUserId === input.localUserId) return false;
   if (
     input.localStatus === STATUS_ANSWERED ||

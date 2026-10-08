@@ -165,6 +165,7 @@ export function WorkspaceRealtime() {
       targetUserIds?: string[] | null;
       userId?: string;
       sipCallId?: string;
+      startedAt?: number | null;
       presenceConnected?: boolean;
       effectiveAvailabilityStatus?: string;
       message?: ConversationMessagePushPayload;
@@ -363,7 +364,12 @@ export function WorkspaceRealtime() {
       } else if (data.type === "sip.call.answered" && typeof data.sipCallId === "string") {
         window.dispatchEvent(
           new CustomEvent("openconduit:sip-call-answered", {
-            detail: { sipCallId: data.sipCallId, userId: data.userId },
+            detail: {
+              sipCallId: data.sipCallId,
+              userId: data.userId,
+              caller: typeof data.caller === "string" ? data.caller : undefined,
+              startedAt: typeof data.startedAt === "number" ? data.startedAt : undefined,
+            },
           }),
         );
       } else if (data.type === "nvoip.call.ended") {

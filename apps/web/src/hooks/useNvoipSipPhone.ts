@@ -314,6 +314,7 @@ type SipCallSlot = {
   party: NvoipSipRemoteParty;
   logId: string;
   answeredAt: number | null;
+  startedAt: number;
   inbound: boolean;
 };
 
@@ -339,6 +340,7 @@ export function useNvoipSipPhone(enabled: boolean) {
   const localEndIdsRef = useRef(new Set<string>());
   const answeredElsewhereIdsRef = useRef(new Set<string>());
   const announcedCallsRef = useRef(new Set<string>());
+  const publishTakenRef = useRef<(session: SipRtcSession, kind: "answer" | "end") => void>(() => {});
 
   const outboundLegRef = useRef(false);
   const localEndRef = useRef(false);
@@ -356,6 +358,28 @@ export function useNvoipSipPhone(enabled: boolean) {
     setError(err);
     emitSipStatus(next, err);
   }, []);
+
+  publishTakenRef.current = (session, kind) => {
+    const slot = [activeSlotRef.current, ...waitingRef.current, ...heldRef.current].find(
+      (item) => item?.session === session,
+    );
+    if (session.direction === "outgoing" || slot?.inbound === false) return;
+    const callId = session._request?.call_id || session.id || "";
+    const caller = (slot?.party.number ?? "").replace(/\D/g, "").slice(0, 32);
+    const startedAt = slot?.startedAt ?? 0;
+    const sipCallId = (callId.length >= 8 ? callId : session.id || "").slice(0, 256);
+    if (sipCallId.length < 8) return;
+    const token = `${kind}:${sipCallId}:${caller}`;
+    if (announcedCallsRef.current.has(token)) return;
+    announcedCallsRef.current.add(token);
+    void api
+      .post("/sip/calls/answered", {
+        sipCallId,
+        ...(caller.length >= 8 ? { caller } : {}),
+        ...(startedAt > 0 ? { startedAt } : {}),
+      })
+      .catch(() => {});
+  };
 
   const ensureLocalAudio = useCallback(async () => {
     const stream = await acquireLocalAudio(localStreamRef.current);
@@ -648,13 +672,7 @@ export function useNvoipSipPhone(enabled: boolean) {
             watchIce(peerconnection);
             attachRemoteAudio(peerconnection);
           });
-          const announceAnswered = () => {
-            if (outbound) return;
-            const callId = session._request?.call_id || session.id || "";
-            if (callId.length < 8 || announcedCallsRef.current.has(callId)) return;
-            announcedCallsRef.current.add(callId);
-            void api.post("/sip/calls/answered", { sipCallId: callId }).catch(() => {});
-          };
+          const announceAnswered = () => publishTakenRef.current(session, "answer");
           session.on("ended", () => closeSession("ended"));
           session.on("failed", (ev: unknown) => closeSession("failed", ev));
           session.on("accepted", () => announceAnswered());
@@ -693,6 +711,7 @@ export function useNvoipSipPhone(enabled: boolean) {
               party,
               logId: beginSipCallLog("INCOMING", party.number || "inbound"),
               answeredAt: null,
+              startedAt: Date.now(),
               inbound: true,
             };
             waitingRef.current = [...waitingRef.current, slot];
@@ -719,6 +738,7 @@ export function useNvoipSipPhone(enabled: boolean) {
               party,
               logId: callLogRef.current?.id ?? beginSipCallLog("OUTGOING", party.number || "outbound"),
               answeredAt: null,
+              startedAt: Date.now(),
               inbound: false,
             };
             setIncoming(null);
@@ -733,6 +753,7 @@ export function useNvoipSipPhone(enabled: boolean) {
             party,
             logId,
             answeredAt: null,
+            startedAt: Date.now(),
             inbound: true,
           };
           callLogRef.current = { id: logId, answeredAt: null };
@@ -845,6 +866,7 @@ export function useNvoipSipPhone(enabled: boolean) {
     if (endingFocused) localEndRef.current = true;
     const action = mode === "reject" && !session.isEstablished() ? "reject" : sipEndAction(session);
     if (action === "ignore") return;
+    if (action === "bye") publishTakenRef.current(session, "end");
     try {
       if (action === "reject") session.terminate({ status_code: 486, reason_phrase: "Busy Here" });
       else if (action === "bye") {
@@ -1042,9 +1064,14 @@ export function useNvoipSipPhone(enabled: boolean) {
 
   useEffect(() => {
     const onAnsweredElsewhere = (event: Event) => {
-      const detail = (event as CustomEvent<{ sipCallId?: string; userId?: string }>).detail;
+      const detail = (event as CustomEvent<{
+        sipCallId?: string;
+        userId?: string;
+        caller?: string;
+        startedAt?: number;
+      }>).detail;
       const ringing = [
-        ...(activeSlotRef.current && sessionRef.current && !sessionRef.current.isEstablished()
+        ...(activeSlotRef.current && !activeSlotRef.current.session.isEnded() && !activeSlotRef.current.session.isEstablished()
           ? [activeSlotRef.current]
           : []),
         ...waitingRef.current,
@@ -1057,6 +1084,10 @@ export function useNvoipSipPhone(enabled: boolean) {
             localDialogId: slot.session.id ?? null,
             localCallId: slot.session._request?.call_id ?? null,
             answeredDialogId: detail?.sipCallId,
+            localCaller: slot.party.number,
+            answeredCaller: detail?.caller,
+            localStartedAt: slot.startedAt,
+            answeredStartedAt: detail?.startedAt,
             localStatus: slot.session.status,
           })
         ) {

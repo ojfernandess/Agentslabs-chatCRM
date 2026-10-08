@@ -201,6 +201,8 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
     const parsed = z
       .object({
         sipCallId: z.string().min(8).max(256),
+        caller: z.string().max(32).optional(),
+        startedAt: z.number().int().min(0).max(10_000_000_000_000).optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -213,6 +215,8 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
     broadcastToOrganization(organizationId, {
       type: "sip.call.answered",
       sipCallId: parsed.data.sipCallId,
+      caller: parsed.data.caller ?? "",
+      startedAt: parsed.data.startedAt ?? null,
       userId: request.user.id,
     });
     return { ok: true };

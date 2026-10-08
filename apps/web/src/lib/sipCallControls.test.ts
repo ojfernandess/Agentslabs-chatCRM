@@ -81,6 +81,26 @@ test("shouldDropSipLegAnsweredElsewhere matches another fork by Call-ID", () => 
   );
 });
 
+test("shouldDropSipLegAnsweredElsewhere matches another ramal by the customer number", () => {
+  const started = 1_700_000_000_000;
+  const ringing = {
+    localUserId: "agent-b",
+    answeredByUserId: "agent-a",
+    localDialogId: "fork-b-12345678",
+    localCallId: "fork-b-12345678",
+    answeredDialogId: "fork-a-87654321",
+    localCaller: "+5511988776655",
+    answeredCaller: "11988776655",
+    localStartedAt: started,
+    answeredStartedAt: started + 2_000,
+    localStatus: 4,
+  };
+  assert.equal(shouldDropSipLegAnsweredElsewhere(ringing), true);
+  assert.equal(shouldDropSipLegAnsweredElsewhere({ ...ringing, answeredByUserId: "agent-b", localUserId: "agent-b" }), false);
+  assert.equal(shouldDropSipLegAnsweredElsewhere({ ...ringing, answeredStartedAt: started + 120_000 }), false);
+  assert.equal(shouldDropSipLegAnsweredElsewhere({ ...ringing, localStatus: 9 }), false);
+});
+
 test("shouldQueueIncomingCall keeps the live session and lines the next call up", () => {
   assert.equal(shouldQueueIncomingCall(null), false);
   assert.equal(shouldQueueIncomingCall(session({ status: 8 })), false);
