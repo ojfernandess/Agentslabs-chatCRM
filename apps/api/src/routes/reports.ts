@@ -22,7 +22,7 @@ import {
   resolveAssistLlmForOrganization,
 } from "../lib/agentAssistLlm.js";
 import { clientIp, recordAuditLog } from "../lib/audit.js";
-import { buildTelephonyReports } from "../lib/telephonyReports.js";
+import { buildTelephonyAgentDetail, buildTelephonyReports } from "../lib/telephonyReports.js";
 import { buildDealReports } from "../lib/dealReports.js";
 import { buildAgentPerformanceDetail } from "../lib/agentPerformanceReports.js";
 import { isOrganizationFeatureEnabled } from "../lib/featureFlags.js";
@@ -701,6 +701,46 @@ export async function reportsRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    return detail;
+  });
+
+  /** Histórico de chamadas de um agente no período do relatório de telefonia. */
+  app.get("/telephony/agents/:userId", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const params = z.object({ userId: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ error: "Bad Request", message: params.error.message, statusCode: 400 });
+    }
+
+    const q = querySchema.safeParse(request.query);
+    if (!q.success) {
+      return reply.status(400).send({ error: "Bad Request", message: q.error.message, statusCode: 400 });
+    }
+
+    const now = new Date();
+    const defaultTo = endOfDay(now);
+    const defaultFrom = startOfDay(subDays(now, 29));
+    const from = q.data.from ? new Date(q.data.from) : defaultFrom;
+    const to = q.data.to ? new Date(q.data.to) : defaultTo;
+    if (from > to) {
+      return reply.status(400).send({ error: "Bad Request", message: "`from` must be before `to`", statusCode: 400 });
+    }
+
+    const detail = await buildTelephonyAgentDetail({
+      organizationId,
+      userId: params.data.userId,
+      from,
+      to,
+    });
+    if (!detail) {
+      return reply.status(404).send({
+        error: "Not Found",
+        message: "Agent not found in this organization",
+        statusCode: 404,
+      });
+    }
     return detail;
   });
 

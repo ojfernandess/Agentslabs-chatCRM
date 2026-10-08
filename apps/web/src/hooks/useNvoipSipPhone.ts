@@ -406,6 +406,8 @@ export function useNvoipSipPhone(enabled: boolean) {
   const announcedCallsRef = useRef(new Set<string>());
   const publishTakenRef = useRef<(session: SipRtcSession, kind: "answer" | "end") => void>(() => {});
   const callDistributionRef = useRef(false);
+  const availabilityRef = useRef(user?.availabilityStatus);
+  availabilityRef.current = user?.availabilityStatus;
   const distributionBySessionRef = useRef(new WeakMap<SipRtcSession, string>());
 
   const outboundLegRef = useRef(false);
@@ -873,6 +875,15 @@ export function useNvoipSipPhone(enabled: boolean) {
           const party = readRemoteParty(session);
           const sipCallId = (session._request?.call_id || session.id || crypto.randomUUID()).slice(0, 256);
           const postedId = sipCallId.length >= 8 ? sipCallId : `dist-${sipCallId}`.padEnd(8, "0").slice(0, 256);
+          const decline = () => {
+            if (session.isEnded()) return;
+            try {
+              session.terminate({ status_code: 480, reason_phrase: "Temporarily Unavailable" });
+            } catch {
+              /* a perna já encerrou */
+            }
+          };
+          const unavailable = availabilityRef.current === "away" || availabilityRef.current === "offline";
           void api
             .post<{ ring: boolean; distributionId: string | null }>("/sip/distribution/claim", {
               sipCallId: postedId,
@@ -880,18 +891,18 @@ export function useNvoipSipPhone(enabled: boolean) {
             })
             .then((decision) => {
               if (session.isEnded()) return;
-              if (!decision.ring) {
-                try {
-                  session.terminate({ status_code: 480, reason_phrase: "Temporarily Unavailable" });
-                } catch {
-                  /* a perna já encerrou */
-                }
+              if (unavailable || !decision.ring) {
+                decline();
                 return;
               }
               if (decision.distributionId) distributionBySessionRef.current.set(session, decision.distributionId);
               deliverSession();
             })
             .catch(() => {
+              if (unavailable) {
+                decline();
+                return;
+              }
               if (!session.isEnded()) deliverSession();
             });
           return;

@@ -10,7 +10,7 @@ import { StartConversationAction } from "@/components/nvoip/NvoipSoftphonePanel"
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"] as const;
 type DialerTab = "keypad" | "contacts" | "history";
 
-type ContactRow = { id: string; name: string; phone: string | null };
+type ContactRow = { id: string; name: string; phone: string | null; mobilePhone?: string | null };
 type HistoryRow = {
   id: string;
   direction: string;
@@ -31,6 +31,7 @@ export function SipDialer() {
   const [number, setNumber] = useState("");
   const [dialError, setDialError] = useState<string | null>(null);
   const [contactQuery, setContactQuery] = useState("");
+  const [searchAllContacts, setSearchAllContacts] = useState(false);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [history, setHistory] = useState<HistoryRow[]>([]);
 
@@ -45,12 +46,29 @@ export function SipDialer() {
     return () => window.removeEventListener("openconduit:sip-dialer-open", onOpen);
   }, [sip.requestCallAlerts]);
 
-  const loadContacts = useCallback(async (term: string) => {
+  const loadContacts = useCallback(async (term: string, all: boolean) => {
     try {
-      const params = new URLSearchParams({ pageSize: "25" });
-      if (term.trim()) params.set("search", term.trim());
-      const res = await api.get<{ data: ContactRow[] }>(`/contacts?${params}`);
-      setContacts((res.data ?? []).filter((row) => row.phone?.replace(/\D/g, "")));
+      const pageSize = all ? 100 : 25;
+      const collected: ContactRow[] = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const params = new URLSearchParams({ pageSize: String(pageSize), page: String(page) });
+        if (term.trim()) params.set("search", term.trim());
+        const res = await api.get<{ data: ContactRow[]; total?: number }>(`/contacts?${params}`);
+        const rows = res.data ?? [];
+        for (const row of rows) {
+          const phone = row.phone?.replace(/\D/g, "") ? row.phone : null;
+          const mobile = all && row.mobilePhone?.replace(/\D/g, "") ? row.mobilePhone : null;
+          const dialable = phone || mobile;
+          if (!dialable) continue;
+          collected.push({ id: row.id, name: row.name, phone: dialable });
+        }
+        total = res.total ?? rows.length;
+        if (!all || page * pageSize >= total || page >= 30) break;
+        page += 1;
+      } while (page <= 30);
+      setContacts(collected);
     } catch {
       setContacts([]);
     }
@@ -67,9 +85,9 @@ export function SipDialer() {
 
   useEffect(() => {
     if (!open || tab !== "contacts") return;
-    const id = window.setTimeout(() => void loadContacts(contactQuery), 300);
+    const id = window.setTimeout(() => void loadContacts(contactQuery, searchAllContacts), 300);
     return () => window.clearTimeout(id);
-  }, [open, tab, contactQuery, loadContacts]);
+  }, [open, tab, contactQuery, searchAllContacts, loadContacts]);
 
   useEffect(() => {
     if (!open || tab !== "history") return;
@@ -210,6 +228,15 @@ export function SipDialer() {
               placeholder={t("nvoip.softphone.contactsSearch")}
               className="w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2 text-sm text-slate-900 outline-none dark:border-ink-700 dark:text-ink-50"
             />
+            <label className="mt-2 flex items-start gap-2 text-xs text-slate-600 dark:text-ink-300">
+              <input
+                type="checkbox"
+                checked={searchAllContacts}
+                onChange={(e) => setSearchAllContacts(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>{t("nvoip.softphone.contactsSearchAll")}</span>
+            </label>
             <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto">
               {contacts.length === 0 ? (
                 <li className="px-1 py-6 text-center text-xs text-slate-500 dark:text-ink-400">

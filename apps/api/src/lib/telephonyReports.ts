@@ -462,3 +462,153 @@ export async function buildTelephonyReports(input: {
 
 /** Exported for tests / CSV helpers */
 export { fmtDurationSec };
+
+const AGENT_HISTORY_LIMIT = 100;
+
+export type TelephonyAgentDetail = {
+  agent: { userId: string; name: string };
+  summary: {
+    totalCalls: number;
+    inboundCalls: number;
+    outboundCalls: number;
+    answeredCalls: number;
+    missedCalls: number;
+    totalTalkTimeSec: number;
+    avgTalkTimeSec: number | null;
+  };
+  calls: Array<{
+    id: string;
+    provider: TelephonyProvider;
+    direction: "INCOMING" | "OUTGOING" | "UNKNOWN";
+    status: string;
+    outcome: CallOutcome;
+    caller: string;
+    receiver: string;
+    contactName: string | null;
+    durationSec: number | null;
+    startedAt: string;
+  }>;
+};
+
+export async function buildTelephonyAgentDetail(input: {
+  organizationId: string;
+  userId: string;
+  from: Date;
+  to: Date;
+}): Promise<TelephonyAgentDetail | null> {
+  const { organizationId, userId, from, to } = input;
+  const user = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      OR: [{ organizationId }, { memberships: { some: { organizationId } } }],
+    },
+    select: { id: true, name: true, displayName: true },
+  });
+  if (!user) return null;
+
+  const [wavoipEnabled, nvoipEnabled, threeCxEnabled, sipEnabled] = await Promise.all([
+    isOrganizationFeatureEnabled(organizationId, "wavoip_voice"),
+    isOrganizationFeatureEnabled(organizationId, "nvoip_voice"),
+    isOrganizationFeatureEnabled(organizationId, "threecx_voice"),
+    isOrganizationFeatureEnabled(organizationId, "nvoip_embedded_sip"),
+  ]);
+
+  const where = {
+    organizationId,
+    initiatedByUserId: userId,
+    ...callOccurredInRange(from, to),
+  };
+  const select = {
+    id: true,
+    direction: true,
+    status: true,
+    durationSec: true,
+    endedAt: true,
+    startedAt: true,
+    createdAt: true,
+    caller: true,
+    receiver: true,
+    contact: { select: { name: true } },
+  } as const;
+
+  const [wavoipLogs, nvoipLogs, threeCxLogs, sipLogs] = await Promise.all([
+    wavoipEnabled ? prisma.wavoipCallLog.findMany({ where, select }) : Promise.resolve([]),
+    nvoipEnabled ? prisma.nvoipCallLog.findMany({ where, select }) : Promise.resolve([]),
+    threeCxEnabled ? prisma.threeCxCallLog.findMany({ where, select }) : Promise.resolve([]),
+    sipEnabled ? prisma.sipCallLog.findMany({ where, select }) : Promise.resolve([]),
+  ]);
+
+  const rows = [
+    ...wavoipLogs.map((row) => ({ ...row, provider: "wavoip" as const })),
+    ...nvoipLogs.map((row) => ({ ...row, provider: "nvoip" as const })),
+    ...threeCxLogs.map((row) => ({ ...row, provider: "threecx" as const })),
+    ...sipLogs.map((row) => ({ ...row, provider: "sip" as const })),
+  ]
+    .map((row) => {
+      const call: NormalizedCall = {
+        provider: row.provider,
+        direction: row.direction,
+        status: row.status,
+        durationSec: row.durationSec,
+        endedAt: row.endedAt,
+        recordUrl: null,
+        initiatedByUserId: userId,
+        callAt: row.startedAt ?? row.createdAt,
+      };
+      return {
+        id: row.id,
+        provider: row.provider,
+        direction: normalizeCallDirection(row.direction),
+        status: row.status,
+        outcome: classifyCallOutcome(call),
+        caller: row.caller,
+        receiver: row.receiver,
+        contactName: row.contact?.name?.trim() || null,
+        durationSec: row.durationSec,
+        callAt: call.callAt,
+      };
+    })
+    .sort((a, b) => b.callAt.getTime() - a.callAt.getTime());
+
+  let inboundCalls = 0;
+  let outboundCalls = 0;
+  let answeredCalls = 0;
+  let missedCalls = 0;
+  let totalTalkTimeSec = 0;
+  let talkN = 0;
+  for (const row of rows) {
+    if (row.direction === "INCOMING") inboundCalls += 1;
+    if (row.direction === "OUTGOING") outboundCalls += 1;
+    if (row.outcome === "answered") answeredCalls += 1;
+    if (row.outcome === "missed") missedCalls += 1;
+    if (row.durationSec != null && row.durationSec > 0) {
+      totalTalkTimeSec += row.durationSec;
+      talkN += 1;
+    }
+  }
+
+  return {
+    agent: { userId: user.id, name: user.displayName?.trim() || user.name },
+    summary: {
+      totalCalls: rows.length,
+      inboundCalls,
+      outboundCalls,
+      answeredCalls,
+      missedCalls,
+      totalTalkTimeSec,
+      avgTalkTimeSec: talkN > 0 ? round2(totalTalkTimeSec / talkN) : null,
+    },
+    calls: rows.slice(0, AGENT_HISTORY_LIMIT).map((row) => ({
+      id: row.id,
+      provider: row.provider,
+      direction: row.direction,
+      status: row.status,
+      outcome: row.outcome,
+      caller: row.caller,
+      receiver: row.receiver,
+      contactName: row.contactName,
+      durationSec: row.durationSec,
+      startedAt: row.callAt.toISOString(),
+    })),
+  };
+}

@@ -59,16 +59,31 @@ export async function claimSipCallDistribution(input: {
       data: { status: "MISSED", endedAt: now },
     });
 
-    const recent = await tx.sipCallDistribution.findFirst({
-      where: {
-        organizationId: input.organizationId,
-        callerDigits,
-        offeredAt: { gte: staleBefore },
-        status: { in: ["OFFERED", "ANSWERED"] },
-        endedAt: null,
-      },
-      orderBy: { offeredAt: "desc" },
-    });
+    const [recent, claimant] = await Promise.all([
+      tx.sipCallDistribution.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          callerDigits,
+          offeredAt: { gte: staleBefore },
+          status: { in: ["OFFERED", "ANSWERED"] },
+          endedAt: null,
+        },
+        orderBy: { offeredAt: "desc" },
+      }),
+      tx.user.findUnique({
+        where: { id: input.userId },
+        select: { availabilityStatus: true },
+      }),
+    ]);
+    if (claimant?.availabilityStatus !== "ONLINE") {
+      if (recent?.status === "OFFERED" && recent.userId === input.userId) {
+        await tx.sipCallDistribution.update({
+          where: { id: recent.id },
+          data: { status: "MISSED", endedAt: now },
+        });
+      }
+      return { ring: false, distributionId: null };
+    }
     if (recent?.status === "ANSWERED") {
       const age = now.getTime() - recent.offeredAt.getTime();
       if (age <= ANSWERED_FORK_MS) return { ring: false, distributionId: null };

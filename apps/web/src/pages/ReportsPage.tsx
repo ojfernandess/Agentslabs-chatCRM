@@ -36,6 +36,7 @@ import { isTenantAdmin, isTenantAgent } from "@/lib/authRole";
 import { formatCurrencyFromCents, formatCurrencyUnits } from "@/lib/currency";
 import { Briefcase } from "lucide-react";
 import { AgentPerformanceDetailDrawer } from "@/components/reports/AgentPerformanceDetailDrawer";
+import { TelephonyAgentDetailDrawer } from "@/components/reports/TelephonyAgentDetailDrawer";
 
 type Granularity = "day" | "week" | "month";
 
@@ -219,6 +220,7 @@ export function ReportsPage() {
   const [error, setError] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedAgentName, setSelectedAgentName] = useState("");
+  const [telephonyAgent, setTelephonyAgent] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1052,6 +1054,9 @@ export function ReportsPage() {
                         <UsersRound className="h-5 w-5 text-brand-500" />
                         {t("reportsPage.telephonyAgentsTitle")}
                       </h2>
+                      <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+                        {tenantAdmin ? t("reportsPage.telephonyAgentDetailHint") : t("reportsPage.telephonyAgentDetailHintAgent")}
+                      </p>
                     </div>
                     <div className="overflow-x-auto">
                       {data.telephony.agents.length === 0 ? (
@@ -1077,7 +1082,19 @@ export function ReportsPage() {
                                 key={a.userId}
                                 className="border-b border-ink-100 dark:border-ink-800/80 hover:bg-ink-50/50 dark:hover:bg-ink-800/40"
                               >
-                                <td className="px-6 py-3 font-medium text-ink-900 dark:text-ink-100">{a.name}</td>
+                                <td className="px-6 py-3">
+                                  {canView ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setTelephonyAgent({ id: a.userId, name: a.name })}
+                                      className="group inline-flex items-center gap-1.5 font-medium text-ink-900 hover:text-brand-600 dark:text-ink-100 dark:hover:text-brand-400"
+                                    >
+                                      <span className="border-b border-transparent group-hover:border-brand-400">{a.name}</span>
+                                    </button>
+                                  ) : (
+                                    <span className="font-medium text-ink-900 dark:text-ink-100">{a.name}</span>
+                                  )}
+                                </td>
                                 <td className="px-6 py-3 text-ink-700 dark:text-ink-300">
                                   {canView ? a.totalCalls : t("reportsPage.na")}
                                 </td>
@@ -1274,6 +1291,14 @@ export function ReportsPage() {
         toStr={toStr}
         granularity={granularity}
         onClose={() => setSelectedAgentId(null)}
+      />
+      <TelephonyAgentDetailDrawer
+        open={telephonyAgent != null && canViewAgentMetrics(telephonyAgent.id)}
+        userId={telephonyAgent?.id ?? null}
+        agentName={telephonyAgent?.name ?? ""}
+        fromStr={fromStr}
+        toStr={toStr}
+        onClose={() => setTelephonyAgent(null)}
       />
     </PageTransition>
   );
