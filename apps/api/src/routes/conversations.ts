@@ -670,6 +670,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           ? where.AND
           : [where.AND]
         : [];
+      const digits = searchQ.replace(/\D/g, "");
+      const phoneMatch =
+        digits.length >= 4 && digits !== searchQ
+          ? [
+              { contact: { phone: { contains: digits } } },
+              { contact: { mobilePhone: { contains: digits } } },
+            ]
+          : [];
       where.AND = [
         ...existingAnd,
         {
@@ -677,6 +685,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             { contact: { name: { contains: searchQ, mode: "insensitive" } } },
             { contact: { email: { contains: searchQ, mode: "insensitive" } } },
             { contact: { phone: { contains: searchQ, mode: "insensitive" } } },
+            { contact: { mobilePhone: { contains: searchQ, mode: "insensitive" } } },
+            ...phoneMatch,
             { messages: { some: { body: { contains: searchQ, mode: "insensitive" } } } },
           ],
         },
@@ -687,6 +697,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       id: true,
       name: true,
       phone: true,
+      mobilePhone: true,
       email: true,
       profilePictureUrl: true,
       createdAt: true,

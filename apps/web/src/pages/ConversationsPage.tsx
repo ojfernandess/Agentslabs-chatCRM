@@ -61,6 +61,7 @@ interface Conversation {
     id: string;
     name: string;
     phone: string;
+    mobilePhone?: string | null;
     profilePictureUrl?: string | null;
     hasAvatar?: boolean;
     thumbnail?: string | null;
@@ -135,6 +136,7 @@ function buildConversationListQuery(input: {
   teamFilter: string;
   inboxFilter: string;
   leadTypeFilter: string;
+  search?: string;
   page?: number;
 }): { fetchKey: string; params: URLSearchParams } {
   const params = new URLSearchParams({
@@ -155,6 +157,7 @@ function buildConversationListQuery(input: {
   if (input.teamFilter) params.set("teamId", input.teamFilter);
   if (input.inboxFilter) params.set("inboxId", input.inboxFilter);
   if (input.leadTypeFilter) params.set("leadTypeId", input.leadTypeFilter);
+  if (input.search?.trim()) params.set("q", input.search.trim());
   const fetchKey = `${input.organizationId ?? ""}|${params.toString()}`;
   return { fetchKey, params };
 }
@@ -179,6 +182,7 @@ export function ConversationsPage({
   const agentTypingByConversation = useConversationAgentTypingMap();
   const [loading, setLoading] = useState(true);
   const [listSearch, setListSearch] = useState(() => searchParams.get("q") ?? "");
+  const [debouncedListSearch, setDebouncedListSearch] = useState(() => searchParams.get("q") ?? "");
   const [composeOpen, setComposeOpen] = useState(false);
   const [dialOpen, setDialOpen] = useState(false);
   const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
@@ -254,6 +258,7 @@ export function ConversationsPage({
 
   const botAttendanceActive =
     searchParams.get("bot") === "1" || searchParams.get("botAttendance") === "1";
+  const botListSearch = botAttendanceActive ? debouncedListSearch.trim() : "";
 
   const attendanceScopeActive = searchParams.get("attendance") === "1";
 
@@ -353,6 +358,15 @@ export function ConversationsPage({
       setStatusFilter("");
     }
   }, [setSearchParams]);
+
+  useEffect(() => {
+    if (!listSearch.trim()) {
+      setDebouncedListSearch("");
+      return;
+    }
+    const id = window.setTimeout(() => setDebouncedListSearch(listSearch), 300);
+    return () => window.clearTimeout(id);
+  }, [listSearch]);
 
   useEffect(() => {
     const s = searchParams.get("status");
@@ -582,6 +596,7 @@ export function ConversationsPage({
       teamFilter,
       inboxFilter,
       leadTypeFilter,
+      search: botListSearch,
     }).fetchKey;
   }, [
     statusFilter,
@@ -591,6 +606,7 @@ export function ConversationsPage({
     mineActive,
     botAttendanceActive,
     attendanceScopeActive,
+    botListSearch,
     user?.organizationId,
   ]);
 
@@ -604,6 +620,7 @@ export function ConversationsPage({
       teamFilter,
       inboxFilter,
       leadTypeFilter,
+      search: botListSearch,
     });
   }, [
     statusFilter,
@@ -613,6 +630,7 @@ export function ConversationsPage({
     mineActive,
     botAttendanceActive,
     attendanceScopeActive,
+    botListSearch,
     user?.organizationId,
   ]);
 
@@ -1121,7 +1139,7 @@ export function ConversationsPage({
     const dRaw = digitsOnly(raw);
     return rows.filter((c) => {
       const name = c.contact.name.toLowerCase();
-      const phone = c.contact.phone ?? "";
+      const phone = `${c.contact.phone ?? ""} ${c.contact.mobilePhone ?? ""}`;
       const phoneDigits = digitsOnly(phone);
       const last = formatMessageBodyForPreview(c.messages?.[0]?.body, {
         messageType: c.messages?.[0]?.type,
