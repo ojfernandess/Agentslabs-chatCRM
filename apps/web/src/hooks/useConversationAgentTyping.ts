@@ -1,6 +1,9 @@
 import { useSyncExternalStore } from "react";
 import {
+  applyAgentTypingSignal,
   CONVERSATION_AGENT_TYPING_EVENT,
+  createAgentTypingModel,
+  type AgentTypingModel,
   type ConversationAgentTypingDetail,
 } from "@/lib/conversationAgentTyping";
 import {
@@ -12,7 +15,9 @@ export type ConversationAgentTypingState = {
   botName: string;
 };
 
-let typingByConversation = new Map<string, ConversationAgentTypingState>();
+const CONVERSATION_UPDATED_EVENT = "openconduit:conversation-updated";
+
+let typingModel: AgentTypingModel = createAgentTypingModel();
 const storeListeners = new Set<() => void>();
 let globalListenersBound = false;
 
@@ -22,16 +27,10 @@ function notifyTypingStore(): void {
   }
 }
 
-function replaceTypingStore(next: Map<string, ConversationAgentTypingState>): void {
-  typingByConversation = next;
+function commitTypingModel(next: AgentTypingModel): void {
+  if (next === typingModel) return;
+  typingModel = next;
   notifyTypingStore();
-}
-
-function clearConversationTyping(conversationId: string): void {
-  if (!typingByConversation.has(conversationId)) return;
-  const next = new Map(typingByConversation);
-  next.delete(conversationId);
-  replaceTypingStore(next);
 }
 
 function bindGlobalTypingListeners(): void {
@@ -40,26 +39,44 @@ function bindGlobalTypingListeners(): void {
 
   const onTyping = (e: Event) => {
     const detail = (e as CustomEvent<ConversationAgentTypingDetail>).detail;
-    if (!detail?.conversationId) return;
-
-    const next = new Map(typingByConversation);
-    if (detail.typing) {
-      next.set(detail.conversationId, { botName: detail.botName?.trim() ?? "" });
-    } else {
-      next.delete(detail.conversationId);
-    }
-    replaceTypingStore(next);
+    if (!detail?.conversationId || typeof detail.typing !== "boolean") return;
+    commitTypingModel(
+      applyAgentTypingSignal(typingModel, {
+        kind: "typing",
+        conversationId: detail.conversationId,
+        typing: detail.typing,
+        botName: detail.botName,
+      }),
+    );
   };
 
   const onMessageCreated = (e: Event) => {
     const detail = (e as CustomEvent<ConversationMessageCreatedDetail>).detail;
     if (!detail?.conversationId) return;
     if (detail.message?.direction !== "OUTBOUND") return;
-    clearConversationTyping(detail.conversationId);
+    commitTypingModel(
+      applyAgentTypingSignal(typingModel, {
+        kind: "outbound",
+        conversationId: detail.conversationId,
+      }),
+    );
+  };
+
+  const onConversationUpdated = (e: Event) => {
+    const detail = (e as CustomEvent<{ conversationId?: string; awaitingHumanHandoff?: boolean }>).detail;
+    if (!detail?.conversationId || typeof detail.awaitingHumanHandoff !== "boolean") return;
+    commitTypingModel(
+      applyAgentTypingSignal(typingModel, {
+        kind: "handoff",
+        conversationId: detail.conversationId,
+        awaitingHumanHandoff: detail.awaitingHumanHandoff,
+      }),
+    );
   };
 
   window.addEventListener(CONVERSATION_AGENT_TYPING_EVENT, onTyping);
   window.addEventListener(CONVERSATION_MESSAGE_CREATED_EVENT, onMessageCreated);
+  window.addEventListener(CONVERSATION_UPDATED_EVENT, onConversationUpdated);
 }
 
 function subscribeTypingStore(listener: () => void): () => void {
@@ -71,7 +88,7 @@ function subscribeTypingStore(listener: () => void): () => void {
 }
 
 function getTypingStoreSnapshot(): Map<string, ConversationAgentTypingState> {
-  return typingByConversation;
+  return typingModel.byConversation;
 }
 
 /**

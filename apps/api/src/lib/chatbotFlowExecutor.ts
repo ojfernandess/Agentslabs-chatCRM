@@ -6,7 +6,7 @@ import { prisma } from "../db.js";
 import { getWhatsAppProviderForInbox } from "../providers/factory.js";
 import { deliverOutboundWhatsAppMessage } from "./outboundMessage.js";
 import { startAutomationExecution } from "./automationExecutionLog.js";
-import { broadcastConversationAgentTyping } from "./workspaceHub.js";
+import { broadcastConversationAgentTyping, broadcastToOrganization } from "./workspaceHub.js";
 import {
   parseChatbotFlowDefinition,
   parseChatbotVariableDefs,
@@ -720,10 +720,20 @@ export async function dispatchVisualChatbotFlow(input: {
             where: { id: conversation.id },
             data: { awaitingHumanHandoff: true },
           });
+          broadcastToOrganization(organizationId, {
+            type: "conversation.updated",
+            conversationId: conversation.id,
+            awaitingHumanHandoff: true,
+          });
           if (msg) {
             await sendBotText(organizationId, bot.id, conversation, contact, msg, log);
             outboundMessages.push(msg);
           }
+          broadcastConversationAgentTyping(organizationId, conversation.id, {
+            typing: false,
+            botId: bot.id,
+            botName: bot.name,
+          });
           status = ChatbotFlowSessionStatus.COMPLETED;
           currentId = null;
           break;

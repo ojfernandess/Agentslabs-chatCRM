@@ -83,11 +83,13 @@ export async function runNativeAgentReplyAndDeliver(input: {
   const skipFollowUp =
     input.skipPostCompletionFollowUp === true || isPostCompletionFollowUpMessage(message);
 
-  broadcastConversationAgentTyping(organizationId, conversation.id, {
-    typing: true,
-    botId: bot.id,
-    botName: bot.name,
-  });
+  const publishTyping = (typing: boolean) => {
+    broadcastConversationAgentTyping(organizationId, conversation.id, {
+      typing,
+      botId: bot.id,
+      botName: bot.name,
+    });
+  };
 
   try {
   if (isAgentKbDebugEnabled()) {
@@ -145,6 +147,8 @@ export async function runNativeAgentReplyAndDeliver(input: {
       await exLog.completeSuccess();
       return;
     }
+
+    publishTyping(true);
 
     if (budgetState?.enabled && budgetState.blocked) {
       const convNow = await prisma.conversation.findFirst({
@@ -363,6 +367,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
           await exLog.completeError(err);
           return;
         }
+        publishTyping(false);
         exLog.info(
           { id: "outbound", name: "Entrega" },
           callHumanOk
@@ -401,6 +406,7 @@ export async function runNativeAgentReplyAndDeliver(input: {
         });
 
         if (delivery.delivered) {
+          publishTyping(false);
           exLog.info(
             { id: "outbound", name: "Resposta" },
             delivery.usedFallback
@@ -668,10 +674,6 @@ export async function runNativeAgentReplyAndDeliver(input: {
     await exLog.completeError(err);
   }
   } finally {
-    broadcastConversationAgentTyping(organizationId, conversation.id, {
-      typing: false,
-      botId: bot.id,
-      botName: bot.name,
-    });
+    publishTyping(false);
   }
 }
