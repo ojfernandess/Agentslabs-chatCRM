@@ -164,6 +164,9 @@ export function WorkspaceRealtime() {
       linkedPhone?: string | null;
       targetUserIds?: string[] | null;
       userId?: string;
+      reason?: string;
+      sipState?: string;
+      sipUpdatedAt?: string;
       sipCallId?: string;
       startedAt?: number | null;
       presenceConnected?: boolean;
@@ -361,6 +364,10 @@ export function WorkspaceRealtime() {
             }),
           );
         }
+      } else if (data.type === "sip.distribution.updated") {
+        window.dispatchEvent(
+          new CustomEvent("openconduit:sip-distribution-updated", { detail: data }),
+        );
       } else if (data.type === "sip.call.answered" && typeof data.sipCallId === "string") {
         window.dispatchEvent(
           new CustomEvent("openconduit:sip-call-answered", {

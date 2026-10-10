@@ -15,6 +15,7 @@ import { getOrgSipServer, normalizeOrgSipRingtone, saveOrgSipServer } from "../l
 import { isUserTenantAdmin } from "../lib/tenantAdmin.js";
 import { completeSipCallLog, startSipCallLog } from "../lib/sipCallLog.js";
 import { claimSipCallDistribution, completeSipCallDistribution, touchSipAgentPresence } from "../lib/sipCallDistributionService.js";
+import { buildSipDistributionBoard } from "../lib/sipDistributionBoard.js";
 import { broadcastToOrganization } from "../lib/workspaceHub.js";
 
 const upsertSchema = z.object({
@@ -218,6 +219,20 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       state: parsed.data.state,
     });
     return { ok: true };
+  });
+
+  app.get("/distribution/board", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    if (!(await isUserTenantAdmin(request.user))) {
+      return reply.status(403).send({
+        error: "Forbidden",
+        message: "Admin access required",
+        statusCode: 403,
+      });
+    }
+    return buildSipDistributionBoard(organizationId);
   });
 
   app.post("/distribution/claim", async (request, reply) => {

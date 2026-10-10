@@ -2,20 +2,44 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { getActivePresenceUserIds } from "./presenceService.js";
 import { getOrgSipServer } from "./orgSipServer.js";
-import { distributionCallerKey, pickLeastCallsAgent, saoPauloDayStart } from "./sipCallDistribution.js";
+import { broadcastToOrganization } from "./workspaceHub.js";
+import {
+  DISTRIBUTION_CALL_WINDOW_MS,
+  SIP_REGISTER_FRESH_MS,
+    distributionCallerKey,
+  pickLeastCallsAgent,
+  saoPauloDayStart,
+  summarizeDistributionDay,
+} from "./sipCallDistribution.js";
 
-const SIP_PRESENCE_MS = 25_000;
-const OPEN_OFFER_MS = 3 * 60 * 1000;
+const OPEN_OFFER_MS = DISTRIBUTION_CALL_WINDOW_MS;
 const ANSWERED_FORK_MS = 45_000;
 
 const TERMINAL = new Set(["REJECTED", "MISSED", "ENDED"]);
+
+function publishDistributionBoard(organizationId: string, patch?: {
+  reason: "presence";
+  userId: string;
+  sipState: string;
+  sipUpdatedAt: string;
+}): void {
+  broadcastToOrganization(organizationId, {
+    type: "sip.distribution.updated",
+    reason: patch?.reason ?? "resync",
+    ...(patch ?? {}),
+  });
+}
 
 export async function touchSipAgentPresence(input: {
   userId: string;
   organizationId: string;
   state: "registered" | "busy" | "offline";
 }): Promise<void> {
-  await prisma.sipAgentPresence.upsert({
+  const previous = await prisma.sipAgentPresence.findUnique({
+    where: { userId: input.userId },
+    select: { state: true, organizationId: true },
+  });
+  const row = await prisma.sipAgentPresence.upsert({
     where: { userId: input.userId },
     create: {
       userId: input.userId,
@@ -26,6 +50,20 @@ export async function touchSipAgentPresence(input: {
       organizationId: input.organizationId,
       state: input.state,
     },
+    select: { state: true, updatedAt: true },
+  });
+  if (!previous || previous.state !== input.state || previous.organizationId !== input.organizationId) {
+    if (previous && previous.organizationId !== input.organizationId) {
+      publishDistributionBoard(previous.organizationId);
+    }
+    publishDistributionBoard(input.organizationId);
+    return;
+  }
+  publishDistributionBoard(input.organizationId, {
+    reason: "presence",
+    userId: input.userId,
+    sipState: row.state,
+    sipUpdatedAt: row.updatedAt.toISOString(),
   });
 }
 
@@ -45,7 +83,7 @@ export async function claimSipCallDistribution(input: {
   const callerDigits = distributionCallerKey(input.caller, creds?.sipUser ?? "");
   const lockKey = `${input.organizationId}:${callerDigits}`;
 
-  return prisma.$transaction(async (tx) => {
+  const decision = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
     const now = new Date();
     const staleBefore = new Date(now.getTime() - OPEN_OFFER_MS);
@@ -98,18 +136,25 @@ export async function claimSipCallDistribution(input: {
     if (eligible.length === 0) return { ring: true, distributionId: null };
 
     const dayStart = saoPauloDayStart(now);
-    const counts = await tx.sipCallDistribution.groupBy({
-      by: ["userId"],
+    const todayRows = await tx.sipCallDistribution.findMany({
       where: {
         organizationId: input.organizationId,
         offeredAt: { gte: dayStart },
         userId: { in: eligible },
       },
-      _count: { _all: true },
+      select: { userId: true, sipCallId: true },
     });
-    const offered = new Map(counts.map((row) => [row.userId, row._count._all]));
+    const offered = summarizeDistributionDay(
+      todayRows.map((row) => ({
+        userId: row.userId,
+        callerDigits: row.userId,
+        sipCallId: row.sipCallId,
+        offeredAtMs: 0,
+        answered: false,
+      })),
+    ).byUser;
     const chosen = pickLeastCallsAgent(
-      eligible.map((userId) => ({ userId, offeredToday: offered.get(userId) ?? 0 })),
+      eligible.map((userId) => ({ userId, offeredToday: offered.get(userId)?.offered ?? 0 })),
     );
     if (!chosen) return { ring: true, distributionId: null };
 
@@ -121,7 +166,7 @@ export async function claimSipCallDistribution(input: {
         sipCallId: input.sipCallId.slice(0, 256),
         status: "OFFERED",
         reason: "least_calls",
-        offeredCount: offered.get(chosen) ?? 0,
+        offeredCount: offered.get(chosen)?.offered ?? 0,
         attempt: 1,
         offeredAt: now,
       },
@@ -132,6 +177,8 @@ export async function claimSipCallDistribution(input: {
       distributionId: row.userId === input.userId ? row.id : null,
     };
   });
+  publishDistributionBoard(input.organizationId);
+  return decision;
 }
 
 export async function completeSipCallDistribution(input: {
@@ -162,12 +209,12 @@ export async function completeSipCallDistribution(input: {
       endedAt: TERMINAL.has(input.status) ? now : undefined,
     },
   });
+  publishDistributionBoard(input.organizationId);
 }
 
 type Tx = Prisma.TransactionClient;
 
 async function eligibleAgentIds(tx: Tx, organizationId: string, now: Date): Promise<string[]> {
-  const freshAfter = new Date(now.getTime() - SIP_PRESENCE_MS);
   const [credentials, busy] = await Promise.all([
     tx.userSipCredentials.findMany({
       where: {
@@ -199,7 +246,7 @@ async function eligibleAgentIds(tx: Tx, organizationId: string, now: Date): Prom
         organizationId,
         userId: { in: userIds },
         state: "registered",
-        updatedAt: { gte: freshAfter },
+        updatedAt: { gte: new Date(now.getTime() - SIP_REGISTER_FRESH_MS) },
       },
       select: { userId: true },
     }),

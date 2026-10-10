@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { useI18n } from "@/i18n/I18nProvider";
 import { settingsInput, settingsLabel, settingsSubtitle, settingsTitle } from "@/components/settings/settingsUi";
 import { previewSipRingtone, SIP_RINGTONE_IDS, normalizeSipRingtone, type SipRingtoneId } from "@/lib/sipRingtone";
+import { SipDistributionBoard } from "@/components/nvoip/SipDistributionBoard";
 
 type SipServer = {
   sipProvider: "nvoip" | "sip";
@@ -87,7 +88,8 @@ export function SipServerSettings() {
           {t("common.loading")}
         </p>
       ) : (
-        <div className="mt-4 max-w-xl space-y-3">
+        <div className="mt-4 space-y-3">
+          <div className="max-w-xl space-y-3">
           <label className={settingsLabel}>
             {t("nvoip.sip.fieldDomain")}
             <input
@@ -130,6 +132,7 @@ export function SipServerSettings() {
             </span>
           </label>
           <p className="text-xs text-ink-500">{t("nvoip.sip.ringToneHint")}</p>
+          </div>
           <section className="rounded-lg border border-ink-200 p-3 dark:border-ink-700">
             <h3 className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("nvoip.sip.distributionTitle")}</h3>
             <label className="mt-2 flex items-center gap-2 text-sm text-ink-800 dark:text-ink-100">
@@ -144,7 +147,9 @@ export function SipServerSettings() {
             <p className="mt-2 text-xs text-ink-500">
               {callDistribution ? t("nvoip.sip.distributionOn") : t("nvoip.sip.distributionOff")}
             </p>
+            {callDistribution ? <SipDistributionBoard /> : null}
           </section>
+          <div className="max-w-xl space-y-3">
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
             type="button"
@@ -155,6 +160,7 @@ export function SipServerSettings() {
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {saved ? t("nvoip.sip.saved") : t("nvoip.sip.saveServer")}
           </button>
+          </div>
         </div>
       )}
     </div>
