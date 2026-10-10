@@ -7,6 +7,7 @@ import { prisma } from "../db.js";
 import { syncNvoipInboundHistoryForAccount } from "../lib/nvoipInboundSync.js";
 import { routeNvoipDidsToProfileRamais } from "../lib/nvoipProfileDidRoute.js";
 import {
+  deleteUserSipCredentials,
   getUserSipCredentialsForClient,
   resolveOrganizationSipEndpoint,
   upsertUserSipCredentials,
@@ -144,6 +145,15 @@ export async function sipCredentialsRoutes(app: FastifyInstance): Promise<void> 
       return reply.status(400).send({ error: "Bad Request", message, statusCode: 400 });
     }
 
+    return { ok: true };
+  });
+
+  app.delete("/credentials", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+    if (!(await requireEmbeddedSip(organizationId, reply))) return;
+    await deleteUserSipCredentials({ userId: request.user.id, organizationId });
+    broadcastToOrganization(organizationId, { type: "sip.distribution.updated", reason: "resync" });
     return { ok: true };
   });
 

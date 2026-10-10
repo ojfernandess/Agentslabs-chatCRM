@@ -92,6 +92,36 @@ test("resolveDistributionAgentStatus requires SIP registration, not only CRM onl
     }),
     "offline",
   );
+  assert.equal(
+    resolveDistributionAgentStatus({
+      availability: "ONLINE",
+      crmPresent: false,
+      sipRegistered: false,
+      sipBusy: false,
+      openOffer: "ANSWERED",
+    }),
+    "offline",
+  );
+  assert.equal(
+    resolveDistributionAgentStatus({
+      availability: "ONLINE",
+      crmPresent: true,
+      sipRegistered: true,
+      sipBusy: true,
+      openOffer: "ANSWERED",
+    }),
+    "in_call",
+  );
+  assert.equal(
+    resolveDistributionAgentStatus({
+      availability: "ONLINE",
+      crmPresent: true,
+      sipRegistered: true,
+      sipBusy: false,
+      openOffer: "ANSWERED",
+    }),
+    "available",
+  );
 });
 
 test("distributionCallerKey ignores the local extension", () => {

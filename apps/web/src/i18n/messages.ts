@@ -3692,6 +3692,9 @@ export const messages = {
         settingsTitle: "Ramal SIP",
         profileHint:
           "Usuário e senha SIP deste atendente, como no MicroSIP. O domínio e a URL wss:// ficam em Configurações da organização → Servidor SIP.",
+        unlink: "Desvincular ramal",
+        unlinkConfirm: "Desvincular o ramal deste perfil? O softphone deixa de usar este ramal.",
+        unlinked: "Ramal desvinculado.",
         genericHint:
           "O ramal fica neste perfil: usuário e senha SIP, como no MicroSIP. O servidor da organização é configurado pelo administrador. Deixe o CRM aberto com Ramal ativo.",
         serverNvoipActive:
@@ -3730,6 +3733,7 @@ export const messages = {
           "A seleção definitiva será realizada no recebimento da ligação, considerando a disponibilidade atual.",
         distributionBoardNone: "Nenhum atendente disponível no momento.",
         distributionBoardEmpty: "Nenhum ramal SIP configurado nesta organização.",
+        distributionBoardNobodyOnline: "Nenhum atendente online no momento.",
         distributionBoardError: "Não foi possível carregar o monitoramento.",
         distributionBoardOr: "ou",
         distributionBoardPriorityBadge: "Prioritários",
@@ -11546,6 +11550,9 @@ export const messages = {
         settingsTitle: "SIP extension",
         profileHint:
           "SIP username and password for this agent, the same way as MicroSIP. The domain and wss:// URL are in Organization settings → SIP server.",
+        unlink: "Unlink extension",
+        unlinkConfirm: "Unlink the extension from this profile? The softphone will stop using it.",
+        unlinked: "Extension unlinked.",
         genericHint:
           "The extension stays on this profile: SIP username and password, the same way as MicroSIP. An administrator configures the organization server. Keep the CRM open with the extension active.",
         serverNvoipActive:
@@ -11584,6 +11591,7 @@ export const messages = {
           "The final choice is made when the call arrives, using whoever is available then.",
         distributionBoardNone: "No agent is available right now.",
         distributionBoardEmpty: "No SIP extension is configured in this organization.",
+        distributionBoardNobodyOnline: "No agent is online right now.",
         distributionBoardError: "The monitoring panel could not be loaded.",
         distributionBoardOr: "or",
         distributionBoardPriorityBadge: "Priority",

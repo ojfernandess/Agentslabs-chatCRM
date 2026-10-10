@@ -135,6 +135,18 @@ export async function upsertUserSipCredentials(input: {
   }
 }
 
+/** Remove o ramal SIP deste perfil. O histórico de chamadas permanece. */
+export async function deleteUserSipCredentials(input: {
+  userId: string;
+  organizationId: string;
+}): Promise<void> {
+  await prisma.userSipCredentials.deleteMany({ where: { userId: input.userId } });
+  await prisma.sipAgentPresence.deleteMany({
+    where: { userId: input.userId, organizationId: input.organizationId },
+  });
+  await routeNvoipDidsToProfileRamais(input.organizationId).catch(() => {});
+}
+
 /** Caller POST /calls/ a partir das credenciais SIP embutidas (sem fallback para webphone do painel). */
 export function resolveEmbeddedSipOutboundCaller(sipUser: string): string | null {
   const caller = formatNvoipCaller(sipUser);

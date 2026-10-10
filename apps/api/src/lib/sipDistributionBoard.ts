@@ -32,6 +32,7 @@ export type SipDistributionBoard = {
   periodStart: string;
   generatedAt: string;
   sipFreshMs: number;
+  extensionCount: number;
   totals: { online: number; received: number; answered: number };
   agents: SipDistributionBoardAgent[];
   next: {
@@ -83,6 +84,7 @@ export async function buildSipDistributionBoard(organizationId: string, now = ne
       periodStart: dayStart.toISOString(),
       generatedAt: now.toISOString(),
       sipFreshMs: SIP_REGISTER_FRESH_MS,
+      extensionCount: 0,
       totals: { online: 0, received: 0, answered: 0 },
       agents: [],
       next: EMPTY_NEXT,
@@ -170,10 +172,11 @@ export async function buildSipDistributionBoard(organizationId: string, now = ne
   );
   const priorityIds = new Set(pool.map((agent) => agent.userId));
   for (const agent of agents) agent.priority = priorityIds.has(agent.userId);
-  agents.sort((a, b) => a.name.localeCompare(b.name, "pt"));
+  const visible = agents.filter((agent) => agent.status !== "offline");
+  visible.sort((a, b) => a.name.localeCompare(b.name, "pt"));
 
   const nextAgents = pool
-    .map((candidate) => agents.find((agent) => agent.userId === candidate.userId))
+    .map((candidate) => visible.find((agent) => agent.userId === candidate.userId))
     .filter((agent): agent is SipDistributionBoardAgent => !!agent)
     .map((agent) => ({ userId: agent.userId, name: agent.name, extension: agent.extension }));
 
@@ -183,12 +186,13 @@ export async function buildSipDistributionBoard(organizationId: string, now = ne
     periodStart: dayStart.toISOString(),
     generatedAt: now.toISOString(),
     sipFreshMs: SIP_REGISTER_FRESH_MS,
+    extensionCount: agents.length,
     totals: {
-      online: agents.filter((agent) => agent.crmPresent).length,
+      online: visible.length,
       received: summary.received,
       answered: summary.answered,
     },
-    agents,
+    agents: visible,
     next:
       nextAgents.length === 0
         ? EMPTY_NEXT

@@ -150,10 +150,10 @@ export function resolveDistributionAgentStatus(input: {
   sipBusy: boolean;
   openOffer: "OFFERED" | "ANSWERED" | null;
 }): DistributionBoardStatus {
-  if (input.openOffer === "OFFERED") return "ringing";
-  if (input.openOffer === "ANSWERED" || input.sipBusy) return "in_call";
-  if (input.availability === "AWAY") return "paused";
   if (!input.crmPresent || input.availability === "OFFLINE") return "offline";
+  if (input.openOffer === "OFFERED" && (input.sipRegistered || input.sipBusy)) return "ringing";
+  if (input.sipBusy) return "in_call";
+  if (input.availability === "AWAY") return "paused";
   if (!input.sipRegistered) return "sip_disconnected";
   return "available";
 }

@@ -32,6 +32,7 @@ type Board = {
   enabled: boolean;
   generatedAt: string;
   sipFreshMs: number;
+  extensionCount?: number;
   totals: { online: number; received: number; answered: number };
   agents: BoardAgent[];
   next: BoardNext;
@@ -203,7 +204,11 @@ export function SipDistributionBoard() {
       ) : error && !board ? (
         <p className="mt-4 text-sm text-red-600">{t("nvoip.sip.distributionBoardError")}</p>
       ) : board && agents.length === 0 ? (
-        <p className="mt-4 text-sm text-ink-500">{t("nvoip.sip.distributionBoardEmpty")}</p>
+        <p className="mt-4 text-sm text-ink-500">
+          {(board.extensionCount ?? 0) > 0
+            ? t("nvoip.sip.distributionBoardNobodyOnline")
+            : t("nvoip.sip.distributionBoardEmpty")}
+        </p>
       ) : board ? (
         <>
           <div className="mt-4 grid grid-cols-3 gap-2">

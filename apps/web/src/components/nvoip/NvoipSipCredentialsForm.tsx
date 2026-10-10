@@ -12,8 +12,10 @@ export function NvoipSipCredentialsForm() {
   const [sipUser, setSipUser] = useState("");
   const [sipPassword, setSipPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [linked, setLinked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,8 +32,11 @@ export function NvoipSipCredentialsForm() {
       setSipUser(creds.sipUser ?? "");
       setSipPassword(creds.sipPassword ?? "");
       setDisplayName(creds.displayName ?? "");
+      setLinked(true);
     } catch (e) {
-      if (!(e instanceof ApiError && e.status === 404)) {
+      if (e instanceof ApiError && e.status === 404) {
+        setLinked(false);
+      } else {
         setError(t("nvoip.sip.loadError"));
       }
     } finally {
@@ -56,6 +61,7 @@ export function NvoipSipCredentialsForm() {
         sipPassword,
         displayName: displayName.trim() || null,
       });
+      setLinked(true);
       setSaved(true);
       window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-refresh"));
       window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
@@ -68,6 +74,28 @@ export function NvoipSipCredentialsForm() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    if (!linked || !window.confirm(t("nvoip.sip.unlinkConfirm"))) return;
+    setUnlinking(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.delete("/sip/credentials");
+      setSipUser("");
+      setSipPassword("");
+      setDisplayName("");
+      setLinked(false);
+      setSaved(true);
+      window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-refresh"));
+      window.dispatchEvent(new CustomEvent("openconduit:nvoip-session-refresh"));
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError(t("nvoip.sip.saveError"));
+    } finally {
+      setUnlinking(false);
     }
   };
 
@@ -109,15 +137,29 @@ export function NvoipSipCredentialsForm() {
             />
           </label>
           {error ? <p className="text-xs text-red-600">{error}</p> : null}
-          <button
-            type="button"
-            disabled={saving || !sipUser.trim() || !sipPassword.trim()}
-            onClick={() => void handleSave()}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {saved ? t("nvoip.sip.saved") : t("common.save")}
-          </button>
+          {saved && !linked ? <p className="text-xs text-emerald-600">{t("nvoip.sip.unlinked")}</p> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={saving || unlinking || !sipUser.trim() || !sipPassword.trim()}
+              onClick={() => void handleSave()}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {saved && linked ? t("nvoip.sip.saved") : t("common.save")}
+            </button>
+            {linked ? (
+              <button
+                type="button"
+                disabled={saving || unlinking}
+                onClick={() => void handleUnlink()}
+                className="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-4 py-2 text-sm text-ink-700 dark:border-ink-600 dark:text-ink-200 disabled:opacity-50"
+              >
+                {unlinking ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {t("nvoip.sip.unlink")}
+              </button>
+            ) : null}
+          </div>
         </div>
       )}
     </section>

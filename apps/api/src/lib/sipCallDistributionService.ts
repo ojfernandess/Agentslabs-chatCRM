@@ -234,24 +234,39 @@ async function eligibleAgentIds(tx: Tx, organizationId: string, now: Date): Prom
           { status: "OFFERED", offeredAt: { gte: new Date(now.getTime() - OPEN_OFFER_MS) } },
         ],
       },
-      select: { userId: true },
+      select: { userId: true, status: true },
     }),
   ]);
   const userIds = credentials.map((row) => row.userId);
   if (userIds.length === 0) return [];
-  const [present, sipReady] = await Promise.all([
+  const freshAfter = new Date(now.getTime() - SIP_REGISTER_FRESH_MS);
+  const [present, sipReady, sipBusy] = await Promise.all([
     getActivePresenceUserIds(organizationId, userIds),
     tx.sipAgentPresence.findMany({
       where: {
         organizationId,
         userId: { in: userIds },
         state: "registered",
-        updatedAt: { gte: new Date(now.getTime() - SIP_REGISTER_FRESH_MS) },
+        updatedAt: { gte: freshAfter },
+      },
+      select: { userId: true },
+    }),
+    tx.sipAgentPresence.findMany({
+      where: {
+        organizationId,
+        userId: { in: busy.map((row) => row.userId) },
+        state: "busy",
+        updatedAt: { gte: freshAfter },
       },
       select: { userId: true },
     }),
   ]);
   const ready = new Set(sipReady.map((row) => row.userId));
-  const occupied = new Set(busy.map((row) => row.userId));
+  const liveBusy = new Set(sipBusy.map((row) => row.userId));
+  const occupied = new Set(
+    busy
+      .filter((row) => row.status === "OFFERED" || (row.status === "ANSWERED" && liveBusy.has(row.userId)))
+      .map((row) => row.userId),
+  );
   return userIds.filter((userId) => present.has(userId) && ready.has(userId) && !occupied.has(userId));
 }
