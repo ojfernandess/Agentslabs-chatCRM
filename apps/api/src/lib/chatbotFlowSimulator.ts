@@ -470,6 +470,15 @@ export function runSimulatorTurn(options: {
         currentId = nextEdgeTarget(flow, node.id);
         continue;
       }
+      case "org_tool": {
+        const responseVar = String(node.data?.responseVariable ?? "tool_response");
+        const label = String(node.data?.toolName ?? node.data?.toolId ?? "?");
+        const mock = `[Ferramenta ${label}]`;
+        vars = { ...vars, [responseVar]: mock };
+        outbound.push(mock);
+        currentId = nextEdgeTarget(flow, node.id);
+        continue;
+      }
       case "webhook": {
         outbound.push(`[Webhook ${String(node.data?.method ?? "POST")} → ${String(node.data?.url ?? "")}]`);
         currentId = nextEdgeTarget(flow, node.id);

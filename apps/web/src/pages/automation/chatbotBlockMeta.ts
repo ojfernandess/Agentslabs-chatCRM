@@ -24,6 +24,7 @@ import {
   Variable,
   Video,
   Webhook,
+  Wrench,
   Zap,
 } from "lucide-react";
 
@@ -276,6 +277,16 @@ export const CHATBOT_BLOCK_META: Record<string, ChatbotBlockMeta> = {
     labelKey: "chatbotPage.blockWebhook",
     descriptionKey: "chatbotPage.blockWebhookDesc",
   },
+  org_tool: {
+    type: "org_tool",
+    category: "integrations",
+    icon: Wrench,
+    color: "#059669",
+    bgLight: "bg-emerald-50/90 dark:bg-emerald-950/40",
+    borderColor: "border-emerald-200 dark:border-emerald-800",
+    labelKey: "chatbotPage.blockOrgTool",
+    descriptionKey: "chatbotPage.blockOrgToolDesc",
+  },
   add_tag: {
     type: "add_tag",
     category: "integrations",
@@ -352,6 +363,7 @@ export function blockPreviewText(type: string, data?: Record<string, unknown>): 
   if (type === "script") return String(data?.code ?? "").slice(0, 80);
   if (type === "redirect") return String(data?.url ?? data?.message ?? "").slice(0, 80);
   if (type === "openai") return String(data?.prompt ?? data?.content ?? "").slice(0, 80);
+  if (type === "org_tool") return String(data?.toolName ?? data?.toolId ?? "").slice(0, 80);
   if (type === "wait") return `${data?.seconds ?? 0}s`;
   return "";
 }

@@ -10,15 +10,30 @@ interface TagOption {
   color?: string;
 }
 
+export interface ChatbotOrgToolOption {
+  id: string;
+  name: string;
+  toolType: string;
+  isActive: boolean;
+}
+
 interface Props {
   node: ChatbotFlowNode | null;
   allNodes: ChatbotFlowNode[];
   tags?: TagOption[];
+  orgTools?: ChatbotOrgToolOption[];
   onUpdate: (id: string, data: Record<string, unknown>) => void;
   onDelete: (id: string) => void;
 }
 
-export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate, onDelete }: Props) {
+export function ChatbotBlockSettingsPanel({
+  node,
+  allNodes,
+  tags = [],
+  orgTools = [],
+  onUpdate,
+  onDelete,
+}: Props) {
   const { t } = useI18n();
 
   if (!node) {
@@ -188,6 +203,51 @@ export function ChatbotBlockSettingsPanel({ node, allNodes, tags = [], onUpdate,
 
         {(node.type === "image" || node.type === "video" || node.type === "audio") && (
           <ChatbotMediaBlockFields blockType={node.type} data={data} onPatch={patch} />
+        )}
+
+        {node.type === "org_tool" && (
+          <>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.orgToolLabel")}</span>
+              <select
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.toolId ?? "")}
+                onChange={(e) => {
+                  const tool = orgTools.find((item) => item.id === e.target.value);
+                  patch({ toolId: e.target.value, toolName: tool?.name ?? "" });
+                }}
+              >
+                <option value="">{t("chatbotPage.orgToolEmpty")}</option>
+                {String(data.toolId ?? "") && !orgTools.some((item) => item.id === data.toolId) ? (
+                  <option value={String(data.toolId)}>{String(data.toolName ?? data.toolId)}</option>
+                ) : null}
+                {orgTools
+                  .filter((item) => item.isActive)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block font-semibold text-ink-600 dark:text-ink-400">{t("chatbotPage.orgToolResponseVar")}</span>
+              <input
+                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm dark:border-ink-700 dark:bg-ink-900"
+                value={String(data.responseVariable ?? "tool_response")}
+                onChange={(e) => patch({ responseVariable: e.target.value })}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink-700 dark:text-ink-300">
+              <input
+                type="checkbox"
+                checked={data.sendToUser === true}
+                onChange={(e) => patch({ sendToUser: e.target.checked })}
+              />
+              {t("chatbotPage.orgToolSendToUser")}
+            </label>
+            <p className="text-[10px] text-ink-400">{t("chatbotPage.orgToolHint")}</p>
+          </>
         )}
 
         {node.type === "webhook" && (

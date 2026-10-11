@@ -84,6 +84,7 @@ export const CHATBOT_BLOCK_TYPES = [
   "redirect",
   "openai",
   "webhook",
+  "org_tool",
   "add_tag",
   "handoff",
   "wait",

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { Bot, ChevronLeft, ChevronRight, Download, Loader2, Plus, Save, Trash2, Upload, Workflow } from "lucide-react";
+import { Bot, ChevronLeft, ChevronRight, Download, Loader2, Plus, Save, Trash2, Upload, Workflow, X } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { api } from "@/lib/api";
+import { type ChatbotOrgToolOption } from "./ChatbotBlockSettingsPanel";
 import { ChatbotFlowBuilder } from "./ChatbotFlowBuilder";
 import { ChatbotFlowSimulator } from "./ChatbotFlowSimulator";
 import { ChatbotPlatformPanel, DEFAULT_CHATBOT_THEME } from "./ChatbotPlatformPanel";
@@ -14,6 +15,12 @@ import {
   type ChatbotFlowTheme,
   type ChatbotFlowVariableDef,
 } from "./chatbotFlowTypes";
+import {
+  CHATBOT_FLOW_TEMPLATE_IDS,
+  CHATBOT_TEMPLATE_LABEL_KEYS,
+  chatbotFlowFromTemplate,
+  type ChatbotFlowTemplateId,
+} from "./chatbotFlowTemplates";
 
 interface BotOption {
   id: string;
@@ -40,6 +47,8 @@ export function AutomationChatbotHub() {
   const [draftSettings, setDraftSettings] = useState<ChatbotFlowSettings>({});
   const [draftPublished, setDraftPublished] = useState(false);
   const [tags, setTags] = useState<TagOption[]>([]);
+  const [orgTools, setOrgTools] = useState<ChatbotOrgToolOption[]>([]);
+  const [templateOpen, setTemplateOpen] = useState(false);
   const [linkBotId, setLinkBotId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,14 +74,16 @@ export function AutomationChatbotHub() {
     setLoading(true);
     setError(null);
     try {
-      const [flowsRes, botsRes, tagList] = await Promise.all([
+      const [flowsRes, botsRes, tagList, toolsRes] = await Promise.all([
         api.get<{ data: ChatbotFlowRow[] }>("/automation/chatbot-flows"),
         api.get<{ data: BotOption[] }>("/bots"),
         api.get<TagOption[]>("/tags").catch(() => []),
+        api.get<{ data: ChatbotOrgToolOption[] }>("/automation/custom-tools").catch(() => ({ data: [] })),
       ]);
       setFlows(flowsRes.data ?? []);
       setBots(botsRes.data ?? []);
       setTags(Array.isArray(tagList) ? tagList : []);
+      setOrgTools(Array.isArray(toolsRes.data) ? toolsRes.data : []);
     } catch {
       setError("load_failed");
     } finally {
@@ -96,12 +107,15 @@ export function AutomationChatbotHub() {
     setLinkBotId(selected.linkedBotId ?? "");
   }, [selected]);
 
-  const createFlow = async () => {
+  const createFlow = async (templateId: ChatbotFlowTemplateId) => {
+    setTemplateOpen(false);
     setSaving(true);
     try {
+      const built = chatbotFlowFromTemplate(templateId, t);
       const row = await api.post<ChatbotFlowRow>("/automation/chatbot-flows", {
-        name: t("chatbotPage.newFlowName"),
-        flowDefinition: defaultChatbotFlow(),
+        name: built.name,
+        ...(built.description ? { description: built.description } : {}),
+        flowDefinition: built.flow,
       });
       await load();
       setSelectedId(row.id);
@@ -248,7 +262,7 @@ export function AutomationChatbotHub() {
               <button
                 type="button"
                 disabled={saving}
-                onClick={() => void createFlow()}
+                onClick={() => setTemplateOpen(true)}
                 className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
               >
                 <Plus className="h-3 w-3" />
@@ -407,7 +421,7 @@ export function AutomationChatbotHub() {
                   {t("chatbotPage.editorBadge")}
                 </span>
               </div>
-              <ChatbotFlowBuilder value={draftFlow} onChange={setDraftFlow} tags={tags} />
+              <ChatbotFlowBuilder value={draftFlow} onChange={setDraftFlow} tags={tags} orgTools={orgTools} />
             </div>
 
             <div className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900/60">
@@ -507,6 +521,45 @@ export function AutomationChatbotHub() {
           </>
         )}
       </section>
+
+      {templateOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 p-4">
+          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-ink-200 bg-white p-5 shadow-xl dark:border-ink-700 dark:bg-ink-900">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("chatbotPage.templatePickerTitle")}</h3>
+                <p className="mt-1 text-xs text-ink-500">{t("chatbotPage.templatePickerHint")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTemplateOpen(false)}
+                className="rounded-lg p-1 text-ink-500 hover:bg-ink-100 dark:hover:bg-ink-800"
+                aria-label={t("common.close")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {CHATBOT_FLOW_TEMPLATE_IDS.map((id) => {
+                const labels = CHATBOT_TEMPLATE_LABEL_KEYS[id];
+                return (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void createFlow(id)}
+                      className="h-full w-full rounded-xl border border-ink-200 px-3 py-3 text-left hover:border-brand-400 hover:bg-brand-50 disabled:opacity-50 dark:border-ink-700 dark:hover:bg-brand-950/30"
+                    >
+                      <span className="block text-sm font-semibold text-ink-900 dark:text-ink-50">{t(labels.name)}</span>
+                      <span className="mt-1 block text-xs text-ink-500">{t(labels.description)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

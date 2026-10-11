@@ -23,6 +23,7 @@ import {
   pickAbTestVariant,
 } from "./chatbotFlowLogic.js";
 import { runChatbotOpenAiBlock } from "./chatbotOpenAiBlock.js";
+import { runChatbotOrganizationTool } from "./chatbotOrganizationTool.js";
 import { assertHttpUrlAllowed } from "./httpToolTest.js";
 import { secureHttpFetch } from "./secureHttpFetch.js";
 import {
@@ -673,6 +674,38 @@ export async function dispatchVisualChatbotFlow(input: {
             if (sendToUser && text) {
               await sendBotText(organizationId, bot.id, conversation, contact, text, log);
               outboundMessages.push(text);
+            }
+          }
+          currentId = nextEdgeTarget(flow, node.id);
+          continue;
+        }
+        case "org_tool": {
+          const toolId = String(node.data?.toolId ?? "").trim();
+          const responseVar = String(node.data?.responseVariable ?? "tool_response").trim() || "tool_response";
+          const sendToUser = node.data?.sendToUser === true;
+          if (toolId) {
+            const result = await runChatbotOrganizationTool({
+              organizationId,
+              botId: bot.id,
+              conversationId: conversation.id,
+              toolId,
+              llmArgs: { ...vars },
+              runtimeSampleContext: {
+                variables: vars,
+                contact: {
+                  id: contact.id,
+                  name: contact.name,
+                  phone: contact.phone,
+                  email: contact.email,
+                },
+                conversation: { id: conversation.id },
+              },
+            });
+            const stored = result.ok ? result.text : result.error ? `⚠ ${result.error}` : "";
+            vars = { ...vars, [responseVar]: stored };
+            if (sendToUser && result.ok && result.text) {
+              await sendBotText(organizationId, bot.id, conversation, contact, result.text, log);
+              outboundMessages.push(result.text);
             }
           }
           currentId = nextEdgeTarget(flow, node.id);

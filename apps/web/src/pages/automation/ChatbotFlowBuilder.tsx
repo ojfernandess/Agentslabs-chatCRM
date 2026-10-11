@@ -16,7 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useI18n } from "@/i18n/I18nProvider";
 import { ChatbotBlockPalette } from "./ChatbotBlockPalette";
-import { ChatbotBlockSettingsPanel } from "./ChatbotBlockSettingsPanel";
+import { ChatbotBlockSettingsPanel, type ChatbotOrgToolOption } from "./ChatbotBlockSettingsPanel";
 import { ChatbotFlowNodeCard, type ChatbotFlowNodeData } from "./ChatbotFlowNodeCard";
 import type { ChatbotFlowDefinition, ChatbotFlowNode } from "./chatbotFlowTypes";
 
@@ -68,9 +68,10 @@ interface Props {
   value: ChatbotFlowDefinition;
   onChange: (flow: ChatbotFlowDefinition) => void;
   tags?: TagOption[];
+  orgTools?: ChatbotOrgToolOption[];
 }
 
-export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
+export function ChatbotFlowBuilder({ value, onChange, tags = [], orgTools = [] }: Props) {
   const { t } = useI18n();
   const initial = useMemo(() => flowToRf(value), [value]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes);
@@ -152,6 +153,7 @@ export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
         script: { code: "resultado = {{resposta}}" },
         redirect: { url: "https://", variableName: "redirect_url" },
         openai: { prompt: "Resuma em uma frase: {{resposta}}", variableName: "openai_reply", sendToUser: true },
+        org_tool: { toolId: "", toolName: "", responseVariable: "tool_response", sendToUser: false },
       };
       const newNode: Node<ChatbotFlowNodeData> = {
         id,
@@ -259,7 +261,14 @@ export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
               ) {
                 return "#7c3aed";
               }
-              if (t === "redirect" || t === "openai" || t === "webhook" || t === "add_tag" || t === "handoff") {
+              if (
+                t === "redirect" ||
+                t === "openai" ||
+                t === "webhook" ||
+                t === "org_tool" ||
+                t === "add_tag" ||
+                t === "handoff"
+              ) {
                 return "#059669";
               }
               return "#64748b";
@@ -278,6 +287,7 @@ export function ChatbotFlowBuilder({ value, onChange, tags = [] }: Props) {
         node={selectedFlowNode}
         allNodes={flowNodesForSettings}
         tags={tags}
+        orgTools={orgTools}
         onUpdate={updateNodeData}
         onDelete={deleteNode}
       />
