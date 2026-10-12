@@ -524,7 +524,7 @@ export function AutomationChatbotHub() {
 
       {templateOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/40 p-4">
-          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-ink-200 bg-white p-5 shadow-xl dark:border-ink-700 dark:bg-ink-900">
+          <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-ink-200 bg-white p-5 shadow-xl dark:border-ink-700 dark:bg-ink-900">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-ink-900 dark:text-ink-50">{t("chatbotPage.templatePickerTitle")}</h3>
@@ -539,7 +539,7 @@ export function AutomationChatbotHub() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <ul className="grid gap-2 sm:grid-cols-2">
+            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {CHATBOT_FLOW_TEMPLATE_IDS.map((id) => {
                 const labels = CHATBOT_TEMPLATE_LABEL_KEYS[id];
                 return (
