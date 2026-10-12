@@ -22,6 +22,7 @@ import {
   getInteractionBudgetState,
   markInteractionBudgetHumanActive,
   parseInteractionLimitFromBehavior,
+  planBlockedInteractionLimitNotice,
   registerAgentInteraction,
   shouldAppendWebchatLinkOnReply,
   type InteractionBudgetState,
@@ -156,6 +157,56 @@ export async function runNativeAgentReplyAndDeliver(input: {
         select: { awaitingHumanHandoff: true },
       });
       if (shouldInvokeAutomaticHandoff(convNow?.awaitingHumanHandoff === true)) {
+        const limitCfg = parseInteractionLimitFromBehavior(profilePre?.behaviorConfig);
+        const notice = planBlockedInteractionLimitNotice({
+          offerWebchatOnLimit: limitCfg.offerWebchatOnLimit,
+          transferMessage: parseEscalationTransferMessage(profilePre?.behaviorConfig),
+        });
+        try {
+          if (notice.kind === "webchat") {
+            await sendWebchatContinuityLinkToContact({
+              organizationId,
+              conversationId: conversation.id,
+              contactId: contact.id,
+              botId: bot.id,
+              log,
+              continuityMessageOverride: limitCfg.webchatMessageOnLimit,
+            });
+          } else if (notice.kind === "text" || notice.kind === "text_and_webchat") {
+            const enriched =
+              notice.kind === "text_and_webchat"
+                ? await enrichReplyWithWebchatLink({
+                    organizationId,
+                    conversationId: conversation.id,
+                    replyText: notice.text,
+                    continuityMessageOverride: limitCfg.webchatMessageOnLimit,
+                  })
+                : { replyText: notice.text, url: null as string | null };
+            await deliverAgentReplyMessage({
+              organizationId,
+              botId: bot.id,
+              conversation,
+              contact,
+              inboundMessage: message,
+              replyText: enriched.replyText,
+              behaviorConfig: profilePre?.behaviorConfig,
+              log,
+            });
+            if (notice.kind === "text_and_webchat" && !enriched.url) {
+              await sendWebchatContinuityLinkToContact({
+                organizationId,
+                conversationId: conversation.id,
+                contactId: contact.id,
+                botId: bot.id,
+                log,
+                skipIfBodyContains: enriched.replyText,
+                continuityMessageOverride: limitCfg.webchatMessageOnLimit,
+              });
+            }
+          }
+        } catch (err) {
+          log.warn({ err, conversationId: conversation.id }, "interaction limit guest notice failed");
+        }
         await callHumanForConversationForOrg(prisma, {
           organizationId,
           conversationId: conversation.id,

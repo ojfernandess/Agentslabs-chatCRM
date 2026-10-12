@@ -107,6 +107,35 @@ export function isLastAllowedAgentReply(budgetState: InteractionBudgetState | nu
   return budgetState.count + 1 >= budgetState.limit;
 }
 
+function guestTextHasLink(text: string): boolean {
+  return /https?:\/\//i.test(text) || /\/s\/[A-Za-z0-9_-]{8,}/.test(text);
+}
+
+/**
+ * Aviso ao contacto quando o limite já foi atingido e o turno transfere sem gerar resposta.
+ * O link do Web Chat só entra se a opção estiver activa. Sem opção e sem link na mensagem
+ * de transferência, não há aviso novo.
+ */
+export type BlockedInteractionLimitNotice =
+  | { kind: "none" }
+  | { kind: "webchat" }
+  | { kind: "text"; text: string }
+  | { kind: "text_and_webchat"; text: string };
+
+export function planBlockedInteractionLimitNotice(input: {
+  offerWebchatOnLimit: boolean;
+  transferMessage: string;
+}): BlockedInteractionLimitNotice {
+  const transfer = input.transferMessage.trim();
+  if (input.offerWebchatOnLimit) {
+    if (!transfer) return { kind: "webchat" };
+    if (guestTextHasLink(transfer)) return { kind: "text", text: transfer };
+    return { kind: "text_and_webchat", text: transfer };
+  }
+  if (transfer && guestTextHasLink(transfer)) return { kind: "text", text: transfer };
+  return { kind: "none" };
+}
+
 /** Envia link do Web Chat apenas na última resposta automática, quando a opção está activa. */
 export function shouldAppendWebchatLinkOnReply(
   behaviorConfig: unknown,

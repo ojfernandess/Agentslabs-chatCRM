@@ -6,6 +6,7 @@ import {
   interactionLimitAppliesToInbox,
   deriveBudgetStatus,
   buildInteractionBudgetPromptAppendix,
+  planBlockedInteractionLimitNotice,
   shouldAppendWebchatLinkOnReply,
   type InteractionBudgetState,
 } from "./interactionBudget.js";
@@ -242,6 +243,51 @@ describe("buildInteractionBudgetPromptAppendix — Modo Economia (spec §34)", (
   it("does not tell the agent it is the last reply when remaining > 1", () => {
     const appendix = buildInteractionBudgetPromptAppendix(state(7, 10));
     assert.ok(!appendix.includes("ÚLTIMA resposta automática"));
+  });
+});
+
+describe("planBlockedInteractionLimitNotice", () => {
+  it("sends only the webchat link when the option is on and there is no transfer text", () => {
+    assert.deepEqual(
+      planBlockedInteractionLimitNotice({ offerWebchatOnLimit: true, transferMessage: "" }),
+      { kind: "webchat" },
+    );
+  });
+
+  it("attaches the webchat link to the transfer text", () => {
+    assert.deepEqual(
+      planBlockedInteractionLimitNotice({
+        offerWebchatOnLimit: true,
+        transferMessage: "Vou encaminhar você para a equipe.",
+      }),
+      { kind: "text_and_webchat", text: "Vou encaminhar você para a equipe." },
+    );
+  });
+
+  it("keeps a transfer message that already has a link", () => {
+    const text = "Continue em https://checkin.example/in";
+    assert.deepEqual(
+      planBlockedInteractionLimitNotice({ offerWebchatOnLimit: true, transferMessage: text }),
+      { kind: "text", text },
+    );
+  });
+
+  it("stays silent when the option is off and the transfer text has no link", () => {
+    assert.deepEqual(
+      planBlockedInteractionLimitNotice({
+        offerWebchatOnLimit: false,
+        transferMessage: "Vou encaminhar você para a equipe.",
+      }),
+      { kind: "none" },
+    );
+  });
+
+  it("sends a transfer message that already contains a link even when webchat is off", () => {
+    const text = "Acesse https://checkin.example/in";
+    assert.deepEqual(
+      planBlockedInteractionLimitNotice({ offerWebchatOnLimit: false, transferMessage: `  ${text}  ` }),
+      { kind: "text", text },
+    );
   });
 });
 
