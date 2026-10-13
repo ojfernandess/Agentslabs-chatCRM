@@ -69,6 +69,18 @@ export function decodeSipPayload(raw: unknown): string {
   return "";
 }
 
+/**
+ * O PABX manda CRLF no mesmo WebSocket do registro quando a chamada começa ou termina.
+ * Um quadro só com o ping precisa chegar intacto ao JsSIP. Se o ping vem colado na
+ * mensagem SIP, a mensagem segue sem o prefixo e o ping é respondido à parte.
+ */
+export function sipKeepaliveAction(raw: unknown): "forward" | "pong" | "none" {
+  const text = decodeSipPayload(raw).replace(/^\uFEFF/, "");
+  if (text === "\r\n" || text === "\r\n\r\n") return "forward";
+  if (text.startsWith("\r\n\r\n") && text.trim()) return "pong";
+  return "none";
+}
+
 /** Separa um quadro WebSocket em mensagens SIP completas. */
 export function sipFrames(raw: unknown): string[] {
   let text = decodeSipPayload(raw).replace(/^\uFEFF/, "");

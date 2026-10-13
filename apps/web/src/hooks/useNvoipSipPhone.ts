@@ -3,7 +3,7 @@ import JsSIP from "jssip";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/i18n/I18nProvider";
-import { maskSipUser, sipDiag, sipDiagMessage, sipFrames } from "@/lib/sipDiagnostics";
+import { decodeSipPayload, maskSipUser, sipDiag, sipDiagMessage, sipFrames, sipKeepaliveAction } from "@/lib/sipDiagnostics";
 import { shouldDropSipLegAnsweredElsewhere, shouldQueueIncomingCall, sipEndAction, sipSessionOccupiesLine } from "@/lib/sipCallControls";
 import { normalizeSipRingtone, previewSipRingtone, startSipRingtone, stopSipRingtone, type SipRingtoneId } from "@/lib/sipRingtone";
 import { callerFromInvite, callIdFromSip, inviteFault, lookupInviteCaller, rememberInviteCaller, repairInvite } from "@/lib/sipInviteNormalize";
@@ -253,6 +253,23 @@ function traceSocket(
       | ((this: WebSocket, event: { data: unknown }) => void)
       | null;
     const deliver = (data: unknown) => {
+      const keepalive = sipKeepaliveAction(data);
+      if (keepalive === "forward") {
+        const ping = decodeSipPayload(data).replace(/^\uFEFF/, "");
+        try {
+          if (typeof prevMessage === "function") prevMessage.call(ws, { data: ping });
+        } catch {
+          /* o ping não é uma mensagem SIP */
+        }
+        return;
+      }
+      if (keepalive === "pong") {
+        try {
+          ws.send("\r\n");
+        } catch {
+          /* o websocket já fechou */
+        }
+      }
       const frames = sipFrames(data);
       if (frames.length === 0) return;
       for (const frame of frames) {
@@ -584,19 +601,42 @@ export function useNvoipSipPhone(enabled: boolean) {
         session_timers: false,
       });
 
+      const callStillLive = () =>
+        [sessionRef.current, ...waitingRef.current.map((slot) => slot.session), ...heldRef.current.map((slot) => slot.session)].some(
+          (session) => !!session && !session.isEnded(),
+        );
+
       ua.on("registered", () => {
         sipDiag("SIP", "Registered");
+        if (callStillLive()) {
+          const established =
+            (sessionRef.current?.isEstablished() ?? false) ||
+            heldRef.current.some((slot) => !slot.session.isEnded());
+          setStatusSafe(established ? "in-call" : "ringing", null);
+          return;
+        }
         setStatusSafe("registered", null);
         publishInboundRoute();
       });
       ua.on("unregistered", () => {
         sipDiag("SIP", "Unregistered");
+        if (callStillLive()) {
+          if (ua.isConnected()) {
+            try {
+              ua.register();
+            } catch {
+              /* o registro volta quando o websocket reconectar */
+            }
+          }
+          return;
+        }
         setStatusSafe("unregistered", null);
       });
       ua.on("registrationFailed", (e) => {
         const cause = String((e as { cause?: string }).cause ?? "unknown");
         const code = (e as { response?: { status_code?: number } }).response?.status_code;
         sipDiag("SIP", `REGISTER failed${code ? ` ${code}` : ""} ${cause}`);
+        if (callStillLive()) return;
         const candidates = buildWssCandidates(creds);
         const nextIndex = wssIndexRef.current + 1;
         if (nextIndex < candidates.length && (cause === "Connection Error" || cause === "Request Timeout")) {
@@ -739,10 +779,18 @@ export function useNvoipSipPhone(enabled: boolean) {
           if (kind === "failed" && !localEnd && !taken) {
             sipDiag("SIP", noBalance ? "No balance" : `Call failed ${detail}`);
           }
+          const stillRegistered = ua.isRegistered();
           setStatusSafe(
-            ua.isRegistered() ? "registered" : "unregistered",
+            stillRegistered ? "registered" : "unregistered",
             kind === "ended" || localEnd || taken ? null : noBalance ? "sip_no_balance" : `sip_call_failed:${detail}`,
           );
+          if (!stillRegistered && ua.isConnected()) {
+            try {
+              ua.register();
+            } catch {
+              /* o ramal volta no próximo registro */
+            }
+          }
           window.dispatchEvent(new CustomEvent("openconduit:nvoip-sip-call-ended"));
         };
 
