@@ -26,6 +26,7 @@ import {
   subscriptionGrantsPaidPlanEntitlements,
   subscriptionShowsRenewalDate,
   ensureMercadoPagoSubscriptionBillingPeriod,
+  refreshStripeSubscriptionFromProvider,
   type PaymentProviderName,
 } from "../lib/billing/index.js";
 import { expirePendingCheckoutIfNeeded } from "../lib/billing/pendingCheckoutService.js";
@@ -215,6 +216,7 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     if (!organizationId) return;
 
     await ensureMercadoPagoSubscriptionBillingPeriod(organizationId).catch(() => {});
+    await refreshStripeSubscriptionFromProvider(organizationId).catch(() => {});
     await expirePendingCheckoutIfNeeded(organizationId);
 
     const [entitlements, usage, org, providers, aiBillingMode] = await Promise.all([

@@ -4,7 +4,7 @@ import { prisma } from "../../db.js";
 import { config } from "../../config.js";
 import { recordBillingAudit } from "./billingAudit.js";
 import { getStripeClient } from "./stripeClient.js";
-import { syncSubscriptionFromStripe } from "./subscriptionSync.js";
+import { syncSubscriptionFromStripe, applyPaidInvoiceBillingPeriod } from "./subscriptionSync.js";
 import { getEventOrganizationId, getInvoiceSubscriptionId } from "./stripeHelpers.js";
 import { isOrganizationAgentStripeMetadata } from "../stripeToolExecute.js";
 import {
@@ -115,6 +115,18 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
   const organizationId = await resolveOrganizationIdFromInvoice(invoice);
   if (!organizationId) return;
 
+  const subscriptionId = getInvoiceSubscriptionId(invoice);
+  if (subscriptionId) {
+    try {
+      const stripe = getStripeClient();
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      await syncSubscriptionFromStripe(subscription, organizationId);
+    } catch {
+      /* A fatura paga ainda avança a data local se a leitura da assinatura falhar. */
+    }
+  }
+  await applyPaidInvoiceBillingPeriod(organizationId, invoice);
+
   await recordBillingAudit({
     action: "billing.payment_succeeded",
     organizationId,
@@ -122,7 +134,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
     metadata: {
       amountPaid: invoice.amount_paid,
       currency: invoice.currency,
-      subscriptionId: getInvoiceSubscriptionId(invoice),
+      subscriptionId,
     },
   });
 

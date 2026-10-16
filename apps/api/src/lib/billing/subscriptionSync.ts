@@ -8,7 +8,7 @@ import {
   type PaymentProviderName,
   type SubscriptionStatus,
 } from "./billingTypes.js";
-import { getSubscriptionBillingPeriod } from "./stripeHelpers.js";
+import { getSubscriptionBillingPeriod, invoiceServicePeriodEndUnix } from "./stripeHelpers.js";
 import { resolvePlanIdFromMercadoPagoPlanId } from "./mercadopago/MercadoPagoPlanService.js";
 
 function stripeUnixToDate(value: number | null | undefined): Date | null {
@@ -185,6 +185,52 @@ export async function syncSubscriptionFromStripe(
     trialEnd: stripeUnixToDate(subscription.trial_end),
     checkoutSessionId: null,
     clearPaymentDue: status === "active" || status === "trialing",
+  });
+}
+
+/** Relê a assinatura na Stripe para a próxima cobrança acompanhar o período pago. */
+export async function refreshStripeSubscriptionFromProvider(organizationId: string): Promise<void> {
+  const { isStripeBillingConfigured } = await import("../../config.js");
+  if (!isStripeBillingConfigured()) return;
+
+  const sub = await prisma.organizationSubscription.findUnique({
+    where: { organizationId },
+    select: { stripeSubscriptionId: true },
+  });
+  const subscriptionId = sub?.stripeSubscriptionId?.trim();
+  if (!subscriptionId) return;
+
+  const { getStripeClient } = await import("./stripeClient.js");
+  const subscription = await getStripeClient().subscriptions.retrieve(subscriptionId);
+  await syncSubscriptionFromStripe(subscription, organizationId);
+}
+
+/** Se a fatura paga cobre um período mais novo, avança a próxima cobrança. */
+export async function applyPaidInvoiceBillingPeriod(
+  organizationId: string,
+  invoice: Stripe.Invoice,
+): Promise<void> {
+  if (invoice.status !== "paid") return;
+  const endUnix = invoiceServicePeriodEndUnix(invoice);
+  if (!endUnix) return;
+  const periodEnd = new Date(endUnix * 1000);
+
+  const sub = await prisma.organizationSubscription.findUnique({
+    where: { organizationId },
+    select: { currentPeriodEnd: true },
+  });
+  if (!sub) return;
+  if (sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() >= periodEnd.getTime()) return;
+
+  const startUnix = invoice.period_start;
+  await prisma.organizationSubscription.update({
+    where: { organizationId },
+    data: {
+      currentPeriodEnd: periodEnd,
+      ...(typeof startUnix === "number" && startUnix > 0
+        ? { currentPeriodStart: new Date(startUnix * 1000) }
+        : {}),
+    },
   });
 }
 

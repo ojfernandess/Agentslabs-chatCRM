@@ -13,6 +13,22 @@ export function getSubscriptionBillingPeriod(subscription: Stripe.Subscription):
   };
 }
 
+/** Fim do período cobrado na fatura — a próxima cobrança começa nesse instante. */
+export function invoiceServicePeriodEndUnix(invoice: {
+  period_end?: number | null;
+  lines?: { data?: Array<{ period?: { end?: number | null } | null }> | null } | null;
+}): number | null {
+  const lineEnds = (invoice.lines?.data ?? [])
+    .map((line) => line.period?.end)
+    .filter((value): value is number => typeof value === "number" && value > 0);
+  const candidates = [...lineEnds];
+  if (typeof invoice.period_end === "number" && invoice.period_end > 0) {
+    candidates.push(invoice.period_end);
+  }
+  if (candidates.length === 0) return null;
+  return Math.max(...candidates);
+}
+
 /** Stripe v22+: subscription id em invoice.parent.subscription_details. */
 export function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
   const sub = invoice.parent?.subscription_details?.subscription;

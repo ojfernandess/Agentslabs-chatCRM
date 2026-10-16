@@ -5,6 +5,7 @@ import {
   getEventOrganizationId,
   getInvoiceSubscriptionId,
   getSubscriptionBillingPeriod,
+  invoiceServicePeriodEndUnix,
 } from "./stripeHelpers.js";
 
 describe("stripeHelpers", () => {
@@ -23,6 +24,18 @@ describe("stripeHelpers", () => {
       parent: { subscription_details: { subscription: "sub_123" } },
     } as unknown as Stripe.Invoice;
     assert.equal(getInvoiceSubscriptionId(invoice), "sub_123");
+  });
+
+  it("invoiceServicePeriodEndUnix prefers the latest line period", () => {
+    assert.equal(
+      invoiceServicePeriodEndUnix({
+        period_end: 100,
+        lines: { data: [{ period: { end: 200 } }, { period: { end: 150 } }] },
+      }),
+      200,
+    );
+    assert.equal(invoiceServicePeriodEndUnix({ period_end: 300 }), 300);
+    assert.equal(invoiceServicePeriodEndUnix({}), null);
   });
 
   it("getEventOrganizationId reads metadata", () => {
