@@ -6,6 +6,7 @@ import {
   getInvoiceSubscriptionId,
   getSubscriptionBillingPeriod,
   invoiceServicePeriodEndUnix,
+  nextChargeAfterPayment,
 } from "./stripeHelpers.js";
 
 describe("stripeHelpers", () => {
@@ -36,6 +37,16 @@ describe("stripeHelpers", () => {
     );
     assert.equal(invoiceServicePeriodEndUnix({ period_end: 300 }), 300);
     assert.equal(invoiceServicePeriodEndUnix({}), null);
+  });
+
+  it("nextChargeAfterPayment moves a past due date one cycle after the payment", () => {
+    const paidAt = new Date("2026-10-16T15:00:00.000Z");
+    const now = new Date("2026-10-16T18:00:00.000Z");
+    assert.equal(nextChargeAfterPayment(paidAt, "month", now).toISOString(), "2026-11-16T15:00:00.000Z");
+    assert.equal(
+      nextChargeAfterPayment(new Date("2026-10-10T00:00:00.000Z"), "month", now).toISOString(),
+      "2026-11-10T00:00:00.000Z",
+    );
   });
 
   it("getEventOrganizationId reads metadata", () => {

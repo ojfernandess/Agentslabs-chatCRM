@@ -8,7 +8,7 @@ import {
   type PaymentProviderName,
   type SubscriptionStatus,
 } from "./billingTypes.js";
-import { getSubscriptionBillingPeriod, invoiceServicePeriodEndUnix } from "./stripeHelpers.js";
+import { getSubscriptionBillingPeriod, invoiceServicePeriodEndUnix, nextChargeAfterPayment } from "./stripeHelpers.js";
 import { resolvePlanIdFromMercadoPagoPlanId } from "./mercadopago/MercadoPagoPlanService.js";
 
 function stripeUnixToDate(value: number | null | undefined): Date | null {
@@ -198,11 +198,74 @@ export async function refreshStripeSubscriptionFromProvider(organizationId: stri
     select: { stripeSubscriptionId: true },
   });
   const subscriptionId = sub?.stripeSubscriptionId?.trim();
-  if (!subscriptionId) return;
+  if (subscriptionId) {
+    try {
+      const { getStripeClient } = await import("./stripeClient.js");
+      const subscription = await getStripeClient().subscriptions.retrieve(subscriptionId);
+      await syncSubscriptionFromStripe(subscription, organizationId);
+    } catch {
+      /* A fatura paga ainda corrige a data se a assinatura Stripe não puder ser lida. */
+    }
+  }
+  await alignNextChargeWithLatestPaidInvoice(organizationId);
+}
+
+/**
+ * Se o período gravado já passou e a última fatura está paga, a próxima cobrança
+ * é um ciclo depois do pagamento — não a data de vencimento anterior.
+ */
+export async function alignNextChargeWithLatestPaidInvoice(organizationId: string): Promise<void> {
+  const { isStripeBillingConfigured } = await import("../../config.js");
+  if (!isStripeBillingConfigured()) return;
+
+  const [sub, org] = await Promise.all([
+    prisma.organizationSubscription.findUnique({
+      where: { organizationId },
+      select: {
+        status: true,
+        currentPeriodEnd: true,
+        stripeCustomerId: true,
+        plan: { select: { interval: true } },
+      },
+    }),
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { stripeCustomerId: true },
+    }),
+  ]);
+  const customerId = sub?.stripeCustomerId?.trim() || org?.stripeCustomerId?.trim();
+  if (!customerId || !sub?.plan?.interval) return;
+  if (sub.status !== "active" && sub.status !== "trialing" && sub.status !== "past_due") return;
+  if (sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() > Date.now()) return;
 
   const { getStripeClient } = await import("./stripeClient.js");
-  const subscription = await getStripeClient().subscriptions.retrieve(subscriptionId);
-  await syncSubscriptionFromStripe(subscription, organizationId);
+  const page = await getStripeClient().invoices.list({
+    customer: customerId,
+    limit: 10,
+  });
+  const latest = [...page.data].sort((a, b) => b.created - a.created)[0];
+  if (!latest || latest.status !== "paid" || (latest.amount_paid ?? 0) <= 0) return;
+
+  const paidUnix = latest.status_transitions?.paid_at ?? latest.created;
+  if (!paidUnix) return;
+  const paidAt = new Date(paidUnix * 1000);
+  const invoicePeriodEndUnix = invoiceServicePeriodEndUnix(latest);
+  const invoicePeriodEnd =
+    invoicePeriodEndUnix != null ? new Date(invoicePeriodEndUnix * 1000) : null;
+  const next =
+    invoicePeriodEnd && invoicePeriodEnd.getTime() > Date.now()
+      ? invoicePeriodEnd
+      : nextChargeAfterPayment(paidAt, sub.plan.interval);
+
+  if (sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() >= next.getTime()) return;
+
+  await prisma.organizationSubscription.update({
+    where: { organizationId },
+    data: {
+      currentPeriodStart: paidAt,
+      currentPeriodEnd: next,
+    },
+  });
 }
 
 /** Se a fatura paga cobre um período mais novo, avança a próxima cobrança. */
@@ -210,28 +273,8 @@ export async function applyPaidInvoiceBillingPeriod(
   organizationId: string,
   invoice: Stripe.Invoice,
 ): Promise<void> {
-  if (invoice.status !== "paid") return;
-  const endUnix = invoiceServicePeriodEndUnix(invoice);
-  if (!endUnix) return;
-  const periodEnd = new Date(endUnix * 1000);
-
-  const sub = await prisma.organizationSubscription.findUnique({
-    where: { organizationId },
-    select: { currentPeriodEnd: true },
-  });
-  if (!sub) return;
-  if (sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() >= periodEnd.getTime()) return;
-
-  const startUnix = invoice.period_start;
-  await prisma.organizationSubscription.update({
-    where: { organizationId },
-    data: {
-      currentPeriodEnd: periodEnd,
-      ...(typeof startUnix === "number" && startUnix > 0
-        ? { currentPeriodStart: new Date(startUnix * 1000) }
-        : {}),
-    },
-  });
+  if (invoice.status !== "paid" || (invoice.amount_paid ?? 0) <= 0) return;
+  await alignNextChargeWithLatestPaidInvoice(organizationId);
 }
 
 export type MercadoPagoPreapprovalSnapshot = {

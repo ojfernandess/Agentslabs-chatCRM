@@ -29,6 +29,23 @@ export function invoiceServicePeriodEndUnix(invoice: {
   return Math.max(...candidates);
 }
 
+/** Próxima cobrança depois de um pagamento: um ciclo à frente, sempre no futuro. */
+export function nextChargeAfterPayment(paidAt: Date, interval: string, now = new Date()): Date {
+  const step = (date: Date): Date => {
+    const end = new Date(date.getTime());
+    if (interval === "year") end.setUTCFullYear(end.getUTCFullYear() + 1);
+    else end.setUTCMonth(end.getUTCMonth() + 1);
+    return end;
+  };
+  let next = step(paidAt);
+  let guard = 0;
+  while (next.getTime() <= now.getTime() && guard < 36) {
+    next = step(next);
+    guard += 1;
+  }
+  return next;
+}
+
 /** Stripe v22+: subscription id em invoice.parent.subscription_details. */
 export function getInvoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
   const sub = invoice.parent?.subscription_details?.subscription;
