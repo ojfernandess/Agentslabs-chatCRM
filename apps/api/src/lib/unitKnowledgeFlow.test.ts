@@ -188,7 +188,7 @@ Está tudo correto? Responda **sim** para eu encaminhar ao setor responsável.`;
   );
 });
 
-test("locator after non-NF flow still requires reservation lookup", () => {
+test("locator after the agent asked for it does not require reservation lookup", () => {
   assert.equal(
     shouldRequireReservationLookupThisTurn({
       userMessage: "DE4KRMDP",
@@ -198,10 +198,10 @@ test("locator after non-NF flow still requires reservation lookup", () => {
   );
   assert.equal(
     shouldRequireReservationLookupThisTurn({
-      userMessage: "DE4KRMDP",
+      userMessage: "PSCYQFVI",
       lastAssistantMessage: "Para verificar sua reserva, informe o localizador.",
     }),
-    true,
+    false,
   );
 });
 

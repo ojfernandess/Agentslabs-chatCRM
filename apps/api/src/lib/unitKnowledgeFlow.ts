@@ -545,15 +545,12 @@ export function assistantMentionedReservationLocator(lastAssistantMessage?: stri
   return false;
 }
 
-/** Localizador isolado após pedido do agente → consultar_reserva (+ main_guest se NF). */
-export function shouldRequireReservationLookupThisTurn(opts: {
+/** Localizador isolado não dispara consulta de reserva — o playbook envia o portal de check-in. */
+export function shouldRequireReservationLookupThisTurn(_opts: {
   userMessage?: string | null;
   lastAssistantMessage?: string | null;
 }): boolean {
-  return (
-    messageIsStandaloneReservationLocator(opts.userMessage) &&
-    assistantMentionedReservationLocator(opts.lastAssistantMessage)
-  );
+  return false;
 }
 
 /** @deprecated Use assistantMentionedReservationLocator */
