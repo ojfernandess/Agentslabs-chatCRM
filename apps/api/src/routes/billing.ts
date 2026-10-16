@@ -49,6 +49,10 @@ const planIdBodySchema = z.object({
   payerIdentificationNumber: z.string().trim().min(11).max(18).optional(),
 });
 
+const setupCompleteBodySchema = z.object({
+  sessionId: z.string().trim().min(8).max(255),
+});
+
 const portalBodySchema = z.object({
   returnUrl: z.string().url().max(2048).optional(),
 });
@@ -688,10 +692,9 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const organizationId = await resolveTenantOrganizationId(request, reply);
     if (!organizationId) return;
 
-    const providerName = await resolveOrganizationPaymentProvider(organizationId);
-    const provider = getBillingProvider(providerName);
+    const provider = getBillingProvider("stripe");
     if (!(await provider.isConfigured({ organizationId }))) {
-      providerNotConfiguredReply(reply, providerName);
+      providerNotConfiguredReply(reply, "stripe");
       return;
     }
 
@@ -705,7 +708,34 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
         returnUrl: body.returnUrl,
         ip: clientIp(request),
       });
-      return { ...result, provider: providerName };
+      return { ...result, provider: "stripe" as const };
+    } catch (err) {
+      sendBillingError(reply, err);
+      return;
+    }
+  });
+
+  app.post("/setup-payment-method/complete", async (request, reply) => {
+    const organizationId = await resolveTenantOrganizationId(request, reply);
+    if (!organizationId) return;
+
+    const provider = getBillingProvider("stripe");
+    if (!(await provider.isConfigured({ organizationId }))) {
+      providerNotConfiguredReply(reply, "stripe");
+      return;
+    }
+
+    const body = setupCompleteBodySchema.parse(request.body ?? {});
+    try {
+      const { finalizePaymentMethodSetupBySessionId } = await import(
+        "../lib/billing/StripeSetupService.js"
+      );
+      const result = await finalizePaymentMethodSetupBySessionId({
+        organizationId,
+        sessionId: body.sessionId,
+        actorUserId: request.user!.id,
+      });
+      return { ...result, url: result.hostedInvoiceUrl };
     } catch (err) {
       sendBillingError(reply, err);
       return;

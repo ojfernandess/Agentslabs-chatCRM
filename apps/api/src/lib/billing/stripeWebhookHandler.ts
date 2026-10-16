@@ -65,6 +65,11 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
   if (isOrganizationAgentStripeMetadata(session.metadata as Record<string, unknown> | null | undefined)) {
     return;
   }
+  if (session.mode === "setup" || session.metadata?.purpose === "payment_method_setup") {
+    const { finalizePaymentMethodSetupSession } = await import("./StripeSetupService.js");
+    await finalizePaymentMethodSetupSession(session);
+    return;
+  }
   const { fulfillAiCreditPurchaseFromStripeSession } = await import(
     "../ai-billing/AiCreditPurchaseService.js"
   );

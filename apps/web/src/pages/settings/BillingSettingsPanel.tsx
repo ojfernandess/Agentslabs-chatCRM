@@ -298,12 +298,43 @@ export function BillingSettingsPanel() {
   }, [load]);
 
   useEffect(() => {
+    const sessionId = searchParams.get("session_id");
+    if (setupNotice === "success" && sessionId) {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const res = await api.post<{ url?: string | null }>("/billing/setup-payment-method/complete", {
+            sessionId,
+          });
+          if (cancelled) return;
+          if (res.url) {
+            window.location.href = res.url;
+            return;
+          }
+          await load();
+        } catch (e) {
+          if (!cancelled) {
+            setError(e instanceof ApiError ? e.message : t("settings.billingActionError"));
+          }
+        } finally {
+          if (cancelled) return;
+          const next = new URLSearchParams(searchParams);
+          next.delete("setup");
+          next.delete("session_id");
+          setSearchParams(next, { replace: true });
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
     if (!checkoutNotice && !setupNotice) return;
     const next = new URLSearchParams(searchParams);
     next.delete("checkout");
     next.delete("setup");
+    next.delete("session_id");
     setSearchParams(next, { replace: true });
-  }, [checkoutNotice, setupNotice, searchParams, setSearchParams]);
+  }, [checkoutNotice, setupNotice, searchParams, setSearchParams, load, t]);
 
   const currentPlan = overview?.subscription?.plan;
   const pendingPlan = overview?.subscription?.pendingPlan ?? null;
@@ -412,6 +443,16 @@ export function BillingSettingsPanel() {
   const planShowsSubscribeAction = (plan: PlanRow) => !plan.isCurrent || planNeedsPayment(plan);
 
   const completeCurrentPlanPayment = () => {
+    if (
+      subscription?.stripeManaged &&
+      (subscription.status === "past_due" || subscription.status === "unpaid")
+    ) {
+      void runAction("portal", async () => {
+        const res = await api.post<{ url: string }>("/billing/portal", {});
+        window.location.href = res.url;
+      });
+      return;
+    }
     if (!pendingPlan) return;
     const planRow = plans.find((p) => p.id === pendingPlan.id);
     if (planRow) void subscribeToPlan(planRow);
@@ -460,7 +501,16 @@ export function BillingSettingsPanel() {
       });
       return;
     }
-    if (providerManaged && subscription?.status !== "canceled" && subscription?.paymentProvider !== "mercadopago") {
+    if (
+      providerManaged &&
+      subscription?.status !== "canceled" &&
+      subscription?.status !== "past_due" &&
+      subscription?.status !== "unpaid" &&
+      subscription?.status !== "pending_payment" &&
+      subscription?.status !== "incomplete" &&
+      subscription?.status !== "incomplete_expired" &&
+      subscription?.paymentProvider !== "mercadopago"
+    ) {
       await runAction(`change-${plan.id}`, async () => {
         await api.post("/billing/change-plan", { planId: plan.id });
       });
@@ -603,7 +653,9 @@ export function BillingSettingsPanel() {
             {checkoutNotice === "cancel" ? (
               <p className="text-sm opacity-90">{t("settings.billingCheckoutCancel")}</p>
             ) : null}
-            {overview?.paymentGrace?.paymentPending ? (
+            {overview?.paymentGrace?.paymentOverdue ? (
+              <p className="text-sm opacity-90">{t("settings.billingPaymentOverdue")}</p>
+            ) : overview?.paymentGrace?.paymentPending ? (
               <p className="text-sm opacity-90">{formatPaymentPendingHint()}</p>
             ) : null}
             {canCompletePayment ? (

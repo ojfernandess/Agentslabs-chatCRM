@@ -391,12 +391,12 @@ export function computePaymentGraceInfo(input: {
   const msLeft = due.getTime() - Date.now();
   if (msLeft <= 0) {
     return {
-      paymentPending: false,
-      canCompletePayment: false,
+      paymentPending: true,
+      canCompletePayment: true,
       paymentDueAt: due.toISOString(),
       daysRemaining: 0,
       paymentOverdue: true,
-      pendingPlanName: null,
+      pendingPlanName: input.pendingPlanName?.trim() || null,
     };
   }
 

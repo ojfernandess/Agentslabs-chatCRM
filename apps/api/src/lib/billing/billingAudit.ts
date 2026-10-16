@@ -14,6 +14,7 @@ export type BillingAuditAction =
   | "billing.subscription_suspended"
   | "billing.portal_opened"
   | "billing.payment_method_setup_started"
+  | "billing.payment_method_saved"
   | "billing.payment_method_portal_opened"
   | "billing.webhook_processed"
   | "billing.overage_meter_reported"
