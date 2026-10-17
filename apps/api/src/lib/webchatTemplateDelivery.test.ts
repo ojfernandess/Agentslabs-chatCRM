@@ -6,12 +6,13 @@ import {
   webchatTemplateSuffix,
 } from "./webchatTemplateDelivery.js";
 
-test("webchat suffix is the path after the domain", () => {
-  assert.equal(webchatTemplateSuffix("abc_DEF-123"), "s/abc_DEF-123");
+test("webchat suffix is a single path segment without a slash", () => {
+  assert.equal(webchatTemplateSuffix("abc_DEF-123"), "abc_DEF-123");
+  assert.equal(webchatTemplateSuffix("abc_DEF-123").includes("/"), false);
 });
 
 test("named {{webchat}} fills the body and the URL button", () => {
-  const suffix = "s/token";
+  const suffix = "token";
   const components = buildWebchatTemplateComponents(
     "Continue em https://chat.agentslabs.cloud/{{webchat}}",
     suffix,
@@ -24,14 +25,18 @@ test("named {{webchat}} fills the body and the URL button", () => {
   );
   assert.equal(components[1]?.type, "button");
   assert.equal(components[1]?.sub_type, "url");
+  assert.equal(
+    (components[1]?.parameters as { parameter_name?: string }[])[0]?.parameter_name,
+    "webchat",
+  );
   assert.deepEqual(webchatTemplateBodyParameters("Olá {{webchat}}", suffix), [suffix]);
 });
 
 test("button-only template does not invent body variables", () => {
-  const components = buildWebchatTemplateComponents("Abra o atendimento", "s/token");
+  const components = buildWebchatTemplateComponents("Abra o atendimento", "token");
   assert.equal(components.length, 1);
   assert.equal(components[0]?.type, "button");
-  assert.deepEqual(webchatTemplateBodyParameters("Abra o atendimento", "s/token"), []);
+  assert.deepEqual(webchatTemplateBodyParameters("Abra o atendimento", "token"), []);
 });
 
 test("foreign body variables are rejected", () => {

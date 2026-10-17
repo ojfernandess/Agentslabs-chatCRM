@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Layout } from "@/components/Layout";
 import { LoginPage } from "@/pages/LoginPage";
@@ -99,6 +99,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+const WEBCHAT_ROOT_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+
+/** https://dominio/{{webchat}} — o código do link, sem a barra de /s/. */
+function WebchatRootTokenRoute() {
+  const { token = "" } = useParams<{ token: string }>();
+  if (!WEBCHAT_ROOT_TOKEN_RE.test(token)) return <FallbackRedirect />;
+  return (
+    <Suspense fallback={<div className="flex min-h-dvh items-center justify-center text-sm text-ink-500">…</div>}>
+      <WebChatPage />
+    </Suspense>
+  );
 }
 
 function FallbackRedirect() {
@@ -285,6 +298,7 @@ export function App() {
           }
         />
       </Route>
+      <Route path="/:token" element={<WebchatRootTokenRoute />} />
       <Route path="*" element={<FallbackRedirect />} />
     </Routes>
   );

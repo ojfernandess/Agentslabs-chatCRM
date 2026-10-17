@@ -1,8 +1,11 @@
 import { extractBodyPlaceholdersInOrder } from "./templateVariables.js";
 
-/** Sufixo dinâmico de {{webchat}} em https://dominio/{{webchat}} → s/<token>. */
+/**
+ * Valor de {{webchat}} em https://dominio/{{webchat}}.
+ * A Meta rejeita barra, quebra de linha e o nome ausente no botão (erro 132018).
+ */
 export function webchatTemplateSuffix(token: string): string {
-  return `s/${encodeURIComponent(token)}`;
+  return token.trim();
 }
 
 /**
@@ -49,7 +52,7 @@ export function buildWebchatTemplateComponents(
     type: "button",
     sub_type: "url",
     index: "0",
-    parameters: [{ type: "text", text: suffix }],
+    parameters: [{ type: "text", text: suffix, parameter_name: "webchat" }],
   });
   return components;
 }

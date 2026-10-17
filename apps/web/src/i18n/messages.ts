@@ -6442,7 +6442,7 @@ export const messages = {
       workflowWebchatTemplateSelect: "Modelo da Meta",
       workflowWebchatTemplatePlaceholder: "Selecione um modelo",
       workflowWebchatTemplateVariable:
-        "No modelo, use o botão de URL https://seu-dominio/{{webchat}}. O sistema preenche {{webchat}} com s/ e o código do link, para o contato abrir o Web Chat.",
+        "No modelo, use o botão de URL https://seu-dominio/{{webchat}}. O sistema preenche {{webchat}} só com o código do link, sem barra. O contato abre o Web Chat nesse endereço.",
       workflowIntro:
         "Configure a resolução automática por inatividade e quais campos são obrigatórios quando um agente finaliza manualmente.",
       workflowAutoResolve: "Resolver conversas automaticamente",
@@ -14457,7 +14457,7 @@ export const messages = {
       workflowWebchatTemplateSelect: "Meta template",
       workflowWebchatTemplatePlaceholder: "Select a template",
       workflowWebchatTemplateVariable:
-        "In the template, use a URL button https://your-domain/{{webchat}}. The system fills {{webchat}} with s/ plus the link code so the contact opens Web Chat.",
+        "In the template, use a URL button https://your-domain/{{webchat}}. The system fills {{webchat}} with the link code only, without a slash. The contact opens Web Chat at that address.",
       workflowIntro:
         "Configure automatic resolution after inactivity and which fields agents must fill when resolving manually.",
       workflowAutoResolve: "Resolve conversations automatically",
