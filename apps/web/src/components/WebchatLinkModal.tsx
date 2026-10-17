@@ -44,6 +44,8 @@ export function WebchatLinkModal({
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
   const [sentOk, setSentOk] = useState(false);
+  const [sentViaTemplate, setSentViaTemplate] = useState(false);
+  const [delivery, setDelivery] = useState<"text" | "template">("text");
   const [error, setError] = useState<string | null>(null);
 
   const generate = useCallback(
@@ -51,10 +53,13 @@ export function WebchatLinkModal({
       setLoading(true);
       setError(null);
       setSentOk(false);
+      setSentViaTemplate(false);
       try {
         const r = await api.post<unknown>(`/webchat/conversations/${conversationId}/link`, {
           regenerate,
         });
+        const mode = (r as { delivery?: string }).delivery;
+        setDelivery(mode === "template" ? "template" : "text");
         const picked = pickGeneratedLink(r);
         if (!picked) {
           setError(t("webchatLink.genericError"));
@@ -75,6 +80,8 @@ export function WebchatLinkModal({
     if (!open) return;
     setCopied(false);
     setSentOk(false);
+    setSentViaTemplate(false);
+    setDelivery("text");
     setLink(null);
     setError(null);
     void generate(false);
@@ -95,7 +102,10 @@ export function WebchatLinkModal({
     setSending(true);
     setError(null);
     try {
-      await api.post(`/webchat/conversations/${conversationId}/link/send`, { regenerate: true });
+      const sent = await api.post<{ delivery?: string }>(`/webchat/conversations/${conversationId}/link/send`, {
+        regenerate: true,
+      });
+      setSentViaTemplate(sent?.delivery === "template" || delivery === "template");
       setSentOk(true);
       onSent?.();
     } catch (err) {
@@ -103,7 +113,7 @@ export function WebchatLinkModal({
     } finally {
       setSending(false);
     }
-  }, [conversationId, onSent, t]);
+  }, [conversationId, delivery, onSent, t]);
 
   const revoke = useCallback(async () => {
     setLoading(true);
@@ -192,10 +202,15 @@ export function WebchatLinkModal({
                       {reused ? ` · ${t("webchatLink.reusedNote")}` : ""}
                     </p>
                   </div>
+                  {delivery === "template" && !sentOk ? (
+                    <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-800 dark:bg-brand-950/40 dark:text-brand-200">
+                      {t("webchatLink.templateHint")}
+                    </p>
+                  ) : null}
                   {sentOk ? (
                     <p className="flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
                       <Check className="h-3.5 w-3.5" />
-                      {t("webchatLink.sentOk")}
+                      {sentViaTemplate ? t("webchatLink.sentTemplateOk") : t("webchatLink.sentOk")}
                     </p>
                   ) : null}
                 </>
@@ -252,7 +267,7 @@ export function WebchatLinkModal({
                   className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
                 >
                   {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  {t("webchatLink.send")}
+                  {delivery === "template" ? t("webchatLink.sendTemplate") : t("webchatLink.send")}
                 </button>
               </div>
             </div>

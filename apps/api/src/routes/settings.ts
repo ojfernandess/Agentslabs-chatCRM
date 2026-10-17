@@ -165,6 +165,8 @@ const settingsSchema = z.object({
   conversationsListShowWhatsappIcon: z.boolean().optional(),
   conversationsQuickContactAddEnabled: z.boolean().optional(),
   conversationsSplitViewSize: z.enum(["default", "medium", "large"]).optional(),
+  webchatContinuityTemplateEnabled: z.boolean().optional(),
+  webchatContinuityTemplateId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
   conversationBubbleClientColor: hexColorField,
   conversationBubbleAgentColor: hexColorField,
   conversationBubbleClientColorDark: hexColorField,
@@ -584,6 +586,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       if (data.autoResolveCustomerMessage === "") data.autoResolveCustomerMessage = null;
       if (data.autoResolveTagId === "") data.autoResolveTagId = null;
       if (data.autoResolveLeadTypeId === "") data.autoResolveLeadTypeId = null;
+      if (data.webchatContinuityTemplateId === "") data.webchatContinuityTemplateId = null;
       if (data.assistantOpenaiApiBaseUrl === "") data.assistantOpenaiApiBaseUrl = null;
       if (data.conversationBubbleClientColor === "") data.conversationBubbleClientColor = null;
       if (data.conversationBubbleAgentColor === "") data.conversationBubbleAgentColor = null;
@@ -699,6 +702,42 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           return reply
             .status(400)
             .send({ error: "Bad Request", message: "Invalid autoResolveLeadTypeId", statusCode: 400 });
+        }
+      }
+
+      const webchatTemplateEnabled =
+        (data.webchatContinuityTemplateEnabled as boolean | undefined) ??
+        settings?.webchatContinuityTemplateEnabled ??
+        false;
+      const webchatTemplateId =
+        data.webchatContinuityTemplateId !== undefined
+          ? (data.webchatContinuityTemplateId as string | null)
+          : (settings?.webchatContinuityTemplateId ?? null);
+      if (webchatTemplateEnabled && !webchatTemplateId) {
+        return reply.status(400).send({
+          error: "Bad Request",
+          message: "webchatContinuityTemplateId is required when the Web Chat template option is enabled",
+          statusCode: 400,
+        });
+      }
+      if (webchatTemplateId) {
+        const tplOk = await prisma.messageTemplate.findFirst({
+          where: { id: webchatTemplateId, organizationId },
+          select: { id: true, providerTemplateId: true },
+        });
+        if (!tplOk) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Invalid webchatContinuityTemplateId",
+            statusCode: 400,
+          });
+        }
+        if (webchatTemplateEnabled && !tplOk.providerTemplateId?.trim()) {
+          return reply.status(400).send({
+            error: "Bad Request",
+            message: "Select a Meta WhatsApp template for the Web Chat link",
+            statusCode: 400,
+          });
         }
       }
 

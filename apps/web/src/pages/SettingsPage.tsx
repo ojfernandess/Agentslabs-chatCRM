@@ -155,6 +155,8 @@ interface AppSettings {
   conversationsListShowWhatsappIcon?: boolean;
   conversationsQuickContactAddEnabled?: boolean;
   conversationsSplitViewSize?: "default" | "medium" | "large";
+  webchatContinuityTemplateEnabled?: boolean;
+  webchatContinuityTemplateId?: string | null;
   assistantOpenaiApiKey?: string | null;
   leadFinderSerpApiKey?: string | null;
   assistantOpenaiApiBaseUrl?: string | null;
@@ -350,6 +352,11 @@ export function SettingsPage() {
   const [wfListShowWhatsappIcon, setWfListShowWhatsappIcon] = useState(false);
   const [wfQuickContactAddEnabled, setWfQuickContactAddEnabled] = useState(false);
   const [wfSplitViewSize, setWfSplitViewSize] = useState<ConversationsSplitViewSize>("default");
+  const [wfWebchatTemplateEnabled, setWfWebchatTemplateEnabled] = useState(false);
+  const [wfWebchatTemplateId, setWfWebchatTemplateId] = useState("");
+  const [wfWebchatTemplates, setWfWebchatTemplates] = useState<
+    { id: string; name: string; templateLanguage?: string; providerTemplateId?: string | null }[]
+  >([]);
   const [workflowError, setWorkflowError] = useState("");
 
   const [assistantOpenaiKey, setAssistantOpenaiKey] = useState("");
@@ -513,6 +520,8 @@ export function SettingsPage() {
         setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
         setWfListShowWhatsappIcon(data.conversationsListShowWhatsappIcon ?? false);
         setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
+        setWfWebchatTemplateEnabled(data.webchatContinuityTemplateEnabled ?? false);
+        setWfWebchatTemplateId(data.webchatContinuityTemplateId ?? "");
         {
           const splitSize = parseConversationsSplitViewSize(data.conversationsSplitViewSize);
           setWfSplitViewSize(splitSize);
@@ -772,6 +781,26 @@ export function SettingsPage() {
     }
   };
 
+  useEffect(() => {
+    if (section !== "workflow") return;
+    let cancelled = false;
+    void api
+      .get<
+        { id: string; name: string; templateLanguage?: string; providerTemplateId?: string | null }[]
+      >("/templates")
+      .then((rows) => {
+        if (cancelled) return;
+        const list = Array.isArray(rows) ? rows : [];
+        setWfWebchatTemplates(list.filter((row) => Boolean(row.providerTemplateId?.trim())));
+      })
+      .catch(() => {
+        if (!cancelled) setWfWebchatTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [section]);
+
   const handleSaveWorkflow = async (e: FormEvent) => {
     e.preventDefault();
     setWorkflowError("");
@@ -797,6 +826,8 @@ export function SettingsPage() {
         conversationsListShowWhatsappIcon: wfListShowWhatsappIcon,
         conversationsQuickContactAddEnabled: wfQuickContactAddEnabled,
         conversationsSplitViewSize: wfSplitViewSize,
+        webchatContinuityTemplateEnabled: wfWebchatTemplateEnabled,
+        webchatContinuityTemplateId: wfWebchatTemplateId.trim() || null,
       });
       setSettings(data);
       setWfAutoEnabled(data.autoResolveConversationsEnabled ?? false);
@@ -818,6 +849,8 @@ export function SettingsPage() {
       setWfListShowContactTags(data.conversationsListShowContactTags ?? false);
       setWfListShowWhatsappIcon(data.conversationsListShowWhatsappIcon ?? false);
       setWfQuickContactAddEnabled(data.conversationsQuickContactAddEnabled ?? false);
+      setWfWebchatTemplateEnabled(data.webchatContinuityTemplateEnabled ?? false);
+      setWfWebchatTemplateId(data.webchatContinuityTemplateId ?? "");
       {
         const splitSize = parseConversationsSplitViewSize(data.conversationsSplitViewSize);
         setWfSplitViewSize(splitSize);
@@ -2429,6 +2462,54 @@ export function SettingsPage() {
                     {t("settings.workflowTitle")}
                   </h2>
                   <p className="mb-6 text-sm text-ink-500 dark:text-ink-400">{t("settings.workflowIntro")}</p>
+
+                  <div className={clsx("mb-6", settingsDivider)}>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-ink-900 dark:text-ink-50">{t("settings.workflowWebchatTemplate")}</p>
+                        <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowWebchatTemplateHint")}</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={wfWebchatTemplateEnabled}
+                        onClick={() => setWfWebchatTemplateEnabled((v) => !v)}
+                        className={clsx(
+                          "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                          wfWebchatTemplateEnabled ? "bg-brand-500" : settingsToggleOff,
+                        )}
+                      >
+                        <span
+                          className={clsx(
+                            settingsToggleThumb,
+                            wfWebchatTemplateEnabled ? "translate-x-5" : "translate-x-0",
+                          )}
+                        />
+                      </button>
+                    </div>
+                    {wfWebchatTemplateEnabled ? (
+                      <div className="mt-3 max-w-lg">
+                        <label htmlFor="wf-webchat-template" className="mb-1 block text-xs font-medium text-ink-600 dark:text-ink-300">
+                          {t("settings.workflowWebchatTemplateSelect")}
+                        </label>
+                        <select
+                          id="wf-webchat-template"
+                          value={wfWebchatTemplateId}
+                          onChange={(e) => setWfWebchatTemplateId(e.target.value)}
+                          className="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-800 dark:border-ink-600 dark:bg-ink-900 dark:text-ink-100"
+                        >
+                          <option value="">{t("settings.workflowWebchatTemplatePlaceholder")}</option>
+                          {wfWebchatTemplates.map((tpl) => (
+                            <option key={tpl.id} value={tpl.id}>
+                              {tpl.name}
+                              {tpl.templateLanguage ? ` (${tpl.templateLanguage})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-2 text-xs text-ink-500 dark:text-ink-400">{t("settings.workflowWebchatTemplateVariable")}</p>
+                      </div>
+                    ) : null}
+                  </div>
 
                   <div className={clsx("mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between", settingsDivider)}>
                     <div title={t("settings.workflowReplyToMessageTooltip")}>

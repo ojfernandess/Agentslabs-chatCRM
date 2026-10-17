@@ -1401,6 +1401,7 @@ model MessageTemplate {
   organizationId     String              @map("organization_id") @db.Uuid
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   broadcastCampaigns BroadcastCampaign[]
+  webchatContinuitySettings Settings[] @relation("SettingsWebchatContinuityTemplate")
 
   @@index([organizationId])
   @@index([organizationId, providerTemplateId, templateLanguage])
@@ -1611,6 +1612,10 @@ model Settings {
   webchatLinkExpirationHours Int     @default(24) @map("webchat_link_expiration_hours")
   /// Mensagem de continuidade enviada ao cliente com o link ({{webchat_url}} obrigatório). Null = texto padrão.
   webchatContinuityMessage   String? @map("webchat_continuity_message") @db.Text
+  /// Quando ativo, «Continuar no Web Chat» envia o modelo Meta em vez do texto livre. Desligado = envio atual.
+  webchatContinuityTemplateEnabled Boolean @default(false) @map("webchat_continuity_template_enabled")
+  webchatContinuityTemplateId      String? @map("webchat_continuity_template_id") @db.Uuid
+  webchatContinuityTemplate        MessageTemplate? @relation("SettingsWebchatContinuityTemplate", fields: [webchatContinuityTemplateId], references: [id], onDelete: SetNull)
   /// Política ao gerar novo link com sessão ativa: "revoke" (padrão) ou "keep".
   webchatRegeneratePolicy    String  @default("revoke") @map("webchat_regenerate_policy") @db.VarChar(16)
 

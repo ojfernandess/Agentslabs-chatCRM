@@ -395,7 +395,10 @@ export const messages = {
       copy: "Copiar link",
       copied: "Copiado!",
       send: "Enviar link",
+      sendTemplate: "Enviar modelo",
       sentOk: "Link enviado ao cliente pelo canal atual da conversa.",
+      sentTemplateOk: "Modelo enviado ao cliente com o link do Web Chat.",
+      templateHint: "Este envio usa o modelo da Meta configurado em Fluxos de conversa. O link em texto abaixo continua disponível para copiar.",
       regenerate: "Gerar novo link",
       revoke: "Revogar",
       genericError: "Não foi possível concluir a operação. Tente novamente.",
@@ -6433,6 +6436,13 @@ export const messages = {
       assistantSaveError: "Não foi possível guardar estas definições.",
       assistantKeyActiveHint: "Já existe uma chave guardada para esta organização.",
       workflowTitle: "Fluxos de conversa",
+      workflowWebchatTemplate: "Enviar Web Chat por modelo da Meta",
+      workflowWebchatTemplateHint:
+        "Desligado, «Continuar no Web Chat» continua enviando o link em texto. Ligado, o envio usa o modelo selecionado, sem mudar o restante do atendimento.",
+      workflowWebchatTemplateSelect: "Modelo da Meta",
+      workflowWebchatTemplatePlaceholder: "Selecione um modelo",
+      workflowWebchatTemplateVariable:
+        "No modelo, use o botão de URL https://seu-dominio/{{webchat}}. O sistema preenche {{webchat}} com s/ e o código do link, para o contato abrir o Web Chat.",
       workflowIntro:
         "Configure a resolução automática por inatividade e quais campos são obrigatórios quando um agente finaliza manualmente.",
       workflowAutoResolve: "Resolver conversas automaticamente",
@@ -8420,7 +8430,10 @@ export const messages = {
       copy: "Copy link",
       copied: "Copied!",
       send: "Send link",
+      sendTemplate: "Send template",
       sentOk: "Link sent to the customer through the conversation's current channel.",
+      sentTemplateOk: "Template sent to the customer with the Web Chat link.",
+      templateHint: "This send uses the Meta template configured in Conversation workflows. The text link below can still be copied.",
       regenerate: "New link",
       revoke: "Revoke",
       genericError: "The operation could not be completed. Please try again.",
@@ -14438,6 +14451,13 @@ export const messages = {
       assistantSaveError: "Could not save these settings.",
       assistantKeyActiveHint: "A key is already stored for this organization.",
       workflowTitle: "Conversation workflows",
+      workflowWebchatTemplate: "Send Web Chat with a Meta template",
+      workflowWebchatTemplateHint:
+        "Off, Continue on Web Chat still sends the link as text. On, that send uses the selected template and leaves the rest of attendance unchanged.",
+      workflowWebchatTemplateSelect: "Meta template",
+      workflowWebchatTemplatePlaceholder: "Select a template",
+      workflowWebchatTemplateVariable:
+        "In the template, use a URL button https://your-domain/{{webchat}}. The system fills {{webchat}} with s/ plus the link code so the contact opens Web Chat.",
       workflowIntro:
         "Configure automatic resolution after inactivity and which fields agents must fill when resolving manually.",
       workflowAutoResolve: "Resolve conversations automatically",
