@@ -268,7 +268,7 @@ export function ConversationsSplitToolbar(props: Props) {
         role="tablist"
         aria-label={t("conversations.title")}
       >
-        <div className="flex flex-nowrap items-stretch">
+        <div className="flex flex-wrap items-stretch">
         {orgAttendanceTabEnabled ? (
           <button
             type="button"
@@ -380,7 +380,7 @@ export function ConversationsSplitToolbar(props: Props) {
       {/* Estado: todas · abertas · pendentes · finalizadas */}
       {showStatusRow ? (
         <div
-          className="flex flex-nowrap items-stretch gap-0 overflow-x-auto border-b border-ink-200/80 dark:border-ink-700/80 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex flex-wrap items-stretch gap-0 border-b border-ink-200/80 dark:border-ink-700/80"
           role="tablist"
           aria-label={t("conversations.filterStatus")}
         >
@@ -397,7 +397,7 @@ export function ConversationsSplitToolbar(props: Props) {
                 className={statusTabButtonClass(active)}
                 title={f.label}
               >
-                <span className="max-w-[5.5rem] truncate">{f.label}</span>
+                <span className="whitespace-nowrap">{f.label}</span>
                 {count != null ? (
                   <span className={statusCountBadgeClass(active, f.key)}>{count}</span>
                 ) : null}
@@ -411,7 +411,7 @@ export function ConversationsSplitToolbar(props: Props) {
       ) : null}
 
       {/* Time + caixa */}
-      <div className="flex flex-nowrap items-center gap-1.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <SplitSelect
           id="conv-team-filter-split"
           icon={UsersRound}
