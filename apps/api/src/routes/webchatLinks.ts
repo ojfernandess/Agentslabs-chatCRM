@@ -13,7 +13,9 @@ import {
 } from "../lib/webchatSession.js";
 import { deliverOutboundWhatsAppMessage } from "../lib/outboundMessage.js";
 import { appendTimelineEvent } from "../lib/timeline.js";
+import { loadApprovedWabaTemplateComponents } from "../lib/syncWabaTemplates.js";
 import {
+  buildWebchatComponentsFromMetaDefinition,
   buildWebchatTemplateComponents,
   webchatTemplateBodyParameters,
   webchatTemplateSuffix,
@@ -172,7 +174,16 @@ export async function webchatLinkRoutes(app: FastifyInstance): Promise<void> {
         const suffix = webchatTemplateSuffix(r.session.token);
         let templateComponents: Array<Record<string, unknown>>;
         try {
-          templateComponents = buildWebchatTemplateComponents(template.body, suffix);
+          const definition = await loadApprovedWabaTemplateComponents({
+            organizationId,
+            inboxId: conv.inboxId,
+            templateName: template.providerTemplateId.trim(),
+            language: template.templateLanguage,
+            log: request.log,
+          });
+          templateComponents = definition
+            ? buildWebchatComponentsFromMetaDefinition(definition, suffix)
+            : buildWebchatTemplateComponents(template.body, suffix);
         } catch (err) {
           const message = err instanceof Error ? err.message : "Invalid Web Chat template variables";
           return reply.status(422).send({

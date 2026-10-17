@@ -3,9 +3,17 @@ import { bodyVariableCount } from "./templateVariables.js";
 const GRAPH_VERSION = "v21.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-type MetaTemplateComponent = {
+export type MetaTemplateButton = {
   type?: string;
   text?: string;
+  url?: string;
+};
+
+export type MetaTemplateComponent = {
+  type?: string;
+  format?: string;
+  text?: string;
+  buttons?: MetaTemplateButton[];
 };
 
 export type MetaListedTemplate = {
@@ -78,6 +86,24 @@ export async function listApprovedWabaMessageTemplates(
   }
 
   return out;
+}
+
+/** Um modelo pelo nome (todas as línguas), com os componentes aprovados na Meta. */
+export async function fetchWabaTemplatesByName(
+  wabaId: string,
+  accessToken: string,
+  name: string,
+): Promise<MetaListedTemplate[]> {
+  const url = `${GRAPH_BASE}/${wabaId}/message_templates?name=${encodeURIComponent(name)}&fields=name,status,language,category,components`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Meta API (message_templates): ${res.status} ${t}`);
+  }
+  const data = (await res.json()) as { data?: MetaListedTemplate[] };
+  return (data.data ?? []).filter((row) => String(row.status ?? "").toUpperCase() === "APPROVED");
 }
 
 export function metaTemplateToLocalFields(row: MetaListedTemplate): {

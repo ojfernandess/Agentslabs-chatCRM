@@ -9,8 +9,10 @@ import {
 } from "./inboxWhatsappConfig.js";
 import {
   fetchWabaIdFromPhoneNumberId,
+  fetchWabaTemplatesByName,
   listApprovedWabaMessageTemplates,
   metaTemplateToLocalFields,
+  type MetaTemplateComponent,
 } from "./metaWabaTemplates.js";
 
 export type WabaTemplateSyncResult = {
@@ -118,6 +120,43 @@ export async function syncWabaTemplatesForInbox(
     "inbox",
     log,
   );
+}
+
+/** Componentes aprovados do modelo na Meta, para preencher só os parâmetros que existem. */
+export async function loadApprovedWabaTemplateComponents(input: {
+  organizationId: string;
+  inboxId: string;
+  templateName: string;
+  language?: string | null;
+  log?: FastifyBaseLogger;
+}): Promise<MetaTemplateComponent[] | null> {
+  const inbox = await prisma.inbox.findFirst({
+    where: { id: input.inboxId, organizationId: input.organizationId, channelType: InboxChannelType.WHATSAPP },
+    select: { channelConfig: true },
+  });
+  if (!inbox) return null;
+  const creds = await resolveInboxWhatsappCredentials(input.organizationId, inbox);
+  if (!creds || !isMetaCloudWhatsappProvider(creds.whatsappProvider)) return null;
+  const phoneId = creds.whatsappPhoneNumberId?.trim() ?? "";
+  const apiKeyEnc = creds.whatsappApiKey?.trim() ?? "";
+  if (!phoneId || !apiKeyEnc) return null;
+  const accessToken = decrypt(apiKeyEnc) ?? "";
+  if (!accessToken) return null;
+  try {
+    const parsed = parseInboxWhatsappFromChannelConfig(inbox.channelConfig);
+    let wabaId = parsed.whatsappBusinessAccountId?.trim() || null;
+    if (!wabaId) wabaId = await fetchWabaIdFromPhoneNumberId(phoneId, accessToken);
+    if (!wabaId) return null;
+    const rows = await fetchWabaTemplatesByName(wabaId, accessToken, input.templateName);
+    const wanted = (input.language ?? "").trim().toLowerCase();
+    const match =
+      rows.find((row) => row.language.trim().toLowerCase() === wanted) ??
+      rows[0];
+    return match?.components ?? null;
+  } catch (err) {
+    input.log?.warn({ err, templateName: input.templateName }, "webchat template definition lookup failed");
+    return null;
+  }
 }
 
 /** Sincroniza modelos para a org: tenta caixas Meta/360dialog e depois Settings legado. */

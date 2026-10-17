@@ -1,3 +1,4 @@
+import type { MetaTemplateComponent } from "./metaWabaTemplates.js";
 import { extractBodyPlaceholdersInOrder } from "./templateVariables.js";
 
 /**
@@ -8,9 +9,63 @@ export function webchatTemplateSuffix(token: string): string {
   return token.trim();
 }
 
+function textParameter(name: string, value: string): Record<string, unknown> {
+  const parameter: Record<string, unknown> = { type: "text", text: value };
+  if (!/^\d+$/.test(name)) parameter.parameter_name = name;
+  return parameter;
+}
+
 /**
- * Monta os components Meta do envio opcional por template.
- * O botão de URL recebe o sufixo. O corpo só é preenchido quando a variável é {{webchat}} ou um único {{1}}.
+ * Preenche só os parâmetros que o modelo aprovado declara (corpo, cabeçalho ou botão de URL).
+ * Não envia botão quando a variável está só no texto, nem o contrário.
+ */
+export function buildWebchatComponentsFromMetaDefinition(
+  components: MetaTemplateComponent[] | null | undefined,
+  value: string,
+): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  for (const component of components ?? []) {
+    const type = String(component.type ?? "").toUpperCase();
+    if (type === "HEADER") {
+      const format = String(component.format ?? "TEXT").toUpperCase();
+      if (format !== "TEXT") {
+        throw new Error("This template has a media header. Use a text template with {{webchat}}.");
+      }
+      const tokens = extractBodyPlaceholdersInOrder(component.text ?? "");
+      if (tokens.length === 0) continue;
+      out.push({
+        type: "header",
+        parameters: tokens.map((name) => textParameter(name, value)),
+      });
+    }
+    if (type === "BODY") {
+      const tokens = extractBodyPlaceholdersInOrder(component.text ?? "");
+      if (tokens.length === 0) continue;
+      out.push({
+        type: "body",
+        parameters: tokens.map((name) => textParameter(name, value)),
+      });
+    }
+    if (type === "BUTTONS") {
+      (component.buttons ?? []).forEach((button, index) => {
+        if (String(button.type ?? "").toUpperCase() !== "URL") return;
+        const tokens = extractBodyPlaceholdersInOrder(button.url ?? "");
+        if (tokens.length === 0) return;
+        out.push({
+          type: "button",
+          sub_type: "url",
+          index: String(index),
+          parameters: [textParameter(tokens[0] ?? "1", value)],
+        });
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Fallback quando a definição da Meta não pôde ser lida.
+ * Se o corpo já tem variável, não inventa um botão. Se não tem, envia o botão {{webchat}}.
  */
 export function buildWebchatTemplateComponents(
   body: string,
@@ -48,12 +103,14 @@ export function buildWebchatTemplateComponents(
     }
   }
 
-  components.push({
-    type: "button",
-    sub_type: "url",
-    index: "0",
-    parameters: [{ type: "text", text: suffix, parameter_name: "webchat" }],
-  });
+  if (tokens.length === 0) {
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [textParameter("1", suffix)],
+    });
+  }
   return components;
 }
 
