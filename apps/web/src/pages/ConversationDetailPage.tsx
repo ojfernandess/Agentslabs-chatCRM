@@ -222,7 +222,6 @@ import {
   type ConversationMessageSearchResult,
 } from "@/components/conversation/ConversationMessageSearchPanel";
 import { ConversationScrollToLatestButton } from "@/components/conversation/ConversationScrollToLatestButton";
-import { ConversationHeaderActionBar } from "@/components/conversation/ConversationHeaderActionBar";
 import { MessageTextWithHighlight } from "@/lib/conversationMessageSearchHighlight";
 
 interface Message {
@@ -4327,8 +4326,8 @@ export function ConversationDetailPage() {
             />
             <div className="min-w-0 flex-1">
               <div className="flex flex-col gap-2">
-                <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2">
-                  <div className="min-w-[10rem] flex-1">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         to={`/contacts/${conversation.contact.id}`}
@@ -4482,8 +4481,20 @@ export function ConversationDetailPage() {
                     </div>
                   </div>
 
-                  <div className="ml-auto min-w-[min(100%,16rem)] max-w-full flex-[1_1_20rem] self-start max-lg:hidden">
-                    <ConversationHeaderActionBar moreLabel={t("conversationDetail.moreActions")}>
+                  <div
+                    className={clsx(
+                      "min-w-0 flex-[0_1_auto] self-start max-lg:hidden",
+                      isSplitLayout
+                        ? "max-w-[min(100%,54%)] overflow-x-auto overscroll-x-contain pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        : "max-w-[min(100%,42rem)]",
+                    )}
+                  >
+                    <div
+                      className={clsx(
+                        "flex w-max min-w-full gap-2",
+                        isSplitLayout ? "flex-nowrap justify-end" : "flex-wrap justify-end",
+                      )}
+                    >
                     {!isWebsiteInbox && contactDialPhone ? (
                       <TelephonyCallButton
                         phone={contactDialPhone}
@@ -4603,7 +4614,7 @@ export function ConversationDetailPage() {
                     >
                       <LayoutGrid className="h-5 w-5" />
                     </button>
-                    </ConversationHeaderActionBar>
+                    </div>
                   </div>
                 </div>
               </div>

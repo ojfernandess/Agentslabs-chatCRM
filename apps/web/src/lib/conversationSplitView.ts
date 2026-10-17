@@ -76,11 +76,11 @@ export function conversationsSplitViewGridClass(
         "2xl:grid-cols-[minmax(0,min(420px,28%))_minmax(0,1fr)]",
       ].join(" ");
     case "large":
-      // Fila larga, mas o painel da conversa fica com a maior parte da largura.
+      // Base ~536px; em ecrãs muito largos cresce um pouco (até ~600px).
       return [
-        "lg:grid-cols-[minmax(0,min(420px,36%))_minmax(0,1fr)]",
-        "xl:grid-cols-[minmax(0,min(480px,34%))_minmax(0,1fr)]",
-        "2xl:grid-cols-[minmax(0,min(560px,30%))_minmax(0,1fr)]",
+        "lg:grid-cols-[minmax(0,min(536px,42%))_minmax(0,1fr)]",
+        "xl:grid-cols-[minmax(0,min(536px,40%))_minmax(0,1fr)]",
+        "2xl:grid-cols-[minmax(0,min(600px,34%))_minmax(0,1fr)]",
       ].join(" ");
     case "default":
     default:
