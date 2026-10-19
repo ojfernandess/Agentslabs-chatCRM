@@ -479,6 +479,7 @@ export function ConversationDetailPage() {
   const [templateModalMode, setTemplateModalMode] = useState<TemplateSendModalMode>("send");
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [fileDropActive, setFileDropActive] = useState(false);
   const [attachKind, setAttachKind] = useState<"IMAGE" | "DOCUMENT" | null>(null);
   const [imageSentNotice, setImageSentNotice] = useState(false);
   const [privateNote, setPrivateNote] = useState(false);
@@ -546,6 +547,7 @@ export function ConversationDetailPage() {
   const [priorityError, setPriorityError] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileDropDepthRef = useRef(0);
   const resolveNextIdRef = useRef<string | null>(null);
   /** Evita repor lead/valor a cada poll da conversa enquanto o modal está aberto. */
   const resolveFormInitializedRef = useRef(false);
@@ -4129,6 +4131,65 @@ export function ConversationDetailPage() {
         }
       : undefined;
 
+  const canDropConversationFiles =
+    (evolutionRichChat || isEmailInbox) &&
+    !attachBusy &&
+    !recording &&
+    !voicePreview &&
+    !(!privateNote && (isOutsideWindow || contactIsBlocked) && !isEmailInbox);
+
+  const droppedFileAllowed = (file: File) => {
+    const name = file.name.toLowerCase();
+    const type = (file.type || "").toLowerCase();
+    if (type.startsWith("image/")) return true;
+    if (type === "application/pdf" || name.endsWith(".pdf")) return true;
+    if (
+      type === "application/msword" ||
+      type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      name.endsWith(".doc") ||
+      name.endsWith(".docx")
+    ) {
+      return true;
+    }
+    return isEmailInbox && (type === "video/mp4" || type === "video/webm");
+  };
+
+  const conversationDragHasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+
+  const onConversationDragEnter = (e: React.DragEvent) => {
+    if (!conversationDragHasFiles(e) || !canDropConversationFiles) return;
+    e.preventDefault();
+    fileDropDepthRef.current += 1;
+    setFileDropActive(true);
+  };
+
+  const onConversationDragOver = (e: React.DragEvent) => {
+    if (!conversationDragHasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = canDropConversationFiles ? "copy" : "none";
+  };
+
+  const onConversationDragLeave = (e: React.DragEvent) => {
+    if (!conversationDragHasFiles(e)) return;
+    fileDropDepthRef.current = Math.max(0, fileDropDepthRef.current - 1);
+    if (fileDropDepthRef.current === 0) setFileDropActive(false);
+  };
+
+  const onConversationDrop = (e: React.DragEvent) => {
+    if (!conversationDragHasFiles(e)) return;
+    e.preventDefault();
+    fileDropDepthRef.current = 0;
+    setFileDropActive(false);
+    if (!canDropConversationFiles) return;
+    const files = Array.from(e.dataTransfer.files).filter(droppedFileAllowed);
+    if (files.length === 0) return;
+    void (async () => {
+      for (const file of files) {
+        await sendAttachment(file);
+      }
+    })();
+  };
+
   return (
     <div
       className={clsx(
@@ -4142,7 +4203,20 @@ export function ConversationDetailPage() {
       {!emailWorkspaceMode ? (
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(103,52,255,0.08)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_90%_45%_at_50%_0%,rgba(99,102,241,0.16),transparent_60%)]" />
       ) : null}
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+        onDragEnter={onConversationDragEnter}
+        onDragOver={onConversationDragOver}
+        onDragLeave={onConversationDragLeave}
+        onDrop={onConversationDrop}
+      >
+        {fileDropActive ? (
+          <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-[#0F1420]/55 p-6">
+            <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-white/95 px-6 py-4 text-sm font-medium text-ink-800 shadow-lg dark:border-brand-400 dark:bg-[#151826]/95 dark:text-ink-50">
+              {t("conversationDetail.dropFileToSend")}
+            </p>
+          </div>
+        ) : null}
         {emailWorkspaceMode ? (
           <div className="shrink-0 border-b border-ink-200 bg-white px-4 py-3 dark:border-soft-border dark:bg-[#151826]">
             <div className="flex flex-wrap items-start justify-between gap-3">
