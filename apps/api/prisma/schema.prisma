@@ -1727,6 +1727,11 @@ model Settings {
   /// Logo opcional da organização (URL absoluta). Se null, a UI usa a logo do sistema.
   organizationLogoUrl String? @map("organization_logo_url") @db.VarChar(2048)
 
+  /// Fundo ilustrado opcional da área de mensagens. Desligado por padrão.
+  chatWallpaperEnabled Boolean @default(false) @map("chat_wallpaper_enabled")
+  /// Intensidade do padrão, de 0 a 30. Só a camada ilustrada usa este valor.
+  chatWallpaperOpacity Int @default(8) @map("chat_wallpaper_opacity")
+
   @@map("settings")
 }
 

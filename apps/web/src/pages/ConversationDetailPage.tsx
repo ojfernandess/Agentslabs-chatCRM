@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useSyncExternalStore,
   useLayoutEffect,
   useRef,
   useMemo,
@@ -11,6 +12,9 @@ import {
 } from "react";
 import { useParams, Link, useNavigate, useMatch, useOutletContext, useLocation } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
+import { ChatWallpaperLayer } from "@/components/chat/ChatWallpaperLayer";
+import { getAppliedChatWallpaper, subscribeAppliedChatWallpaper } from "@/lib/chatWallpaper";
+import { useDarkMode } from "@/hooks/useDarkMode";
 import { EmojiPickerPopover } from "@/components/EmojiPickerPopover";
 import { insertTextAtSelection } from "@/lib/insertTextAtSelection";
 import type { EmojiCategoryId } from "@/lib/emojiPickerData";
@@ -722,6 +726,11 @@ export function ConversationDetailPage() {
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatWallpaper = useSyncExternalStore(subscribeAppliedChatWallpaper, getAppliedChatWallpaper, () => ({
+    enabled: false,
+    opacity: 8,
+  }));
+  const chatWallpaperDark = useDarkMode();
   const crmAsideScrollRef = useRef<HTMLDivElement>(null);
   /** Só faz auto-scroll ao fundo se o utilizador já estava junto ao fundo (evita saltar ao fazer poll / ler histórico). */
   const stickToBottomRef = useRef(true);
@@ -4784,11 +4793,18 @@ export function ConversationDetailPage() {
           onScroll={onMessagesViewportScroll}
           className={clsx(
             "relative h-full min-h-0 overflow-auto overflow-x-hidden",
+            chatWallpaper.enabled && "isolate",
             emailWorkspaceMode
               ? "bg-ink-50 px-3 py-4 dark:bg-[#0F1420] sm:px-5"
               : "px-3 py-4 sm:px-5 xl:pr-14",
           )}
         >
+          {chatWallpaper.enabled ? (
+            <ChatWallpaperLayer
+              opacity={chatWallpaper.opacity}
+              mode={chatWallpaperDark ? "dark" : "light"}
+            />
+          ) : null}
           {!emailWorkspaceMode ? (
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           ) : (

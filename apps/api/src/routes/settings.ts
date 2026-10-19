@@ -167,6 +167,8 @@ const settingsSchema = z.object({
   conversationsSplitViewSize: z.enum(["default", "medium", "large"]).optional(),
   webchatContinuityTemplateEnabled: z.boolean().optional(),
   webchatContinuityTemplateId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
+  chatWallpaperEnabled: z.boolean().optional(),
+  chatWallpaperOpacity: z.number().int().min(0).max(30).optional(),
   conversationBubbleClientColor: hexColorField,
   conversationBubbleAgentColor: hexColorField,
   conversationBubbleClientColorDark: hexColorField,
@@ -374,6 +376,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationAudioPlayerClientAccentColor: true,
         conversationAudioPlayerClientSurfaceColorDark: true,
         conversationAudioPlayerClientAccentColorDark: true,
+        chatWallpaperEnabled: true,
+        chatWallpaperOpacity: true,
       },
     });
 
@@ -400,6 +404,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationAudioPlayerClientAccentColor: settings?.conversationAudioPlayerClientAccentColor ?? null,
       conversationAudioPlayerClientSurfaceColorDark: settings?.conversationAudioPlayerClientSurfaceColorDark ?? null,
       conversationAudioPlayerClientAccentColorDark: settings?.conversationAudioPlayerClientAccentColorDark ?? null,
+      chatWallpaperEnabled: settings?.chatWallpaperEnabled ?? false,
+      chatWallpaperOpacity: settings?.chatWallpaperOpacity ?? 8,
     };
   });
 

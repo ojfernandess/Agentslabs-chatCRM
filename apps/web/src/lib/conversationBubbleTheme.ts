@@ -1,3 +1,5 @@
+import { chatWallpaperFromSettings, publishAppliedChatWallpaper } from "./chatWallpaper";
+
 export type ConversationBubbleTheme = {
   conversationBubbleClientColor?: string | null;
   conversationBubbleAgentColor?: string | null;
@@ -21,6 +23,8 @@ export type ConversationBubbleTheme = {
   conversationAudioPlayerClientAccentColor?: string | null;
   conversationAudioPlayerClientSurfaceColorDark?: string | null;
   conversationAudioPlayerClientAccentColorDark?: string | null;
+  chatWallpaperEnabled?: boolean | null;
+  chatWallpaperOpacity?: number | null;
 };
 
 export const DEFAULT_BUBBLE_THEME = {
@@ -48,7 +52,14 @@ export const DEFAULT_BUBBLE_THEME = {
   audioClientAccentDark: "#7c5cff",
 } as const;
 
-const THEME_VAR_PAIRS: [keyof ConversationBubbleTheme, string][] = [
+type BubbleColorKey = Exclude<
+  {
+    [K in keyof ConversationBubbleTheme]: NonNullable<ConversationBubbleTheme[K]> extends string ? K : never;
+  }[keyof ConversationBubbleTheme],
+  undefined
+>;
+
+const THEME_VAR_PAIRS: [BubbleColorKey, string][] = [
   ["conversationBubbleClientColor", "--org-bubble-client-bg"],
   ["conversationBubbleAgentColor", "--org-bubble-agent-bg"],
   ["conversationBubbleClientColorDark", "--org-bubble-client-bg-dark"],
@@ -82,6 +93,7 @@ export function hasCustomBubbleTheme(theme: ConversationBubbleTheme | null | und
 }
 
 export function applyConversationBubbleTheme(theme: ConversationBubbleTheme | null | undefined): void {
+  publishAppliedChatWallpaper(chatWallpaperFromSettings(theme));
   const root = document.documentElement;
 
   for (const [key, cssVar] of THEME_VAR_PAIRS) {
