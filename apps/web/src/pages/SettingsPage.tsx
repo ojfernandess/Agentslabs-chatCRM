@@ -1977,7 +1977,9 @@ export function SettingsPage() {
                           {t("settings.chatWallpaperToggle")}
                         </p>
                         <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
-                          {t("settings.chatWallpaperToggleHint")}
+                          {chatWallpaperEnabled
+                            ? t("settings.chatWallpaperToggleHintOn")
+                            : t("settings.chatWallpaperToggleHint")}
                         </p>
                       </div>
                       <button
@@ -1986,14 +1988,14 @@ export function SettingsPage() {
                         aria-checked={chatWallpaperEnabled}
                         onClick={() => setChatWallpaperEnabled((on) => !on)}
                         className={clsx(
-                          "relative h-6 w-11 shrink-0 rounded-full transition-colors",
-                          chatWallpaperEnabled ? "bg-brand-500" : "bg-ink-300 dark:bg-ink-600",
+                          "touch-target-compact relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
+                          chatWallpaperEnabled ? "bg-brand-500" : settingsToggleOff,
                         )}
                       >
                         <span
                           className={clsx(
-                            "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
-                            chatWallpaperEnabled ? "translate-x-5" : "translate-x-0.5",
+                            settingsToggleThumb,
+                            chatWallpaperEnabled ? "translate-x-5" : "translate-x-0",
                           )}
                         />
                       </button>

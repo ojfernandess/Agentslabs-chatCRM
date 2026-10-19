@@ -20,8 +20,10 @@ export function ChatWallpaperLayer({ opacity, mode, className }: ChatWallpaperLa
       style={{
         backgroundImage: "url(/fundo_chat.svg)",
         opacity: amount,
-        mixBlendMode: mode === "dark" ? "soft-light" : "multiply",
-        filter: mode === "dark" ? "invert(0.92) hue-rotate(180deg) saturate(0.4)" : undefined,
+        /* O SVG já é traço slate com fundo transparente.
+           No claro, multiply assenta o traço no fundo claro.
+           No escuro, normal mantém o mesmo traço; inverter/soft-light apagava o desenho. */
+        mixBlendMode: mode === "dark" ? "normal" : "multiply",
       }}
     />
   );

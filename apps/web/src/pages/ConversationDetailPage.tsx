@@ -4793,7 +4793,7 @@ export function ConversationDetailPage() {
           onScroll={onMessagesViewportScroll}
           className={clsx(
             "relative h-full min-h-0 overflow-auto overflow-x-hidden",
-            chatWallpaper.enabled && "isolate",
+            chatWallpaper.enabled && "isolate bg-ink-50 dark:bg-[#0F1420]",
             emailWorkspaceMode
               ? "bg-ink-50 px-3 py-4 dark:bg-[#0F1420] sm:px-5"
               : "px-3 py-4 sm:px-5 xl:pr-14",
