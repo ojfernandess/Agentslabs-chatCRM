@@ -17,6 +17,19 @@ type ChatWallpaperLayerProps = {
 /** Traços claros demais para multiply/invert. A máscara pinta a cor do modo. */
 const INK_MASK_PATTERNS = new Set<ChatWallpaperPattern>(["abstract", "doodle", "opennexo"]);
 
+/**
+ * Tamanho da peça para as figuras ficarem na mesma escala de fundo_chat.svg (420px).
+ * O doodle nasce maior no arquivo; o OpenNexo nasce menor e com traço fino.
+ */
+const MASK_TILE_CLASS: Record<Exclude<ChatWallpaperPattern, "standard">, string> = {
+  abstract:
+    "[mask-size:280px_auto] sm:[mask-size:420px_auto] [-webkit-mask-size:280px_auto] sm:[-webkit-mask-size:420px_auto]",
+  doodle:
+    "[mask-size:174px_auto] sm:[mask-size:260px_auto] [-webkit-mask-size:174px_auto] sm:[-webkit-mask-size:260px_auto]",
+  opennexo:
+    "[mask-size:388px_auto] sm:[mask-size:580px_auto] [-webkit-mask-size:388px_auto] sm:[-webkit-mask-size:580px_auto]",
+};
+
 /** Camada só do padrão ilustrado. A opacidade não desce para as mensagens. */
 export function ChatWallpaperLayer({ opacity, mode, pattern, className }: ChatWallpaperLayerProps) {
   const amount = clampChatWallpaperOpacity(opacity) / 100;
@@ -28,9 +41,13 @@ export function ChatWallpaperLayer({ opacity, mode, pattern, className }: ChatWa
     <div
       aria-hidden
       className={clsx(
-        "pointer-events-none absolute inset-0 bg-repeat bg-[length:280px_auto] sm:bg-[length:420px_auto]",
-        inkMask &&
-          "[mask-repeat:repeat] [-webkit-mask-repeat:repeat] [mask-size:280px_auto] sm:[mask-size:420px_auto] [-webkit-mask-size:280px_auto] sm:[-webkit-mask-size:420px_auto]",
+        "pointer-events-none absolute inset-0",
+        inkMask
+          ? clsx(
+              "[mask-repeat:repeat] [-webkit-mask-repeat:repeat]",
+              MASK_TILE_CLASS[patternId as Exclude<ChatWallpaperPattern, "standard">],
+            )
+          : "bg-repeat bg-[length:280px_auto] sm:bg-[length:420px_auto]",
         className,
       )}
       style={
