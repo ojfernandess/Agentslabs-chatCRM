@@ -477,6 +477,38 @@ export function isNfDataCollectionTurn(opts: {
   return isNfFormSubmissionTurn(opts) || isNfPartialDataTurn(opts);
 }
 
+/** Última mensagem do agente = pergunta pessoa física ou pessoa jurídica do recibo. */
+export function assistantAskedReceiptPersonType(lastAssistantMessage?: string | null): boolean {
+  const t = (lastAssistantMessage ?? "").trim();
+  if (!t || !/\brecibo\b/i.test(t)) return false;
+  return /\bpessoa\s+f[ií]sica\b/i.test(t) && /\bpessoa\s+jur[ií]dica\b/i.test(t);
+}
+
+/** Resposta explícita PF ou PJ, sem um nome no lugar da escolha. */
+export function userMessageIsExplicitReceiptPersonType(userMessage?: string | null): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t || t.length > 80) return false;
+  if (/\b(ltda|s\.?\s*a\.?|eireli|me\b|epp|ind[uú]stria|com[eé]rcio)\b/i.test(t)) return false;
+  return /^(?:pessoa\s+)?f[ií]sica$|^(?:pessoa\s+)?jur[ií]dica$|^(?:pf|pj)$|^(?:cpf|cnpj)$|^em\s+meu\s+nome$|^em\s+nome\s+da\s+empresa$|^empresa$/i.test(
+    t,
+  );
+}
+
+/**
+ * Nome (empresa ou pessoa) no lugar da escolha PF/PJ.
+ * O playbook pede confirmação antes do formulário; este turno não é consulta de KB.
+ */
+export function isReceiptPersonTypeNameTurn(opts: {
+  userMessage?: string | null;
+  lastAssistantMessage?: string | null;
+}): boolean {
+  if (!assistantAskedReceiptPersonType(opts.lastAssistantMessage)) return false;
+  const t = (opts.userMessage ?? "").trim();
+  if (!t || t.length > 160 || /\?/.test(t)) return false;
+  if (userMessageIsExplicitReceiptPersonType(t)) return false;
+  return /[\p{L}]{3,}/u.test(t);
+}
+
 /** Última msg do agente = espelho de confirmação NF. */
 export function assistantSentNfConfirmationMirror(lastAssistantMessage?: string | null): boolean {
   const t = (lastAssistantMessage ?? "").trim();

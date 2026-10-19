@@ -21,6 +21,8 @@ import {
   userMessageLooksLikeReceiptFormSubmission,
   assistantSentReceiptDataForm,
   isReceiptFormSubmissionTurn,
+  isReceiptPersonTypeNameTurn,
+  userMessageIsExplicitReceiptPersonType,
   assistantSentReceiptConfirmationMirror,
   userMessageLooksLikeFnrhEmbraturQuestion,
   userMessageLooksLikeFnrhFormSubmission,
@@ -368,6 +370,19 @@ Destino: Rio de Janeiro`;
 
 test("check-in refusal without FNRH context is not C16", () => {
   assert.equal(userMessageLooksLikeFnrhEmbraturQuestion("não quero fazer check-in"), false);
+});
+
+test("company name after PF/PJ question is a confirmation turn, not a KB lookup", () => {
+  const last =
+    "Perfeito! Para emitir o recibo, preciso saber: é em nome de pessoa física ou pessoa jurídica?";
+  const name = "Strawplast Industria e Comercio Ltda";
+  assert.equal(userMessageIsExplicitReceiptPersonType("pessoa jurídica"), true);
+  assert.equal(userMessageIsExplicitReceiptPersonType(name), false);
+  assert.equal(isReceiptPersonTypeNameTurn({ userMessage: name, lastAssistantMessage: last }), true);
+  assert.equal(
+    shouldRequireUnitKnowledgeLookupThisTurn({ userMessage: name, lastAssistantMessage: last }),
+    false,
+  );
 });
 
 test("receipt mirror with esta tudo correto is detected", () => {

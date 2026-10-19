@@ -11,6 +11,7 @@ import {
   userMessageLooksLikeAmenityItemQuestion,
   resolveEstablishmentInConversation,
   assistantRequestedEstablishmentForUnitKb,
+  isReceiptPersonTypeNameTurn,
 } from "./unitKnowledgeFlow.js";
 import {
   assistantIsQuoteAbertura,
@@ -400,6 +401,15 @@ export function resolveKnowledgeSearchSkip(
     assistantRequestedEstablishmentForUnitKb(lastAssistant)
   ) {
     return null;
+  }
+
+  if (
+    isReceiptPersonTypeNameTurn({
+      userMessage,
+      lastAssistantMessage: lastAssistant,
+    })
+  ) {
+    return "cadastro_turn";
   }
 
   if (isShortConfirmationOrFlowReply(userMessage)) return "short_confirmation";

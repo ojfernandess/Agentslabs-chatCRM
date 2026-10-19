@@ -133,6 +133,7 @@ import {
   shouldRequireCallHumanAfterNfConfirmation,
   isReceiptFormSubmissionTurn,
   isNfDataCollectionTurn,
+  isReceiptPersonTypeNameTurn,
   shouldRequireFnrhKnowledgeLookupThisTurn,
   userMessageLooksLikeFnrhEmbraturQuestion,
 } from "../../unitKnowledgeFlow.js";
@@ -670,6 +671,10 @@ export function resolveRequiredToolNamesForTurn(
   }
 
   if (isNfDataCollectionTurn(unitCtx)) {
+    return [];
+  }
+
+  if (isReceiptPersonTypeNameTurn(unitCtx)) {
     return [];
   }
 

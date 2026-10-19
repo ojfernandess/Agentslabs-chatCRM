@@ -23,6 +23,7 @@ import {
   userMessageLooksLikeEstablishmentEntryFaqQuestion,
   userMessageLooksLikeReceiptOrInvoiceRequest,
   userMessageLooksLikeUnitFactualWithEstablishmentNamed,
+  isReceiptPersonTypeNameTurn,
 } from "./unitKnowledgeFlow.js";
 
 export function kbOutcomeCoversUserQuery(
@@ -69,10 +70,19 @@ export function findKnowledgeToolOutcome(
 
 export function shouldEscalateAfterKnowledgeGap(opts: {
   userMessage?: string | null;
+  lastAssistantMessage?: string | null;
   toolOutcomes: SynthesizerToolOutcome[];
   callHumanSucceeded?: boolean;
 }): boolean {
   if (opts.callHumanSucceeded) return false;
+  if (
+    isReceiptPersonTypeNameTurn({
+      userMessage: opts.userMessage,
+      lastAssistantMessage: opts.lastAssistantMessage,
+    })
+  ) {
+    return false;
+  }
   if (!userMessageLooksLikeKbEscalationCandidate(opts.userMessage)) return false;
   const kbOutcome = findKnowledgeToolOutcome(opts.toolOutcomes);
   if (!kbOutcome) return false;

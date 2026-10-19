@@ -428,6 +428,7 @@ export function ensureDeliveringReply(input: EnsureDeliveringReplyInput): Ensure
   );
   const knowledgeGapTurn = shouldEscalateAfterKnowledgeGap({
     userMessage: input.userMessage,
+    lastAssistantMessage: input.lastAssistantMessage,
     toolOutcomes: input.toolOutcomes,
     callHumanSucceeded,
   });

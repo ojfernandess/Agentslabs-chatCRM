@@ -19,7 +19,10 @@ import type {
 } from "../eil/types.js";
 import { userMessageLooksLikeKnowledgeSeekingQuery } from "../../knowledgeQueryEnrichment.js";
 import { shouldRequireCallHumanThisTurn } from "../escalation/escalationTurnDetection.js";
-import { unitKbTurnNeedsEstablishmentCollection } from "../../unitKnowledgeFlow.js";
+import {
+  isReceiptPersonTypeNameTurn,
+  unitKbTurnNeedsEstablishmentCollection,
+} from "../../unitKnowledgeFlow.js";
 import { isPostCompletionPending } from "../core/sessionToolOutcomes.js";
 import { guestAsksQuoteCategoryInfo } from "../core/confirmationTurnGuards.js";
 import {
@@ -98,6 +101,10 @@ export function executionTurnPlanFromPromptIr(
     flowSlots,
   });
   const knowledgeSeeking =
+    !isReceiptPersonTypeNameTurn({
+      userMessage,
+      lastAssistantMessage: opts.lastAssistantMessage,
+    }) &&
     !unitKbTurnNeedsEstablishmentCollection({
       userMessage,
       lastAssistantMessage: opts.lastAssistantMessage,

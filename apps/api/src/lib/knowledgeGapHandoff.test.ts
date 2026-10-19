@@ -205,6 +205,21 @@ test("shouldEscalateAfterKnowledgeGap false for couple period price (C6 — conv
   );
 });
 
+test("shouldEscalateAfterKnowledgeGap false when a company name answers the receipt PF/PJ question", () => {
+  const msg = "Strawplast Industria e Comercio Ltda";
+  const last =
+    "Perfeito! Para emitir o recibo, preciso saber: é em nome de pessoa física ou pessoa jurídica?";
+  assert.equal(
+    shouldEscalateAfterKnowledgeGap({
+      userMessage: msg,
+      lastAssistantMessage: last,
+      toolOutcomes: [{ name: "buscar_conhecimento", ok: true, preview: "" }],
+      callHumanSucceeded: false,
+    }),
+    false,
+  );
+});
+
 test("shouldEscalateAfterKnowledgeGap false for vague stay help (C13t — conversa 6625bef6)", () => {
   const msg = "Preciso de uma ajuda durante minha estadia!";
   assert.equal(messageLooksLikeVagueProblemReport(msg), true);

@@ -628,3 +628,22 @@ test("resolveRequiredToolNamesForTurn — gostaria after KB lookup offer require
   });
   assert.deepEqual(withoutOffer, []);
 });
+
+test("resolveRequiredToolNamesForTurn — company name after PF/PJ question requires no tools", () => {
+  const behavior = {
+    promptBuilder: {
+      useFullPrompt: true,
+      userCore: `
+| C5 | Fato da unidade | horário · Wi-Fi · endereço | Chame \`buscar_conhecimento\` |
+| C19 | Recibo / Nota fiscal | recibo · NF | Chame \`buscar_conhecimento\` |
+`,
+    },
+    availableToolNames: ["buscar_conhecimento", "call_human"],
+  };
+  const names = resolveRequiredToolNamesForTurn(behavior, {
+    userMessage: "Strawplast Industria e Comercio Ltda",
+    lastAssistantMessage:
+      "Perfeito! Para emitir o recibo, preciso saber: é em nome de pessoa física ou pessoa jurídica?",
+  });
+  assert.deepEqual(names, []);
+});
