@@ -4787,16 +4787,10 @@ export function ConversationDetailPage() {
           </div>
         ) : null}
 
-        <div className="relative min-h-0 flex-1">
         <div
-          ref={messagesViewportRef}
-          onScroll={onMessagesViewportScroll}
           className={clsx(
-            "relative h-full min-h-0 overflow-auto overflow-x-hidden",
+            "relative min-h-0 flex-1",
             chatWallpaper.enabled && "isolate bg-ink-50 dark:bg-[#0F1420]",
-            emailWorkspaceMode
-              ? "bg-ink-50 px-3 py-4 dark:bg-[#0F1420] sm:px-5"
-              : "px-3 py-4 sm:px-5 xl:pr-14",
           )}
         >
           {chatWallpaper.enabled ? (
@@ -4805,6 +4799,16 @@ export function ConversationDetailPage() {
               mode={chatWallpaperDark ? "dark" : "light"}
             />
           ) : null}
+        <div
+          ref={messagesViewportRef}
+          onScroll={onMessagesViewportScroll}
+          className={clsx(
+            "relative z-[1] h-full min-h-0 overflow-auto overflow-x-hidden",
+            emailWorkspaceMode
+              ? clsx("px-3 py-4 sm:px-5", !chatWallpaper.enabled && "bg-ink-50 dark:bg-[#0F1420]")
+              : "px-3 py-4 sm:px-5 xl:pr-14",
+          )}
+        >
           {!emailWorkspaceMode ? (
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.12)_0%,_transparent_55%)] dark:bg-[radial-gradient(ellipse_110%_55%_at_50%_0%,rgba(255,255,255,0.04),transparent_60%)]" />
           ) : (
