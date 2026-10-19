@@ -18,16 +18,17 @@ type ChatWallpaperLayerProps = {
 const INK_MASK_PATTERNS = new Set<ChatWallpaperPattern>(["abstract", "doodle", "opennexo"]);
 
 /**
- * Tamanho da peça para as figuras ficarem na mesma escala de fundo_chat.svg (420px).
- * O doodle nasce maior no arquivo; o OpenNexo nasce menor e com traço fino.
+ * Tamanho da peça. O chat abstrato e o OpenNexo usam a mesma tela (2599×1733).
+ * O doodle nasce maior e precisa de uma peça menor para acompanhar o padrão.
  */
+const BALLOON_TILE =
+  "[mask-size:280px_auto] sm:[mask-size:420px_auto] [-webkit-mask-size:280px_auto] sm:[-webkit-mask-size:420px_auto]";
+
 const MASK_TILE_CLASS: Record<Exclude<ChatWallpaperPattern, "standard">, string> = {
-  abstract:
-    "[mask-size:280px_auto] sm:[mask-size:420px_auto] [-webkit-mask-size:280px_auto] sm:[-webkit-mask-size:420px_auto]",
+  abstract: BALLOON_TILE,
   doodle:
     "[mask-size:174px_auto] sm:[mask-size:260px_auto] [-webkit-mask-size:174px_auto] sm:[-webkit-mask-size:260px_auto]",
-  opennexo:
-    "[mask-size:388px_auto] sm:[mask-size:580px_auto] [-webkit-mask-size:388px_auto] sm:[-webkit-mask-size:580px_auto]",
+  opennexo: BALLOON_TILE,
 };
 
 /** Camada só do padrão ilustrado. A opacidade não desce para as mensagens. */
