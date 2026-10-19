@@ -90,7 +90,14 @@ import {
 } from "@/lib/conversationBubbleTheme";
 import { ChatAudioPlayerPreview } from "@/components/conversation/ChatAudioPlayer";
 import { ChatWallpaperLayer } from "@/components/chat/ChatWallpaperLayer";
-import { CHAT_WALLPAPER_OPACITY_DEFAULT, clampChatWallpaperOpacity } from "@/lib/chatWallpaper";
+import {
+  CHAT_WALLPAPER_OPACITY_DEFAULT,
+  CHAT_WALLPAPER_PATTERN_DEFAULT,
+  CHAT_WALLPAPER_PATTERNS,
+  clampChatWallpaperOpacity,
+  normalizeChatWallpaperPattern,
+  type ChatWallpaperPattern,
+} from "@/lib/chatWallpaper";
 import { brandAssetUrl } from "@/lib/brandingAssets";
 import { notifyOrganizationBrandingUpdated } from "@/hooks/useOrganizationBranding";
 
@@ -179,6 +186,7 @@ interface AppSettings {
   conversationBubbleAgentMetaColorDark?: string | null;
   chatWallpaperEnabled?: boolean | null;
   chatWallpaperOpacity?: number | null;
+  chatWallpaperPattern?: string | null;
   conversationAudioPlayerAgentSurfaceColor?: string | null;
   conversationAudioPlayerAgentAccentColor?: string | null;
   conversationAudioPlayerAgentSurfaceColorDark?: string | null;
@@ -393,6 +401,7 @@ export function SettingsPage() {
   const [audioClientAccentDark, setAudioClientAccentDark] = useState<string>(DEFAULT_BUBBLE_THEME.audioClientAccentDark);
   const [chatWallpaperEnabled, setChatWallpaperEnabled] = useState(false);
   const [chatWallpaperOpacity, setChatWallpaperOpacity] = useState(CHAT_WALLPAPER_OPACITY_DEFAULT);
+  const [chatWallpaperPattern, setChatWallpaperPattern] = useState<ChatWallpaperPattern>(CHAT_WALLPAPER_PATTERN_DEFAULT);
   const [chatWallpaperPreviewMode, setChatWallpaperPreviewMode] = useState<"light" | "dark">("light");
   const [appearanceSaveError, setAppearanceSaveError] = useState("");
   const [appearanceUsesDefaults, setAppearanceUsesDefaults] = useState(true);
@@ -558,6 +567,7 @@ export function SettingsPage() {
         setBubbleAgentMetaDark(data.conversationBubbleAgentMetaColorDark ?? DEFAULT_BUBBLE_THEME.agentMetaDark);
         setChatWallpaperEnabled(data.chatWallpaperEnabled === true);
         setChatWallpaperOpacity(clampChatWallpaperOpacity(data.chatWallpaperOpacity ?? CHAT_WALLPAPER_OPACITY_DEFAULT));
+        setChatWallpaperPattern(normalizeChatWallpaperPattern(data.chatWallpaperPattern));
         setAudioAgentSurface(data.conversationAudioPlayerAgentSurfaceColor ?? DEFAULT_BUBBLE_THEME.audioAgentSurface);
         setAudioAgentAccent(data.conversationAudioPlayerAgentAccentColor ?? DEFAULT_BUBBLE_THEME.audioAgentAccent);
         setAudioClientSurface(data.conversationAudioPlayerClientSurfaceColor ?? DEFAULT_BUBBLE_THEME.audioClientSurface);
@@ -1013,6 +1023,7 @@ export function SettingsPage() {
             conversationAudioPlayerClientAccentColorDark: null,
             chatWallpaperEnabled,
             chatWallpaperOpacity,
+            chatWallpaperPattern,
           }
         : {
             conversationBubbleClientColor: bubbleClientColor,
@@ -1039,6 +1050,7 @@ export function SettingsPage() {
             conversationAudioPlayerClientAccentColorDark: audioClientAccentDark,
             chatWallpaperEnabled,
             chatWallpaperOpacity,
+            chatWallpaperPattern,
           };
       const data = await api.put<AppSettings>("/settings", payload);
       setSettings(data);
@@ -2002,7 +2014,51 @@ export function SettingsPage() {
                     </div>
 
                     <div className={clsx("mt-5", !chatWallpaperEnabled && "pointer-events-none opacity-50")}>
-                      <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
+                        {t("settings.chatWallpaperPattern")}
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                        {CHAT_WALLPAPER_PATTERNS.map((patternId) => (
+                          <button
+                            key={patternId}
+                            type="button"
+                            aria-pressed={chatWallpaperPattern === patternId}
+                            onClick={() => setChatWallpaperPattern(patternId)}
+                            className={clsx(
+                              "overflow-hidden rounded-xl border text-left",
+                              chatWallpaperPattern === patternId
+                                ? "border-brand-500 ring-2 ring-brand-500/30"
+                                : "border-ink-200 dark:border-ink-600",
+                            )}
+                          >
+                            <span
+                              className={clsx(
+                                "relative block h-16",
+                                chatWallpaperPreviewMode === "dark" ? "bg-[#0F1420]" : "bg-[#f8fafc]",
+                              )}
+                            >
+                              <ChatWallpaperLayer
+                                opacity={30}
+                                mode={chatWallpaperPreviewMode}
+                                pattern={patternId}
+                              />
+                            </span>
+                            <span className="block px-2 py-2 text-xs font-medium leading-snug text-ink-800 dark:text-ink-100">
+                              {t(
+                                patternId === "standard"
+                                  ? "settings.chatWallpaperPatternStandard"
+                                  : patternId === "abstract"
+                                    ? "settings.chatWallpaperPatternAbstract"
+                                    : patternId === "doodle"
+                                      ? "settings.chatWallpaperPatternDoodle"
+                                      : "settings.chatWallpaperPatternOpennexo",
+                              )}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-5 flex items-center justify-between gap-3">
                         <p className="text-sm font-medium text-ink-800 dark:text-ink-100">
                           {t("settings.chatWallpaperOpacity")}
                         </p>
@@ -2063,7 +2119,11 @@ export function SettingsPage() {
                         )}
                       >
                         {chatWallpaperEnabled ? (
-                          <ChatWallpaperLayer opacity={chatWallpaperOpacity} mode={chatWallpaperPreviewMode} />
+                          <ChatWallpaperLayer
+                            opacity={chatWallpaperOpacity}
+                            mode={chatWallpaperPreviewMode}
+                            pattern={chatWallpaperPattern}
+                          />
                         ) : null}
                         <div className="relative flex h-full flex-col justify-center gap-3 px-4">
                           <div

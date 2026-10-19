@@ -25,6 +25,7 @@ export type ConversationBubbleTheme = {
   conversationAudioPlayerClientAccentColorDark?: string | null;
   chatWallpaperEnabled?: boolean | null;
   chatWallpaperOpacity?: number | null;
+  chatWallpaperPattern?: string | null;
 };
 
 export const DEFAULT_BUBBLE_THEME = {
@@ -56,7 +57,7 @@ type BubbleColorKey = Exclude<
   {
     [K in keyof ConversationBubbleTheme]: NonNullable<ConversationBubbleTheme[K]> extends string ? K : never;
   }[keyof ConversationBubbleTheme],
-  undefined
+  undefined | "chatWallpaperPattern"
 >;
 
 const THEME_VAR_PAIRS: [BubbleColorKey, string][] = [

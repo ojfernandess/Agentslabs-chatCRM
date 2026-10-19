@@ -1731,6 +1731,8 @@ model Settings {
   chatWallpaperEnabled Boolean @default(false) @map("chat_wallpaper_enabled")
   /// Intensidade do padrão, de 0 a 30. Só a camada ilustrada usa este valor.
   chatWallpaperOpacity Int @default(8) @map("chat_wallpaper_opacity")
+  /// standard | abstract | doodle | opennexo. Organizações antigas ficam no padrão.
+  chatWallpaperPattern String @default("standard") @map("chat_wallpaper_pattern") @db.VarChar(32)
 
   @@map("settings")
 }

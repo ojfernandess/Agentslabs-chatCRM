@@ -169,6 +169,7 @@ const settingsSchema = z.object({
   webchatContinuityTemplateId: z.union([z.string().uuid(), z.literal(""), z.null()]).optional(),
   chatWallpaperEnabled: z.boolean().optional(),
   chatWallpaperOpacity: z.number().int().min(0).max(30).optional(),
+  chatWallpaperPattern: z.enum(["standard", "abstract", "doodle", "opennexo"]).optional(),
   conversationBubbleClientColor: hexColorField,
   conversationBubbleAgentColor: hexColorField,
   conversationBubbleClientColorDark: hexColorField,
@@ -378,6 +379,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         conversationAudioPlayerClientAccentColorDark: true,
         chatWallpaperEnabled: true,
         chatWallpaperOpacity: true,
+        chatWallpaperPattern: true,
       },
     });
 
@@ -406,6 +408,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       conversationAudioPlayerClientAccentColorDark: settings?.conversationAudioPlayerClientAccentColorDark ?? null,
       chatWallpaperEnabled: settings?.chatWallpaperEnabled ?? false,
       chatWallpaperOpacity: settings?.chatWallpaperOpacity ?? 8,
+      chatWallpaperPattern: settings?.chatWallpaperPattern ?? "standard",
     };
   });
 

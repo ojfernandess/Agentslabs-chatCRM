@@ -729,6 +729,7 @@ export function ConversationDetailPage() {
   const chatWallpaper = useSyncExternalStore(subscribeAppliedChatWallpaper, getAppliedChatWallpaper, () => ({
     enabled: false,
     opacity: 8,
+    pattern: "standard" as const,
   }));
   const chatWallpaperDark = useDarkMode();
   const crmAsideScrollRef = useRef<HTMLDivElement>(null);
@@ -4796,6 +4797,7 @@ export function ConversationDetailPage() {
           {chatWallpaper.enabled ? (
             <ChatWallpaperLayer
               opacity={chatWallpaper.opacity}
+              pattern={chatWallpaper.pattern}
               mode={chatWallpaperDark ? "dark" : "light"}
             />
           ) : null}
