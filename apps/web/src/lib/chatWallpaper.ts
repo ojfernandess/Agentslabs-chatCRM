@@ -7,7 +7,7 @@ export type ChatWallpaperPattern = (typeof CHAT_WALLPAPER_PATTERNS)[number];
 export const CHAT_WALLPAPER_PATTERN_DEFAULT: ChatWallpaperPattern = "standard";
 
 export const CHAT_WALLPAPER_PATTERN_SRC: Record<ChatWallpaperPattern, string> = {
-  standard: "/fundo_chat.svg",
+  standard: "/fundo_chat_padrao.svg",
   abstract: "/fundo_chat_balao.svg",
   doodle: "/fundo_chat_3.svg",
   opennexo: "/fundo_chat_opennexo.svg",
