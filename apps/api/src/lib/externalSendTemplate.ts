@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { InboxChannelType } from "@prisma/client";
+import { InboxChannelType, Prisma } from "@prisma/client";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { prisma } from "../db.js";
+import { findContactByInboundPhone } from "./contactPhoneMatch.js";
 import type { MessageTemplate } from "@prisma/client";
 import type { FastifyBaseLogger } from "fastify";
 import {
@@ -195,23 +196,30 @@ export async function findOrCreateContactByPhoneForExternalSend(
     throw new Error("Invalid phone number format");
   }
 
-  const existing = await prisma.contact.findFirst({
-    where: { organizationId, phone },
-    select: { id: true, phone: true, name: true },
-  });
+  const existing = await findContactByInboundPhone(prisma, organizationId, phone);
   if (existing) {
-    return { contact: existing, created: false };
+    return { contact: { id: existing.id, phone: existing.phone, name: existing.name }, created: false };
   }
 
-  const contact = await prisma.contact.create({
-    data: {
-      organizationId,
-      phone,
-      name: displayName?.trim() || phone,
-    },
-    select: { id: true, phone: true, name: true },
-  });
-  return { contact, created: true };
+  try {
+    const contact = await prisma.contact.create({
+      data: {
+        organizationId,
+        phone,
+        name: displayName?.trim() || phone,
+      },
+      select: { id: true, phone: true, name: true },
+    });
+    return { contact, created: true };
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const raced = await findContactByInboundPhone(prisma, organizationId, phone);
+      if (raced) {
+        return { contact: { id: raced.id, phone: raced.phone, name: raced.name }, created: false };
+      }
+    }
+    throw err;
+  }
 }
 
 function postSendPolicyForInboxType(inboxType: "ai" | "human"): PostSendConversationPolicy {

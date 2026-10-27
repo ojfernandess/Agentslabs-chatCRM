@@ -18,6 +18,33 @@ import {
 } from "../lib/metaSendErrors.js";
 import { recordMetaSendOutcome } from "../lib/message-processing-monitor/service.js";
 
+function metaIdDigits(value: string | undefined): string {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+function metaLooksLikePhoneId(value: string | undefined): boolean {
+  const digits = metaIdDigits(value);
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+/** Prefers contacts.wa_id when messages.from is a LID, not the E.164 already in the CRM. */
+export function resolveMetaInboundFrom(from: string, contactWaId?: string): string {
+  const fromDigits = metaIdDigits(from);
+  const waDigits = metaIdDigits(contactWaId);
+  if (metaLooksLikePhoneId(contactWaId) && !metaLooksLikePhoneId(from)) {
+    return `+${waDigits}`;
+  }
+  if (
+    metaLooksLikePhoneId(contactWaId) &&
+    metaLooksLikePhoneId(from) &&
+    waDigits.startsWith("55") &&
+    !fromDigits.startsWith("55")
+  ) {
+    return `+${waDigits}`;
+  }
+  return `+${fromDigits || from.replace(/^\+/, "")}`;
+}
+
 export class MetaCloudApiProvider implements WhatsAppProviderInterface {
   private apiKey: string;
   private phoneNumberId: string;
@@ -286,7 +313,10 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
         for (const msg of value.messages ?? []) {
           if (msg.type === "reaction" && msg.reaction?.message_id) {
             reactionUpdates.push({
-              from: `+${msg.from}`,
+              from: resolveMetaInboundFrom(
+                msg.from,
+                (value.contacts?.find((c) => c.wa_id === msg.from) ?? value.contacts?.[0])?.wa_id,
+              ),
               targetWaMessageId: msg.reaction.message_id,
               emoji: msg.reaction.emoji ?? "",
               timestamp: new Date(parseInt(msg.timestamp, 10) * 1000),
@@ -339,7 +369,9 @@ export class MetaCloudApiProvider implements WhatsAppProviderInterface {
             (msg.type === "sticker" ? "[Sticker]" : undefined) ??
             (mappedType === "TEXT" && !typeMap[msg.type] ? `[${msg.type}]` : undefined);
 
-          const fromE164 = `+${msg.from}`;
+          const contactRow =
+            value.contacts?.find((c) => c.wa_id === msg.from) ?? value.contacts?.[0];
+          const fromE164 = resolveMetaInboundFrom(msg.from, contactRow?.wa_id);
           messages.push({
             from: fromE164,
             waMessageId: msg.id,

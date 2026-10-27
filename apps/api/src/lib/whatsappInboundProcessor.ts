@@ -93,15 +93,22 @@ export async function processWhatsAppWebhookEvents(
       let existing = await findContactByInboundPhone(prisma, organizationId, phone, null);
       if (!existing) {
         const dn = patch.waDisplayName?.trim() || phone;
-        existing = await prisma.contact.create({
-          data: {
-            organizationId,
-            phone,
-            name: dn,
-            waId: phone,
-            profilePictureUrl: patch.profilePictureUrl ?? undefined,
-          },
-        });
+        try {
+          existing = await prisma.contact.create({
+            data: {
+              organizationId,
+              phone,
+              name: dn,
+              waId: phone,
+              profilePictureUrl: patch.profilePictureUrl ?? undefined,
+            },
+          });
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+            existing = await findContactByInboundPhone(prisma, organizationId, phone, null);
+          }
+          if (!existing) throw err;
+        }
       }
       const data: {
         profilePictureUrl?: string | null;
@@ -225,16 +232,23 @@ export async function processWhatsAppWebhookEvents(
         const displayName = msg.isGroup
           ? defaultGroupName
           : (msg.pushName?.trim() || phone);
-        contact = await prisma.contact.create({
-          data: {
-            organizationId,
-            phone,
-            name: displayName,
-            waId: msg.isGroup ? msg.groupJid! : msg.from,
-            isGroupChat: Boolean(msg.isGroup),
-          },
-        });
-        contactJustCreated = true;
+        try {
+          contact = await prisma.contact.create({
+            data: {
+              organizationId,
+              phone,
+              name: displayName,
+              waId: msg.isGroup ? msg.groupJid! : msg.from,
+              isGroupChat: Boolean(msg.isGroup),
+            },
+          });
+          contactJustCreated = true;
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+            contact = await findContactByInboundPhone(prisma, organizationId, phone, msg.from);
+          }
+          if (!contact) throw err;
+        }
 
         const unknownTag = await prisma.tag.findFirst({
           where: { organizationId, name: "Desconhecido" },

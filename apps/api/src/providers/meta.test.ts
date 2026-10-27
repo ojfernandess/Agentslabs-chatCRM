@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MetaSendError } from "../lib/metaSendErrors.js";
-import { MetaCloudApiProvider } from "./meta.js";
+import { MetaCloudApiProvider, resolveMetaInboundFrom } from "./meta.js";
+
+test("resolveMetaInboundFrom prefers contacts.wa_id when messages.from is a LID", () => {
+  assert.equal(resolveMetaInboundFrom("1234567890123456", "5511999990001"), "+5511999990001");
+  assert.equal(resolveMetaInboundFrom("5511999990001", "5511999990001"), "+5511999990001");
+});
 
 const META_INTERACTIVE = {
   entry: [

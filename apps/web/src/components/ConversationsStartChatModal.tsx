@@ -158,9 +158,14 @@ export function ConversationsStartChatModal({
         setError(t("conversations.startChatDuplicateHint"));
         const raw = e instanceof ApiError ? e.details?.existingContact : null;
         if (raw && typeof raw === "object") {
-          const row = raw as { id?: unknown; name?: unknown; phone?: unknown };
+          const row = raw as { id?: unknown; name?: unknown; phone?: unknown; email?: unknown };
           if (typeof row.id === "string" && typeof row.name === "string" && typeof row.phone === "string") {
-            const existing = { id: row.id, name: row.name, phone: row.phone };
+            const existing: ContactRow = {
+              id: row.id,
+              name: row.name,
+              phone: row.phone,
+              email: typeof row.email === "string" ? row.email : null,
+            };
             if (mode === "quick") {
               setQuickMatch(existing);
             } else {
