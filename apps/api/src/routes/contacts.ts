@@ -27,10 +27,22 @@ import { contactHasEmailFilter } from "../lib/conversationUserEmailState.js";
 import { WEBSITE_PHONE_PREFIX } from "@openconduit/shared";
 import { buildWebsiteVisitorIndexMap, enrichWebsiteContact } from "../lib/websiteVisitorContacts.js";
 import { assertCanAddContacts, replyPlanEnforcementError } from "../lib/billing/planEnforcement.js";
-import { normalizeContactPhone } from "../lib/contactPhone.js";
+import { contactPhoneSearchTokens, normalizeContactPhone } from "../lib/contactPhone.js";
 
 /** Entrada formatada (+55 11 94802-7351). O valor gravado continua E.164 (no máximo 16). */
 const CONTACT_PHONE_INPUT_MAX = 40;
+
+function duplicatePhoneConflict(existing: { id: string; name: string; phone: string }) {
+  return {
+    error: "Conflict",
+    message: "Já existe um contato com este número.",
+    statusCode: 409,
+    details: {
+      messageEn: "A contact with this phone number already exists.",
+      existingContact: { id: existing.id, name: existing.name, phone: existing.phone },
+    },
+  };
+}
 
 const createContactSchema = z.object({
   phone: z.string().trim().min(7).max(CONTACT_PHONE_INPUT_MAX),
@@ -308,10 +320,11 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
 
     if (query.search) {
       const q = query.search.trim();
+      const phoneTokens = contactPhoneSearchTokens(q);
       where.OR = [
         { name: { contains: q, mode: "insensitive" } },
-        { phone: { contains: q } },
-        { mobilePhone: { contains: q } },
+        ...phoneTokens.map((token) => ({ phone: { contains: token } })),
+        ...phoneTokens.map((token) => ({ mobilePhone: { contains: token } })),
         { email: { contains: q, mode: "insensitive" } },
         { account: { name: { contains: q, mode: "insensitive" } } },
       ];
@@ -604,11 +617,12 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: "Bad Request", message: "Invalid phone number format", statusCode: 400 });
     }
 
-    const existing = await prisma.contact.findFirst({ where: { organizationId, phone } });
+    const existing = await prisma.contact.findFirst({
+      where: { organizationId, phone },
+      select: { id: true, name: true, phone: true },
+    });
     if (existing) {
-      return reply
-        .status(409)
-        .send({ error: "Conflict", message: "Contact with this phone number already exists", statusCode: 409 });
+      return reply.status(409).send(duplicatePhoneConflict(existing));
     }
 
     try {
@@ -744,13 +758,10 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         if (normalized !== current.phone) {
           const conflict = await prisma.contact.findFirst({
             where: { organizationId, phone: normalized, NOT: { id: current.id } },
+            select: { id: true, name: true, phone: true },
           });
           if (conflict) {
-            return reply.status(409).send({
-              error: "Conflict",
-              message: "Contact with this phone number already exists",
-              statusCode: 409,
-            });
+            return reply.status(409).send(duplicatePhoneConflict(conflict));
           }
         }
         data.phone = normalized;

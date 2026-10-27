@@ -156,6 +156,20 @@ export function ConversationsStartChatModal({
       const st = e instanceof ApiError ? e.status : 0;
       if (st === 409) {
         setError(t("conversations.startChatDuplicateHint"));
+        const raw = e instanceof ApiError ? e.details?.existingContact : null;
+        if (raw && typeof raw === "object") {
+          const row = raw as { id?: unknown; name?: unknown; phone?: unknown };
+          if (typeof row.id === "string" && typeof row.name === "string" && typeof row.phone === "string") {
+            const existing = { id: row.id, name: row.name, phone: row.phone };
+            if (mode === "quick") {
+              setQuickMatch(existing);
+            } else {
+              setRows((prev) => (prev.some((r) => r.id === existing.id) ? prev : [existing, ...prev]));
+              setQ(trimmedPhone);
+            }
+            return;
+          }
+        }
         if (mode === "quick") {
           void lookupQuickPhone(trimmedPhone);
         } else {

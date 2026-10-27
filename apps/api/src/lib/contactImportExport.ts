@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import * as XLSX from "xlsx";
 import { normalizePhoneE164 } from "@openconduit/shared";
 import { prisma } from "../db.js";
+import { contactPhoneSearchTokens } from "./contactPhone.js";
 import { fireBroadcastEventTriggers } from "./broadcastEventHooks.js";
 
 export const MAX_CONTACT_IMPORT_ROWS = 5000;
@@ -482,9 +483,10 @@ export async function fetchContactsForExport(query: ContactExportQuery): Promise
   const where: Record<string, unknown> = { organizationId: query.organizationId };
   if (query.search?.trim()) {
     const q = query.search.trim();
+    const phoneTokens = contactPhoneSearchTokens(q);
     where.OR = [
       { name: { contains: q, mode: "insensitive" } },
-      { phone: { contains: q } },
+      ...phoneTokens.map((token) => ({ phone: { contains: token } })),
       { email: { contains: q, mode: "insensitive" } },
       { account: { name: { contains: q, mode: "insensitive" } } },
     ];

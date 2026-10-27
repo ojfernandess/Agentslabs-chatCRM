@@ -60,3 +60,33 @@ export function normalizeContactPhone(raw: string): string | null {
 
   return normalizePhoneE164(digits);
 }
+
+/**
+ * Variantes do termo de busca para achar o mesmo número gravado em E.164,
+ * mesmo com espaços, hífen ou +55. Não altera o valor persistido.
+ */
+export function contactPhoneSearchTokens(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  const tokens = new Set<string>([trimmed]);
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length >= 8) {
+    tokens.add(digits);
+    if (digits.startsWith("00") && digits.length > 10) {
+      tokens.add(digits.slice(2));
+      tokens.add(`+${digits.slice(2)}`);
+    } else {
+      tokens.add(`+${digits}`);
+    }
+    const normalized = normalizeContactPhone(trimmed);
+    if (normalized) tokens.add(normalized);
+    if (digits.startsWith("55") && digits.length >= 12) {
+      const national = digits.slice(2);
+      if (national.length >= 10) {
+        tokens.add(national);
+        tokens.add(`+55${national}`);
+      }
+    }
+  }
+  return [...tokens];
+}

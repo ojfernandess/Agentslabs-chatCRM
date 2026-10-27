@@ -131,6 +131,11 @@ export function ContactsPage() {
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [createError, setCreateError] = useState("");
+  const [existingDuplicate, setExistingDuplicate] = useState<{
+    id: string;
+    name: string;
+    phone: string;
+  } | null>(null);
 
   const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
   const [quickContact, setQuickContact] = useState<{ id: string; name: string; phone: string } | null>(null);
@@ -242,6 +247,7 @@ export function ContactsPage() {
 
   const handleCreate = async () => {
     setCreateError("");
+    setExistingDuplicate(null);
     try {
       await api.post("/contacts", { name: newName, phone: newPhone });
       setNewName("");
@@ -249,7 +255,18 @@ export function ContactsPage() {
       setShowCreate(false);
       void loadContacts(search, true, 1);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create contact");
+      if (err instanceof ApiError && err.status === 409) {
+        setCreateError(t("contacts.duplicatePhone"));
+        const raw = err.details?.existingContact;
+        if (raw && typeof raw === "object") {
+          const row = raw as { id?: unknown; name?: unknown; phone?: unknown };
+          if (typeof row.id === "string" && typeof row.name === "string" && typeof row.phone === "string") {
+            setExistingDuplicate({ id: row.id, name: row.name, phone: row.phone });
+          }
+        }
+        return;
+      }
+      setCreateError(err instanceof Error ? err.message : t("contacts.createFailed"));
     }
   };
 
@@ -505,7 +522,11 @@ export function ContactsPage() {
                 {t("contacts.importExport.import")}
               </button>
               <motion.button
-                onClick={() => setShowCreate(true)}
+                onClick={() => {
+                  setCreateError("");
+                  setExistingDuplicate(null);
+                  setShowCreate(true);
+                }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-brand-500/25 hover:bg-brand-600"
                 whileTap={{ scale: 0.97 }}
               >
@@ -613,6 +634,30 @@ export function ContactsPage() {
                   {createError && (
                     <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">
                       {createError}
+                      {existingDuplicate ? (
+                        <div className="mt-2 rounded-md border border-red-200 bg-white/80 px-3 py-2 dark:border-red-900/50 dark:bg-ink-950/50">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-red-800 dark:text-red-200">
+                            {t("contacts.duplicatePhoneExisting")}
+                          </p>
+                          <p className="mt-1 font-medium text-slate-900 dark:text-ink-50">{existingDuplicate.name}</p>
+                          <p className="text-xs text-slate-600 dark:text-ink-300">
+                            {formatContactPhoneForDisplay(existingDuplicate.phone)}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const id = existingDuplicate.id;
+                              setShowCreate(false);
+                              setCreateError("");
+                              setExistingDuplicate(null);
+                              setDrawerContactId(id);
+                            }}
+                            className="mt-2 text-sm font-semibold text-brand-700 hover:underline dark:text-brand-300"
+                          >
+                            {t("contacts.openExistingContact")}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   )}
                   <div className="space-y-3">
@@ -641,7 +686,11 @@ export function ContactsPage() {
                   </div>
                   <div className="mt-6 flex justify-end gap-3">
                     <button
-                      onClick={() => setShowCreate(false)}
+                      onClick={() => {
+                        setShowCreate(false);
+                        setCreateError("");
+                        setExistingDuplicate(null);
+                      }}
                       className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
                     >
                       {t("contacts.cancel")}

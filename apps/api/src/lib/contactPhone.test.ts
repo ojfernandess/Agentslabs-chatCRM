@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizePhoneE164 } from "@openconduit/shared";
-import { normalizeContactPhone } from "./contactPhone.js";
+import { contactPhoneSearchTokens, normalizeContactPhone } from "./contactPhone.js";
 
 test("normalizeContactPhone accepts spaced Brazilian mobile +55 11 94802-7351", () => {
   assert.equal(normalizeContactPhone("+55 11 94802-7351"), "+5511948027351");
@@ -50,4 +50,18 @@ test("normalizeContactPhone rejects values that are not a phone", () => {
   assert.equal(normalizeContactPhone(""), null);
   assert.equal(normalizeContactPhone("abc"), null);
   assert.equal(normalizeContactPhone("123"), null);
+});
+
+test("contactPhoneSearchTokens finds the stored E.164 from formatted Brazilian numbers", () => {
+  const stored = "+5511999990000";
+  for (const raw of [
+    "+55 11 99999-0000",
+    "55 11 999990000",
+    "55 11999990000",
+    "5511 999990000",
+    "5511999990000",
+  ]) {
+    const tokens = contactPhoneSearchTokens(raw);
+    assert.ok(tokens.includes(stored), raw);
+  }
 });
